@@ -21,10 +21,9 @@ class BackgroundTaskManager {
         let taskID = UIApplication.shared.beginBackgroundTask { 
             // If we run out of time, call the expiration handler
             expirationHandler()
-            
-            // End the task
-            UIApplication.shared.endBackgroundTask(taskID)
         }
+        // End the task
+        UIApplication.shared.endBackgroundTask(taskID)
         
         // Start a timer to end the task after 25 seconds (just before the system limit)
         DispatchQueue.global().asyncAfter(deadline: .now() + 25) { [weak self] in

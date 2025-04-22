@@ -29,7 +29,7 @@ final class User {
     
     // Fixed relationship to assigned projects that avoids circular reference
     // Use delete rules from SwiftData's documented options
-    @Relationship(deleteRule: .noAction, inverse: \Project.teamMembers)
+    @Relationship(deleteRule: .noAction)
     var assignedProjects: [Project]?
     
     // Offline/sync tracking

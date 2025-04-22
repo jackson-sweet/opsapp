@@ -4,6 +4,7 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
+
 import SwiftUI
 import SwiftData
 import Combine
@@ -14,7 +15,8 @@ import Combine
 class DataController: ObservableObject {
     // Dependencies - all properly isolated to the main thread
     private let modelContainer: ModelContainer
-    private let syncManager: SyncManager
+    // Expose syncManager so it can be accessed by ViewModels
+    let syncManager: SyncManager
     private let apiService: APIService
     private let authManager: AuthManager
     private let connectivityMonitor: ConnectivityMonitor
@@ -361,4 +363,7 @@ class DataController: ObservableObject {
             }
         }
     }
+    
+    
+    
 }

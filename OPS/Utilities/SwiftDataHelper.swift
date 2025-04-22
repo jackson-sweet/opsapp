@@ -11,6 +11,7 @@ import SwiftData
 
 /// Helper functions for dealing with SwiftData relationships
 /// This removes the complexity from your main code
+/*
 struct SwiftDataHelper {
     
     /// Safely connects a project with its team members
@@ -42,3 +43,4 @@ struct SwiftDataHelper {
         try? context.save()
     }
 }
+*/

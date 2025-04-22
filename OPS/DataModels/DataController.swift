@@ -7,13 +7,12 @@
 import SwiftUI
 import SwiftData
 import Combine
-import CoreLocation
 
 /// Main Data Controller
 /// The single source of truth for data access in the app
-@Observable
-class DataController {
-    // Dependencies
+@MainActor // Mark the entire class as running on the main actor
+class DataController: ObservableObject {
+    // Dependencies - all properly isolated to the main thread
     private let modelContainer: ModelContainer
     private let syncManager: SyncManager
     private let apiService: APIService
@@ -21,12 +20,12 @@ class DataController {
     private let connectivityMonitor: ConnectivityMonitor
     
     // State
-    var isInitialized = false
-    var isAuthenticated = false
-    var isSyncing = false
+    @Published var isInitialized = false
+    @Published var isAuthenticated = false
+    @Published var isSyncing = false
     
     // Current user
-    private(set) var currentUser: User?
+    @Published private(set) var currentUser: User?
     
     init() {
         // Setup dependencies
@@ -44,19 +43,21 @@ class DataController {
             // 2. Set up other services
             let keychain = KeychainManager()
             let authManager = AuthManager()
-            let apiService = APIService(authManager: authManager)
-            connectivityMonitor = ConnectivityMonitor()
+            self.authManager = authManager
             
-            // 3. Initialize sync manager
-            syncManager = SyncManager(
-                modelContext: modelContainer.mainContext,
+            let apiService = APIService(authManager: authManager)
+            self.apiService = apiService
+            
+            self.connectivityMonitor = ConnectivityMonitor()
+            
+            // 3. Initialize sync manager with the main context
+            let modelContext = ModelContext(modelContainer)
+            let syncManager = SyncManager(
+                modelContext: modelContext,
                 apiService: apiService,
                 connectivityMonitor: connectivityMonitor
             )
-            
-            // Store for later use
-            self.apiService = apiService
-            self.authManager = authManager
+            self.syncManager = syncManager
             
             // 4. Check for existing login
             checkExistingAuth()
@@ -93,10 +94,8 @@ class DataController {
             _ = try await authManager.signIn(username: username, password: password)
             
             // Success
-            await MainActor.run {
-                self.isAuthenticated = true
-                self.loadCurrentUser()
-            }
+            self.isAuthenticated = true
+            self.loadCurrentUser()
             
             return true
         } catch {
@@ -275,7 +274,9 @@ class DataController {
             
             // Try to sync the change immediately if online
             if connectivityMonitor.isConnected {
-                syncManager.triggerBackgroundSync()
+                Task {
+                    syncManager.triggerBackgroundSync()
+                }
             }
         } catch {
             print("Failed to update project status: \(error)")
@@ -344,19 +345,20 @@ class DataController {
     
     // MARK: - Sync Management
     
-    // Sync happens automatically - no manual intervention needed
-    // This method exists only for internal use when absolutely necessary
-    internal func forceSync() async {
-        guard !isSyncing else { return }
-        
-        await MainActor.run {
-            isSyncing = true
-        }
-        
-        await syncManager.performFullSync()
-        
-        await MainActor.run {
-            isSyncing = false
+    // Trigger a manual sync - only used internally when needed
+    func forceSync() {
+        Task {
+            guard !isSyncing else { return }
+            
+            await MainActor.run {
+                isSyncing = true
+            }
+            
+            await syncManager.performFullSync()
+            
+            await MainActor.run {
+                isSyncing = false
+            }
         }
     }
 }

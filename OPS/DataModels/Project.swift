@@ -9,7 +9,6 @@ import SwiftData
 import CoreLocation
 
 /// Project model - central entity for field crew
-/// Renamed from Job to match your Bubble structure
 @Model
 final class Project {
     var id: String
@@ -28,10 +27,11 @@ final class Project {
     
     // Additional fields to match your Bubble structure
     var teamMemberIds: [String]
-        var projectDescription: String?
+    var projectDescription: String?
     
-    // Fix for circular reference issue - proper relationship definition
-    @Relationship(deleteRule: .nullify, inverse: \User.assignedProjects)
+    // Fixed relationship to team members that avoids circular reference
+    // Use delete rules from SwiftData's documented options
+    @Relationship(deleteRule: .noAction, inverse: \User.assignedProjects)
     var teamMembers: [User]?
     
     // Offline/sync tracking
@@ -48,7 +48,6 @@ final class Project {
         self.companyId = ""
         self.teamMemberIds = []
         self.allDay = false
-        self.teamMembers = []
     }
     
     // Computed property for location

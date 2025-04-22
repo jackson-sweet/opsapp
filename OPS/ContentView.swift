@@ -4,52 +4,31 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
-
 import SwiftUI
 import SwiftData
 
+/// Main content view - temporary placeholder until you build your UI
 struct ContentView: View {
+    @EnvironmentObject private var viewModel: ProjectsViewModel
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
+        NavigationView {
+            VStack {
+                Text("OPS")
+                    .font(.largeTitle)
+                    .padding()
+                
+                Text("Your projects will appear here.")
+                    .padding()
+                
+                // This will be replaced with your actual UI
+                Text("Loading...")
+                    .padding()
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+            .onAppear {
+                // Load projects when view appears
+                viewModel.loadProjects(context: modelContext)
             }
         }
     }
@@ -57,5 +36,10 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: Project.self, inMemory: true)
+        .environmentObject(ProjectsViewModel(syncManager: SyncManager(
+            modelContext: ModelContext(try! ModelContainer(for: Project.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))),
+            apiService: APIService(authManager: AuthManager()),
+            connectivityMonitor: ConnectivityMonitor()
+        )))
 }

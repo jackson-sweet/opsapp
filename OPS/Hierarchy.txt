@@ -1,0 +1,52 @@
+OPS/
+├── App/
+│   ├── OPSApp.swift                 # App entry point
+│   └── AppDelegate.swift            # App lifecycle hooks
+│
+├── Models/
+│   ├── Job.swift                    # Job model
+│   ├── User.swift                   # User model  
+│   └── Organization.swift           # Organization model
+│
+├── Network/
+│   ├── APIService.swift             # Core API functionality
+│   ├── Endpoints/
+│   │   ├── JobEndpoints.swift       # Job-specific API calls
+│   │   ├── UserEndpoints.swift      # User-specific API calls
+│   │   └── OrganizationEndpoints.swift # Organization-specific API calls
+│   ├── DTOs/
+│   │   ├── JobDTO.swift             # Job data transfer object
+│   │   ├── UserDTO.swift            # User data transfer object
+│   │   └── OrganizationDTO.swift    # Organization data transfer object
+│   └── APIError.swift               # API error definitions
+│
+├── Services/
+│   ├── Auth/
+│   │   ├── AuthManager.swift        # Authentication management
+│   │   ├── KeychainManager.swift    # Secure credential storage
+│   │   └── AuthError.swift          # Auth-specific errors
+│   ├── Sync/
+│   │   ├── SyncManager.swift        # Data synchronization
+│   │   ├── BackgroundTaskManager.swift # Background task handling
+│   │   └── ConnectivityMonitor.swift # Network connectivity tracking
+│   └── DataController.swift         # Main data access point
+│
+├── UI/
+│   ├── Home/
+│   │   ├── HomeView.swift           # Main map view
+│   │   └── JobMapAnnotation.swift   # Custom map markers
+│   ├── Job/
+│   │   ├── JobDetailView.swift      # Job details screen
+│   │   └── JobActionsView.swift     # Job action buttons
+│   ├── Calendar/
+│   │   ├── CalendarView.swift       # Calendar screen
+│   │   └── JobCalendarItem.swift    # Calendar job representation
+│   └── Settings/
+│       ├── SettingsView.swift       # Settings screen
+│       └── ProfileView.swift        # Profile editing
+│
+└── Utilities/
+    ├── Extensions/
+    │   ├── Date+Formatting.swift    # Date helpers
+    │   └── CLLocation+Distance.swift # Location helpers
+    └── Constants.swift              # App-wide constants

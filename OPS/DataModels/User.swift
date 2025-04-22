@@ -27,22 +27,22 @@ final class User {
     var locationName: String?
     var clientId: String?
     
-    // Fixed relationship to assigned projects that avoids circular reference
-    // Use delete rules from SwiftData's documented options
-    @Relationship(deleteRule: .noAction)
-    var assignedProjects: [Project]?
+    // Fixed relationship with proper inverse that matches Project's declaration
+    @Relationship(deleteRule: .noAction, inverse: \Project.teamMembers)
+    var assignedProjects: [Project]
     
     // Offline/sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
     
     init(id: String, firstName: String, lastName: String, role: UserRole, companyId: String) {
-        self.id = id
-        self.firstName = firstName
-        self.lastName = lastName
-        self.role = role
-        self.companyId = companyId
-    }
+         self.id = id
+         self.firstName = firstName
+         self.lastName = lastName
+         self.role = role
+         self.companyId = companyId
+         self.assignedProjects = []
+     }
     
     // Computed properties for convenience
     var fullName: String {

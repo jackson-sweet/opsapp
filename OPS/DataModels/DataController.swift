@@ -189,116 +189,128 @@ class DataController: ObservableObject {
     }
     
     // MARK: - Project Management
-    
-    // Get projects for map view - the heart of the field crew experience
-    func getProjectsForMap() -> [Project] {
-        do {
-            // For MVP, just show all projects assigned to current user
-            guard let userId = currentUser?.id else { return [] }
-            
-            let predicate = #Predicate<Project> { project in
-                project.teamMembers?.contains(where: { $0.id == userId }) == true
-            }
-            
-            let descriptor = FetchDescriptor<Project>(predicate: predicate)
-            return try modelContainer.mainContext.fetch(descriptor)
-        } catch {
-            print("Failed to fetch projects for map: \(error)")
-            return []
-        }
-    }
-    
-    // Get projects for calendar view
-    func getProjectsForCalendar(month: Int, year: Int) -> [Project] {
-        do {
-            // Get start and end date for the month
-            let calendar = Calendar.current
-            var dateComponents = DateComponents()
-            dateComponents.year = year
-            dateComponents.month = month
-            dateComponents.day = 1
-            
-            guard let startDate = calendar.date(from: dateComponents),
-                  let endDate = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: startDate) else {
+    // Get projects for map view - simplified approach
+        func getProjectsForMap() -> [Project] {
+            do {
+                // Get all projects
+                let descriptor = FetchDescriptor<Project>()
+                let allProjects = try modelContainer.mainContext.fetch(descriptor)
+                
+                // Get current user ID for filtering
+                guard let userId = currentUser?.id else { return [] }
+                
+                // Filter in memory based on team membership
+                return allProjects.filter { project in
+                    project.teamMemberIds.contains(userId)
+                }
+            } catch {
+                print("Failed to fetch projects for map: \(error)")
                 return []
             }
-            
-            // Fetch projects for current user in this date range
-            guard let userId = currentUser?.id else { return [] }
-            
-            let predicate = #Predicate<Project> { project in
-                project.teamMembers?.contains(where: { $0.id == userId }) == true &&
-                ((project.startDate != nil && project.startDate! <= endDate) &&
-                (project.endDate == nil || project.endDate! >= startDate))
-            }
-            
-            let descriptor = FetchDescriptor<Project>(predicate: predicate)
-            return try modelContainer.mainContext.fetch(descriptor)
-        } catch {
-            print("Failed to fetch projects for calendar: \(error)")
-            return []
-        }
-    }
-    
-    // Get project by ID
-    func getProject(id: String) -> Project? {
-        do {
-            let predicate = #Predicate<Project> { $0.id == id }
-            let descriptor = FetchDescriptor<Project>(predicate: predicate)
-            let projects = try modelContainer.mainContext.fetch(descriptor)
-            return projects.first
-        } catch {
-            print("Failed to fetch project: \(error)")
-            return nil
-        }
-    }
-    
-    // Update project status - key action for field crew
-    func updateProjectStatus(projectId: String, status: Status) {
-        guard let project = getProject(id: projectId) else { return }
-        
-        project.status = status
-        project.needsSync = true
-        project.syncPriority = 3 // Highest priority
-        
-        // If moving to in progress, record the start time if not already set
-        if status == .inProgress && project.startDate == nil {
-            project.startDate = Date()
         }
         
-        // If moving to completed, record the end time
-        if status == .completed && project.endDate == nil {
-            project.endDate = Date()
-        }
-        
-        do {
-            try modelContainer.mainContext.save()
-            
-            // Try to sync the change immediately if online
-            if connectivityMonitor.isConnected {
-                Task {
-                    syncManager.triggerBackgroundSync()
+        // Get projects for calendar view - simplified approach
+        func getProjectsForCalendar(month: Int, year: Int) -> [Project] {
+            do {
+                // Calculate date range for the month
+                let calendar = Calendar.current
+                var dateComponents = DateComponents()
+                dateComponents.year = year
+                dateComponents.month = month
+                dateComponents.day = 1
+                
+                guard let startDate = calendar.date(from: dateComponents),
+                      let endDate = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: startDate) else {
+                    return []
                 }
+                
+                // Get all projects
+                let descriptor = FetchDescriptor<Project>()
+                let allProjects = try modelContainer.mainContext.fetch(descriptor)
+                
+                // Get current user ID for filtering
+                guard let userId = currentUser?.id else { return [] }
+                
+                // Filter in memory based on team membership and date range
+                return allProjects.filter { project in
+                    // Check user assignment
+                    guard project.teamMemberIds.contains(userId) else { return false }
+                    
+                    // Check date range
+                    let projectStartsBeforeEnd = project.startDate == nil || project.startDate! <= endDate
+                    let projectEndsAfterStart = project.endDate == nil || project.endDate! >= startDate
+                    
+                    return projectStartsBeforeEnd && projectEndsAfterStart
+                }
+            } catch {
+                print("Failed to fetch projects for calendar: \(error)")
+                return []
             }
-        } catch {
-            print("Failed to update project status: \(error)")
         }
-    }
+        
+        // Update project status - simplified to be bulletproof
+        func updateProjectStatus(projectId: String, status: Status) {
+            guard let project = getProject(id: projectId) else { return }
+            
+            project.status = status
+            project.needsSync = true
+            project.syncPriority = 3 // Highest priority
+            
+            // Update timestamps based on status
+            if status == .inProgress && project.startDate == nil {
+                project.startDate = Date()
+            }
+            
+            if status == .completed && project.endDate == nil {
+                project.endDate = Date()
+            }
+            
+            // Save changes
+            do {
+                try modelContainer.mainContext.save()
+                
+                // Try to sync immediately if online
+                if connectivityMonitor.isConnected {
+                    Task {
+                        syncManager.triggerBackgroundSync()
+                    }
+                }
+            } catch {
+                print("Failed to update project status: \(error)")
+            }
+        }
+    
+    // Get project by ID - no predicates, just simple filtering
+       func getProject(id: String) -> Project? {
+           do {
+               // Get all projects and filter in memory
+               let descriptor = FetchDescriptor<Project>()
+               let allProjects = try modelContainer.mainContext.fetch(descriptor)
+               
+               // Find the matching project
+               return allProjects.first { $0.id == id }
+           } catch {
+               print("Failed to fetch project: \(error)")
+               return nil
+           }
+       }
     
     // MARK: - Company Management
     
-    // Get company by ID
-    func getCompany(id: String) -> Company? {
-        do {
-            let predicate = #Predicate<Company> { $0.id == id }
-            let descriptor = FetchDescriptor<Company>(predicate: predicate)
-            let companies = try modelContainer.mainContext.fetch(descriptor)
-            return companies.first
-        } catch {
-            print("Failed to fetch company: \(error)")
-            return nil
+    // Get company by ID - no predicates, just simple filtering
+        func getCompany(id: String) -> Company? {
+            do {
+                // Get all companies (should be very few) and filter in memory
+                let descriptor = FetchDescriptor<Company>()
+                let allCompanies = try modelContainer.mainContext.fetch(descriptor)
+                
+                // Find the matching company
+                return allCompanies.first { $0.id == id }
+            } catch {
+                print("Failed to fetch company: \(error)")
+                return nil
+            }
         }
-    }
     
     // Get current user's company
     func getCurrentUserCompany() -> Company? {
@@ -310,40 +322,48 @@ class DataController: ObservableObject {
     }
     
     // MARK: - Team Management
-    
-    // Get team members for the current user's company
-    func getTeamMembers() -> [User] {
-        guard let companyId = currentUser?.companyId else {
-            return []
-        }
-        
-        do {
-            let predicate = #Predicate<User> { $0.companyId == companyId }
-            let descriptor = FetchDescriptor<User>(predicate: predicate)
-            return try modelContainer.mainContext.fetch(descriptor)
-        } catch {
-            print("Failed to fetch team members: \(error)")
-            return []
-        }
-    }
-    
-    // Get field crew members for the current user's company
-    func getFieldCrewMembers() -> [User] {
-        guard let companyId = currentUser?.companyId else {
-            return []
-        }
-        
-        do {
-            let predicate = #Predicate<User> {
-                $0.companyId == companyId && $0.role == .fieldCrew
+
+    // Get team members for current company - no predicates, just simple filtering
+        func getTeamMembers() -> [User] {
+            do {
+                // Fetch all users and filter in memory
+                let descriptor = FetchDescriptor<User>()
+                let allUsers = try modelContainer.mainContext.fetch(descriptor)
+                
+                // Get company ID for filtering
+                guard let companyId = currentUser?.companyId else {
+                    return []
+                }
+                
+                // Filter in memory - bulletproof approach
+                return allUsers.filter { $0.companyId == companyId }
+            } catch {
+                print("Failed to fetch team members: \(error)")
+                return []
             }
-            let descriptor = FetchDescriptor<User>(predicate: predicate)
-            return try modelContainer.mainContext.fetch(descriptor)
-        } catch {
-            print("Failed to fetch field crew members: \(error)")
-            return []
         }
-    }
+    
+    // Get field crew members - no predicates, just simple filtering
+        func getFieldCrewMembers() -> [User] {
+            do {
+                // Get all users and filter in memory
+                let descriptor = FetchDescriptor<User>()
+                let allUsers = try modelContainer.mainContext.fetch(descriptor)
+                
+                // Get company ID for filtering
+                guard let companyId = currentUser?.companyId else {
+                    return []
+                }
+                
+                // Filter in memory - bulletproof approach
+                return allUsers.filter {
+                    $0.companyId == companyId && $0.role == .fieldCrew
+                }
+            } catch {
+                print("Failed to fetch field crew members: \(error)")
+                return []
+            }
+        }
     
     // MARK: - Sync Management
     

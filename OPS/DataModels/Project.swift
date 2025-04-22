@@ -4,6 +4,12 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
+//
+//  Project.swift
+//  OPS
+//
+//  Created by Jackson Sweet on 2025-04-21.
+//
 import SwiftUI
 import SwiftData
 import CoreLocation
@@ -25,14 +31,13 @@ final class Project {
     var clientId: String?
     var allDay: Bool
     
-    // Additional fields to match your Bubble structure
+    // Store team member IDs for offline reference
     var teamMemberIds: [String]
     var projectDescription: String?
     
-    // Fixed relationship to team members that avoids circular reference
-    // Use delete rules from SwiftData's documented options
+    // Store relationships to team members
     @Relationship(deleteRule: .noAction)
-    var teamMembers: [User]?
+    var teamMembers: [User]
     
     // Offline/sync tracking
     var lastSyncedAt: Date?
@@ -40,15 +45,16 @@ final class Project {
     var syncPriority: Int = 1 // Higher numbers = higher priority
     
     init(id: String, title: String, status: Status) {
-        self.id = id
-        self.title = title
-        self.status = status
-        self.address = ""
-        self.clientName = ""
-        self.companyId = ""
-        self.teamMemberIds = []
-        self.allDay = false
-    }
+           self.id = id
+           self.title = title
+           self.status = status
+           self.address = ""
+           self.clientName = ""
+           self.companyId = ""
+           self.teamMemberIds = []
+           self.teamMembers = []
+           self.allDay = false
+       }
     
     // Computed property for location
     var coordinate: CLLocationCoordinate2D? {
@@ -61,20 +67,7 @@ final class Project {
     
     // Computed property for display status - matches your Bubble status colors
     var statusColor: Color {
-        switch status {
-        case .rfq:
-            return .gray
-        case .estimated:
-            return .blue
-        case .accepted:
-            return .purple
-        case .inProgress:
-            return .orange
-        case .completed:
-            return .green
-        case .closed:
-            return .red
-        }
+        return status.color
     }
     
     // Computed property for formatting start time

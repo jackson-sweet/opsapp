@@ -42,8 +42,10 @@ struct ContentView: View {
                     Text("No projects found. Projects will appear here once assigned.")
                         .padding()
                 } else {
-                    List(viewModel.projects) { project in
-                        ProjectRow(project: project)
+                    List {
+                        ForEach(viewModel.projects) { project in
+                            ProjectRow(project: project)
+                        }
                     }
                 }
                 

@@ -5,7 +5,6 @@
 //  Created by Jackson Sweet on 2025-04-21.
 //
 
-
 import Foundation
 import SwiftData
 import UIKit
@@ -60,7 +59,7 @@ class SyncManager {
     private func setupPeriodicSync() {
         // Sync based on the interval in configuration
         syncTimer = Timer.scheduledTimer(
-            withTimeInterval: AppConfiguration.Sync.backgroundSyncInterval, 
+            withTimeInterval: AppConfiguration.Sync.backgroundSyncInterval,
             repeats: true
         ) { [weak self] _ in
             guard let self = self, self.connectivityMonitor.isConnected else { return }
@@ -118,8 +117,8 @@ class SyncManager {
             self.syncInProgress = true
             
             do {
-                // Sync jobs
-                try await self.syncJobs()
+                // Sync projects
+                try await self.syncProjects()
                 
                 // Only mark sync as complete if we weren't cancelled
                 if !Task.isCancelled {
@@ -140,14 +139,14 @@ class SyncManager {
         syncInProgress = true
         
         do {
-            // Sync organization first
-            try await syncOrganization()
+            // Sync company first
+            try await syncCompany()
             
-            // Then users (which might be needed for jobs)
+            // Then users (which might be needed for projects)
             try await syncUsers()
             
-            // Finally jobs
-            try await syncJobs()
+            // Finally projects
+            try await syncProjects()
             
             syncInProgress = false
         } catch {
@@ -156,37 +155,37 @@ class SyncManager {
         }
     }
     
-    // MARK: - Job-specific Sync Methods
+    // MARK: - Project-specific Sync Methods
     
-    /// Update job status locally and queue for sync
+    /// Update project status locally and queue for sync
     /// This is a critical function for field workers - it must succeed locally
     /// even when offline
     /// - Parameters:
-    ///   - jobId: Job identifier
-    ///   - status: New job status
+    ///   - projectId: Project identifier
+    ///   - status: New project status
     /// - Returns: Success indicator
     @discardableResult
-    func updateJobStatus(jobId: String, status: JobStatus) -> Bool {
-        let predicate = #Predicate<Job> { $0.id == jobId }
-        let fetchDescriptor = FetchDescriptor<Job>(predicate: predicate)
+    func updateProjectStatus(projectId: String, status: Status) -> Bool {
+        let predicate = #Predicate<Project> { $0.id == projectId }
+        let fetchDescriptor = FetchDescriptor<Project>(predicate: predicate)
         
         do {
-            // Get the job
-            let jobs = try modelContext.fetch(fetchDescriptor)
-            guard let job = jobs.first else {
+            // Get the project
+            let projects = try modelContext.fetch(fetchDescriptor)
+            guard let project = projects.first else {
                 return false
             }
             
             // Update status locally
-            job.status = status
-            job.needsSync = true
-            job.syncPriority = 3 // Highest priority
+            project.status = status
+            project.needsSync = true
+            project.syncPriority = 3 // Highest priority
             
             // Update timestamps based on status
-            if status == .inProgress && job.startDate == nil {
-                job.startDate = Date()
-            } else if status == .completed && job.endDate == nil {
-                job.endDate = Date()
+            if status == .inProgress && project.startDate == nil {
+                project.startDate = Date()
+            } else if status == .completed && project.endDate == nil {
+                project.endDate = Date()
             }
             
             // Save local changes
@@ -194,68 +193,113 @@ class SyncManager {
             
             // Queue sync if online
             if connectivityMonitor.isConnected {
-                // Prioritize this specific job for sync
+                // Prioritize this specific project for sync
                 Task {
-                    try await syncJobStatus(job)
+                    try await syncProjectStatus(project)
                 }
             }
             
             return true
         } catch {
-            print("Failed to update job status locally: \(error.localizedDescription)")
+            print("Failed to update project status locally: \(error.localizedDescription)")
             return false
         }
     }
     
-    /// Sync a specific job's status to the backend
-    /// - Parameter job: The job to sync
-    private func syncJobStatus(_ job: Job) async throws {
-        // Only sync if job needs sync
-        guard job.needsSync else { return }
+    /// Sync a specific project's status to the backend
+    /// - Parameter project: The project to sync
+    private func syncProjectStatus(_ project: Project) async throws {
+        // Only sync if project needs sync
+        guard project.needsSync else { return }
         
         do {
             // Try to update status on server
-            try await apiService.updateJobStatus(id: job.id, status: job.status.rawValue)
+            try await apiService.updateProjectStatus(id: project.id, status: project.status.rawValue)
             
             // Mark as synced if successful
-            job.needsSync = false
-            job.lastSyncedAt = Date()
+            project.needsSync = false
+            project.lastSyncedAt = Date()
             try modelContext.save()
         } catch {
             // Leave as needsSync=true to retry later
-            print("Failed to sync job status: \(error.localizedDescription)")
+            print("Failed to sync project status: \(error.localizedDescription)")
             // We don't rethrow - the local update succeeded, server sync can be retried
         }
     }
     
-    /// Sync any pending job status changes
+    /// Sync any pending project status changes
     /// - Returns: Success count
-    private func syncPendingJobStatusChanges() async -> Int {
-        // Find jobs that need sync, ordered by priority
-        let predicate = #Predicate<Job> { $0.needsSync == true }
-        var fetchDescriptor = FetchDescriptor<Job>(predicate: predicate)
+    private func syncPendingProjectStatusChanges() async -> Int {
+        // Find projects that need sync, ordered by priority
+        let predicate = #Predicate<Project> { $0.needsSync == true }
+        var fetchDescriptor = FetchDescriptor<Project>(predicate: predicate)
         fetchDescriptor.sortBy = [SortDescriptor(\.syncPriority, order: .reverse)]
         
         do {
-            let pendingJobs = try modelContext.fetch(fetchDescriptor)
+            let pendingProjects = try modelContext.fetch(fetchDescriptor)
             var successCount = 0
             
-            // Try to sync each job
-            for job in pendingJobs {
+            // Try to sync each project
+            for project in pendingProjects {
                 do {
-                    try await syncJobStatus(job)
+                    try await syncProjectStatus(project)
                     successCount += 1
                 } catch {
-                    // Continue with next job even if one fails
+                    // Continue with next project even if one fails
                     continue
                 }
             }
             
             return successCount
         } catch {
-            print("Failed to fetch pending jobs: \(error.localizedDescription)")
+            print("Failed to fetch pending projects: \(error.localizedDescription)")
             return 0
         }
+    }
+    
+    // MARK: - Sync Operations
+    
+    /// Sync projects between local storage and backend
+    private func syncProjects() async throws {
+        // First, try to sync any pending local changes
+        await syncPendingProjectStatusChanges()
+        
+        // Fetch remote projects
+        let remoteProjects = try await apiService.fetchProjects()
+        
+        // Fetch local projects
+        let fetchDescriptor = FetchDescriptor<Project>()
+        let localProjects = try modelContext.fetch(fetchDescriptor)
+        
+        // Create dictionary for quick lookup
+        let localProjectsMap = Dictionary(uniqueKeysWithValues: localProjects.map { ($0.id, $0) })
+        
+        // Store fetched users in dictionary for assigning to projects
+        let usersFetchDescriptor = FetchDescriptor<User>()
+        let users = try modelContext.fetch(usersFetchDescriptor)
+        let usersMap = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+        
+        // Process remote projects
+        for remoteProject in remoteProjects {
+            if let localProject = localProjectsMap[remoteProject.id] {
+                // Update existing project (if not modified locally)
+                if !localProject.needsSync {
+                    updateLocalProjectFromRemote(localProject, remoteDTO: remoteProject)
+                    
+                    // Update assigned users
+                    updateProjectAssignments(project: localProject, userIds: remoteProject.teamMembers?.compactMap { $0.uniqueID } ?? [], usersMap: usersMap)
+                }
+            } else {
+                // Add new project
+                let newProject = remoteProject.toModel()
+                modelContext.insert(newProject)
+                
+                // Assign users
+                updateProjectAssignments(project: newProject, userIds: remoteProject.teamMembers?.compactMap { $0.uniqueID } ?? [], usersMap: usersMap)
+            }
+        }
+        
+        try modelContext.save()
     }
     
     /// Sync users between local storage and backend
@@ -287,31 +331,31 @@ class SyncManager {
         try modelContext.save()
     }
     
-    /// Sync organization data between local storage and backend
-    private func syncOrganization() async throws {
-        // For MVP, just handle the current user's organization
-        guard let currentUserOrgId = getCurrentUserOrganizationId() else {
+    /// Sync company data between local storage and backend
+    private func syncCompany() async throws {
+        // For MVP, just handle the current user's company
+        guard let currentUserCompanyId = getCurrentUserCompanyId() else {
             return
         }
         
-        // Fetch remote organization
-        let remoteOrg = try await apiService.fetchOrganization(id: currentUserOrgId)
+        // Fetch remote company
+        let remoteCompany = try await apiService.fetchCompany(id: currentUserCompanyId)
         
-        // Fetch local organization
-        let predicate = #Predicate<Organization> { $0.id == currentUserOrgId }
-        let fetchDescriptor = FetchDescriptor<Organization>(predicate: predicate)
-        let localOrgs = try modelContext.fetch(fetchDescriptor)
+        // Fetch local company
+        let predicate = #Predicate<Company> { $0.id == currentUserCompanyId }
+        let fetchDescriptor = FetchDescriptor<Company>(predicate: predicate)
+        let localCompanies = try modelContext.fetch(fetchDescriptor)
         
-        if let localOrg = localOrgs.first {
-            // Update existing organization
-            if !localOrg.needsSync {
-                localOrg.name = remoteOrg.name
-                localOrg.lastSyncedAt = Date()
+        if let localCompany = localCompanies.first {
+            // Update existing company
+            if !localCompany.needsSync {
+                localCompany.name = remoteCompany.companyName ?? "Unknown Company"
+                localCompany.lastSyncedAt = Date()
             }
         } else {
-            // Add new organization
-            let newOrg = remoteOrg.toModel()
-            modelContext.insert(newOrg)
+            // Add new company
+            let newCompany = remoteCompany.toModel()
+            modelContext.insert(newCompany)
         }
         
         try modelContext.save()
@@ -319,54 +363,85 @@ class SyncManager {
     
     // MARK: - Helper Methods
     
-    /// Update a local job with remote data
-    private func updateLocalJobFromRemote(_ localJob: Job, remoteDTO: JobDTO) {
-        localJob.title = remoteDTO.title
-        localJob.clientName = remoteDTO.clientName
-        localJob.address = remoteDTO.address
-        localJob.latitude = remoteDTO.latitude
-        localJob.longitude = remoteDTO.longitude
+    /// Update a local project with remote data
+    private func updateLocalProjectFromRemote(_ localProject: Project, remoteDTO: ProjectDTO) {
+        localProject.title = remoteDTO.projectName
         
-        let dateFormatter = ISO8601DateFormatter()
+        // Client name from client reference
+        if let clientRef = remoteDTO.client {
+            localProject.clientName = clientRef.text ?? "Unknown Client"
+            localProject.clientId = clientRef.uniqueID
+        }
+        
+        // Address and location from Bubble address object
+        if let bubbleAddress = remoteDTO.address {
+            localProject.address = bubbleAddress.formattedAddress
+            localProject.latitude = bubbleAddress.lat
+            localProject.longitude = bubbleAddress.lng
+        }
+        
+        // Dates with robust parsing
         if let startDateString = remoteDTO.startDate {
-            localJob.startDate = dateFormatter.date(from: startDateString)
-        }
-        if let endDateString = remoteDTO.endDate {
-            localJob.endDate = dateFormatter.date(from: endDateString)
+            localProject.startDate = DateFormatter.dateFromBubble(startDateString)
         }
         
-        localJob.status = JobStatus(rawValue: remoteDTO.status) ?? .upcoming
-        localJob.notes = remoteDTO.notes
-        localJob.lastSyncedAt = Date()
+        if let completionString = remoteDTO.completion {
+            localProject.endDate = DateFormatter.dateFromBubble(completionString)
+        }
+        
+        localProject.status = BubbleFields.JobStatus.toSwiftEnum(remoteDTO.status)
+        localProject.notes = remoteDTO.teamNotes ?? remoteDTO.description
+        localProject.lastSyncedAt = Date()
+        
+        // Company ID from company reference
+        if let companyRef = remoteDTO.company {
+            localProject.companyId = companyRef.uniqueID
+        }
     }
     
     /// Update a local user with remote data
     private func updateLocalUserFromRemote(_ localUser: User, remoteDTO: UserDTO) {
-        localUser.firstName = remoteDTO.firstName
-        localUser.lastName = remoteDTO.lastName
-        localUser.phoneNumber = remoteDTO.phoneNumber
+        localUser.firstName = remoteDTO.nameFirst ?? ""
+        localUser.lastName = remoteDTO.nameLast ?? ""
         localUser.email = remoteDTO.email
-        localUser.role = UserRole(rawValue: remoteDTO.role) ?? .fieldCrew
+        
+        // Handle role from employee type
+        if let employeeTypeString = remoteDTO.employeeType {
+            localUser.role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
+        }
+        
+        // Geographic location needs special handling
+        if let location = remoteDTO.currentLocation {
+            localUser.latitude = location.lat
+            localUser.longitude = location.lng
+            localUser.locationName = location.formattedAddress
+        }
+        
+        // Company ID from reference
+        if let companyRef = remoteDTO.company {
+            localUser.companyId = companyRef.uniqueID
+        }
+        
         localUser.lastSyncedAt = Date()
     }
     
-    /// Update job assignments based on user IDs
-    private func updateJobAssignments(job: Job, userIds: [String], usersMap: [String: User]) {
+    /// Update project assignments based on user IDs
+    private func updateProjectAssignments(project: Project, userIds: [String], usersMap: [String: User]) {
         // Clear existing assigned users
-        job.assignedUsers = []
+        project.teamMembers = []
         
         // Add new assigned users
         for userId in userIds {
             if let user = usersMap[userId] {
-                job.assignedUsers?.append(user)
+                project.teamMembers?.append(user)
             }
         }
     }
     
-    /// Get the current user's organization ID
-    private func getCurrentUserOrganizationId() -> String? {
+    /// Get the current user's company ID
+    private func getCurrentUserCompanyId() -> String? {
         // In a real implementation, would get this from user session
         // For MVP, use a hardcoded ID or fetch from UserDefaults
-        return UserDefaults.standard.string(forKey: "currentUserOrganizationId")
+        return UserDefaults.standard.string(forKey: "currentUserCompanyId")
     }
 }

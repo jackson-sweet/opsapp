@@ -4,7 +4,6 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
-
 import Foundation
 
 /// Data Transfer Object for Project from Bubble API
@@ -68,7 +67,7 @@ struct ProjectDTO: Codable {
         }
         
         if let companyRef = company {
-            project.organizationId = companyRef.uniqueID
+            project.companyId = companyRef.uniqueID
         }
         
         // Handle dates with robust parsing
@@ -80,7 +79,9 @@ struct ProjectDTO: Codable {
             project.endDate = DateFormatter.dateFromBubble(completionString)
         }
         
-        project.notes = teamNotes ?? description
+        project.notes = teamNotes
+        project.projectDescription = description
+        project.allDay = allDay ?? false
         project.allDay = allDay ?? false
         project.lastSyncedAt = Date()
         project.syncPriority = 1

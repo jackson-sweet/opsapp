@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import CoreLocation
 
+
 /// Company model - matches your Bubble Company structure exactly
 @Model
 final class Company {
@@ -19,7 +20,7 @@ final class Company {
     
     // Additional fields to match your Bubble structure
     var externalId: String?
-    var companyDesc: String?
+    var companyDescription: String?
     var address: String?
     var latitude: Double?
     var longitude: Double?

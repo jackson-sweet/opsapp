@@ -4,7 +4,6 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
-
 import SwiftUI
 import SwiftData
 import CoreLocation
@@ -28,7 +27,7 @@ final class User {
     var locationName: String?
     var clientId: String?
     
-    // Relationships
+    // Fix for circular reference - proper relationship definition
     @Relationship(deleteRule: .nullify, inverse: \Project.teamMembers)
     var assignedProjects: [Project]?
     
@@ -42,6 +41,7 @@ final class User {
         self.lastName = lastName
         self.role = role
         self.companyId = companyId
+        self.assignedProjects = []
     }
     
     // Computed properties for convenience

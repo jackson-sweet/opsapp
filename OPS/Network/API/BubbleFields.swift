@@ -5,7 +5,6 @@
 //  Created by Jackson Sweet on 2025-04-21.
 //
 
-
 import Foundation
 
 /// Exact field mappings from Bubble to Swift
@@ -114,44 +113,4 @@ struct BubbleFields {
         static let emailAddress = "Email Address"
         static let projectsList = "Projects List"
     }
-}
-
-/// Corresponding Swift enums to match your Bubble custom types
-enum Status: String, Codable {
-    case rfq = "RFQ"
-    case estimated = "Estimated"
-    case accepted = "Accepted"
-    case inProgress = "In Progress"
-    case completed = "Completed"
-    case closed = "Closed"
-    
-    var displayName: String {
-        return self.rawValue
-    }
-    
-    var isActive: Bool {
-        return self == .inProgress || self == .accepted
-    }
-    
-    var isCompleted: Bool {
-        return self == .completed || self == .closed
-    }
-}
-
-/// Matching your Employee Type custom type
-enum UserRole: String, Codable {
-    case fieldCrew = "Field Crew"
-    case officeCrew = "Office Crew"
-    
-    var displayName: String {
-        return self.rawValue
-    }
-}
-
-/// Matching your User Type custom type
-enum UserType: String, Codable {
-    case company = "Company"
-    case employee = "Employee" 
-    case client = "Client"
-    case admin = "Admin"
 }

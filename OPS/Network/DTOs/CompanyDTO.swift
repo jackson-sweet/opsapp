@@ -4,7 +4,6 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
-
 import Foundation
 
 /// Data Transfer Object for Company from Bubble API
@@ -39,42 +38,42 @@ struct CompanyDTO: Codable {
     }
     
     /// Convert DTO to SwiftData model
-    func toModel() -> Organization {
-        // Create organization
-        let organization = Organization(
+    func toModel() -> Company {
+        // Create company
+        let company = Company(
             id: id,
             name: companyName ?? "Unknown Company"
         )
         
         // Handle Company ID
-        organization.externalId = companyID
+        company.externalId = companyID
         
         // Handle description
-        organization.description = companyDescription
+        company.companyDescription = companyDescription
         
         // Handle location
         if let loc = location {
-            organization.address = loc.formattedAddress
-            organization.latitude = loc.lat
-            organization.longitude = loc.lng
+            company.address = loc.formattedAddress
+            company.latitude = loc.lat
+            company.longitude = loc.lng
         }
         
         // Handle logo
         if let logoImage = logo, let logoUrl = logoImage.url {
-            organization.logoURL = logoUrl
+            company.logoURL = logoUrl
             // Note: Actual image data will need to be downloaded separately
         }
         
         // Handle hours
-        organization.openHour = openHour
-        organization.closeHour = closeHour
+        company.openHour = openHour
+        company.closeHour = closeHour
         
         // Handle projects and teams
-        organization.projectIds = projects?.compactMap { $0.uniqueID } ?? []
-        organization.teamIds = teams?.compactMap { $0.uniqueID } ?? []
+        company.projectIds = projects?.compactMap { $0.uniqueID } ?? []
+        company.teamIds = teams?.compactMap { $0.uniqueID } ?? []
         
-        organization.lastSyncedAt = Date()
+        company.lastSyncedAt = Date()
         
-        return organization
+        return company
     }
 }

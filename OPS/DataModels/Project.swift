@@ -4,7 +4,6 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
-
 import SwiftUI
 import SwiftData
 import CoreLocation
@@ -29,9 +28,9 @@ final class Project {
     
     // Additional fields to match your Bubble structure
     var teamMemberIds: [String]
-    var projectDescription: String?
+        var projectDescription: String?
     
-    // Relationships
+    // Fix for circular reference issue - proper relationship definition
     @Relationship(deleteRule: .nullify, inverse: \User.assignedProjects)
     var teamMembers: [User]?
     
@@ -49,6 +48,7 @@ final class Project {
         self.companyId = ""
         self.teamMemberIds = []
         self.allDay = false
+        self.teamMembers = []
     }
     
     // Computed property for location

@@ -4,7 +4,6 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
-
 import Foundation
 
 /// Data Transfer Object for User from Bubble API
@@ -49,7 +48,7 @@ struct UserDTO: Codable {
             role = .fieldCrew
         }
         
-        // Extract organization ID if available
+        // Extract company ID if available
         let companyId = company?.uniqueID ?? ""
         
         // Create user
@@ -80,18 +79,5 @@ struct UserDTO: Codable {
         user.lastSyncedAt = Date()
         
         return user
-    }
-}
-
-/// Bubble's image structure
-struct BubbleImage: Codable {
-    let url: String?
-    let width: Int?
-    let height: Int?
-    
-    enum CodingKeys: String, CodingKey {
-        case url
-        case width = "image_width"
-        case height = "image_height"
     }
 }

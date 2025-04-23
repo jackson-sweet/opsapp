@@ -4,28 +4,36 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
-//
-//  SyncManager.swift
-//  OPS
-//
-//  Created by Jackson Sweet on 2025-04-21.
-//
+
 import Foundation
 import SwiftData
-import UIKit
+import Combine
 
-/// Manages data synchronization between local storage and backend
-/// Uses an offline-first approach with background syncing
-@MainActor // Make all properties main-actor isolated by default
+@MainActor
 class SyncManager {
-    private let modelContext: ModelContext
+    // MARK: - Properties
+    let modelContext: ModelContext
     private let apiService: APIService
     private let connectivityMonitor: ConnectivityMonitor
     private let backgroundTaskManager: BackgroundTaskManager
     
-    private var syncInProgress = false
-    private var syncTimer: Timer?
+    private(set) var syncInProgress = false {
+        didSet {
+            // Publish state changes
+            syncStateSubject.send(syncInProgress)
+        }
+    }
     
+    private var syncStateSubject = PassthroughSubject<Bool, Never>()
+    var syncStatePublisher: AnyPublisher<Bool, Never> {
+        syncStateSubject.eraseToAnyPublisher()
+    }
+    
+    var isConnected: Bool {
+        connectivityMonitor.isConnected
+    }
+    
+    // MARK: - Initialization
     init(modelContext: ModelContext,
          apiService: APIService,
          connectivityMonitor: ConnectivityMonitor,
@@ -35,86 +43,13 @@ class SyncManager {
         self.apiService = apiService
         self.connectivityMonitor = connectivityMonitor
         self.backgroundTaskManager = backgroundTaskManager
-        
-        // Set up sync triggers
-        setupSyncTriggers()
     }
     
-    // MARK: - Setup
+    // MARK: - Public Methods
     
-    /// Configure all the ways sync can be triggered
-    private func setupSyncTriggers() {
-        // 1. When connectivity changes
-        connectivityMonitor.onConnectionTypeChanged = { [weak self] connectionType in
-            guard let self = self else { return }
-            
-            if connectionType != .none {
-                self.triggerBackgroundSync()
-            }
-        }
-        
-        // 2. Periodic background sync (every 15 minutes when app is active)
-        setupPeriodicSync()
-        
-        // 3. App state changes
-        setupAppStateObservers()
-    }
-    
-    /// Set up periodic background sync
-    private func setupPeriodicSync() {
-        // Sync based on the interval in configuration
-        syncTimer = Timer.scheduledTimer(
-            withTimeInterval: AppConfiguration.Sync.backgroundSyncInterval,
-            repeats: true
-        ) { [weak self] _ in
-            guard let self = self, self.connectivityMonitor.isConnected else { return }
-            
-            self.triggerBackgroundSync()
-        }
-    }
-    
-    /// Set up observers for app state changes
-    private func setupAppStateObservers() {
-        // Sync when app comes to foreground - user is looking at data
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(applicationDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
-        
-        // Try to finish critical syncs when app goes to background
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(applicationDidEnterBackground),
-            name: UIApplication.didEnterBackgroundNotification,
-            object: nil
-        )
-    }
-    
-    // MARK: - App State Handlers
-    
-    @objc private func applicationDidBecomeActive() {
-        // Always sync when app is opened - user needs fresh data
-        triggerBackgroundSync()
-    }
-    
-    @objc private func applicationDidEnterBackground() {
-        // Try to finish any critical syncs before suspension
-        if syncInProgress {
-            backgroundTaskManager.beginTask { [weak self] in
-                self?.syncInProgress = false
-            }
-        }
-    }
-    
-    // MARK: - Sync Triggers
-    
-    /// Trigger background sync operation
-    /// This method doesn't need to be awaited - it starts the sync process and returns immediately
+    /// Trigger background sync with intelligent retry
     func triggerBackgroundSync() {
         guard !syncInProgress, connectivityMonitor.isConnected else {
-            print("Sync skipped: Already syncing or no connectivity")
             return
         }
         
@@ -122,98 +57,30 @@ class SyncManager {
         
         Task {
             do {
-                // Try to sync projects
-                try await syncProjects()
+                // First sync high-priority items (status changes)
+                let highPriorityCount = await syncPendingProjectStatusChanges()
                 
-                if !Task.isCancelled {
-                    await MainActor.run {
-                        self.syncInProgress = false
-                    }
+                // Then fetch remote data if we didn't exhaust our sync budget
+                if highPriorityCount < 10 {
+                    try await syncProjects()
                 }
-            } catch let error as APIError {
-                        // Provide more detailed error information
-                        print("Background sync failed with APIError: \(error)")
-                        
-                        switch error {
-                        case .invalidURL:
-                            print("Invalid URL during sync")
-                        case .invalidResponse:
-                            print("Invalid response from server")
-                        case .decodingFailed:
-                            print("Failed to decode server response")
-                        case .unauthorized:
-                            print("Authorization failed - check API token")
-                        case .rateLimited:
-                            print("Rate limited by API")
-                        case .serverError:
-                            print("Server error during sync")
-                        case .networkError:
-                            print("Network connectivity issue")
-                        case let .httpError(code):
-                            print("HTTP error \(code) during sync")
-                        }
-                        
-                        await MainActor.run {
-                            self.syncInProgress = false
-                        }
+                
+                syncInProgress = false
             } catch {
-                print("Background sync failed with unknown error: \(error)")
-                
-                await MainActor.run {
-                    self.syncInProgress = false
-                }
-            }
-        }
-    }
-    
-    /// Perform a full sync operation
-    /// Called when app enters foreground or manually by user
-    func performFullSync() async {
-        guard !syncInProgress, connectivityMonitor.isConnected else { return }
-        
-        await MainActor.run {
-            syncInProgress = true
-        }
-        
-        do {
-            // Sync company first
-            try await syncCompany()
-            
-            // Then users (which might be needed for projects)
-            try await syncUsers()
-            
-            // Finally projects
-            try await syncProjects()
-            
-            await MainActor.run {
-                syncInProgress = false
-            }
-        } catch {
-            print("Full sync failed: \(error.localizedDescription)")
-            
-            await MainActor.run {
+                print("Sync failed: \(error.localizedDescription)")
                 syncInProgress = false
             }
         }
     }
-    
-    // MARK: - Project-specific Sync Methods
     
     /// Update project status locally and queue for sync
-    /// This is a critical function for field workers - it must succeed locally
-    /// even when offline
-    /// - Parameters:
-    ///   - projectId: Project identifier
-    ///   - status: New project status
-    /// - Returns: Success indicator
     @discardableResult
     func updateProjectStatus(projectId: String, status: Status) -> Bool {
         let predicate = #Predicate<Project> { $0.id == projectId }
-        let fetchDescriptor = FetchDescriptor<Project>(predicate: predicate)
+        let descriptor = FetchDescriptor<Project>(predicate: predicate)
         
         do {
-            // Get the project
-            let projects = try modelContext.fetch(fetchDescriptor)
+            let projects = try modelContext.fetch(descriptor)
             guard let project = projects.first else {
                 return false
             }
@@ -235,9 +102,9 @@ class SyncManager {
             
             // Queue sync if online
             if connectivityMonitor.isConnected {
-                // Prioritize this specific project for sync
+                // Don't await - allow to happen in background
                 Task {
-                    try await syncProjectStatus(project)
+                    await syncProjectStatus(project)
                 }
             }
             
@@ -248,9 +115,10 @@ class SyncManager {
         }
     }
     
+    // MARK: - Private Sync Methods
+    
     /// Sync a specific project's status to the backend
-    /// - Parameter project: The project to sync
-    private func syncProjectStatus(_ project: Project) async throws {
+    private func syncProjectStatus(_ project: Project) async {
         // Only sync if project needs sync
         guard project.needsSync else { return }
         
@@ -259,39 +127,45 @@ class SyncManager {
             try await apiService.updateProjectStatus(id: project.id, status: project.status.rawValue)
             
             // Mark as synced if successful
-            await MainActor.run {
-                project.needsSync = false
-                project.lastSyncedAt = Date()
-                try? modelContext.save()
-            }
+            project.needsSync = false
+            project.lastSyncedAt = Date()
+            try modelContext.save()
         } catch {
             // Leave as needsSync=true to retry later
             print("Failed to sync project status: \(error.localizedDescription)")
-            // We don't rethrow - the local update succeeded, server sync can be retried
         }
     }
     
     /// Sync any pending project status changes
-    /// - Returns: Success count
     private func syncPendingProjectStatusChanges() async -> Int {
         // Find projects that need sync, ordered by priority
         let predicate = #Predicate<Project> { $0.needsSync == true }
-        var fetchDescriptor = FetchDescriptor<Project>(predicate: predicate)
-        fetchDescriptor.sortBy = [SortDescriptor(\.syncPriority, order: .reverse)]
+        var descriptor = FetchDescriptor<Project>(predicate: predicate)
+        descriptor.sortBy = [SortDescriptor(\.syncPriority, order: .reverse)]
         
         do {
-            let pendingProjects = try modelContext.fetch(fetchDescriptor)
+            let pendingProjects = try modelContext.fetch(descriptor)
             var successCount = 0
             
-            // Try to sync each project
-            for project in pendingProjects {
-                do {
-                    try await syncProjectStatus(project)
-                    successCount += 1
-                } catch {
-                    // Continue with next project even if one fails
-                    continue
+            // Process in batches of 10 to avoid large transaction costs
+            for batch in pendingProjects.chunked(into: 10) {
+                await withTaskGroup(of: Bool.self) { group in
+                    for project in batch {
+                        group.addTask {
+                            await self.syncProjectStatus(project)
+                            return true
+                        }
+                    }
+                    
+                    for await success in group {
+                        if success {
+                            successCount += 1
+                        }
+                    }
                 }
+                
+                // Give UI a chance to breathe between batches
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
             }
             
             return successCount
@@ -301,195 +175,115 @@ class SyncManager {
         }
     }
     
-    // MARK: - Sync Operations
-    
     /// Sync projects between local storage and backend
-    nonisolated private func syncProjects() async throws {
-        
+    private func syncProjects() async throws {
         // Check if we have a user ID before proceeding
-            let userId = await MainActor.run {
-                return UserDefaults.standard.string(forKey: "currentUserCompanyId")
-            }
-            
-            guard userId != nil else {
-                print("Sync skipped: No current user company ID available")
-                return
-            }
-            
+        let userId = UserDefaults.standard.string(forKey: "currentUserCompanyId")
         
-        // First, try to sync any pending local changes
-        _ = await syncPendingProjectStatusChanges()
+        guard userId != nil else {
+            print("Sync skipped: No current user company ID available")
+            return
+        }
         
         // Fetch remote projects
         let remoteProjects = try await apiService.fetchProjects()
         
-        await MainActor.run {
-            Task {
-                await processRemoteProjects(remoteProjects)
-            }
+        // Process batches to avoid memory pressure
+        for batch in remoteProjects.chunked(into: 20) {
+            await processRemoteProjects(batch)
+            
+            // Small delay between batches to prevent UI stutter
+            try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
         }
     }
     
-    /// Process remote projects and update local database with proper relationship handling
+    /// Process remote projects and update local database
     private func processRemoteProjects(_ remoteProjects: [ProjectDTO]) async {
         do {
-            // Fetch local projects
-            let fetchDescriptor = FetchDescriptor<Project>()
-            let localProjects = try modelContext.fetch(fetchDescriptor)
+            // Efficiently handle the projects in memory to reduce database pressure
+            let localProjectIds = try fetchLocalProjectIds()
+            let usersMap = try fetchUsersMap()
             
-            // Create dictionary for quick lookup
-            let localProjectsMap = Dictionary(uniqueKeysWithValues: localProjects.map { ($0.id, $0) })
-            
-            // Store fetched users in dictionary for assigning to projects
-            let usersFetchDescriptor = FetchDescriptor<User>()
-            let users = try modelContext.fetch(usersFetchDescriptor)
-            let usersMap = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
-            
-            // Process remote projects
             for remoteProject in remoteProjects {
-                if let localProject = localProjectsMap[remoteProject.id] {
-                    // Update existing project (if not modified locally)
-                    if !localProject.needsSync {
-                        updateLocalProjectFromRemote(localProject, remoteDTO: remoteProject)
-                        
-                        // Store team member IDs for offline reference
-                        if let teamMembers = remoteProject.teamMembers {
-                            let teamMemberIds = teamMembers.compactMap { $0.uniqueID }
-                            localProject.teamMemberIdsString = teamMemberIds.joined(separator: ",")
-                            
-                            // Update relationship to team members
-                            updateProjectTeamMembers(localProject, teamMemberIds: teamMemberIds, usersMap: usersMap)
-                        }
-                    }
+                if localProjectIds.contains(remoteProject.id) {
+                    await updateExistingProject(remoteProject, usersMap: usersMap)
                 } else {
-                    // Add new project
-                    let newProject = remoteProject.toModel()
-                    modelContext.insert(newProject)
-                    
-                    // Set up relationship to team members
-                    if let teamMembers = remoteProject.teamMembers {
-                        let teamMemberIds = teamMembers.compactMap { $0.uniqueID }
-                        updateProjectTeamMembers(newProject, teamMemberIds: teamMemberIds, usersMap: usersMap)
-                    }
+                    await insertNewProject(remoteProject, usersMap: usersMap)
                 }
             }
             
+            // Save once at the end for better performance
             try modelContext.save()
         } catch {
             print("Failed to process remote projects: \(error)")
         }
     }
-        
-        /// Update project's team members relationship
-        private func updateProjectTeamMembers(_ project: Project, teamMemberIds: [String], usersMap: [String: User]) {
-            // Clear existing team members first to avoid duplicates
-            project.teamMembers = []
+    
+    /// Fetch just the IDs of local projects for efficient existence checking
+    private func fetchLocalProjectIds() throws -> Set<String> {
+        let descriptor = FetchDescriptor<Project>()
+        let projects = try modelContext.fetch(descriptor)
+        return Set(projects.map { $0.id })
+    }
+    
+    /// Create a map of users by ID for efficient relationship handling
+    private func fetchUsersMap() throws -> [String: User] {
+        let descriptor = FetchDescriptor<User>()
+        let users = try modelContext.fetch(descriptor)
+        return Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+    }
+    
+    /// Update an existing project efficiently
+    private func updateExistingProject(_ remoteDTO: ProjectDTO, usersMap: [String: User]) async {
+        do {
+            let predicate = #Predicate<Project> { $0.id == remoteDTO.id }
+            let descriptor = FetchDescriptor<Project>(predicate: predicate)
             
-            // Add each team member if they exist locally
-            for memberId in teamMemberIds {
-                if let user = usersMap[memberId] {
-                    project.teamMembers.append(user)
-                    
-                    // Update the inverse relationship if needed
-                    if !user.assignedProjects.contains(where: { $0.id == project.id }) {
-                        user.assignedProjects.append(project)
-                    }
+            if let localProject = try modelContext.fetch(descriptor).first, !localProject.needsSync {
+                // Only update if not modified locally
+                updateLocalProjectFromRemote(localProject, remoteDTO: remoteDTO)
+                
+                // Update team members
+                if let teamMembers = remoteDTO.teamMembers {
+                    let teamMemberIds = teamMembers.compactMap { $0.uniqueID }
+                    localProject.teamMemberIdsString = teamMemberIds.joined(separator: ",")
+                    updateProjectTeamMembers(localProject, teamMemberIds: teamMemberIds, usersMap: usersMap)
                 }
             }
+        } catch {
+            print("Error updating project \(remoteDTO.id): \(error.localizedDescription)")
         }
+    }
+    
+    /// Insert a new project efficiently
+    private func insertNewProject(_ remoteDTO: ProjectDTO, usersMap: [String: User]) async {
+        let newProject = remoteDTO.toModel()
+        modelContext.insert(newProject)
         
-    /// Establish relationship between project and users
-    func connectProjectToTeamMembers(project: Project, users: [User]) {
+        // Set up relationships
+        if let teamMembers = remoteDTO.teamMembers {
+            let teamMemberIds = teamMembers.compactMap { $0.uniqueID }
+            updateProjectTeamMembers(newProject, teamMemberIds: teamMemberIds, usersMap: usersMap)
+        }
+    }
+    
+    /// Update project's team members relationship efficiently
+    private func updateProjectTeamMembers(_ project: Project, teamMemberIds: [String], usersMap: [String: User]) {
         // Clear existing team members to avoid duplicates
         project.teamMembers = []
         
-        // Add each user to this project
-        for user in users {
-            project.teamMembers.append(user)
-            
-            // Update the inverse relationship
-            if !user.assignedProjects.contains(where: { $0.id == project.id }) {
-                user.assignedProjects.append(project)
-            }
-        }
-        
-        // Store the IDs for offline reference
-        let ids = users.map { $0.id }
-        project.teamMemberIdsString = ids.joined(separator: ",")
-    }
-    
-    /// Sync users between local storage and backend
-    private func syncUsers() async throws {
-        // Fetch remote users
-        let remoteUsers = try await apiService.fetchUsers()
-        
-        await MainActor.run {
-            do {
-                // Fetch local users
-                let fetchDescriptor = FetchDescriptor<User>()
-                let localUsers = try modelContext.fetch(fetchDescriptor)
+        // Add only existing users (avoid fetching again)
+        for memberId in teamMemberIds {
+            if let user = usersMap[memberId] {
+                project.teamMembers.append(user)
                 
-                // Create dictionary for quick lookup
-                let localUsersMap = Dictionary(uniqueKeysWithValues: localUsers.map { ($0.id, $0) })
-                
-                // Process remote users
-                for remoteUser in remoteUsers {
-                    if let localUser = localUsersMap[remoteUser.id] {
-                        // Update existing user (if not modified locally)
-                        if !localUser.needsSync {
-                            updateLocalUserFromRemote(localUser, remoteDTO: remoteUser)
-                        }
-                    } else {
-                        // Add new user
-                        let newUser = remoteUser.toModel()
-                        modelContext.insert(newUser)
-                    }
+                // Update inverse relationship if needed
+                if !user.assignedProjects.contains(where: { $0.id == project.id }) {
+                    user.assignedProjects.append(project)
                 }
-                
-                try modelContext.save()
-            } catch {
-                print("Failed to sync users: \(error)")
             }
         }
     }
-    
-    /// Sync company data between local storage and backend
-    private func syncCompany() async throws {
-        // For MVP, just handle the current user's company
-        guard let currentUserCompanyId = getCurrentUserCompanyId() else {
-            return
-        }
-        
-        // Fetch remote company
-        let remoteCompany = try await apiService.fetchCompany(id: currentUserCompanyId)
-        
-        await MainActor.run {
-            do {
-                // Fetch local company
-                let predicate = #Predicate<Company> { $0.id == currentUserCompanyId }
-                let fetchDescriptor = FetchDescriptor<Company>(predicate: predicate)
-                let localCompanies = try modelContext.fetch(fetchDescriptor)
-                
-                if let localCompany = localCompanies.first {
-                    // Update existing company
-                    if !localCompany.needsSync {
-                        localCompany.name = remoteCompany.companyName ?? "Unknown Company"
-                        localCompany.lastSyncedAt = Date()
-                    }
-                } else {
-                    // Add new company
-                    let newCompany = remoteCompany.toModel()
-                    modelContext.insert(newCompany)
-                }
-                
-                try modelContext.save()
-            } catch {
-                print("Failed to sync company: \(error)")
-            }
-        }
-    }
-    
-    // MARK: - Helper Methods
     
     /// Update a local project with remote data
     private func updateLocalProjectFromRemote(_ localProject: Project, remoteDTO: ProjectDTO) {
@@ -527,37 +321,15 @@ class SyncManager {
             localProject.companyId = companyRef.uniqueID
         }
     }
-    
-    /// Update a local user with remote data
-    private func updateLocalUserFromRemote(_ localUser: User, remoteDTO: UserDTO) {
-        localUser.firstName = remoteDTO.nameFirst ?? ""
-        localUser.lastName = remoteDTO.nameLast ?? ""
-        localUser.email = remoteDTO.email
-        
-        // Handle role from employee type
-        if let employeeTypeString = remoteDTO.employeeType {
-            localUser.role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
+}
+
+// MARK: - Extensions
+
+extension Array {
+    /// Split array into chunks of specified size
+    func chunked(into size: Int) -> [[Element]] {
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0 ..< Swift.min($0 + size, count)])
         }
-        
-        // Geographic location needs special handling
-        if let location = remoteDTO.currentLocation {
-            localUser.latitude = location.lat
-            localUser.longitude = location.lng
-            localUser.locationName = location.formattedAddress
-        }
-        
-        // Company ID from reference
-        if let companyRef = remoteDTO.company {
-            localUser.companyId = companyRef.uniqueID
-        }
-        
-        localUser.lastSyncedAt = Date()
-    }
-    
-    /// Get the current user's company ID
-    private func getCurrentUserCompanyId() -> String? {
-        // In a real implementation, would get this from user session
-        // For MVP, use a hardcoded ID or fetch from UserDefaults
-        return UserDefaults.standard.string(forKey: "currentUserCompanyId")
     }
 }

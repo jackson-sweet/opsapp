@@ -19,7 +19,7 @@ class DataController: ObservableObject {
     let syncManager: SyncManager
     private let apiService: APIService
     private let authManager: AuthManager
-    private let connectivityMonitor: ConnectivityMonitor
+    private let _connectivityMonitor: ConnectivityMonitor
     
     // State
     @Published var isInitialized = false
@@ -50,14 +50,14 @@ class DataController: ObservableObject {
             let apiService = APIService(authManager: authManager)
             self.apiService = apiService
             
-            self.connectivityMonitor = ConnectivityMonitor()
+            self._connectivityMonitor = ConnectivityMonitor()
             
             // 3. Initialize sync manager with the main context
             let modelContext = ModelContext(modelContainer)
             let syncManager = SyncManager(
                 modelContext: modelContext,
                 apiService: apiService,
-                connectivityMonitor: connectivityMonitor
+                connectivityMonitor: _connectivityMonitor
             )
             self.syncManager = syncManager
             
@@ -384,6 +384,20 @@ class DataController: ObservableObject {
         }
     }
     
-    
+    // MARK: - Connectivity Access
+        
+        // Make connectivityMonitor accessible to views
+        var connectivityMonitor: ConnectivityMonitor {
+            return _connectivityMonitor
+        }
+        
+        // Public connectivity convenience properties
+        var isConnected: Bool {
+            return connectivityMonitor.isConnected
+        }
+        
+        var connectionType: ConnectivityMonitor.ConnectionType {
+            return connectivityMonitor.connectionType
+        }
     
 }

@@ -154,6 +154,10 @@ struct HomeView: View {
             
             Spacer()
             
+            // Network status indicator
+            NetworkStatusIndicator()
+                .padding(.trailing, 8)
+            
             // User profile image
             if let imageData = dataController.currentUser?.profileImageData,
                let uiImage = UIImage(data: imageData) {
@@ -186,13 +190,19 @@ struct HomeView: View {
                 Text("\(project.clientName), \(project.title)")
                     .font(OPSStyle.Typography.subtitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
                 
                 Text(project.address)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
             }
             
             Spacer()
+            
+            // Network status indicator
+            NetworkStatusIndicator()
+                .padding(.trailing, 8)
             
             Button(action: {
                 appState.exitProjectMode()
@@ -265,19 +275,123 @@ struct HomeView: View {
     
     // MARK: - Helper Methods
     
+    // MARK: - Project Loading Methods
+
     private func loadProjects() {
+        guard !isLoading else { return }
+        
         isLoading = true
         hasError = false
         
-        // Simulate loading projects for now
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        Task {
             do {
-                self.projects = try dataController.getProjectsForMap()
-                self.isLoading = false
+                // Always try to load from local cache first for immediate response
+                let localProjects = try dataController.getProjectsForMap()
+                
+                // Update UI with local data immediately
+                await MainActor.run {
+                    self.projects = localProjects
+                    
+                    // Only show loading indicator if we have no data
+                    if !localProjects.isEmpty {
+                        self.isLoading = false
+                    }
+                    
+                    // Update map region based on projects
+                    updateMapRegion(for: localProjects)
+                }
+                
+                // Then try to sync with server to get fresh data in the background
+                if dataController.isConnected {
+                    // This will trigger a sync in the background
+                    dataController.forceSync()
+                    
+                    // Wait a bit for sync to potentially complete
+                    try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                    
+                    // Get updated projects after sync
+                    let updatedProjects = try dataController.getProjectsForMap()
+                    
+                    await MainActor.run {
+                        self.projects = updatedProjects
+                        self.isLoading = false
+                        
+                        // Update region only if it changed significantly
+                        if updatedProjects.count != localProjects.count {
+                            updateMapRegion(for: updatedProjects)
+                        }
+                    }
+                } else {
+                    // If offline but we have cached data, that's fine
+                    if !localProjects.isEmpty {
+                        await MainActor.run {
+                            self.isLoading = false
+                        }
+                    } else {
+                        // No data and offline - show error
+                        await MainActor.run {
+                            self.hasError = true
+                            self.isLoading = false
+                        }
+                    }
+                }
             } catch {
-                self.hasError = true
-                self.isLoading = false
+                print("Error loading projects: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.hasError = true
+                    self.isLoading = false
+                }
             }
+        }
+    }
+
+    private func updateMapRegion(for projects: [Project]) {
+        guard !projects.isEmpty else { return }
+        
+        // Find center of all project coordinates
+        var validCoordinates: [CLLocationCoordinate2D] = []
+        
+        for project in projects {
+            if let coordinate = project.coordinate {
+                validCoordinates.append(coordinate)
+            }
+        }
+        
+        guard !validCoordinates.isEmpty else { return }
+        
+        // Calculate center
+        let sumLat = validCoordinates.reduce(0) { $0 + $1.latitude }
+        let sumLng = validCoordinates.reduce(0) { $0 + $1.longitude }
+        
+        let centerLat = sumLat / Double(validCoordinates.count)
+        let centerLng = sumLng / Double(validCoordinates.count)
+        
+        // Calculate appropriate zoom level
+        var maxLatDelta: Double = 0.01 // Default minimum
+        var maxLngDelta: Double = 0.01 // Default minimum
+        
+        if validCoordinates.count > 1 {
+            let center = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLng)
+            
+            for coordinate in validCoordinates {
+                let latDelta = abs(coordinate.latitude - center.latitude) * 2.5 // Add some padding
+                let lngDelta = abs(coordinate.longitude - center.longitude) * 2.5
+                
+                maxLatDelta = max(maxLatDelta, latDelta)
+                maxLngDelta = max(maxLngDelta, lngDelta)
+            }
+        }
+        
+        // Ensure we have a reasonable zoom level
+        maxLatDelta = max(0.01, min(maxLatDelta, 5.0))
+        maxLngDelta = max(0.01, min(maxLngDelta, 5.0))
+        
+        // Update the region
+        withAnimation {
+            region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLng),
+                span: MKCoordinateSpan(latitudeDelta: maxLatDelta, longitudeDelta: maxLngDelta)
+            )
         }
     }
     

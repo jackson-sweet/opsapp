@@ -18,7 +18,7 @@ final class User {
     var profileImageURL: String?
     var profileImageData: Data?
     var role: UserRole
-    var companyId: String
+    var companyId: String?
     
     // Additional fields to match your Bubble structure
     var userType: UserType?

@@ -82,12 +82,14 @@ struct ProjectDTO: Codable {
         project.notes = teamNotes
         project.projectDescription = description
         project.allDay = allDay ?? false
-        project.allDay = allDay ?? false
         project.lastSyncedAt = Date()
         project.syncPriority = 1
         
-        // Assign team members - these will be linked later
-        project.teamMemberIds = teamMembers?.compactMap { $0.uniqueID } ?? []
+        // Assign team members - now using string storage
+        if let teamMemberRefs = teamMembers {
+            let memberIds = teamMemberRefs.compactMap { $0.uniqueID }
+            project.teamMemberIdsString = memberIds.joined(separator: ",")
+        }
         
         return project
     }

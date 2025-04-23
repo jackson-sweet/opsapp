@@ -31,11 +31,11 @@ final class Project {
     var clientId: String?
     var allDay: Bool
     
-    // Store team member IDs for offline reference
-    var teamMemberIds: [String]
+    // Store team member IDs as string
+    var teamMemberIdsString: String = ""
     var projectDescription: String?
     
-    // Store relationships to team members
+    // Store relationships to team members with proper inverse
     @Relationship(deleteRule: .noAction)
     var teamMembers: [User]
     
@@ -45,16 +45,25 @@ final class Project {
     var syncPriority: Int = 1 // Higher numbers = higher priority
     
     init(id: String, title: String, status: Status) {
-           self.id = id
-           self.title = title
-           self.status = status
-           self.address = ""
-           self.clientName = ""
-           self.companyId = ""
-           self.teamMemberIds = []
-           self.teamMembers = []
-           self.allDay = false
-       }
+        self.id = id
+        self.title = title
+        self.status = status
+        self.address = ""
+        self.clientName = ""
+        self.companyId = ""
+        self.teamMemberIdsString = ""
+        self.teamMembers = []
+        self.allDay = false
+    }
+    
+    // Array accessor methods
+    func getTeamMemberIds() -> [String] {
+        return teamMemberIdsString.isEmpty ? [] : teamMemberIdsString.components(separatedBy: ",")
+    }
+    
+    func setTeamMemberIds(_ ids: [String]) {
+        teamMemberIdsString = ids.joined(separator: ",")
+    }
     
     // Computed property for location
     var coordinate: CLLocationCoordinate2D? {

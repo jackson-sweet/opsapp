@@ -4,11 +4,9 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
-
 import SwiftUI
 import SwiftData
 import CoreLocation
-
 
 /// Company model - matches your Bubble Company structure exactly
 @Model
@@ -26,8 +24,11 @@ final class Company {
     var longitude: Double?
     var openHour: String?
     var closeHour: String?
-    var projectIds: [String]
-    var teamIds: [String]
+    
+    
+    // Array storage
+    var projectIdsString: String = ""
+    var teamIdsString: String = ""
     
     // Offline/sync tracking
     var lastSyncedAt: Date?
@@ -36,8 +37,25 @@ final class Company {
     init(id: String, name: String) {
         self.id = id
         self.name = name
-        self.projectIds = []
-        self.teamIds = []
+        self.projectIdsString = ""
+        self.teamIdsString = ""
+    }
+    
+    // Array accessor methods
+    func getProjectIds() -> [String] {
+        return projectIdsString.isEmpty ? [] : projectIdsString.components(separatedBy: ",")
+    }
+    
+    func setProjectIds(_ ids: [String]) {
+        projectIdsString = ids.joined(separator: ",")
+    }
+    
+    func getTeamIds() -> [String] {
+        return teamIdsString.isEmpty ? [] : teamIdsString.components(separatedBy: ",")
+    }
+    
+    func setTeamIds(_ ids: [String]) {
+        teamIdsString = ids.joined(separator: ",")
     }
     
     // Computed property for location

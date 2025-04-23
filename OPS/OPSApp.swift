@@ -39,7 +39,11 @@ struct OPSApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(dataController)
-                .environmentObject(ProjectsViewModel(syncManager: dataController.syncManager))
+                .onAppear {
+                    // Set the model context in the data controller
+                    let context = sharedModelContainer.mainContext
+                    dataController.setModelContext(context)
+                }
         }
         .modelContainer(sharedModelContainer)
     }

@@ -147,6 +147,7 @@ struct LoginView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                     .padding(.bottom, OPSStyle.Layout.spacing3)
             }
+            .dismissKeyboardOnTap() // Use the custom keyboard dismissal modifier
         }
         .alert(isPresented: $showError, content: {
             Alert(
@@ -184,10 +185,4 @@ struct LoginView: View {
             }
         }
     }
-}
-
-#Preview {
-    LoginView()
-        .environmentObject(DataController())
-        .preferredColorScheme(.dark)
 }

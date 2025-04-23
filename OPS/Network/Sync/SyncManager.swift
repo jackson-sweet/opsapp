@@ -331,51 +331,54 @@ class SyncManager {
     }
     
     /// Process remote projects and update local database with proper relationship handling
-        private func processRemoteProjects(_ remoteProjects: [ProjectDTO]) async {
-            do {
-                // Fetch local projects
-                let fetchDescriptor = FetchDescriptor<Project>()
-                let localProjects = try modelContext.fetch(fetchDescriptor)
-                
-                // Create dictionary for quick lookup
-                let localProjectsMap = Dictionary(uniqueKeysWithValues: localProjects.map { ($0.id, $0) })
-                
-                // Store fetched users in dictionary for assigning to projects
-                let usersFetchDescriptor = FetchDescriptor<User>()
-                let users = try modelContext.fetch(usersFetchDescriptor)
-                let usersMap = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
-                
-                // Process remote projects
-                for remoteProject in remoteProjects {
-                    if let localProject = localProjectsMap[remoteProject.id] {
-                        // Update existing project (if not modified locally)
-                        if !localProject.needsSync {
-                            updateLocalProjectFromRemote(localProject, remoteDTO: remoteProject)
-                            
-                            // Make sure team member IDs are stored for offline reference
-                            localProject.teamMemberIds = remoteProject.teamMembers?.compactMap { $0.uniqueID } ?? []
-                            
-                            // Update relationship to team members
-                            updateProjectTeamMembers(localProject, teamMemberIds: localProject.teamMemberIds, usersMap: usersMap)
-                        }
-                    } else {
-                        // Add new project
-                        let newProject = remoteProject.toModel()
-                        modelContext.insert(newProject)
+    private func processRemoteProjects(_ remoteProjects: [ProjectDTO]) async {
+        do {
+            // Fetch local projects
+            let fetchDescriptor = FetchDescriptor<Project>()
+            let localProjects = try modelContext.fetch(fetchDescriptor)
+            
+            // Create dictionary for quick lookup
+            let localProjectsMap = Dictionary(uniqueKeysWithValues: localProjects.map { ($0.id, $0) })
+            
+            // Store fetched users in dictionary for assigning to projects
+            let usersFetchDescriptor = FetchDescriptor<User>()
+            let users = try modelContext.fetch(usersFetchDescriptor)
+            let usersMap = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+            
+            // Process remote projects
+            for remoteProject in remoteProjects {
+                if let localProject = localProjectsMap[remoteProject.id] {
+                    // Update existing project (if not modified locally)
+                    if !localProject.needsSync {
+                        updateLocalProjectFromRemote(localProject, remoteDTO: remoteProject)
                         
                         // Store team member IDs for offline reference
-                        newProject.teamMemberIds = remoteProject.teamMembers?.compactMap { $0.uniqueID } ?? []
-                        
-                        // Set up relationship to team members
-                        updateProjectTeamMembers(newProject, teamMemberIds: newProject.teamMemberIds, usersMap: usersMap)
+                        if let teamMembers = remoteProject.teamMembers {
+                            let teamMemberIds = teamMembers.compactMap { $0.uniqueID }
+                            localProject.teamMemberIdsString = teamMemberIds.joined(separator: ",")
+                            
+                            // Update relationship to team members
+                            updateProjectTeamMembers(localProject, teamMemberIds: teamMemberIds, usersMap: usersMap)
+                        }
+                    }
+                } else {
+                    // Add new project
+                    let newProject = remoteProject.toModel()
+                    modelContext.insert(newProject)
+                    
+                    // Set up relationship to team members
+                    if let teamMembers = remoteProject.teamMembers {
+                        let teamMemberIds = teamMembers.compactMap { $0.uniqueID }
+                        updateProjectTeamMembers(newProject, teamMemberIds: teamMemberIds, usersMap: usersMap)
                     }
                 }
-                
-                try modelContext.save()
-            } catch {
-                print("Failed to process remote projects: \(error)")
             }
+            
+            try modelContext.save()
+        } catch {
+            print("Failed to process remote projects: \(error)")
         }
+    }
         
         /// Update project's team members relationship
         private func updateProjectTeamMembers(_ project: Project, teamMemberIds: [String], usersMap: [String: User]) {
@@ -395,24 +398,25 @@ class SyncManager {
             }
         }
         
-        /// Establish relationship between project and users
-        func connectProjectToTeamMembers(project: Project, users: [User]) {
-            // Clear existing team members to avoid duplicates
-            project.teamMembers = []
+    /// Establish relationship between project and users
+    func connectProjectToTeamMembers(project: Project, users: [User]) {
+        // Clear existing team members to avoid duplicates
+        project.teamMembers = []
+        
+        // Add each user to this project
+        for user in users {
+            project.teamMembers.append(user)
             
-            // Add each user to this project
-            for user in users {
-                project.teamMembers.append(user)
-                
-                // Update the inverse relationship
-                if !user.assignedProjects.contains(where: { $0.id == project.id }) {
-                    user.assignedProjects.append(project)
-                }
+            // Update the inverse relationship
+            if !user.assignedProjects.contains(where: { $0.id == project.id }) {
+                user.assignedProjects.append(project)
             }
-            
-            // Store the IDs for offline reference
-            project.teamMemberIds = users.map { $0.id }
         }
+        
+        // Store the IDs for offline reference
+        let ids = users.map { $0.id }
+        project.teamMemberIdsString = ids.joined(separator: ",")
+    }
     
     /// Sync users between local storage and backend
     private func syncUsers() async throws {

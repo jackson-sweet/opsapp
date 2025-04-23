@@ -23,6 +23,7 @@ struct CompanyDTO: Codable {
     let openHour: String?
     let closeHour: String?
     
+    
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -68,9 +69,16 @@ struct CompanyDTO: Codable {
         company.openHour = openHour
         company.closeHour = closeHour
         
-        // Handle projects and teams
-        company.projectIds = projects?.compactMap { $0.uniqueID } ?? []
-        company.teamIds = teams?.compactMap { $0.uniqueID } ?? []
+        // Handle projects and teams - using the string storage methods
+        if let projectRefs = projects {
+            let projectIds = projectRefs.compactMap { $0.uniqueID }
+            company.projectIdsString = projectIds.joined(separator: ",")
+        }
+        
+        if let teamRefs = teams {
+            let teamIds = teamRefs.compactMap { $0.uniqueID }
+            company.teamIdsString = teamIds.joined(separator: ",")
+        }
         
         company.lastSyncedAt = Date()
         

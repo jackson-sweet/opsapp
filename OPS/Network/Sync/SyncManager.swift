@@ -113,23 +113,51 @@ class SyncManager {
     /// Trigger background sync operation
     /// This method doesn't need to be awaited - it starts the sync process and returns immediately
     func triggerBackgroundSync() {
-        guard !syncInProgress, connectivityMonitor.isConnected else { return }
+        guard !syncInProgress, connectivityMonitor.isConnected else {
+            print("Sync skipped: Already syncing or no connectivity")
+            return
+        }
         
         syncInProgress = true
         
         Task {
             do {
-                // Sync jobs
+                // Try to sync projects
                 try await syncProjects()
                 
-                // Only mark sync as complete if we weren't cancelled
                 if !Task.isCancelled {
                     await MainActor.run {
                         self.syncInProgress = false
                     }
                 }
+            } catch let error as APIError {
+                        // Provide more detailed error information
+                        print("Background sync failed with APIError: \(error)")
+                        
+                        switch error {
+                        case .invalidURL:
+                            print("Invalid URL during sync")
+                        case .invalidResponse:
+                            print("Invalid response from server")
+                        case .decodingFailed:
+                            print("Failed to decode server response")
+                        case .unauthorized:
+                            print("Authorization failed - check API token")
+                        case .rateLimited:
+                            print("Rate limited by API")
+                        case .serverError:
+                            print("Server error during sync")
+                        case .networkError:
+                            print("Network connectivity issue")
+                        case let .httpError(code):
+                            print("HTTP error \(code) during sync")
+                        }
+                        
+                        await MainActor.run {
+                            self.syncInProgress = false
+                        }
             } catch {
-                print("Background sync failed: \(error.localizedDescription)")
+                print("Background sync failed with unknown error: \(error)")
                 
                 await MainActor.run {
                     self.syncInProgress = false
@@ -277,6 +305,18 @@ class SyncManager {
     
     /// Sync projects between local storage and backend
     nonisolated private func syncProjects() async throws {
+        
+        // Check if we have a user ID before proceeding
+            let userId = await MainActor.run {
+                return UserDefaults.standard.string(forKey: "currentUserCompanyId")
+            }
+            
+            guard userId != nil else {
+                print("Sync skipped: No current user company ID available")
+                return
+            }
+            
+        
         // First, try to sync any pending local changes
         _ = await syncPendingProjectStatusChanges()
         

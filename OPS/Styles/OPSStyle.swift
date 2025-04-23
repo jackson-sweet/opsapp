@@ -34,16 +34,18 @@ enum OPSStyle {
         // Utility
         static func statusColor(for status: Status) -> Color {
             switch status {
-            case .rfq, .estimated:
-                return secondaryAccent
+            case .rfq:
+                return Color("StatusRFQ")
+            case .estimated:
+                return Color("StatusEstimated")
             case .accepted:
-                return warningStatus
+                return Color("StatusAccepted")
             case .inProgress:
-                return primaryAccent
+                return Color("StatusInProgress")
             case .completed:
-                return successStatus
+                return Color("StatusCompleted")
             case .closed:
-                return inactiveText
+                return Color("StatusClosed")
             }
         }
     }
@@ -51,9 +53,9 @@ enum OPSStyle {
     // MARK: - Typography
     enum Typography {
         // Title styles
-        static let largeTitle = Font.system(size: 34, weight: .bold, design: .default)
-        static let title = Font.system(size: 28, weight: .bold, design: .default)
-        static let subtitle = Font.system(size: 22, weight: .semibold, design: .default)
+        static let largeTitle = Font.custom("BebaseNeue-Regular", size: 32)
+        static let title = Font.custom("BebaseNeue-Regular", size: 28)
+        static let subtitle = Font.custom("Kosugi-Regular", size: 22)
         
         // Body text
         static let body = Font.system(size: 17, weight: .regular, design: .default)
@@ -65,7 +67,7 @@ enum OPSStyle {
         static let smallCaption = Font.system(size: 13, weight: .regular, design: .default)
         
         // Status text
-        static let status = Font.system(size: 13, weight: .bold, design: .default).uppercased()
+        static let status = Font.system(size: 13, weight: .bold, design: .default)
     }
     
     // MARK: - Layout

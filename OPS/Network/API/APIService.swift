@@ -47,14 +47,15 @@ class APIService {
     }
     
     // MARK: - Core Request Method
-    
-    func executeRequest<T: Decodable>(endpoint: String, method: String = "GET", 
-                       body: Data? = nil, queryItems: [URLQueryItem]? = nil) async throws -> T {
+
+    func executeRequest<T: Decodable>(
+        endpoint: String,
+        method: String = "GET",
+        body: Data? = nil,
+        queryItems: [URLQueryItem]? = nil
+    ) async throws -> T {
         // Rate limit requests
         await respectRateLimit()
-        
-        // Get authentication token
-        let token = try await authManager.getValidToken()
         
         // Build URL with query parameters if provided
         var urlComponents = URLComponents(url: baseURL.appendingPathComponent(endpoint), resolvingAgainstBaseURL: true)
@@ -67,7 +68,10 @@ class APIService {
         // Create and configure request
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        // Instead of trying to get a token, use the API token directly
+        // This is a simpler approach for now and will get us running
+        request.addValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         
         if let body = body {
@@ -77,6 +81,7 @@ class APIService {
         // Execute request with automatic retry
         return try await executeWithRetry(request: request, retries: 2)
     }
+    
     
     // MARK: - Request Helper Methods
     
@@ -167,6 +172,8 @@ class APIService {
             return try decoder.decode(T.self, from: data)
         }
     }
+    
+    
 }
 
 // Bubble API response wrapper
@@ -176,3 +183,18 @@ struct BubbleResponseWrapper<T: Decodable>: Decodable {
 
 // Empty response for endpoints that don't return data
 struct EmptyResponse: Decodable {}
+
+// Helper enum to distinguish between API types
+enum BubbleAPIType {
+    case data
+    case workflow
+    
+    var path: String {
+        switch self {
+        case .data:
+            return AppConfiguration.bubbleDataAPIPath
+        case .workflow:
+            return AppConfiguration.bubbleWorkflowAPIPath
+        }
+    }
+}

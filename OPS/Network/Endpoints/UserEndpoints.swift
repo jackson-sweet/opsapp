@@ -10,17 +10,21 @@ import Foundation
 /// Extension for user-related API endpoints
 extension APIService {
     
-    /// Fetch all users in the organization
-    /// - Returns: Array of user DTOs
-    func fetchUsers() async throws -> [UserDTO] {
-        return try await executeRequest(
-            endpoint: "api/1.1/obj/user",
-            queryItems: [
-                URLQueryItem(name: "limit", value: "100"),
-                URLQueryItem(name: "cursor", value: "0")
-            ]
-        )
-    }
+    /// Update user data
+    /// - Parameters:
+    ///   - id: The user ID
+    ///   - userData: Dictionary of user properties to update
+    func login(username: String, password: String) async throws -> AuthResponse {
+            let loginData = ["username": username, "password": password]
+            let bodyData = try JSONSerialization.data(withJSONObject: loginData)
+            
+            // Use the executeRequest method defined in APIService
+            return try await executeRequest(
+                endpoint: "api/1.1/wf/login",
+                method: "POST",
+                body: bodyData
+            )
+        }
     
     /// Fetch a single user by ID
     /// - Parameter id: The user ID
@@ -42,26 +46,30 @@ extension APIService {
             body: bodyData
         )
     }
-    
-    /// Login a user and retrieve an authentication token
-    /// - Parameters:
-    ///   - username: User's email or username
-    ///   - password: User's password
-    /// - Returns: Authentication response containing token and user info
-    func login(username: String, password: String) async throws -> AuthResponse {
-        let loginData = ["username": username, "password": password]
-        let bodyData = try JSONSerialization.data(withJSONObject: loginData)
-        
+
+    func fetchUsers() async throws -> [UserDTO] {
         return try await executeRequest(
-            endpoint: "api/1.1/wf/login",
-            method: "POST",
-            body: bodyData
+            endpoint: "user",
+            queryItems: [
+                URLQueryItem(name: "limit", value: "100"),
+                URLQueryItem(name: "cursor", value: "0")
+            ]
         )
     }
+   
 }
 
 /// Authentication response from login endpoint
 struct AuthResponse: Decodable {
-    let token: String
-    let user: UserDTO
+    let response: ResponseContent
+    
+    struct ResponseContent: Decodable {
+        let token: String?
+        let user: UserDTO?
+    }
+    
+    // Add computed properties for easier access
+    var token: String? { response.token }
+    var user: UserDTO? { response.user }
+    var userId: String? { user?.id }
 }

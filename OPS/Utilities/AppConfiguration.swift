@@ -13,16 +13,24 @@ import Foundation
 struct AppConfiguration {
     
     // MARK: - Bubble API Configuration
-    
+
     /// Base URL for your Bubble.io app
-    /// FILL THIS IN: Replace with your actual Bubble app URL
-    static let bubbleBaseURL = URL(string: "https://your-bubble-app.bubbleapps.io")!
+    static let bubbleBaseURL = URL(string: "https://opsapp.co/version-test")!
+
+    /// Bubble API token
+    static let bubbleAPIToken = "f81e9da85b7a12e996ac53e970a52299"
+
+    /// Bubble Data API endpoint path
+    static let bubbleDataAPIPath = "/api/1.1/obj"
+
+    /// Bubble Workflow API endpoint path
+    static let bubbleWorkflowAPIPath = "/api/1.1/wf"
     
     /// Authentication Configuration
     struct Auth {
         /// Service name for keychain items - should be unique to your app
         /// Recommended: use your bundle identifier
-        static let keychainService = "com.yourcompany.ops"
+        static let keychainService = "co.opsapp.ops.OPS"
         
         /// Token expiration time in seconds
         /// Adjust based on your Bubble authentication settings

@@ -27,10 +27,11 @@ class AuthManager {
         self.session = session
         self.keychain = keychain
         
-        // Try to load existing token and user info
+        // Initialize stored properties
         self.token = keychain.retrieveToken()
         self.tokenExpiration = keychain.retrieveTokenExpiration()
         self.userId = keychain.retrieveUserId()
+        
     }
     
     // MARK: - Public Methods
@@ -39,13 +40,7 @@ class AuthManager {
     /// - Returns: A valid authentication token
     /// - Throws: AuthError if authentication fails
     func getValidToken() async throws -> String {
-        // Check if we have a valid token already
-        if let token = token, let expiration = tokenExpiration, expiration > Date() {
-            return token
-        }
-        
-        // Otherwise authenticate to get a new token
-        return try await authenticate()
+        return AppConfiguration.bubbleAPIToken
     }
     
     /// Get the current user ID (if authenticated)
@@ -87,7 +82,7 @@ class AuthManager {
     /// Authenticate with the server
     /// - Returns: Authentication token
     /// - Throws: AuthError if authentication fails
-    private func authenticate() async throws -> String {
+    func authenticate() async throws -> String {
         guard let username = keychain.retrieveUsername(),
               let password = keychain.retrievePassword() else {
             throw AuthError.credentialsNotFound
@@ -101,6 +96,7 @@ class AuthManager {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.addValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
             
             // Create the request body
             let loginPayload: [String: String] = [
@@ -132,31 +128,55 @@ class AuthManager {
             
             struct LoginResponse: Decodable {
                 struct Response: Decodable {
-                    let token: String
+                    let token: String?
                     let userId: String?
+                    let user: UserResponseDTO?
                 }
                 let response: Response
             }
             
-            let loginResponse = try decoder.decode(LoginResponse.self, from: data)
-            
-            // Store the token and expiration
-            let token = loginResponse.response.token
-            // Set expiration based on configuration
-            let expiration = Date().addingTimeInterval(AppConfiguration.Auth.tokenExpirationSeconds)
-            
-            self.token = token
-            self.tokenExpiration = expiration
-            self.userId = loginResponse.response.userId
-            
-            // Save to keychain
-            keychain.storeToken(token)
-            keychain.storeTokenExpiration(expiration)
-            if let userId = loginResponse.response.userId {
-                keychain.storeUserId(userId)
+            struct UserResponseDTO: Decodable {
+                let id: String
+                // Include other user fields as needed
             }
             
-            return token
+            do {
+                let loginResponse = try decoder.decode(LoginResponse.self, from: data)
+                
+                // Extract and store the user ID
+                if let userId = loginResponse.response.userId {
+                    self.userId = userId
+                    keychain.storeUserId(userId)
+                } else if let user = loginResponse.response.user {
+                    self.userId = user.id
+                    keychain.storeUserId(user.id)
+                }
+                
+                // If Bubble returns a token, use it
+                if let token = loginResponse.response.token, !token.isEmpty {
+                    self.token = token
+                    
+                    // Set expiration based on configuration
+                    let expiration = Date().addingTimeInterval(AppConfiguration.Auth.tokenExpirationSeconds)
+                    self.tokenExpiration = expiration
+                    
+                    // Save to keychain
+                    keychain.storeToken(token)
+                    keychain.storeTokenExpiration(expiration)
+                    
+                    return token
+                } else {
+                    // Use the API token as fallback
+                    return AppConfiguration.bubbleAPIToken
+                }
+            } catch {
+                print("Failed to decode login response: \(error)")
+                // Print the response for debugging
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("Raw response: \(responseString)")
+                }
+                throw AuthError.decodingFailed
+            }
         } catch let error as AuthError {
             throw error
         } catch {

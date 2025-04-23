@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>BebasNeue-Regular.ttf</string>
+		<string>Kosugi-Regular.ttf</string>
+		<string>Mohave-Bold.ttf</string>
+		<string>Mohave-Italic.ttf</string>
+		<string>Mohave-Light.ttf</string>
+		<string>Mohave-Medium.ttf</string>
+		<string>Mohave-MediumItalic.ttf</string>
+		<string>Mohave-Regular.ttf</string>
+		<string>Mohave-SemiBold.ttf</string>
+		<string>Mohave-SemiBoldItalic.ttf</string>
+	</array>
+</dict>
+</plist>

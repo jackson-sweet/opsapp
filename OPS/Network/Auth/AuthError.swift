@@ -17,6 +17,7 @@ enum AuthError: Error {
     case invalidResponse
     case serverError(Int)
     case networkError(String)
+    case decodingFailed
     
     var localizedDescription: String {
         switch self {
@@ -30,6 +31,8 @@ enum AuthError: Error {
             return "Server issue (code: \(code)). Please try again later."
         case .networkError(let message):
             return "Connection issue: \(message). Check your signal and try again."
+        case .decodingFailed:
+            return "Decoding Error: Unable to parse response. Please try again."
         }
     }
 }

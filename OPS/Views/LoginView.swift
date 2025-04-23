@@ -18,10 +18,8 @@ struct LoginView: View {
     
     var body: some View {
         ZStack {
-            // Background with keyboard dismissal
-            OPSStyle.Colors.background
-                .edgesIgnoringSafeArea(.all)
-                .dismissKeyboardOnTap()
+            // Background
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: OPSStyle.Layout.spacing4) {
                 Spacer()
@@ -80,7 +78,7 @@ struct LoginView: View {
                             )
                     }
                     
-                    // For demo purposes, include credentials hint
+                    // For testing purposes
                     VStack {
                         Text("For testing:")
                             .font(OPSStyle.Typography.caption)
@@ -165,22 +163,6 @@ struct LoginView: View {
         isLoggingIn = true
         errorMessage = nil
         
-        // Check connectivity first
-        if !dataController.isConnected {
-            // Handle offline login attempt - if we have cached credentials, we could validate locally
-            Task {
-                // Small delay to make the UI feel responsive
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                
-                await MainActor.run {
-                    isLoggingIn = false
-                    errorMessage = "No network connection available. Please check your signal and try again."
-                    showError = true
-                }
-            }
-            return
-        }
-        
         Task {
             do {
                 let success = await dataController.login(username: username, password: password)
@@ -193,19 +175,10 @@ struct LoginView: View {
                         showError = true
                     }
                 }
-            } catch let error as AuthError {
-                // Handle specific auth errors with field-friendly messages
-                await MainActor.run {
-                    isLoggingIn = false
-                    errorMessage = error.localizedDescription
-                    showError = true
-                }
             } catch {
-                // Handle unexpected errors
-                print("Login error: \(error.localizedDescription)")
                 await MainActor.run {
                     isLoggingIn = false
-                    errorMessage = "Connection issue. Please check your signal and try again."
+                    errorMessage = "Login failed: \(error.localizedDescription)"
                     showError = true
                 }
             }

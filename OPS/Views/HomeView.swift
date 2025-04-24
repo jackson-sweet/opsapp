@@ -40,7 +40,7 @@ struct HomeView: View {
                 // Project cards or active project UI
                 if !appState.isInProjectMode {
                     projectCards
-                } else if let activeProject = projects.first(where: { $0.id == appState.activeProjectID }) {
+                } else if let _ = projects.first(where: { $0.id == appState.activeProjectID }) {
                     // Project mode actions - We'll implement this later
                     VStack {
                         Text("Project Actions")

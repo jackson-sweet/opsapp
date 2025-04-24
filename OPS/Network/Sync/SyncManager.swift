@@ -245,7 +245,7 @@ class SyncManager {
                 
                 // Update team members
                 if let teamMembers = remoteDTO.teamMembers {
-                    let teamMemberIds = teamMembers.compactMap { $0.uniqueID }
+                    let teamMemberIds = teamMembers.map { $0 }
                     localProject.teamMemberIdsString = teamMemberIds.joined(separator: ",")
                     updateProjectTeamMembers(localProject, teamMemberIds: teamMemberIds, usersMap: usersMap)
                 }
@@ -262,7 +262,7 @@ class SyncManager {
         
         // Set up relationships
         if let teamMembers = remoteDTO.teamMembers {
-            let teamMemberIds = teamMembers.compactMap { $0.uniqueID }
+            let teamMemberIds = teamMembers.map { $0 }
             updateProjectTeamMembers(newProject, teamMemberIds: teamMemberIds, usersMap: usersMap)
         }
     }
@@ -291,8 +291,13 @@ class SyncManager {
         
         // Client name from client reference
         if let clientRef = remoteDTO.client {
-            localProject.clientName = clientRef.text ?? "Unknown Client"
-            localProject.clientId = clientRef.uniqueID
+            if case let .object(objectRef) = clientRef.value {
+                localProject.clientName = objectRef.text ?? "Unknown Client"
+                localProject.clientId = objectRef.uniqueID
+            } else {
+                localProject.clientName = "Unknown Client"
+                localProject.clientId = clientRef.stringValue
+            }
         }
         
         // Address and location from Bubble address object
@@ -318,7 +323,7 @@ class SyncManager {
         
         // Company ID from company reference
         if let companyRef = remoteDTO.company {
-            localProject.companyId = companyRef.uniqueID
+            localProject.companyId = companyRef.stringValue
         }
     }
 }

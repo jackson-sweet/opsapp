@@ -38,6 +38,7 @@ class ProjectsViewModel: ObservableObject {
     }
     
     /// Load projects from database and trigger sync if needed
+    @MainActor
     func loadProjects(context: ModelContext) {
         guard !isLoading else { return }
         
@@ -49,8 +50,8 @@ class ProjectsViewModel: ObservableObject {
             await loadFromLocalDatabase(context: context)
             
             // Then try sync if we have connectivity
-            if await syncManager.isConnected {
-                await performSync()
+            if syncManager.isConnected {
+                 await performSync()
             }
             
             await MainActor.run {
@@ -139,7 +140,7 @@ class ProjectsViewModel: ObservableObject {
             
             // Trigger sync
             Task {
-                await syncManager.triggerBackgroundSync()
+                syncManager.triggerBackgroundSync()
             }
             
         } catch {

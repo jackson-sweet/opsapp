@@ -71,12 +71,12 @@ struct CompanyDTO: Codable {
         
         // Handle projects and teams - using the string storage methods
         if let projectRefs = projects {
-            let projectIds = projectRefs.compactMap { $0.uniqueID }
+            let projectIds = projectRefs.compactMap { $0.stringValue }
             company.projectIdsString = projectIds.joined(separator: ",")
         }
         
         if let teamRefs = teams {
-            let teamIds = teamRefs.compactMap { $0.uniqueID }
+            let teamIds = teamRefs.compactMap { $0.stringValue }
             company.teamIdsString = teamIds.joined(separator: ",")
         }
         

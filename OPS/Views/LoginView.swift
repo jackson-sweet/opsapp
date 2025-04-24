@@ -165,36 +165,46 @@ struct LoginView: View {
         errorMessage = nil
         
         Task {
-            do {
-                let success = await dataController.login(username: username, password: password)
-                
-                await MainActor.run {
-                    isLoggingIn = false
+                do {
+                    // Convert this to a throwing function call
+                    let success = try await attemptLogin(username: username, password: password)
                     
-                    if !success {
-                        errorMessage = "Invalid username or password. Please try again."
+                    await MainActor.run {
+                        isLoggingIn = false
+                        
+                        if !success {
+                            errorMessage = "Invalid username or password. Please try again."
+                            showError = true
+                        }
+                    }
+                } catch let authError as AuthError {
+                    // Now this catch block is reachable
+                    await MainActor.run {
+                        isLoggingIn = false
+                        errorMessage = authError.localizedDescription
+                        showError = true
+                    }
+                } catch let apiError as APIError {
+                    await MainActor.run {
+                        isLoggingIn = false
+                        errorMessage = apiError.localizedDescription
+                        showError = true
+                    }
+                } catch {
+                    await MainActor.run {
+                        isLoggingIn = false
+                        errorMessage = "Login failed: \(error.localizedDescription)"
                         showError = true
                     }
                 }
-            } catch let authError as AuthError {
-                await MainActor.run {
-                    isLoggingIn = false
-                    errorMessage = authError.localizedDescription
-                    showError = true
-                }
-            } catch let apiError as APIError {
-                await MainActor.run {
-                    isLoggingIn = false
-                    errorMessage = apiError.localizedDescription
-                    showError = true
-                }
-            } catch {
-                await MainActor.run {
-                    isLoggingIn = false
-                    errorMessage = "Login failed: \(error.localizedDescription)"
-                    showError = true
-                }
             }
-        }
     }
+    
+    // Helper method that can throw errors
+    private func attemptLogin(username: String, password: String) async throws -> Bool {
+        // This will propagate any errors from dataController.login
+        return await dataController.login(username: username, password: password)
+    }
+    
 }
+

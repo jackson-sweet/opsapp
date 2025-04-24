@@ -67,7 +67,7 @@ class DataController: ObservableObject {
                 
                 if connectionType != .none, self.isAuthenticated {
                     Task {
-                        await self.syncManager?.triggerBackgroundSync()
+                        self.syncManager?.triggerBackgroundSync()
                     }
                 }
             }
@@ -213,6 +213,7 @@ class DataController: ObservableObject {
     // MARK: - Data Operations
     
     /// Fetch company data from API - optimized for reliability
+    @MainActor
     private func fetchCompanyData(companyId: String) async throws {
         guard let context = modelContext else { return }
         

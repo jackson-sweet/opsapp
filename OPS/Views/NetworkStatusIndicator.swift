@@ -50,11 +50,8 @@ struct NetworkStatusIndicator: View {
             // Only animate when offline or syncing
             isAnimating = !dataController.isConnected || dataController.isSyncing
         }
-        .onChange(of: dataController.isConnected) { isConnected in
+        .onChange(of: dataController.isConnected) { _, isConnected in
             isAnimating = !isConnected || dataController.isSyncing
-        }
-        .onChange(of: dataController.isSyncing) { isSyncing in
-            isAnimating = !dataController.isConnected || isSyncing
         }
     }
     

@@ -116,7 +116,7 @@ struct BubbleAddress: Codable {
 
 /// Bubble's reference type - updated to handle both string and object references
 struct BubbleReference: Codable {
-    private let value: ReferenceValue
+    let value: ReferenceValue
     
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -134,6 +134,16 @@ struct BubbleReference: Codable {
             value = .string("")
         }
     }
+    
+    func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch value {
+            case .string(let stringValue):
+                try container.encode(stringValue)
+            case .object(let objectValue):
+                try container.encode(objectValue)
+            }
+        }
     
     struct ObjectReference: Codable {
         let uniqueID: String
@@ -166,18 +176,5 @@ extension BubbleReference: ExpressibleByStringLiteral {
     
     init(stringLiteral value: String) {
         self.value = .string(value)
-    }
-}
-
-// Add custom Encodable implementation
-extension BubbleReference: Encodable {
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch value {
-        case .string(let stringValue):
-            try container.encode(stringValue)
-        case .object(let objectValue):
-            try container.encode(objectValue)
-        }
     }
 }

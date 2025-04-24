@@ -31,7 +31,9 @@ struct CalendarDaySelector: View {
                     }
                 }
                 .padding(.horizontal)
+                .padding(.vertical, 8)
             }
+            .background(Color.black.opacity(0.3))
             .onChange(of: viewModel.selectedDate) { _, newDate in
                 // Scroll to selected date
                 withAnimation {

@@ -24,14 +24,16 @@ struct ProjectListView: View {
                     
                     Spacer()
                     
-                    Text("\(viewModel.projectsForSelectedDate.count)")
-                        .font(OPSStyle.Typography.subtitle)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.horizontal, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(OPSStyle.Colors.cardBackground)
-                        )
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.black.opacity(0.4))
+                            .frame(width: 60, height: 60)
+                            .cornerRadius(10)
+                            
+                        Text("\(viewModel.projectsForSelectedDate.count)")
+                            .font(OPSStyle.Typography.largeTitle)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
                 }
                 .padding()
                 
@@ -46,7 +48,7 @@ struct ProjectListView: View {
     
     private var dateString: String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE MMMM d"
+        formatter.dateFormat = "EEEE\nMMMM d"
         return formatter.string(from: viewModel.selectedDate)
     }
     

@@ -16,12 +16,11 @@ struct CalendarProjectCard: View {
     
     var body: some View {
         Button(action: onTap) {
-            HStack {
+            HStack(spacing: 0) {
                 // Status indicator
                 Rectangle()
                     .fill(project.statusColor)
                     .frame(width: 4)
-                    .cornerRadius(2)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(project.title)
@@ -39,11 +38,11 @@ struct CalendarProjectCard: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(1)
                 }
-                .padding(.leading, 8)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 16)
                 
                 Spacer()
             }
-            .padding()
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .contentShape(Rectangle()) // Make entire card tappable

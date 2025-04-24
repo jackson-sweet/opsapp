@@ -14,6 +14,7 @@ struct CalendarToggleView: View {
     
     var body: some View {
         HStack(spacing: 0) {
+            // Week toggle
             toggleButton(
                 title: "Week",
                 isSelected: viewModel.viewMode == .week,
@@ -26,6 +27,7 @@ struct CalendarToggleView: View {
                 }
             )
             
+            // Month toggle
             toggleButton(
                 title: "Month",
                 isSelected: viewModel.viewMode == .month,
@@ -37,19 +39,34 @@ struct CalendarToggleView: View {
                     }
                 }
             )
+            
+            Spacer()
+            
+            // Month/year picker
+            Button(action: {}) {
+                HStack(spacing: 8) {
+                    Text("April, 2025")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(OPSStyle.Colors.cardBackground.opacity(0.5))
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
         }
         .frame(height: 44)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal)
+        .padding(.vertical, 8)
     }
     
     private func toggleButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(OPSStyle.Typography.bodyBold)
+                .font(OPSStyle.Typography.body)
                 .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
                 .background(isSelected ? OPSStyle.Colors.cardBackground : Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
         }

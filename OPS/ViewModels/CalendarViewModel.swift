@@ -58,49 +58,37 @@ class CalendarViewModel: ObservableObject {
     }
     
     func projectCount(for date: Date) -> Int {
-        if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
-            return projectsForSelectedDate.count
+            // If it's the currently selected date, we already have the data
+            if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
+                return projectsForSelectedDate.count
+            }
+            
+            // For other dates, get the count from DataController
+            // We could add caching here if performance becomes an issue
+            if let dataController = dataController {
+                return dataController.getProjects(for: date).count
+            }
+            
+            return 0
         }
-        return 0 // For simplicity; could be enhanced to show actual counts
-    }
     
     // MARK: - Private Methods
     func loadProjectsForDate(_ date: Date) {
-        guard let dataController = dataController, let context = dataController.modelContext else {
-            return
-        }
-        
-        isLoading = true
-        
-        Task {
-            do {
-                let calendar = Calendar.current
-                let startOfDay = calendar.startOfDay(for: date)
-                
-                // Fetch all projects for now - we'll filter in memory for simplicity
-                let descriptor = FetchDescriptor<Project>()
-                let projects = try context.fetch(descriptor)
-                
-                // Filter projects for the selected date
-                let filteredProjects = projects.filter { project in
-                    guard let projectDate = project.startDate else { return false }
-                    return calendar.isDate(projectDate, inSameDayAs: date)
-                }
+            guard let dataController = dataController else { return }
+            
+            isLoading = true
+            
+            Task {
+                // Get projects using the centralized method in DataController
+                // This ensures we get the same data across the entire app
+                let projects = dataController.getProjects(for: date)
                 
                 await MainActor.run {
-                    self.projectsForSelectedDate = filteredProjects
-                    self.isLoading = false
-                }
-            } catch {
-                print("Error fetching projects: \(error.localizedDescription)")
-                
-                await MainActor.run {
-                    self.projectsForSelectedDate = []
+                    self.projectsForSelectedDate = projects
                     self.isLoading = false
                 }
             }
         }
-    }
     
     private func getWeekDays() -> [Date] {
         let calendar = Calendar.current

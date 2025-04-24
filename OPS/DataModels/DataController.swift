@@ -266,27 +266,27 @@ class DataController: ObservableObject {
     
     //Used by Calendar
     func getProjects(for date: Date) -> [Project] {
-            guard let modelContext = modelContext else { return [] }
-            
-            do {
-                let calendar = Calendar.current
-                let startOfDay = calendar.startOfDay(for: date)
-                let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-                
-                // Fetch all projects - in a production app, we would use a more efficient query
-                let descriptor = FetchDescriptor<Project>()
-                let allProjects = try modelContext.fetch(descriptor)
-                
-                // Filter for projects on the specified date
-                return allProjects.filter { project in
-                    guard let projectDate = project.startDate else { return false }
-                    return calendar.isDate(projectDate, inSameDayAs: date)
-                }
-            } catch {
-                print("Failed to fetch projects: \(error.localizedDescription)")
-                return []
-            }
-        }
+           guard let modelContext = modelContext else { return [] }
+           
+           do {
+               let calendar = Calendar.current
+               let startOfDay = calendar.startOfDay(for: date)
+               
+               // Fetch all projects - since datasets are small, this simple approach
+               // is more reliable than complex predicates in field conditions
+               let descriptor = FetchDescriptor<Project>(sortBy: [SortDescriptor(\.startDate)])
+               let allProjects = try modelContext.fetch(descriptor)
+               
+               // Filter for projects on the specified date
+               return allProjects.filter { project in
+                   guard let projectDate = project.startDate else { return false }
+                   return calendar.isDate(projectDate, inSameDayAs: date)
+               }
+           } catch {
+               print("Failed to fetch projects: \(error.localizedDescription)")
+               return []
+           }
+       }
     
     func getProjectsForMap() throws -> [Project] {
         guard let context = modelContext else {

@@ -11,6 +11,10 @@ import SwiftUI
 
 struct CalendarHeaderView: View {
     @ObservedObject var viewModel: CalendarViewModel
+    @EnvironmentObject private var dataController: DataController
+    
+    // Store today's date on creation for the header
+    private let today = Date()
     
     var body: some View {
         HStack {
@@ -23,7 +27,7 @@ struct CalendarHeaderView: View {
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
-                Text(DateHelper.monthYearString(from: viewModel.selectedDate))
+                Text(monthYearString)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -35,7 +39,7 @@ struct CalendarHeaderView: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
-                Text("\(viewModel.projectsForSelectedDate.count)")
+                Text("\(todaysProjectCount)")
                     .font(OPSStyle.Typography.largeTitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -47,6 +51,18 @@ struct CalendarHeaderView: View {
     }
     
     private var headerDate: String {
-        DateHelper.fullDateString(from: viewModel.selectedDate).uppercased()
+        // Always show today's date in the header
+        DateHelper.fullDateString(from: today).uppercased()
+    }
+    
+    private var monthYearString: String {
+        // Show the selected month and year
+        DateHelper.monthYearString(from: viewModel.selectedDate)
+    }
+    
+    // Get projects for today specifically, not the selected date
+    private var todaysProjectCount: Int {
+        // Direct access - no conditionals needed
+        dataController.getProjects(for: today).count
     }
 }

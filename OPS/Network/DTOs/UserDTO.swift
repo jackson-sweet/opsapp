@@ -1,9 +1,3 @@
-//
-//  UserDTO.swift
-//  OPS
-//
-//  Created by Jackson Sweet on 2025-04-21.
-//
 import Foundation
 
 /// Data Transfer Object for User from Bubble API
@@ -17,11 +11,25 @@ struct UserDTO: Codable {
     let nameLast: String?
     let employeeType: String?
     let userType: String?
-    let currentLocation: BubbleAddress?
-    let avatar: BubbleImage?
-    let company: BubbleReference?
-    let clientId: BubbleReference?
+    let avatar: String?
+    let company: String?
     let email: String?
+    let authentication: Authentication?
+    
+    // Authentication information
+    struct Authentication: Codable {
+        let email: EmailAuth?
+        
+        struct EmailAuth: Codable {
+            let email: String?
+            let emailConfirmed: Bool?
+            
+            enum CodingKeys: String, CodingKey {
+                case email
+                case emailConfirmed = "email_confirmed"
+            }
+        }
+    }
     
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
@@ -30,10 +38,9 @@ struct UserDTO: Codable {
         case nameLast = "Name Last"
         case employeeType = "Employee Type"
         case userType = "User Type"
-        case currentLocation = "Current Location"
         case avatar = "Avatar"
         case company = "Company"
-        case clientId = "Client ID"
+        case authentication
         case email
     }
     
@@ -49,7 +56,7 @@ struct UserDTO: Codable {
         }
         
         // Extract company ID if available
-        let companyId = company?.uniqueID ?? ""
+        let companyId = company ?? ""
         
         // Create user
         let user = User(
@@ -61,18 +68,15 @@ struct UserDTO: Codable {
         )
         
         // Handle additional fields
-        user.email = email
-        
-        // Geographic location needs special handling
-        if let location = currentLocation {
-            user.latitude = location.lat
-            user.longitude = location.lng
-            user.locationName = location.formattedAddress
+        if let emailAuth = authentication?.email?.email {
+            user.email = emailAuth
+        } else {
+            user.email = email
         }
         
         // Handle profile image if available
-        if let avatarImage = avatar, let imageUrl = avatarImage.url {
-            user.profileImageURL = imageUrl
+        if let avatarUrl = avatar {
+            user.profileImageURL = avatarUrl
             // Note: Actual image data will need to be downloaded separately
         }
         

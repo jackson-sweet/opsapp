@@ -76,11 +76,11 @@ class APIService {
         var request = URLRequest(url: url)
         request.httpMethod = method
         
-        // Only add auth token if required (for workflow endpoints)
-            if requiresAuth {
-                let token = try await authManager.getValidToken()
-                request.addValue(token, forHTTPHeaderField: "Authorization")
-            }
+        // Add authentication token only if required
+        if requiresAuth {
+            let token = try await authManager.getValidToken()
+            request.addValue(token, forHTTPHeaderField: "Authorization")
+        }
         
         // Add content type for POST/PUT/PATCH requests
         if method != "GET" {

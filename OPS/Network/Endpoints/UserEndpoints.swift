@@ -10,30 +10,21 @@ import Foundation
 /// Extension for user-related API endpoints
 extension APIService {
     
-    /// Update user data
-    /// - Parameters:
-    ///   - id: The user ID
-    ///   - userData: Dictionary of user properties to update
-    func login(username: String, password: String) async throws -> AuthResponse {
-            let loginData = ["username": username, "password": password]
-            let bodyData = try JSONSerialization.data(withJSONObject: loginData)
-            
-            // Use the executeRequest method defined in APIService
-            return try await executeRequest(
-                endpoint: "api/1.1/wf/login",
-                method: "POST",
-                body: bodyData
-            )
-        }
-    
     /// Fetch a single user by ID
     /// - Parameter id: The user ID
     /// - Returns: User DTO
     func fetchUser(id: String) async throws -> UserDTO {
-        return try await executeRequest(
+        // Create wrapper to match Bubble's response format
+        struct UserResponseWrapper: Decodable {
+            let response: UserDTO
+        }
+        
+        // Fetch the user without requiring auth
+        let wrapper: UserResponseWrapper = try await executeRequest(
             endpoint: "api/1.1/obj/user/\(id)",
             requiresAuth: false
         )
+        return wrapper.response
     }
     
     /// Update user data
@@ -46,20 +37,28 @@ extension APIService {
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/user/\(id)",
             method: "PATCH",
-            body: bodyData
+            body: bodyData,
+            requiresAuth: false
         )
     }
 
     func fetchUsers() async throws -> [UserDTO] {
-        return try await executeRequest(
-            endpoint: "user",
+        // Create wrapper to match Bubble's response format
+        struct UsersResponseWrapper: Decodable {
+            let response: [UserDTO]
+        }
+        
+        // Fetch all users without requiring auth
+        let wrapper: UsersResponseWrapper = try await executeRequest(
+            endpoint: "api/1.1/obj/user",
             queryItems: [
                 URLQueryItem(name: "limit", value: "100"),
                 URLQueryItem(name: "cursor", value: "0")
-            ]
+            ],
+            requiresAuth: false
         )
+        return wrapper.response
     }
-   
 }
 
 /// Authentication response from login endpoint
@@ -76,3 +75,4 @@ struct AuthResponse: Decodable {
     var user: UserDTO? { response.user }
     var userId: String? { user?.id }
 }
+

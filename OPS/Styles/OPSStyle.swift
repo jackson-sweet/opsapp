@@ -164,46 +164,6 @@ struct StatusBadge: View {
     }
 }
 
-// MARK: - Cards
-struct ProjectCard: View {
-    let project: Project
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                HStack {
-                    StatusBadge(status: project.status)
-                    Spacer()
-                    if project.startDate != nil {
-                        Text(project.formattedStartDate)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                }
-                
-                Text(project.title)
-                    .font(OPSStyle.Typography.subtitle)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.top, OPSStyle.Layout.spacing1)
-                
-                Text(project.clientName)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Text(project.address)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.top, OPSStyle.Layout.spacing1)
-            }
-            .padding(OPSStyle.Layout.contentPadding)
-            .background(OPSStyle.Colors.cardBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
 // MARK: - Extension for easy usage
 extension View {
     func primaryButtonStyle() -> some View {

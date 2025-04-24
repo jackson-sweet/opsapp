@@ -11,29 +11,45 @@ import SwiftUI
 
 struct ScheduleView: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
+    @StateObject private var viewModel = CalendarViewModel()
     
     var body: some View {
         ZStack {
             OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
             
-            VStack(alignment: .leading) {
-                Text("Schedule")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal)
+            VStack(spacing: 16) {
+                // User header
+                UserHeader()
                 
-                Text("JACOB, RAIL CREW")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.horizontal)
-                    .padding(.bottom)
+                // Calendar header
+                CalendarHeaderView(viewModel: viewModel)
                 
-                Text("Schedule view coming soon")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // View toggle
+                CalendarToggleView(viewModel: viewModel)
+                
+                // Day selector
+                CalendarDaySelector(viewModel: viewModel)
+                
+                // Project list - passing appState properly
+                ProjectListView(viewModel: viewModel)
+                
+                Spacer()
             }
             .padding(.top)
         }
+        .onAppear {
+            // Initialize with proper data controller
+            viewModel.setDataController(dataController)
+        }
+    }
+}
+
+// Extension to set dataController after initialization
+extension CalendarViewModel {
+    func updateDataController(_ controller: DataController) {
+        self.dataController = controller
+        // Refresh data
+        loadProjectsForDate(selectedDate)
     }
 }

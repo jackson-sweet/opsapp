@@ -25,7 +25,7 @@ class DataController: ObservableObject {
     private let apiService: APIService
     private let keychainManager: KeychainManager
     private let connectivityMonitor: ConnectivityMonitor
-    private var modelContext: ModelContext?
+    var modelContext: ModelContext?
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Public Access
@@ -263,6 +263,31 @@ class DataController: ObservableObject {
     }
     
     // MARK: - Project Fetching
+    
+    //Used by Calendar
+    func getProjects(for date: Date) -> [Project] {
+            guard let modelContext = modelContext else { return [] }
+            
+            do {
+                let calendar = Calendar.current
+                let startOfDay = calendar.startOfDay(for: date)
+                let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+                
+                // Fetch all projects - in a production app, we would use a more efficient query
+                let descriptor = FetchDescriptor<Project>()
+                let allProjects = try modelContext.fetch(descriptor)
+                
+                // Filter for projects on the specified date
+                return allProjects.filter { project in
+                    guard let projectDate = project.startDate else { return false }
+                    return calendar.isDate(projectDate, inSameDayAs: date)
+                }
+            } catch {
+                print("Failed to fetch projects: \(error.localizedDescription)")
+                return []
+            }
+        }
+    
     func getProjectsForMap() throws -> [Project] {
         guard let context = modelContext else {
             throw NSError(domain: "DataController", code: 2,

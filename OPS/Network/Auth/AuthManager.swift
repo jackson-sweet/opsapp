@@ -56,12 +56,115 @@ class AuthManager {
     /// - Returns: Authentication token
     /// - Throws: AuthError if authentication fails
     func signIn(username: String, password: String) async throws -> String {
-        // Store credentials in keychain
-        keychain.storeUsername(username)
-        keychain.storePassword(password)
-        
-        // Authenticate with server
-        return try await authenticate()
+        do {
+            // Ensure the baseURL doesn't end with a slash
+                    let baseURLString = baseURL.absoluteString.trimmingCharacters(in: ["/"])
+                    
+                    // Construct the correct URL with proper path separator
+                    let fullURLString = baseURLString + "/api/1.1/wf/generate-api-token"
+                    guard let url = URL(string: fullURLString) else {
+                        throw AuthError.invalidURL
+                    }
+                    
+                    print("Attempting login to: \(url.absoluteString)")
+                    
+                    // Create request
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "POST"
+                    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+                    
+                    // Create login payload
+                    let loginPayload: [String: String] = [
+                        "email": username,
+                        "password": password
+                    ]
+                    
+                    print("Login payload: \(loginPayload)")
+                    request.httpBody = try JSONSerialization.data(withJSONObject: loginPayload)
+                    
+                    // Send request
+                    let (data, response) = try await session.data(for: request)
+                    
+                    // Debug response
+                    if let responseString = String(data: data, encoding: .utf8) {
+                        print("Login response: \(responseString)")
+                    }
+            
+            // Check HTTP status
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AuthError.invalidResponse
+            }
+            
+            print("Login HTTP status: \(httpResponse.statusCode)")
+            
+            // Handle error status codes
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw AuthError.invalidCredentials
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw AuthError.serverError(httpResponse.statusCode)
+            }
+            
+            // Parse the response - adjust this structure based on your workflow's response
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            
+            struct LoginResponse: Decodable {
+                let response: UserResponse
+            }
+            
+            struct UserResponse: Decodable {
+                let token: String?
+                let userId: String?
+                let user: UserInfo?
+            }
+            
+            struct UserInfo: Decodable {
+                let id: String
+                // Add other user fields if needed
+            }
+            
+            do {
+                let loginResponse = try decoder.decode(LoginResponse.self, from: data)
+                
+                // Store the user ID
+                if let userId = loginResponse.response.userId {
+                    self.userId = userId
+                    keychain.storeUserId(userId)
+                } else if let user = loginResponse.response.user {
+                    self.userId = user.id
+                    keychain.storeUserId(user.id)
+                }
+                
+                // Store the token if provided
+                if let token = loginResponse.response.token, !token.isEmpty {
+                    self.token = token
+                    
+                    // Set token expiration
+                    let expiration = Date().addingTimeInterval(AppConfiguration.Auth.tokenExpirationSeconds)
+                    self.tokenExpiration = expiration
+                    
+                    // Save to keychain
+                    keychain.storeToken(token)
+                    keychain.storeTokenExpiration(expiration)
+                    
+                    return token
+                } else {
+                    // If no token in response, use the API token as fallback
+                    return AppConfiguration.bubbleAPIToken
+                }
+            } catch {
+                print("Failed to decode login response: \(error)")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("Raw response: \(responseString)")
+                }
+                throw AuthError.decodingFailed
+            }
+        } catch {
+            print("Login error details: \(error)")
+            throw error
+        }
     }
     
     /// Sign out - clear all credentials and tokens

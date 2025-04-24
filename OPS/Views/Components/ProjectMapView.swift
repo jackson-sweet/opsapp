@@ -5,7 +5,6 @@
 //  Created by Jackson Sweet on 2025-04-23.
 //
 
-
 import SwiftUI
 import MapKit
 
@@ -14,6 +13,10 @@ struct ProjectMapView: UIViewRepresentable {
     let projects: [Project]
     @Binding var selectedIndex: Int
     var onTapMarker: (Int) -> Void
+    
+    // Add routing support
+    var routeOverlay: MKOverlay?
+    var isInProjectMode: Bool
     
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -33,11 +36,14 @@ struct ProjectMapView: UIViewRepresentable {
         
         // Update annotations
         updateAnnotations(for: mapView)
+        
+        // Update route overlay
+        updateRouteOverlay(for: mapView)
     }
     
     private func updateAnnotations(for mapView: MKMapView) {
-        // Remove existing annotations
-        let existingAnnotations = mapView.annotations.compactMap { $0 as? ProjectAnnotation }
+        // Remove existing annotations (except user location)
+        let existingAnnotations = mapView.annotations.filter { !($0 is MKUserLocation) }
         mapView.removeAnnotations(existingAnnotations)
         
         // Add new annotations
@@ -48,12 +54,23 @@ struct ProjectMapView: UIViewRepresentable {
                 coordinate: coordinate,
                 project: project,
                 index: index,
-                isSelected: index == selectedIndex
+                isSelected: index == selectedIndex,
+                isActiveProject: isInProjectMode && index == selectedIndex
             )
             return annotation
         }
         
         mapView.addAnnotations(annotations)
+    }
+    
+    private func updateRouteOverlay(for mapView: MKMapView) {
+        // Remove existing overlays
+        mapView.removeOverlays(mapView.overlays)
+        
+        // Add route overlay if available
+        if let routeOverlay = routeOverlay {
+            mapView.addOverlay(routeOverlay)
+        }
     }
     
     func makeCoordinator() -> Coordinator {
@@ -84,7 +101,13 @@ struct ProjectMapView: UIViewRepresentable {
                 }
                 
                 // Apply styling
-                annotationView?.markerTintColor = .red
+                if projectAnnotation.isActiveProject {
+                    // Active project gets the accent color (orange)
+                    annotationView?.markerTintColor = UIColor(OPSStyle.Colors.secondaryAccent)
+                } else {
+                    // Regular projects get red
+                    annotationView?.markerTintColor = .red
+                }
                 
                 // Enlarge the selected marker
                 let scale: CGFloat = projectAnnotation.isSelected ? 1.3 : 1.0
@@ -97,13 +120,22 @@ struct ProjectMapView: UIViewRepresentable {
         }
         
         func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
-            // Handle tap on annotation
             if let projectAnnotation = annotation as? ProjectAnnotation {
                 parent.onTapMarker(projectAnnotation.index)
             }
             
             // Deselect to prevent callout
             mapView.deselectAnnotation(annotation, animated: false)
+        }
+        
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let polyline = overlay as? MKPolyline {
+                let renderer = MKPolylineRenderer(polyline: polyline)
+                renderer.strokeColor = UIColor(OPSStyle.Colors.secondaryAccent)
+                renderer.lineWidth = 5
+                return renderer
+            }
+            return MKOverlayRenderer(overlay: overlay)
         }
     }
 }
@@ -113,12 +145,14 @@ class ProjectAnnotation: NSObject, MKAnnotation {
     let project: Project
     let index: Int
     let isSelected: Bool
+    let isActiveProject: Bool
     
-    init(coordinate: CLLocationCoordinate2D, project: Project, index: Int, isSelected: Bool) {
+    init(coordinate: CLLocationCoordinate2D, project: Project, index: Int, isSelected: Bool, isActiveProject: Bool = false) {
         self.coordinate = coordinate
         self.project = project
         self.index = index
         self.isSelected = isSelected
+        self.isActiveProject = isActiveProject
         super.init()
     }
 }

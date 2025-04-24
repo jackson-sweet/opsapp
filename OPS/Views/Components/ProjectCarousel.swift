@@ -25,6 +25,16 @@ struct ProjectCarousel: View {
                     isSelected: selectedIndex == index,
                     showConfirmation: showStartConfirmation && selectedIndex == index,
                     isActiveProject: activeProjectID == project.id,
+                    onTap: {
+                        if selectedIndex == index {
+                            // Toggle confirmation if already selected
+                            showStartConfirmation.toggle()
+                        } else {
+                            // Select this card
+                            selectedIndex = index
+                            showStartConfirmation = false
+                        }
+                    },
                     onStart: { onStart(project) },
                     onStop: { onStop(project) }
                 )
@@ -35,7 +45,9 @@ struct ProjectCarousel: View {
         .frame(height: 120)
         .background(OPSStyle.Colors.cardBackground.opacity(0.7))
         .onChange(of: selectedIndex) { _, _ in
-            showStartConfirmation = false
+            if showStartConfirmation {
+                showStartConfirmation = false
+            }
         }
     }
 }

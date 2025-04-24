@@ -69,5 +69,30 @@ struct AppConfiguration {
         /// Define the minimum time between status updates in seconds
         /// Prevents multiple rapid taps from causing issues
         static let statusUpdateCooldown: TimeInterval = 2.0
+        
+        /// Collection of quotes to display when there are no projects scheduled
+        static let noProjectQuotes = [
+                "No projects. GOOD. Time to train, prepare, improve.",
+                "Empty schedule. Time to get ahead. Maintain equipment. Prepare for tomorrow. DISCIPLINE.",
+                "No jobs today. GOOD. Opportunity to train, learn, develop skills. Stay ready.",
+                "Clear day. Perfect for maintenance. Tools don't sharpen themselves.",
+                "No scheduled work. Good. Time to review procedures. Preparation prevents problems.",
+                "Empty calendar. GOOD. Time to check gear. Be ready when others aren't.",
+                "No projects today. GOOD. Train harder than yesterday. Tomorrow will test you.",
+                "Open schedule. Perfect time to review safety protocols. Complacency kills.",
+                "No jobs scheduled. GOOD. Get after equipment maintenance. Readiness is protection.",
+                "Clear day. Execute self-improvement. Leaders are built in downtime.",
+                "No projects. GOOD. Take ownership. Find ways to add value. Leaders don't wait.",
+                "Empty schedule. Time to ATTACK weaknesses. Turn disadvantage into strength.",
+                "No work scheduled. GOOD. Perfect opportunity to master fundamentals.",
+                "Open day. GOOD. Stay ready so you don't have to get ready.",
+                "No projects today. GOOD. Train harder now, work easier later.",
+                "Empty calendar. Own it. Make it productive. No excuses.",
+                "No jobs today. GOOD. Refine processes. Gain the advantage. Get after it.",
+                "Clear day. GOOD. Review, prepare, strengthen. Extreme ownership starts now.",
+                "Down day. There are no down days. Only opportunities for improvement.",
+                "No work scheduled. GOOD. Preparation is where battles are won. Get after it."
+            ]
+        
     }
 }

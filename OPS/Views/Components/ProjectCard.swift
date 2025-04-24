@@ -13,6 +13,7 @@ struct ProjectCard: View {
     let isSelected: Bool
     let showConfirmation: Bool
     let isActiveProject: Bool
+    let onTap: () -> Void
     let onStart: () -> Void
     let onStop: () -> Void
     
@@ -39,48 +40,42 @@ struct ProjectCard: View {
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal)
-        .overlay(
-            ZStack {
-                if showConfirmation {
-                    if isActiveProject {
-                        // Show stop overlay for active project
-                        Button(action: onStop) {
-                            Text("Stop Project?")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .padding()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .background(Color.black.opacity(0.7))
-                                .foregroundColor(Color.red)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                    } else {
-                        // Show start overlay for non-active projects
-                        Button(action: onStart) {
-                            Text("Start Project?")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .padding()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .background(Color.black.opacity(0.7))
-                                .foregroundColor(OPSStyle.Colors.secondaryAccent)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                    }
-                }
-            }
-        )
+        .overlay(confirmationOverlay)
+        .contentShape(Rectangle()) // Make entire card tappable
         .onTapGesture {
-            NotificationCenter.default.post(
-                name: NSNotification.Name("ProjectCardTapped"), 
-                object: nil, 
-                userInfo: ["projectId": project.id]
-            )
+            onTap()
         }
         .onLongPressGesture {
-            NotificationCenter.default.post(
-                name: NSNotification.Name("ProjectCardLongPressed"), 
-                object: nil, 
-                userInfo: ["projectId": project.id]
-            )
+            // Will handle project details later
+        }
+    }
+    
+    @ViewBuilder
+    private var confirmationOverlay: some View {
+        if showConfirmation {
+            if isActiveProject {
+                // Stop overlay
+                Button(action: onStop) {
+                    Text("Stop Project?")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .padding()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black.opacity(0.7))
+                        .foregroundColor(Color.red)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+            } else {
+                // Start overlay
+                Button(action: onStart) {
+                    Text("Start Project?")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .padding()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black.opacity(0.7))
+                        .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+            }
         }
     }
 }

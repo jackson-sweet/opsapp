@@ -1,5 +1,5 @@
 //
-//  JobDTO.swift
+//  ProjectDTO.swift
 //  OPS
 //
 //  Created by Jackson Sweet on 2025-04-21.
@@ -23,10 +23,14 @@ struct ProjectDTO: Codable {
     let startDate: String?
     let status: String
     let teamNotes: String?
-    let teamMembers: [BubbleReference]?
+    let teamMembers: [String]?
+    let thumbnail: String?
     
-    // Bubble-specific nested structures
-    var teams: [BubbleReference]?
+    // Additional fields from the actual API response
+    let projectValue: Double?
+    let projectGrossCost: Double?
+    let balance: Double?
+    let slug: String?
     
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
@@ -42,33 +46,37 @@ struct ProjectDTO: Codable {
         case status = "Status"
         case teamNotes = "Team Notes"
         case teamMembers = "Team Members"
-        case teams = "Teams"
+        case thumbnail = "Thumbnail"
+        case projectValue = "Project Value"
+        case projectGrossCost = "Project Gross Cost"
+        case balance = "Balance"
+        case slug = "Slug"
     }
     
     /// Convert DTO to SwiftData model
     func toModel() -> Project {
         let project = Project(
-            id: id,
-            title: projectName,
-            status: BubbleFields.JobStatus.toSwiftEnum(status)
-        )
-        
-        // Geographic address needs special handling since Bubble uses a compound address type
-        if let bubbleAddress = address {
-            project.address = bubbleAddress.formattedAddress
-            project.latitude = bubbleAddress.lat
-            project.longitude = bubbleAddress.lng
-        }
-        
-        // Client and company references
-        if let clientRef = client {
-            project.clientId = clientRef.uniqueID
-            project.clientName = clientRef.text ?? "Unknown Client"
-        }
-        
-        if let companyRef = company {
-            project.companyId = companyRef.uniqueID
-        }
+                id: id,
+                title: projectName,
+                status: BubbleFields.JobStatus.toSwiftEnum(status)
+            )
+            
+            // Geographic address needs special handling since Bubble uses a compound address type
+            if let bubbleAddress = address {
+                project.address = bubbleAddress.formattedAddress
+                project.latitude = bubbleAddress.lat
+                project.longitude = bubbleAddress.lng
+            }
+            
+            // Client and company references - extract string IDs
+            if let clientRef = client {
+                project.clientId = clientRef.stringValue
+                project.clientName = "Client" // We might need to fetch client details separately
+            }
+            
+            if let companyRef = company {
+                project.companyId = companyRef.stringValue
+            }
         
         // Handle dates with robust parsing
         if let startDateString = startDate {
@@ -85,10 +93,9 @@ struct ProjectDTO: Codable {
         project.lastSyncedAt = Date()
         project.syncPriority = 1
         
-        // Assign team members - now using string storage
-        if let teamMemberRefs = teamMembers {
-            let memberIds = teamMemberRefs.compactMap { $0.uniqueID }
-            project.teamMemberIdsString = memberIds.joined(separator: ",")
+        // Assign team members - using string storage
+        if let teamMemberIds = teamMembers {
+            project.teamMemberIdsString = teamMemberIds.joined(separator: ",")
         }
         
         return project
@@ -102,18 +109,75 @@ struct BubbleAddress: Codable {
     let lng: Double?
     
     enum CodingKeys: String, CodingKey {
-        case formattedAddress = "formatted_address"
+        case formattedAddress = "address"  // Updated to match actual API response
         case lat, lng
     }
 }
 
-/// Bubble's reference to other entities
+/// Bubble's reference type - updated to handle both string and object references
 struct BubbleReference: Codable {
-    let uniqueID: String
-    let text: String?
+    private let value: ReferenceValue
     
-    enum CodingKeys: String, CodingKey {
-        case uniqueID = "unique_id"
-        case text
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        
+        // Try to decode as string first (direct ID reference)
+        if let stringValue = try? container.decode(String.self) {
+            value = .string(stringValue)
+        }
+        // Then try to decode as object reference
+        else if let objectValue = try? container.decode(ObjectReference.self) {
+            value = .object(objectValue)
+        }
+        // Fallback - treat as empty string
+        else {
+            value = .string("")
+        }
+    }
+    
+    struct ObjectReference: Codable {
+        let uniqueID: String
+        let text: String?
+        
+        enum CodingKeys: String, CodingKey {
+            case uniqueID = "unique_id"
+            case text
+        }
+    }
+    
+    enum ReferenceValue {
+        case string(String)
+        case object(ObjectReference)
+    }
+    
+    var stringValue: String {
+        switch value {
+        case .string(let id):
+            return id
+        case .object(let obj):
+            return obj.uniqueID
+        }
+    }
+}
+
+// Add string conversion for BubbleReference
+extension BubbleReference: ExpressibleByStringLiteral {
+    typealias StringLiteralType = String
+    
+    init(stringLiteral value: String) {
+        self.value = .string(value)
+    }
+}
+
+// Add custom Encodable implementation
+extension BubbleReference: Encodable {
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch value {
+        case .string(let stringValue):
+            try container.encode(stringValue)
+        case .object(let objectValue):
+            try container.encode(objectValue)
+        }
     }
 }

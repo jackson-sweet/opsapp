@@ -13,7 +13,18 @@ extension APIService {
     /// Fetch all projects relevant to the field worker
     /// - Returns: Array of project DTOs
     func fetchProjects() async throws -> [ProjectDTO] {
-        return try await executeRequest(
+        // Create a wrapper structure to match Bubble's response format
+        struct ProjectsResponse: Decodable {
+            let response: ResultsWrapper
+            
+            struct ResultsWrapper: Decodable {
+                let cursor: Int
+                let results: [ProjectDTO]
+            }
+        }
+        
+        // Fetch with proper response handling
+        let wrapper: ProjectsResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.project)",
             queryItems: [
                 URLQueryItem(name: "limit", value: "100"),
@@ -21,17 +32,29 @@ extension APIService {
                 URLQueryItem(name: "sort_field", value: BubbleFields.Project.startDate),
                 URLQueryItem(name: "sort_order", value: "asc"),
                 URLQueryItem(name: "constraints", value: constructDateConstraint())
-            ]
+            ],
+            requiresAuth: false
         )
+        
+        // Return just the projects array
+        return wrapper.response.results
     }
     
     /// Fetch a single project by ID
     /// - Parameter id: The project ID
     /// - Returns: Project DTO
     func fetchProject(id: String) async throws -> ProjectDTO {
-        return try await executeRequest(
-            endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(id)"
+        // Create wrapper for single project response
+        struct ProjectResponse: Decodable {
+            let response: ProjectDTO
+        }
+        
+        let wrapper: ProjectResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(id)",
+            requiresAuth: false
         )
+        
+        return wrapper.response
     }
     
     /// Update a project's status
@@ -42,10 +65,16 @@ extension APIService {
         let statusData = [BubbleFields.Project.status: status]
         let bodyData = try JSONSerialization.data(withJSONObject: statusData)
         
-        let _: EmptyResponse = try await executeRequest(
+        // Create wrapper for empty response
+        struct EmptyDataResponse: Decodable {
+            let response: EmptyResponse
+        }
+        
+        let _: EmptyDataResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(id)",
             method: "PATCH",
-            body: bodyData
+            body: bodyData,
+            requiresAuth: false
         )
     }
     
@@ -66,7 +95,18 @@ extension APIService {
             throw APIError.invalidURL
         }
         
-        return try await executeRequest(
+        // Create a wrapper structure to match Bubble's response format
+        struct ProjectsResponse: Decodable {
+            let response: ResultsWrapper
+            
+            struct ResultsWrapper: Decodable {
+                let cursor: Int
+                let results: [ProjectDTO]
+            }
+        }
+        
+        // Fetch with proper response handling
+        let wrapper: ProjectsResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.project)",
             queryItems: [
                 URLQueryItem(name: "limit", value: "100"),
@@ -74,8 +114,12 @@ extension APIService {
                 URLQueryItem(name: "sort_field", value: BubbleFields.Project.startDate),
                 URLQueryItem(name: "sort_order", value: "asc"),
                 URLQueryItem(name: "constraints", value: jsonString)
-            ]
+            ],
+            requiresAuth: false
         )
+        
+        // Return just the projects array
+        return wrapper.response.results
     }
     
     /// Fetch projects by status
@@ -95,7 +139,18 @@ extension APIService {
             throw APIError.invalidURL
         }
         
-        return try await executeRequest(
+        // Create a wrapper structure to match Bubble's response format
+        struct ProjectsResponse: Decodable {
+            let response: ResultsWrapper
+            
+            struct ResultsWrapper: Decodable {
+                let cursor: Int
+                let results: [ProjectDTO]
+            }
+        }
+        
+        // Fetch with proper response handling
+        let wrapper: ProjectsResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.project)",
             queryItems: [
                 URLQueryItem(name: "limit", value: "100"),
@@ -103,8 +158,12 @@ extension APIService {
                 URLQueryItem(name: "sort_field", value: BubbleFields.Project.startDate),
                 URLQueryItem(name: "sort_order", value: "asc"),
                 URLQueryItem(name: "constraints", value: jsonString)
-            ]
+            ],
+            requiresAuth: false
         )
+        
+        // Return just the projects array
+        return wrapper.response.results
     }
     
     /// Construct a date constraint for project queries

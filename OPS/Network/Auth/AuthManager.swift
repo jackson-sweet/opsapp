@@ -58,37 +58,37 @@ class AuthManager {
     func signIn(username: String, password: String) async throws -> String {
         do {
             // Ensure the baseURL doesn't end with a slash
-                    let baseURLString = baseURL.absoluteString.trimmingCharacters(in: ["/"])
-                    
-                    // Construct the correct URL with proper path separator
-                    let fullURLString = baseURLString + "/api/1.1/wf/generate-api-token"
-                    guard let url = URL(string: fullURLString) else {
-                        throw AuthError.invalidURL
-                    }
-                    
-                    print("Attempting login to: \(url.absoluteString)")
-                    
-                    // Create request
-                    var request = URLRequest(url: url)
-                    request.httpMethod = "POST"
-                    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-                    
-                    // Create login payload
-                    let loginPayload: [String: String] = [
-                        "email": username,
-                        "password": password
-                    ]
-                    
-                    print("Login payload: \(loginPayload)")
-                    request.httpBody = try JSONSerialization.data(withJSONObject: loginPayload)
-                    
-                    // Send request
-                    let (data, response) = try await session.data(for: request)
-                    
-                    // Debug response
-                    if let responseString = String(data: data, encoding: .utf8) {
-                        print("Login response: \(responseString)")
-                    }
+            let baseURLString = baseURL.absoluteString.trimmingCharacters(in: ["/"])
+            
+            // Construct the correct URL with proper path separator
+            let fullURLString = baseURLString + "/api/1.1/wf/generate-api-token"
+            guard let url = URL(string: fullURLString) else {
+                throw AuthError.invalidURL
+            }
+            
+            print("Attempting login to: \(url.absoluteString)")
+            
+            // Create request
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            // Create login payload
+            let loginPayload: [String: String] = [
+                "email": username,
+                "password": password
+            ]
+            
+            print("Login payload: \(loginPayload)")
+            request.httpBody = try JSONSerialization.data(withJSONObject: loginPayload)
+            
+            // Send request
+            let (data, response) = try await session.data(for: request)
+            
+            // Debug response
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("Login response: \(responseString)")
+            }
             
             // Check HTTP status
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -97,7 +97,7 @@ class AuthManager {
             
             print("Login HTTP status: \(httpResponse.statusCode)")
             
-            // Handle error status codes
+            // Handle authentication errors
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                 throw AuthError.invalidCredentials
             }
@@ -106,56 +106,42 @@ class AuthManager {
                 throw AuthError.serverError(httpResponse.statusCode)
             }
             
-            // Parse the response - adjust this structure based on your workflow's response
+            // Parse response
             let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            
-            struct LoginResponse: Decodable {
-                let response: UserResponse
-            }
-            
-            struct UserResponse: Decodable {
-                let token: String?
-                let userId: String?
-                let user: UserInfo?
-            }
-            
-            struct UserInfo: Decodable {
-                let id: String
-                // Add other user fields if needed
-            }
+            // Don't use snake case conversion since we're mapping exact field names
             
             do {
-                let loginResponse = try decoder.decode(LoginResponse.self, from: data)
-                
-                // Store the user ID
-                if let userId = loginResponse.response.userId {
-                    self.userId = userId
-                    keychain.storeUserId(userId)
-                } else if let user = loginResponse.response.user {
-                    self.userId = user.id
-                    keychain.storeUserId(user.id)
+                // Create struct that exactly matches the response format
+                struct BubbleAuthResponse: Decodable {
+                    let status: String
+                    let response: ResponseDetails
+                    
+                    struct ResponseDetails: Decodable {
+                        let token: String
+                        let user_id: String
+                        let expires: Int
+                    }
                 }
                 
-                // Store the token if provided
-                if let token = loginResponse.response.token, !token.isEmpty {
-                    self.token = token
-                    
-                    // Set token expiration
-                    let expiration = Date().addingTimeInterval(AppConfiguration.Auth.tokenExpirationSeconds)
-                    self.tokenExpiration = expiration
-                    
-                    // Save to keychain
-                    keychain.storeToken(token)
-                    keychain.storeTokenExpiration(expiration)
-                    
-                    return token
-                } else {
-                    // If no token in response, use the API token as fallback
-                    return AppConfiguration.bubbleAPIToken
-                }
+                let authResponse = try decoder.decode(BubbleAuthResponse.self, from: data)
+                
+                // Store token and user info
+                self.token = authResponse.response.token
+                self.userId = authResponse.response.user_id
+                
+                // Calculate expiration based on expires seconds
+                let expiration = Date().addingTimeInterval(Double(authResponse.response.expires))
+                self.tokenExpiration = expiration
+                
+                // Save credentials to keychain
+                keychain.storeToken(authResponse.response.token)
+                keychain.storeUserId(authResponse.response.user_id)
+                keychain.storeTokenExpiration(expiration)
+                
+                return authResponse.response.token
             } catch {
-                print("Failed to decode login response: \(error)")
+                print("Failed to decode login response: \(error.localizedDescription)")
+                print("Decoding error details: \(error)")
                 if let responseString = String(data: data, encoding: .utf8) {
                     print("Raw response: \(responseString)")
                 }

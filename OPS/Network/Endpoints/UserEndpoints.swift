@@ -30,7 +30,10 @@ extension APIService {
     /// - Parameter id: The user ID
     /// - Returns: User DTO
     func fetchUser(id: String) async throws -> UserDTO {
-        return try await executeRequest(endpoint: "api/1.1/obj/user/\(id)")
+        return try await executeRequest(
+            endpoint: "api/1.1/obj/user/\(id)",
+            requiresAuth: false
+        )
     }
     
     /// Update user data

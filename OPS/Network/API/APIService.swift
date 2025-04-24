@@ -52,16 +52,23 @@ class APIService {
         endpoint: String,
         method: String = "GET",
         body: Data? = nil,
-        queryItems: [URLQueryItem]? = nil
+        queryItems: [URLQueryItem]? = nil,
+        requiresAuth: Bool = false
     ) async throws -> T {
-        // Rate limit requests
-        await respectRateLimit()
+        // Ensure proper URL construction with path separator
+        let baseURLString = baseURL.absoluteString.trimmingCharacters(in: ["/"])
+        var fullURLString = baseURLString + "/" + endpoint
         
-        // Build URL with query parameters if provided
-        var urlComponents = URLComponents(url: baseURL.appendingPathComponent(endpoint), resolvingAgainstBaseURL: true)
-        urlComponents?.queryItems = queryItems
+        // Add query parameters if provided
+        if let queryItems = queryItems, !queryItems.isEmpty {
+            var components = URLComponents(string: fullURLString)
+            components?.queryItems = queryItems
+            if let url = components?.url {
+                fullURLString = url.absoluteString
+            }
+        }
         
-        guard let url = urlComponents?.url else {
+        guard let url = URL(string: fullURLString) else {
             throw APIError.invalidURL
         }
         
@@ -69,17 +76,72 @@ class APIService {
         var request = URLRequest(url: url)
         request.httpMethod = method
         
-        // Instead of trying to get a token, use the API token directly
-        // This is a simpler approach for now and will get us running
-        request.addValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Only add auth token if required (for workflow endpoints)
+            if requiresAuth {
+                let token = try await authManager.getValidToken()
+                request.addValue(token, forHTTPHeaderField: "Authorization")
+            }
         
+        // Add content type for POST/PUT/PATCH requests
+        if method != "GET" {
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        
+        // Add body data for non-GET requests
         if let body = body {
             request.httpBody = body
         }
         
-        // Execute request with automatic retry
-        return try await executeWithRetry(request: request, retries: 2)
+        // Log request for debugging
+        print("API Request: \(method) \(url.absoluteString)")
+        
+        // Execute request with logging
+        do {
+            let (data, response) = try await session.data(for: request)
+            
+            // Log response for debugging
+            if let httpResponse = response as? HTTPURLResponse {
+                print("API Response: Status \(httpResponse.statusCode) for \(url.absoluteString)")
+                
+                // Print response body for debugging (limit size for large responses)
+                if let responseString = String(data: data, encoding: .utf8) {
+                    let truncatedResponse = responseString.count > 1000 ?
+                        responseString.prefix(1000) + "..." : responseString
+                    print("Response body: \(truncatedResponse)")
+                }
+            }
+            
+            // Check for HTTP errors
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            
+            switch httpResponse.statusCode {
+            case 200..<300:
+                // Success, attempt to decode
+                do {
+                    return try decodeResponse(data: data)
+                } catch {
+                    print("Decoding failed: \(error)")
+                    throw APIError.decodingFailed
+                }
+                
+            case 401, 403:
+                throw APIError.unauthorized
+                
+            case 429:
+                throw APIError.rateLimited
+                
+            case 500..<600:
+                throw APIError.serverError
+                
+            default:
+                throw APIError.httpError(statusCode: httpResponse.statusCode)
+            }
+        } catch {
+            print("API request failed: \(error)")
+            throw error
+        }
     }
     
     

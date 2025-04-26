@@ -40,9 +40,18 @@ class CalendarViewModel: ObservableObject {
     }
     
     func selectDate(_ date: Date) {
-        selectedDate = date
-        loadProjectsForDate(date)
-    }
+            let calendar = Calendar.current
+            let oldMonth = calendar.component(.month, from: selectedDate)
+            let newMonth = calendar.component(.month, from: date)
+            
+            // If month changed, clear the cache
+            if oldMonth != newMonth {
+                clearProjectCountCache()
+            }
+            
+            selectedDate = date
+            loadProjectsForDate(date)
+        }
     
     func toggleViewMode() {
         viewMode = viewMode == .week ? .month : .week
@@ -57,20 +66,43 @@ class CalendarViewModel: ObservableObject {
         }
     }
     
+    private var projectCountCache: [String: Int] = [:]
+    
     func projectCount(for date: Date) -> Int {
             // If it's the currently selected date, we already have the data
             if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
                 return projectsForSelectedDate.count
             }
             
+            // Check the cache first
+            let dateKey = formatDateKey(date)
+            if let cachedCount = projectCountCache[dateKey] {
+                return cachedCount
+            }
+            
             // For other dates, get the count from DataController
-            // We could add caching here if performance becomes an issue
             if let dataController = dataController {
-                return dataController.getProjects(for: date).count
+                let count = dataController.getProjects(for: date).count
+                
+                // Cache the result
+                projectCountCache[dateKey] = count
+                return count
             }
             
             return 0
         }
+        
+        private func formatDateKey(_ date: Date) -> String {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            return formatter.string(from: date)
+        }
+        
+        func clearProjectCountCache() {
+            projectCountCache = [:]
+        }
+    
+    
     
     // MARK: - Private Methods
     func loadProjectsForDate(_ date: Date) {
@@ -95,7 +127,7 @@ class CalendarViewModel: ObservableObject {
         let today = calendar.startOfDay(for: Date())
         
         // Get the start of the week containing today
-        var weekStart = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
+        let weekStart = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
         let startOfWeek = calendar.date(from: weekStart)!
         
         // Generate an array of the 7 days of the week
@@ -105,18 +137,57 @@ class CalendarViewModel: ObservableObject {
     }
     
     private func getMonthDays() -> [Date] {
-        let calendar = Calendar.current
-        
-        // Get the start date of the month containing the selected date
-        let selectedMonth = calendar.dateComponents([.year, .month], from: selectedDate)
-        guard let startOfMonth = calendar.date(from: selectedMonth) else { return [] }
-        
-        // Get the range of days in the month
-        guard let range = calendar.range(of: .day, in: .month, for: selectedDate) else { return [] }
-        
-        // Create a date for each day in the month
-        return range.compactMap { day in
-            calendar.date(bySetting: .day, value: day, of: startOfMonth)
+            let calendar = Calendar.current
+            let selectedMonth = calendar.dateComponents([.year, .month], from: selectedDate)
+            guard let startOfMonth = calendar.date(from: selectedMonth) else { return [] }
+            
+            // Get first day of the month
+            let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: startOfMonth))!
+            
+            // Get the weekday of the first day (1 = Sunday, 2 = Monday, etc.)
+            let firstWeekday = calendar.component(.weekday, from: firstDay)
+            
+            // Calculate offset to start grid with appropriate weekday
+            // Adjust by subtracting 1 to align with 0-based indexing
+            let weekdayOffset = firstWeekday - 1
+            
+            // Get number of days in the month
+            let daysInMonth = calendar.range(of: .day, in: .month, for: startOfMonth)?.count ?? 30
+            
+            // Generate dates for a full 42-day grid (6 weeks)
+            // Start with days from previous month to fill first week
+            var dayComponents = DateComponents()
+            var allDates: [Date] = []
+            
+            // Add days from previous month if needed
+            for i in -weekdayOffset..<0 {
+                dayComponents.day = i
+                if let date = calendar.date(byAdding: dayComponents, to: firstDay) {
+                    allDates.append(date)
+                }
+            }
+            
+            // Add all days in current month
+            for i in 0..<daysInMonth {
+                dayComponents.day = i
+                if let date = calendar.date(byAdding: dayComponents, to: firstDay) {
+                    allDates.append(date)
+                }
+            }
+            
+            // Fill remaining grid with days from next month
+            let remainingDays = 42 - allDates.count
+            for i in 0..<remainingDays {
+                dayComponents.day = daysInMonth + i
+                if let date = calendar.date(byAdding: dayComponents, to: firstDay) {
+                    allDates.append(date)
+                }
+            }
+            
+            return allDates
         }
+    
+    
+    
     }
-}
+

@@ -13,6 +13,16 @@ struct CalendarDaySelector: View {
     @ObservedObject var viewModel: CalendarViewModel
     
     var body: some View {
+        Group {
+            if viewModel.viewMode == .week {
+                weekView
+            } else {
+                MonthGridView(viewModel: viewModel)
+            }
+        }
+    }
+    
+    private var weekView: some View {
         ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
@@ -35,16 +45,20 @@ struct CalendarDaySelector: View {
             }
             .background(Color.black.opacity(0.3))
             .onChange(of: viewModel.selectedDate) { _, newDate in
-                // Scroll to selected date
-                withAnimation {
-                    scrollProxy.scrollTo(newDate.timeIntervalSince1970)
+                // Only scroll in week view
+                if viewModel.viewMode == .week {
+                    withAnimation {
+                        scrollProxy.scrollTo(newDate.timeIntervalSince1970)
+                    }
                 }
             }
             .onAppear {
                 // Initially scroll to today
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    withAnimation {
-                        scrollProxy.scrollTo(viewModel.selectedDate.timeIntervalSince1970)
+                if viewModel.viewMode == .week {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        withAnimation {
+                            scrollProxy.scrollTo(viewModel.selectedDate.timeIntervalSince1970)
+                        }
                     }
                 }
             }

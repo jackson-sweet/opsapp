@@ -21,13 +21,24 @@ struct ProjectActionBar: View {
                         .font(.system(size: 24))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 56, height: 56)
-                        .background(Circle().fill(OPSStyle.Colors.secondaryAccent))
+                        .background(
+                            Circle()
+                                .fill(OPSStyle.Colors.secondaryAccent)
+                        )
                 }
             }
         }
         .padding(.vertical, OPSStyle.Layout.spacing4)
         .padding(.horizontal)
-        .background(OPSStyle.Colors.background.opacity(0.7))
+        .background(
+            // Semi-transparent background with blur
+            ZStack {
+                Color.black.opacity(0.7)
+                Rectangle()
+                    .fill(Color.clear)
+                    .background(Material.ultraThinMaterial)
+            }
+        )
     }
     
     private func handleAction(_ action: ProjectAction) {

@@ -28,19 +28,25 @@ struct HomeView: View {
     var body: some View {
         ZStack {
             // Map layer
-            ProjectMapView(
-                region: $mapRegion,
-                projects: todaysProjects,
-                selectedIndex: $selectedProjectIndex,
-                onTapMarker: { index in
-                    withAnimation {
-                        selectedProjectIndex = index
-                        showStartConfirmation = false
-                    }
-                },
-                routeOverlay: inProgressManager.getRouteOverlay(),
-                isInProjectMode: appState.isInProjectMode
-            )
+            ZStack {
+                ProjectMapView(
+                    region: $mapRegion,
+                    projects: todaysProjects,
+                    selectedIndex: $selectedProjectIndex,
+                    onTapMarker: { index in
+                        withAnimation {
+                            selectedProjectIndex = index
+                            showStartConfirmation = false
+                        }
+                    },
+                    routeOverlay: inProgressManager.getRouteOverlay(),
+                    isInProjectMode: appState.isInProjectMode
+                )
+                
+                // Semi-transparent dark overlay to match design
+                Color.black.opacity(0.2)
+                    .edgesIgnoringSafeArea(.all)
+            }
             .edgesIgnoringSafeArea(.all)
             
             // UI overlay layers
@@ -64,18 +70,24 @@ struct HomeView: View {
                         onStop: stopProject
                     )
                 } else if !isLoading {
-                    // Show a random quote instead of a static message
-                    let randomQuote = AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects scheduled for today"
-                    
+                    // No projects message
                     VStack {
-                        Text(randomQuote)
+                        Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects scheduled for today")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .multilineTextAlignment(.center)
                     }
                     .padding()
                     .frame(height: 120)
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.7))
+                    .background(
+                        ZStack {
+                            Color(.green)
+                                .opacity(0.5)
+                            Rectangle()
+                                .fill(Color.clear)
+                                .background(Material.ultraThinMaterial)
+                        }
+                    )
                 }
                 
                 Spacer()
@@ -90,7 +102,7 @@ struct HomeView: View {
                     .padding()
                 }
                 
-                // Action buttons
+                // Action buttons for active project
                 if appState.isInProjectMode,
                    let activeProject = getActiveProject() {
                     ProjectActionBar(project: activeProject)
@@ -119,11 +131,18 @@ struct HomeView: View {
                         .padding(.top)
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackground.opacity(0.9))
+                .background(
+                    ZStack {
+                        Color(.blue)
+                        Rectangle()
+                            .fill(Color.clear)
+                            .background(Material.ultraThinMaterial)
+                    }
+                )
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
-            
         }
+        .preferredColorScheme(.dark) // Enforce dark mode for the entire view
         .onAppear {
             loadTodaysProjects()
         }
@@ -177,12 +196,13 @@ struct HomeView: View {
         
         Task {
             do {
-                let allProjects = try dataController.getProjectsForMap()
+                // Get projects assigned specifically to this user
+                let userProjects = try dataController.getProjectsForCurrentUser()
                 let today = Calendar.current.startOfDay(for: Date())
                 
                 await MainActor.run {
-                    // Filter for today's projects
-                    self.todaysProjects = allProjects.filter { project in
+                    // Still filter by today
+                    self.todaysProjects = userProjects.filter { project in
                         guard let startDate = project.startDate else { return false }
                         return Calendar.current.isDate(startDate, inSameDayAs: today)
                     }

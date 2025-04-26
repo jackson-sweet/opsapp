@@ -27,6 +27,9 @@ struct ProjectMapView: UIViewRepresentable {
         // Apply dark styling
         mapView.overrideUserInterfaceStyle = .dark
         
+        // Adjust map appearance for darker look
+        customizeMapAppearance(mapView)
+        
         return mapView
     }
     
@@ -39,6 +42,17 @@ struct ProjectMapView: UIViewRepresentable {
         
         // Update route overlay
         updateRouteOverlay(for: mapView)
+    }
+    
+    private func customizeMapAppearance(_ mapView: MKMapView) {
+        // Set map type to muted satellite for darker appearance
+        mapView.mapType = .mutedStandard
+        
+        // Reduce map details for cleaner look
+        mapView.showsTraffic = false
+        mapView.showsBuildings = false
+        mapView.showsCompass = false
+        mapView.showsScale = false
     }
     
     private func updateAnnotations(for mapView: MKMapView) {
@@ -100,14 +114,11 @@ struct ProjectMapView: UIViewRepresentable {
                     annotationView?.canShowCallout = false
                 }
                 
-                // Apply styling
-                if projectAnnotation.isActiveProject {
-                    // Active project gets the accent color (orange)
-                    annotationView?.markerTintColor = UIColor(OPSStyle.Colors.secondaryAccent)
-                } else {
-                    // Regular projects get red
-                    annotationView?.markerTintColor = .red
-                }
+                // Set custom marker image
+                annotationView?.glyphImage = nil // Remove system glyph
+                
+                // Match the design's red pin exactly
+                annotationView?.markerTintColor = UIColor(Color("AccentPrimary"))
                 
                 // Enlarge the selected marker
                 let scale: CGFloat = projectAnnotation.isSelected ? 1.3 : 1.0

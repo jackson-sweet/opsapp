@@ -6,6 +6,7 @@
 //
 
 
+
 import SwiftUI
 
 struct ProjectHeader: View {
@@ -14,17 +15,20 @@ struct ProjectHeader: View {
     
     var body: some View {
         HStack {
-            VStack(alignment: .leading) {
+            VStack(alignment: .leading, spacing: 4) {
+                // Status with correct styling
                 Text(project?.status.rawValue.uppercased() ?? "IN PROGRESS")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryAccent)
                 
                 if let project = project {
+                    // Project and client name
                     Text("\(project.clientName), \(project.title)")
                         .font(OPSStyle.Typography.subtitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
                     
+                    // Address
                     Text(project.address)
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -34,6 +38,7 @@ struct ProjectHeader: View {
             
             Spacer()
             
+            // Close button
             Button(action: {
                 appState.exitProjectMode()
             }) {
@@ -43,6 +48,14 @@ struct ProjectHeader: View {
             }
         }
         .padding()
-        .background(OPSStyle.Colors.background.opacity(0.7))
+        .background(
+            // Semi-transparent background with blur
+            ZStack {
+                Color.black.opacity(0.7)
+                Rectangle()
+                    .fill(Color.clear)
+                    .background(Material.ultraThinMaterial)
+            }
+        )
     }
 }

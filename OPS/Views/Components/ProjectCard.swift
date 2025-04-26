@@ -5,7 +5,6 @@
 //  Created by Jackson Sweet on 2025-04-23.
 //
 
-
 import SwiftUI
 
 struct ProjectCard: View {
@@ -19,17 +18,21 @@ struct ProjectCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            // Project title
             Text(project.title)
                 .font(OPSStyle.Typography.subtitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
             
             HStack {
+                // Client name
                 Text(project.clientName)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
                 Spacer()
                 
+                // Address - truncate with ellipsis if needed
                 Text(project.address)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -37,16 +40,24 @@ struct ProjectCard: View {
             }
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackground)
+        .background(
+            // Custom background with blur effect
+            ZStack {
+                Color("CardBackground")
+                    .opacity(0.5)
+                
+                // Apply blur effect
+                Rectangle()
+                    .fill(Color.clear)
+                    .background(Material.ultraThinMaterial) // System material for blur
+            }
+        )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal)
         .overlay(confirmationOverlay)
         .contentShape(Rectangle()) // Make entire card tappable
         .onTapGesture {
             onTap()
-        }
-        .onLongPressGesture {
-            // Will handle project details later
         }
     }
     

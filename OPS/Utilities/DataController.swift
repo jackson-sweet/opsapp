@@ -288,6 +288,33 @@ class DataController: ObservableObject {
            }
        }
     
+    func getProjectsForCurrentUser() throws -> [Project] {
+        guard let context = modelContext else {
+            throw NSError(domain: "DataController", code: 2,
+                         userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+        
+        guard let currentUser = self.currentUser else {
+            // No user logged in, return empty array
+            return []
+        }
+        
+        // Option 1: Direct access through relationship (preferred)
+        // This uses the bidirectional relationship we've established
+        return Array(currentUser.assignedProjects)
+        
+        /*
+        // Option 2: If for some reason we need to query differently
+        let descriptor = FetchDescriptor<Project>()
+        let allProjects = try context.fetch(descriptor)
+        
+        // Filter to projects where teamMembers contains the current user
+        return allProjects.filter { project in
+            return project.teamMembers.contains { $0.id == currentUser.id }
+        }
+        */
+    }
+    
     func getProjectsForMap() throws -> [Project] {
         guard let context = modelContext else {
             throw NSError(domain: "DataController", code: 2,

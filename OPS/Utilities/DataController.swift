@@ -105,31 +105,27 @@ class DataController: ObservableObject {
     }
     
     // Method to perform sync on app launch
-        func performAppLaunchSync() {
+    func performAppLaunchSync() {
+        
+        let syncOnLaunch = UserDefaults.standard.bool(forKey: "syncOnLaunch")
             
-            let syncOnLaunch = UserDefaults.standard.bool(forKey: "syncOnLaunch")
-                
-                guard syncOnLaunch,
-                      isAuthenticated,
-                      isConnected else { return }
-            
-            guard AppConfiguration.Sync.syncOnLaunch,
-                  isAuthenticated,
-                  isConnected else { return }
-            
-            // Check if we've synced too recently
-            if let lastSync = lastSyncTime,
-               Date().timeIntervalSince(lastSync) < AppConfiguration.Sync.minimumSyncInterval {
-                return
-            }
-            
-            // Trigger sync
-            Task {
-                print("PERFORMING SYNC ON APP LAUNCH")
-                await syncManager?.triggerBackgroundSync()
-                lastSyncTime = Date()
-            }
+        guard syncOnLaunch,
+              isAuthenticated,
+              isConnected else { return }
+        
+        // Check if we've synced too recently
+        if let lastSync = lastSyncTime,
+           Date().timeIntervalSince(lastSync) < AppConfiguration.Sync.minimumSyncInterval {
+            return
         }
+        
+        // Trigger sync
+        Task {
+            print("PERFORMING SYNC ON APP LAUNCH")
+            await syncManager?.triggerBackgroundSync()
+            lastSyncTime = Date()
+        }
+    }
         
         // Method to check if we're due for a sync
         func shouldSync() -> Bool {
@@ -346,10 +342,16 @@ class DataController: ObservableObject {
             if let user = user {
                 filteredProjects = filteredProjects.filter { project in
                     // Check both relationship and ID string for belt-and-suspenders reliability
-                    return project.teamMembers.contains(where: { $0.id == user.id }) ||
-                           project.getTeamMemberIds().contains(user.id)
+                    print("Team Member ID String")
+                    print(project.teamMemberIdsString)
+                    
+                    print("Get TeamMember IDS")
+                    print(project.getTeamMemberIds())
+                    
+                    return project.teamMembers.contains(where: { $0.id == user.id }) || project.getTeamMemberIds().contains(user.id)
                 }
-                print("DEBUG: \(filteredProjects.count) projects assigned to user")
+                print("DEBUG: Filtering projects for USER ID: \(user.id)")
+                print("DEBUG: \(filteredProjects.count) projects match userID filter")
             }
             
             // Log what we're actually returning

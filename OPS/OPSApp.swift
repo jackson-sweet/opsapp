@@ -46,6 +46,7 @@ struct OPSApp: App {
                     
                     // Sync to Bubble on app launch
                     dataController.performAppLaunchSync()
+                    print("Synced")
                 }
         }
         .modelContainer(sharedModelContainer)

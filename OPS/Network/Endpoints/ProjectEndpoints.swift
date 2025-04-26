@@ -13,7 +13,32 @@ extension APIService {
     /// Fetch all projects relevant to the field worker
     /// - Returns: Array of project DTOs
     func fetchProjects() async throws -> [ProjectDTO] {
-        // Create a wrapper structure to match Bubble's response format
+        
+        print("Running Fetch Projects in Project Endpoints")
+        
+        // Create smart constraints for the API call
+        var constraints: [String: Any] = [:]
+        
+        // 1. Company constraint - essential for focusing on relevant data
+        if let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") {
+            let companyConstraint: [String: Any] = [
+                "key": BubbleFields.Project.company,
+                "constraint_type": "equals",
+                "value": companyId
+            ]
+            constraints["company"] = companyConstraint
+        }
+        
+        // 2. Date constraint - only get projects in a reasonable time window
+        // We'll get projects from X days ago through Y days in future
+        let dateConstraints = constructSmartDateConstraint()
+        constraints["date"] = dateConstraints
+        
+        // Convert constraints to JSON
+        let constraintsJson = try JSONSerialization.data(withJSONObject: constraints)
+        let constraintsString = String(data: constraintsJson, encoding: .utf8) ?? ""
+        
+        // Execute the targeted query
         struct ProjectsResponse: Decodable {
             let response: ResultsWrapper
             
@@ -23,7 +48,6 @@ extension APIService {
             }
         }
         
-        // Fetch with proper response handling
         let wrapper: ProjectsResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.project)",
             queryItems: [
@@ -31,13 +55,56 @@ extension APIService {
                 URLQueryItem(name: "cursor", value: "0"),
                 URLQueryItem(name: "sort_field", value: BubbleFields.Project.startDate),
                 URLQueryItem(name: "sort_order", value: "asc"),
-                URLQueryItem(name: "constraints", value: constructDateConstraint())
+                URLQueryItem(name: "constraints", value: constraintsString)
             ],
             requiresAuth: false
         )
         
-        // Return just the projects array
         return wrapper.response.results
+    }
+
+    // Create a smarter date constraint
+    private func constructSmartDateConstraint() -> [String: Any] {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Get past date based on configuration
+        let pastDate = calendar.date(
+            byAdding: .day,
+            value: -AppConfiguration.Sync.jobHistoryDays,
+            to: now
+        )!
+        
+        // Get future date based on configuration
+        let futureDate = calendar.date(
+            byAdding: .day,
+            value: AppConfiguration.Sync.jobFutureDays,
+            to: now
+        )!
+        
+        let dateFormatter = ISO8601DateFormatter()
+        
+        // Build date range constraint
+        return [
+            "or": [
+                [
+                    "key": BubbleFields.Project.startDate,
+                    "constraint_type": "greater than",
+                    "value": dateFormatter.string(from: pastDate)
+                ],
+                [
+                    "key": BubbleFields.Project.startDate,
+                    "constraint_type": "less than",
+                    "value": dateFormatter.string(from: futureDate)
+                ],
+                // Always include active projects regardless of date
+                [
+                    "key": BubbleFields.Project.status,
+                    "constraint_type": "equals",
+                    "value": BubbleFields.JobStatus.inProgress
+                ]
+            ]
+        ]
     }
     
     /// Fetch a single project by ID

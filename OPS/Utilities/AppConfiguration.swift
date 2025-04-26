@@ -25,6 +25,7 @@ struct AppConfiguration {
 
     /// Bubble Workflow API endpoint path
     static let bubbleWorkflowAPIPath = "/api/1.1/wf"
+
     
     /// Authentication Configuration
     struct Auth {
@@ -49,8 +50,11 @@ struct AppConfiguration {
         /// Maximum number of items to sync in one batch
         static let maxBatchSize = 50
         
-        /// How far back to fetch historical jobs (in days)
+        /// How far back to fetch jobs (in days)
         static let jobHistoryDays = 30
+            
+        /// How far forward to fetch jobs (in days)
+        static let jobFutureDays = 60
         
         /// Minimum time between syncs (prevents excessive network usage)
         static let minimumSyncInterval: TimeInterval = 5 * 60 // 5 minutes

@@ -10,6 +10,10 @@ import SwiftUI
 import MapKit
 
 struct HomeView: View {
+    
+    @State private var showProjectDetails = false
+    @State private var selectedProject: Project?
+    
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @StateObject private var inProgressManager = InProgressManager()
@@ -60,16 +64,20 @@ struct HomeView: View {
                 
                 // Project cards
                 if !todaysProjects.isEmpty {
-                    ProjectCarousel(
-                        projects: todaysProjects,
-                        selectedIndex: $selectedProjectIndex,
-                        showStartConfirmation: $showStartConfirmation,
-                        isInProjectMode: appState.isInProjectMode,
-                        activeProjectID: appState.activeProjectID,
-                        onStart: startProject,
-                        onStop: stopProject
-                    )
-                } else if !isLoading {
+                               ProjectCarousel(
+                                   projects: todaysProjects,
+                                   selectedIndex: $selectedProjectIndex,
+                                   showStartConfirmation: $showStartConfirmation,
+                                   isInProjectMode: appState.isInProjectMode,
+                                   activeProjectID: appState.activeProjectID,
+                                   onStart: startProject,
+                                   onStop: stopProject,
+                                   onLongPress: { project in
+                                       selectedProject = project
+                                       showProjectDetails = true
+                                   }
+                               )
+                           } else if !isLoading {
                     // No projects message
                     VStack {
                         Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects scheduled for today")
@@ -142,6 +150,13 @@ struct HomeView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }
+        .sheet(isPresented: $showProjectDetails, content: {
+            if let project = selectedProject {
+                NavigationView {
+                    ProjectDetailsView(project: project)
+                }
+            }
+        })
         .preferredColorScheme(.dark) // Enforce dark mode for the entire view
         .onAppear {
             loadTodaysProjects()
@@ -195,46 +210,44 @@ struct HomeView: View {
         isLoading = true
         
         Task {
-            do {
-                // Get projects assigned specifically to this user
-                let userProjects = try dataController.getProjectsForCurrentUser()
-                let today = Calendar.current.startOfDay(for: Date())
+            let today = Calendar.current.startOfDay(for: Date())
+            
+            // Get projects for today that are assigned to the current user
+            let userProjects = dataController.getProjects(
+                for: today,
+                assignedTo: dataController.currentUser
+            )
+            
+            await MainActor.run {
+                self.todaysProjects = userProjects
                 
-                await MainActor.run {
-                    // Still filter by today
-                    self.todaysProjects = userProjects.filter { project in
-                        guard let startDate = project.startDate else { return false }
-                        return Calendar.current.isDate(startDate, inSameDayAs: today)
-                    }
-                    
-                    if let activeProjectID = appState.activeProjectID,
-                       let index = todaysProjects.firstIndex(where: { $0.id == activeProjectID }) {
-                        self.selectedProjectIndex = index
-                        updateMapRegion(for: todaysProjects[index])
-                        
-                        // Resume routing if in project mode
-                        if let coordinate = todaysProjects[index].coordinate,
-                           locationManager.authorizationStatus == .authorizedWhenInUse ||
-                           locationManager.authorizationStatus == .authorizedAlways {
-                            
-                            if let userLocation = locationManager.userLocation {
-                                inProgressManager.startRouting(to: coordinate, from: userLocation)
-                            } else {
-                                inProgressManager.startRouting(to: coordinate)
-                            }
-                        }
-                    } else if !todaysProjects.isEmpty {
-                        updateMapRegion(for: todaysProjects)
-                    }
-                    
-                    self.isLoading = false
+                // Setup map and active project if needed
+                if let activeProjectID = appState.activeProjectID,
+                   let index = todaysProjects.firstIndex(where: { $0.id == activeProjectID }) {
+                    self.selectedProjectIndex = index
+                    updateMapRegion(for: todaysProjects[index])
+                    setupRouting(for: todaysProjects[index])
+                } else if !todaysProjects.isEmpty {
+                    updateMapRegion(for: todaysProjects)
                 }
-            } catch {
-                print("Error loading projects: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.isLoading = false
-                }
+                
+                self.isLoading = false
             }
+        }
+    }
+
+    // Helper method to clean up routing setup
+    private func setupRouting(for project: Project) {
+        guard let coordinate = project.coordinate,
+              locationManager.authorizationStatus == .authorizedWhenInUse ||
+              locationManager.authorizationStatus == .authorizedAlways else {
+            return
+        }
+        
+        if let userLocation = locationManager.userLocation {
+            inProgressManager.startRouting(to: coordinate, from: userLocation)
+        } else {
+            inProgressManager.startRouting(to: coordinate)
         }
     }
     

@@ -15,6 +15,7 @@ struct ProjectCard: View {
     let onTap: () -> Void
     let onStart: () -> Void
     let onStop: () -> Void
+    let onLongPress: () -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
@@ -32,7 +33,7 @@ struct ProjectCard: View {
                 
                 Spacer()
                 
-                // Address - truncate with ellipsis if needed
+                // Address
                 Text(project.address)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -49,7 +50,7 @@ struct ProjectCard: View {
                 // Apply blur effect
                 Rectangle()
                     .fill(Color.clear)
-                    .background(Material.ultraThinMaterial) // System material for blur
+                    .background(Material.ultraThinMaterial)
             }
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -59,6 +60,10 @@ struct ProjectCard: View {
         .onTapGesture {
             onTap()
         }
+        .onLongPressGesture {
+            onLongPress()
+        }
+    
     }
     
     @ViewBuilder

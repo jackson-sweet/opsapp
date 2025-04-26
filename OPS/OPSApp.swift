@@ -43,6 +43,9 @@ struct OPSApp: App {
                     // Set the model context in the data controller
                     let context = sharedModelContainer.mainContext
                     dataController.setModelContext(context)
+                    
+                    // Sync to Bubble on app launch
+                    dataController.performAppLaunchSync()
                 }
         }
         .modelContainer(sharedModelContainer)

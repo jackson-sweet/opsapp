@@ -104,6 +104,44 @@ class DataController: ObservableObject {
             .store(in: &cancellables)
     }
     
+    // Method to perform sync on app launch
+        func performAppLaunchSync() {
+            
+            let syncOnLaunch = UserDefaults.standard.bool(forKey: "syncOnLaunch")
+                
+                guard syncOnLaunch,
+                      isAuthenticated,
+                      isConnected else { return }
+            
+            guard AppConfiguration.Sync.syncOnLaunch,
+                  isAuthenticated,
+                  isConnected else { return }
+            
+            // Check if we've synced too recently
+            if let lastSync = lastSyncTime,
+               Date().timeIntervalSince(lastSync) < AppConfiguration.Sync.minimumSyncInterval {
+                return
+            }
+            
+            // Trigger sync
+            Task {
+                print("PERFORMING SYNC ON APP LAUNCH")
+                await syncManager?.triggerBackgroundSync()
+                lastSyncTime = Date()
+            }
+        }
+        
+        // Method to check if we're due for a sync
+        func shouldSync() -> Bool {
+            guard isAuthenticated, isConnected else { return false }
+            
+            if let lastSync = lastSyncTime {
+                return Date().timeIntervalSince(lastSync) >= AppConfiguration.Sync.minimumSyncInterval
+            }
+            
+            return true // Never synced before
+        }
+    
     // MARK: - Authentication
     @MainActor
     private func checkExistingAuth() async {
@@ -264,55 +302,66 @@ class DataController: ObservableObject {
     
     // MARK: - Project Fetching
     
-    //Used by Calendar
-    func getProjects(for date: Date) -> [Project] {
-           guard let modelContext = modelContext else { return [] }
-           
-           do {
-               let calendar = Calendar.current
-               let startOfDay = calendar.startOfDay(for: date)
-               
-               // Fetch all projects - since datasets are small, this simple approach
-               // is more reliable than complex predicates in field conditions
-               let descriptor = FetchDescriptor<Project>(sortBy: [SortDescriptor(\.startDate)])
-               let allProjects = try modelContext.fetch(descriptor)
-               
-               // Filter for projects on the specified date
-               return allProjects.filter { project in
-                   guard let projectDate = project.startDate else { return false }
-                   return calendar.isDate(projectDate, inSameDayAs: date)
-               }
-           } catch {
-               print("Failed to fetch projects: \(error.localizedDescription)")
-               return []
-           }
-       }
-    
-    func getProjectsForCurrentUser() throws -> [Project] {
-        guard let context = modelContext else {
-            throw NSError(domain: "DataController", code: 2,
-                         userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
-        }
+    /// Gets projects with flexible filtering options
+    /// - Parameters:
+    ///   - date: Optional date to filter projects scheduled for that day
+    ///   - user: Optional user to filter projects assigned to them
+    /// - Returns: Filtered array of projects
+    func getProjects(for date: Date? = nil, assignedTo user: User? = nil) -> [Project] {
+        guard let modelContext = modelContext else { return [] }
         
-        guard let currentUser = self.currentUser else {
-            // No user logged in, return empty array
+        do {
+            // Get user's company ID - essential for filtering
+            let companyId = user?.companyId ??
+                            currentUser?.companyId ??
+                            UserDefaults.standard.string(forKey: "currentUserCompanyId")
+            
+            print("DEBUG: Filtering projects for company ID: \(companyId ?? "Unknown")")
+            
+            // Get all projects
+            let descriptor = FetchDescriptor<Project>(sortBy: [SortDescriptor(\.startDate)])
+            let allProjects = try modelContext.fetch(descriptor)
+            
+            print("DEBUG: Found \(allProjects.count) total projects in database")
+            
+            // First filter by company - this is most important
+            var filteredProjects = allProjects.filter { project in
+                return project.companyId == companyId
+            }
+            
+            print("DEBUG: \(filteredProjects.count) projects match company ID")
+            
+            // Then filter by date if needed
+            if let date = date {
+                filteredProjects = filteredProjects.filter { project in
+                    guard let projectDate = project.startDate else {
+                        return false
+                    }
+                    return Calendar.current.isDate(projectDate, inSameDayAs: date)
+                }
+                print("DEBUG: \(filteredProjects.count) projects match date filter")
+            }
+            
+            // Finally filter by user assignment if needed
+            if let user = user {
+                filteredProjects = filteredProjects.filter { project in
+                    // Check both relationship and ID string for belt-and-suspenders reliability
+                    return project.teamMembers.contains(where: { $0.id == user.id }) ||
+                           project.getTeamMemberIds().contains(user.id)
+                }
+                print("DEBUG: \(filteredProjects.count) projects assigned to user")
+            }
+            
+            // Log what we're actually returning
+            for project in filteredProjects {
+                print("DEBUG: Returning project: \(project.title), company: \(project.companyId), date: \(project.startDate?.description ?? "nil")")
+            }
+            
+            return filteredProjects
+        } catch {
+            print("Failed to fetch projects: \(error.localizedDescription)")
             return []
         }
-        
-        // Option 1: Direct access through relationship (preferred)
-        // This uses the bidirectional relationship we've established
-        return Array(currentUser.assignedProjects)
-        
-        /*
-        // Option 2: If for some reason we need to query differently
-        let descriptor = FetchDescriptor<Project>()
-        let allProjects = try context.fetch(descriptor)
-        
-        // Filter to projects where teamMembers contains the current user
-        return allProjects.filter { project in
-            return project.teamMembers.contains { $0.id == currentUser.id }
-        }
-        */
     }
     
     func getProjectsForMap() throws -> [Project] {

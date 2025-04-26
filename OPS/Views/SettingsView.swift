@@ -12,6 +12,9 @@ struct SettingsView: View {
     @EnvironmentObject private var dataController: DataController
     @State private var showLogoutConfirmation = false
     
+    @AppStorage("syncOnLaunch") private var syncOnLaunch = true
+       @AppStorage("backgroundSyncEnabled") private var backgroundSyncEnabled = true
+    
     var body: some View {
         ZStack {
             OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
@@ -34,6 +37,17 @@ struct SettingsView: View {
                 settingsContent
                 
                 Spacer()
+                
+                Text("DATA SYNC")
+                                   .font(OPSStyle.Typography.captionBold)
+                                   .foregroundColor(OPSStyle.Colors.secondaryText)
+                                   .padding(.top)
+                               
+                               Toggle("Sync on app launch", isOn: $syncOnLaunch)
+                                   .tint(OPSStyle.Colors.secondaryAccent)
+                               
+                               Toggle("Background sync", isOn: $backgroundSyncEnabled)
+                                   .tint(OPSStyle.Colors.secondaryAccent)
                 
                 // Footer with logout and version
                 VStack(spacing: OPSStyle.Layout.spacing3) {

@@ -40,6 +40,9 @@ struct AppConfiguration {
     // MARK: - Sync Configuration
     
     struct Sync {
+        /// Whether to sync automatically on app launch
+        static let syncOnLaunch = true
+        
         /// How often to sync when app is in foreground (in seconds)
         static let backgroundSyncInterval: TimeInterval = 15 * 60 // 15 minutes
         
@@ -48,6 +51,9 @@ struct AppConfiguration {
         
         /// How far back to fetch historical jobs (in days)
         static let jobHistoryDays = 30
+        
+        /// Minimum time between syncs (prevents excessive network usage)
+        static let minimumSyncInterval: TimeInterval = 5 * 60 // 5 minutes
     }
     
     // MARK: - Map Configuration

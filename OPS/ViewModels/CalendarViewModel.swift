@@ -106,21 +106,23 @@ class CalendarViewModel: ObservableObject {
     
     // MARK: - Private Methods
     func loadProjectsForDate(_ date: Date) {
-            guard let dataController = dataController else { return }
-            
-            isLoading = true
-            
-            Task {
-                // Get projects using the centralized method in DataController
-                // This ensures we get the same data across the entire app
-                let projects = dataController.getProjects(for: date)
-                
-                await MainActor.run {
-                    self.projectsForSelectedDate = projects
-                    self.isLoading = false
-                }
-            }
-        }
+        guard let dataController = dataController else { return }
+        
+        isLoading = true
+        
+        // Get projects for the selected date that are assigned to the current user
+        let projects = dataController.getProjects(
+            for: date,
+            assignedTo: dataController.currentUser
+        )
+        
+        self.projectsForSelectedDate = projects
+        self.isLoading = false
+        
+        // Update the cache for this date
+        let dateKey = formatDateKey(date)
+        projectCountCache[dateKey] = projects.count
+    }
     
     private func getWeekDays() -> [Date] {
         let calendar = Calendar.current

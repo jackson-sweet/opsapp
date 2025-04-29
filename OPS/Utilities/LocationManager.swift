@@ -30,7 +30,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // Only request if we're in the not determined state
         if authorizationStatus == .notDetermined {
             print("Requesting location permission")
-            locationManager.requestWhenInUseAuthorization()
+            locationManager.requestAlwaysAuthorization()
         } else {
             // If already determined, start updates if authorized
             if authorizationStatus == .authorizedWhenInUse ||

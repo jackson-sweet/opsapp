@@ -29,6 +29,8 @@ struct HomeView: View {
     @State private var isLoading = true
     @State private var showLocationPrompt = false
     
+    
+    
     var body: some View {
         ZStack {
             // Map layer
@@ -64,6 +66,7 @@ struct HomeView: View {
                 
                 // Project cards
                 if !todaysProjects.isEmpty {
+                    
                                ProjectCarousel(
                                    projects: todaysProjects,
                                    selectedIndex: $selectedProjectIndex,
@@ -221,15 +224,18 @@ struct HomeView: View {
             await MainActor.run {
                 self.todaysProjects = userProjects
                 
-                // Setup map and active project if needed
-                if let activeProjectID = appState.activeProjectID,
-                   let index = todaysProjects.firstIndex(where: { $0.id == activeProjectID }) {
-                    self.selectedProjectIndex = index
-                    updateMapRegion(for: todaysProjects[index])
-                    setupRouting(for: todaysProjects[index])
-                } else if !todaysProjects.isEmpty {
-                    updateMapRegion(for: todaysProjects)
-                }
+                // Replace the existing map region update code with this:
+                            if !todaysProjects.isEmpty {
+                                // Use the static method from ProjectMapView to ensure all markers are visible
+                                mapRegion = ProjectMapView.calculateVisibleRegion(for: todaysProjects)
+                            }
+                            
+                            // Setup active project if needed (keep this part)
+                            if let activeProjectID = appState.activeProjectID,
+                               let index = todaysProjects.firstIndex(where: { $0.id == activeProjectID }) {
+                                self.selectedProjectIndex = index
+                                setupRouting(for: todaysProjects[index])
+                            }
                 
                 self.isLoading = false
             }

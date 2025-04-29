@@ -9,87 +9,148 @@ import SwiftUI
 import MapKit
 
 struct ProjectMapView: UIViewRepresentable {
+    // MARK: - Style Configuration
+    
+    // Map appearance
+    private static let mapType: MKMapType = .mutedStandard
+    private static let usesDarkMode: Bool = true
+    
+    // Map interaction
+    private static let allowsZoom: Bool = true
+    private static let allowsRotation: Bool = true
+    private static let allowsPitch: Bool = true
+    private static let showsCompass: Bool = false
+    private static let showsScale: Bool = false
+    private static let showsTraffic: Bool = false
+    private static let showsBuildings: Bool = false
+    
+    // Marker appearance
+    private static let markerColor: UIColor = UIColor(Color("TextSecondary")) // FF3B30
+    private static let selectedMarkerScale: CGFloat = 1.3
+    private static let normalMarkerScale: CGFloat = 1.0
+    private static let useCustomMarker: Bool = false
+    
+    // Route appearance
+    private static let routeColor: UIColor = UIColor(Color("AccentSecondary")) // FF9300
+    private static let routeWidth: CGFloat = 5.0
+    private static let routeLineCap: CGLineCap = .round
+    private static let routeLineJoin: CGLineJoin = .round
+    
+    // MARK: - Properties
     @Binding var region: MKCoordinateRegion
     let projects: [Project]
     @Binding var selectedIndex: Int
     var onTapMarker: (Int) -> Void
-    
-    // Add routing support
     var routeOverlay: MKOverlay?
     var isInProjectMode: Bool
+    
+    // MARK: - UIViewRepresentable Implementation
     
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = true
-        mapView.isRotateEnabled = false // Simplify interaction for field workers
         
-        // Apply dark styling
-        mapView.overrideUserInterfaceStyle = .dark
+        // Apply simple, reliable styling that works across iOS versions
+        mapView.mapType = Self.mapType
+        if Self.usesDarkMode {
+            mapView.overrideUserInterfaceStyle = .dark
+        }
         
-        // Adjust map appearance for darker look
-        customizeMapAppearance(mapView)
+        // Configure map interaction for field use
+        mapView.isZoomEnabled = Self.allowsZoom
+        mapView.isRotateEnabled = Self.allowsRotation
+        mapView.isPitchEnabled = Self.allowsPitch
+        mapView.showsCompass = Self.showsCompass
+        mapView.showsScale = Self.showsScale
+        mapView.showsTraffic = Self.showsTraffic
+        mapView.showsBuildings = Self.showsBuildings
         
         return mapView
     }
     
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        // Update map region
         mapView.setRegion(region, animated: true)
-        
-        // Update annotations
         updateAnnotations(for: mapView)
-        
-        // Update route overlay
         updateRouteOverlay(for: mapView)
     }
     
-    private func customizeMapAppearance(_ mapView: MKMapView) {
-        // Set map type to muted satellite for darker appearance
-        mapView.mapType = .mutedStandard
-        
-        // Reduce map details for cleaner look
-        mapView.showsTraffic = false
-        mapView.showsBuildings = false
-        mapView.showsCompass = false
-        mapView.showsScale = false
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
     }
     
+    // MARK: - Helper Methods
+    
     private func updateAnnotations(for mapView: MKMapView) {
-        // Remove existing annotations (except user location)
         let existingAnnotations = mapView.annotations.filter { !($0 is MKUserLocation) }
         mapView.removeAnnotations(existingAnnotations)
         
-        // Add new annotations
         let annotations = projects.enumerated().compactMap { index, project -> ProjectAnnotation? in
             guard let coordinate = project.coordinate else { return nil }
             
-            let annotation = ProjectAnnotation(
+            return ProjectAnnotation(
                 coordinate: coordinate,
                 project: project,
                 index: index,
                 isSelected: index == selectedIndex,
                 isActiveProject: isInProjectMode && index == selectedIndex
             )
-            return annotation
         }
         
         mapView.addAnnotations(annotations)
     }
     
     private func updateRouteOverlay(for mapView: MKMapView) {
-        // Remove existing overlays
         mapView.removeOverlays(mapView.overlays)
         
-        // Add route overlay if available
         if let routeOverlay = routeOverlay {
             mapView.addOverlay(routeOverlay)
         }
     }
     
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+    // MARK: - Public Utility Methods
+    
+    /// Calculate a map region that ensures all markers are visible in the bottom 70% of the screen
+    static func calculateVisibleRegion(for projects: [Project]) -> MKCoordinateRegion {
+        guard !projects.isEmpty else {
+            // Default region if no projects
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 48.4132, longitude: -123.3650),
+                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+            )
+        }
+        
+        // Get coordinates from projects
+        let coordinates = projects.compactMap { $0.coordinate }
+        
+        // Find bounds
+        let minLat = coordinates.map { $0.latitude }.min() ?? 0
+        let maxLat = coordinates.map { $0.latitude }.max() ?? 0
+        let minLon = coordinates.map { $0.longitude }.min() ?? 0
+        let maxLon = coordinates.map { $0.longitude }.max() ?? 0
+        
+        // Calculate span with generous padding
+        let latDelta = max(0.01, (maxLat - minLat) * 1.1) // 50% padding
+        let lonDelta = max(0.01, (maxLon - minLon) * 1.5) // 50% padding
+        
+        // Instead of trying to shift the center, we simply add additional space
+        // at the top by extending our max latitude boundary
+        let adjustedMaxLat = maxLat + (latDelta * 0.9)
+        let adjustedMinLat = minLat - (latDelta * 0.3)// Add 50% more space at the top
+        
+        // New center based on adjusted bounds
+        let centerLat = (adjustedMinLat + adjustedMaxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
+        
+        // Account for the new larger span
+        let finalLatDelta = adjustedMaxLat - minLat
+        
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
+            span: MKCoordinateSpan(latitudeDelta: finalLatDelta, longitudeDelta: lonDelta)
+        )
     }
+    // MARK: - Coordinator
     
     class Coordinator: NSObject, MKMapViewDelegate {
         var parent: ProjectMapView
@@ -99,35 +160,77 @@ struct ProjectMapView: UIViewRepresentable {
         }
         
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            // Skip for user location
             if annotation is MKUserLocation {
                 return nil
             }
             
-            // Custom annotation view for projects
             if let projectAnnotation = annotation as? ProjectAnnotation {
-                let identifier = "ProjectAnnotation"
-                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
-                
-                if annotationView == nil {
-                    annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-                    annotationView?.canShowCallout = false
+                if useCustomMarker {
+                    // Custom marker implementation for better field visibility
+                    let identifier = "CustomProjectMarker"
+                    var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+                    
+                    if annotationView == nil {
+                        annotationView = MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                        // Create a custom pin that stands out in field conditions
+                        annotationView?.image = self.createMarkerImage(
+                            color: ProjectMapView.markerColor,
+                            selected: projectAnnotation.isSelected
+                        )
+                        annotationView?.centerOffset = CGPoint(x: 0, y: -20) // Offset so bottom of pin is at coordinate
+                    } else {
+                        annotationView?.annotation = annotation
+                        annotationView?.image = self.createMarkerImage(
+                            color: ProjectMapView.markerColor,
+                            selected: projectAnnotation.isSelected
+                        )
+                    }
+                    
+                    return annotationView
+                } else {
+                    // Fallback to standard marker if custom isn't enabled
+                    let identifier = "ProjectAnnotation"
+                    var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
+                    
+                    if annotationView == nil {
+                        annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                        annotationView?.canShowCallout = false
+                    } else {
+                        annotationView?.annotation = annotation
+                    }
+                    
+                    // Apply marker styling
+                    annotationView?.glyphImage = nil  // Remove default glyph
+                    annotationView?.markerTintColor = ProjectMapView.markerColor
+                    
+                    // Scale selected marker for better visibility
+                    let scale: CGFloat = projectAnnotation.isSelected ?
+                        ProjectMapView.selectedMarkerScale :
+                        ProjectMapView.normalMarkerScale
+                    annotationView?.transform = CGAffineTransform(scaleX: scale, y: scale)
+                    
+                    return annotationView
                 }
-                
-                // Set custom marker image
-                annotationView?.glyphImage = nil // Remove system glyph
-                
-                // Match the design's red pin exactly
-                annotationView?.markerTintColor = UIColor(Color("AccentPrimary"))
-                
-                // Enlarge the selected marker
-                let scale: CGFloat = projectAnnotation.isSelected ? 1.3 : 1.0
-                annotationView?.transform = CGAffineTransform(scaleX: scale, y: scale)
-                
-                return annotationView
             }
             
             return nil
+        }
+        
+        // Helper method to create a custom marker image that's visible in field conditions
+        private func createMarkerImage(color: UIColor, selected: Bool) -> UIImage {
+            let size = selected ? CGSize(width: 40, height: 40) : CGSize(width: 32, height: 32)
+            
+            return UIGraphicsImageRenderer(size: size).image { _ in
+                // Draw the location circle
+                let circlePath = UIBezierPath(ovalIn: CGRect(origin: .zero, size: size))
+                color.setFill()
+                circlePath.fill()
+                
+                // Add white border for better contrast in any conditions
+                UIColor.white.setStroke()
+                circlePath.lineWidth = 2
+                circlePath.stroke()
+            }
         }
         
         func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
@@ -135,21 +238,27 @@ struct ProjectMapView: UIViewRepresentable {
                 parent.onTapMarker(projectAnnotation.index)
             }
             
-            // Deselect to prevent callout
             mapView.deselectAnnotation(annotation, animated: false)
         }
         
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = UIColor(OPSStyle.Colors.secondaryAccent)
-                renderer.lineWidth = 5
+                
+                // Apply route styling
+                renderer.strokeColor = ProjectMapView.routeColor
+                renderer.lineWidth = ProjectMapView.routeWidth
+                renderer.lineCap = ProjectMapView.routeLineCap
+                renderer.lineJoin = ProjectMapView.routeLineJoin
+                
                 return renderer
             }
             return MKOverlayRenderer(overlay: overlay)
         }
     }
 }
+
+// MARK: - Project Annotation
 
 class ProjectAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D

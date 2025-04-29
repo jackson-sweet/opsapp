@@ -12,6 +12,8 @@ struct ContentView: View {
     @EnvironmentObject private var dataController: DataController
     @StateObject private var appState = AppState()
     
+    let locationManager = LocationManager()
+    
     // Add a state to track initial loading
     @State private var isCheckingAuth = true
     
@@ -31,6 +33,9 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
+            
+            //Request Locations Permission if necessary
+            locationManager.requestPermissionIfNeeded()
             // Check if user is already authenticated
             // This calls the existing authentication check processes
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {

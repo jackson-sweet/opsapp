@@ -99,6 +99,30 @@ class APIService {
         do {
             let (data, response) = try await session.data(for: request)
             
+            // Print debug info to see exactly what's coming back
+                    printResponseDebugInfo(data, from: request.url!)
+            
+            // Now try to decode and handle specific errors
+                    do {
+                        return try decodeResponse(data: data)
+                    } catch {
+                        print("Decoding failed: \(error)")
+                        
+                        // For DecodingError, print more detailed debugging info
+                        if let decodingError = error as? DecodingError {
+                            switch decodingError {
+                            case .keyNotFound(let key, _):
+                                print("Missing key: \(key)")
+                            case .typeMismatch(let type, _):
+                                print("Type mismatch for type: \(type)")
+                            default:
+                                print("Other decoding error: \(decodingError)")
+                            }
+                        }
+                        
+                        throw APIError.decodingFailed
+                    }
+            
             // Log response for debugging
             if let httpResponse = response as? HTTPURLResponse {
                 print("API Response: Status \(httpResponse.statusCode) for \(url.absoluteString)")
@@ -235,7 +259,13 @@ class APIService {
         }
     }
     
-    
+    private func printResponseDebugInfo(_ data: Data, from url: URL) {
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("API Response from \(url.absoluteString):")
+            print(responseString.prefix(500)) // Print first 500 chars to avoid console flooding
+            print("...")
+        }
+    }
 }
 
 // Bubble API response wrapper

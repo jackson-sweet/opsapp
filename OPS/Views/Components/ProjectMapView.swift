@@ -25,7 +25,9 @@ struct ProjectMapView: UIViewRepresentable {
     private static let showsBuildings: Bool = false
     
     // Marker appearance
-    private static let markerColor: UIColor = UIColor(Color("TextSecondary")) // FF3B30
+    private static let markerColor: UIColor = UIColor(.white) // FF3B30
+    private static let markerSymbol = "mappin.and.ellipse.circle" // SF Symbol name
+    private static let markerSize = CGSize(width: 30, height: 30)
     private static let selectedMarkerScale: CGFloat = 1.3
     private static let normalMarkerScale: CGFloat = 1.0
     private static let useCustomMarker: Bool = false
@@ -165,114 +167,59 @@ struct ProjectMapView: UIViewRepresentable {
             }
             
             if let projectAnnotation = annotation as? ProjectAnnotation {
-                if useCustomMarker {
-                    // Custom marker implementation for better field visibility
-                    let identifier = "CustomProjectMarker"
-                    var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
-                    
-                    if annotationView == nil {
-                        annotationView = MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-                        // Create a custom pin that stands out in field conditions
-                        annotationView?.image = self.createMarkerImage(
-                            color: ProjectMapView.markerColor,
-                            selected: projectAnnotation.isSelected
-                        )
-                        annotationView?.centerOffset = CGPoint(x: 0, y: -20) // Offset so bottom of pin is at coordinate
-                    } else {
-                        annotationView?.annotation = annotation
-                        annotationView?.image = self.createMarkerImage(
-                            color: ProjectMapView.markerColor,
-                            selected: projectAnnotation.isSelected
-                        )
-                    }
-                    
-                    return annotationView
+                // Use standard annotation view
+                let identifier = markerSymbol
+                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+                
+                if annotationView == nil {
+                    annotationView = MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                    annotationView?.canShowCallout = false
                 } else {
-                    // Fallback to standard marker if custom isn't enabled
-                    let identifier = "ProjectAnnotation"
-                    var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
-                    
-                    if annotationView == nil {
-                        annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-                        annotationView?.canShowCallout = false
-                    } else {
-                        annotationView?.annotation = annotation
-                    }
-                    
-                    // Apply marker styling
-                    annotationView?.glyphImage = nil  // Remove default glyph
-                    annotationView?.markerTintColor = ProjectMapView.markerColor
-                    
-                    // Scale selected marker for better visibility
-                    let scale: CGFloat = projectAnnotation.isSelected ?
-                        ProjectMapView.selectedMarkerScale :
-                        ProjectMapView.normalMarkerScale
-                    annotationView?.transform = CGAffineTransform(scaleX: scale, y: scale)
-                    
-                    return annotationView
+                    annotationView?.annotation = annotation
                 }
+                
+                // Create SF Symbol properly with template rendering mode
+                let marker = UIImage(systemName:markerSymbol)!.withTintColor(markerColor, renderingMode:.alwaysTemplate)
+                let size = markerSize
+                let mapmarker = UIGraphicsImageRenderer(size:size).image {
+                    _ in marker.draw(in:CGRect(origin:.zero, size:size))
+                }
+                
+                // Set image and tint separately - this is the key to reliable coloring
+                annotationView?.image = mapmarker
+                
+                // Center the annotation on the pin point of the symbol
+                annotationView?.centerOffset = CGPoint(x: 0, y: -10)
+                
+                // Scale selected marker for better visibility
+                let scale: CGFloat = projectAnnotation.isSelected ? 1.3 : 1.0
+                annotationView?.transform = CGAffineTransform(scaleX: scale, y: scale)
+                
+                return annotationView
             }
             
             return nil
         }
-        
-        // Helper method to create a custom marker image that's visible in field conditions
-        private func createMarkerImage(color: UIColor, selected: Bool) -> UIImage {
-            let size = selected ? CGSize(width: 40, height: 40) : CGSize(width: 32, height: 32)
-            
-            return UIGraphicsImageRenderer(size: size).image { _ in
-                // Draw the location circle
-                let circlePath = UIBezierPath(ovalIn: CGRect(origin: .zero, size: size))
-                color.setFill()
-                circlePath.fill()
-                
-                // Add white border for better contrast in any conditions
-                UIColor.white.setStroke()
-                circlePath.lineWidth = 2
-                circlePath.stroke()
-            }
-        }
-        
-        func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
-            if let projectAnnotation = annotation as? ProjectAnnotation {
-                parent.onTapMarker(projectAnnotation.index)
-            }
-            
-            mapView.deselectAnnotation(annotation, animated: false)
-        }
-        
-        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            if let polyline = overlay as? MKPolyline {
-                let renderer = MKPolylineRenderer(polyline: polyline)
-                
-                // Apply route styling
-                renderer.strokeColor = ProjectMapView.routeColor
-                renderer.lineWidth = ProjectMapView.routeWidth
-                renderer.lineCap = ProjectMapView.routeLineCap
-                renderer.lineJoin = ProjectMapView.routeLineJoin
-                
-                return renderer
-            }
-            return MKOverlayRenderer(overlay: overlay)
-        }
     }
 }
-
-// MARK: - Project Annotation
-
-class ProjectAnnotation: NSObject, MKAnnotation {
-    let coordinate: CLLocationCoordinate2D
-    let project: Project
-    let index: Int
-    let isSelected: Bool
-    let isActiveProject: Bool
     
-    init(coordinate: CLLocationCoordinate2D, project: Project, index: Int, isSelected: Bool, isActiveProject: Bool = false) {
-        self.coordinate = coordinate
-        self.project = project
-        self.index = index
-        self.isSelected = isSelected
-        self.isActiveProject = isActiveProject
-        super.init()
+    // MARK: - Project Annotation
+    
+    class ProjectAnnotation: NSObject, MKAnnotation {
+        let coordinate: CLLocationCoordinate2D
+        let project: Project
+        let index: Int
+        let isSelected: Bool
+        let isActiveProject: Bool
+        
+        init(coordinate: CLLocationCoordinate2D, project: Project, index: Int, isSelected: Bool, isActiveProject: Bool = false) {
+            self.coordinate = coordinate
+            self.project = project
+            self.index = index
+            self.isSelected = isSelected
+            self.isActiveProject = isActiveProject
+            super.init()
+        }
+        
     }
-}
+    

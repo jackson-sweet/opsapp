@@ -86,10 +86,16 @@ class DataController: ObservableObject {
     private func initializeSyncManager() {
         guard let modelContext = modelContext else { return }
         
+        // Create user ID provider closure that returns the current user's ID
+        let userIdProvider = { [weak self] in
+            return self?.currentUser?.id
+        }
+        
         self.syncManager = SyncManager(
             modelContext: modelContext,
             apiService: apiService,
-            connectivityMonitor: connectivityMonitor
+            connectivityMonitor: connectivityMonitor,
+            userIdProvider: userIdProvider
         )
         
         // Listen for sync state changes
@@ -223,6 +229,8 @@ class DataController: ObservableObject {
         if let companyId = user.companyId {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
         }
+        
+        UserDefaults.standard.set(user.id, forKey: "currentUserId")
         
         initializeSyncManager()
         

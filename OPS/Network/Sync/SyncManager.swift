@@ -12,6 +12,10 @@ import Combine
 @MainActor
 class SyncManager {
     // MARK: - Properties
+    
+    typealias UserIdProvider = () -> String?
+    private let userIdProvider: UserIdProvider
+    
     let modelContext: ModelContext
     private let apiService: APIService
     private let connectivityMonitor: ConnectivityMonitor
@@ -37,12 +41,14 @@ class SyncManager {
     init(modelContext: ModelContext,
          apiService: APIService,
          connectivityMonitor: ConnectivityMonitor,
-         backgroundTaskManager: BackgroundTaskManager = BackgroundTaskManager()) {
+         backgroundTaskManager: BackgroundTaskManager = BackgroundTaskManager(),
+         userIdProvider: @escaping UserIdProvider = { return nil }) {
         
         self.modelContext = modelContext
         self.apiService = apiService
         self.connectivityMonitor = connectivityMonitor
         self.backgroundTaskManager = backgroundTaskManager
+        self.userIdProvider = userIdProvider
     }
     
     // MARK: - Public Methods
@@ -177,23 +183,33 @@ class SyncManager {
     
     /// Sync projects between local storage and backend
     private func syncProjects() async throws {
-        // Check if we have a user ID before proceeding
-        let userId = UserDefaults.standard.string(forKey: "currentUserCompanyId")
+        // Get user ID from the provider closure
+        let userId = userIdProvider()
         
-        guard userId != nil else {
-            print("Sync skipped: No current user company ID available")
-            return
-        }
-        
-        // Fetch remote projects
-        let remoteProjects = try await apiService.fetchProjects()
-        
-        // Process batches to avoid memory pressure
-        for batch in remoteProjects.chunked(into: 20) {
-            await processRemoteProjects(batch)
+        if let userId = userId {
+            // User ID available - fetch just their projects
+            print("Syncing projects for user ID: \(userId)")
+            let remoteProjects = try await apiService.fetchUserProjects(userId: userId)
             
-            // Small delay between batches to prevent UI stutter
-            try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
+            // Process batches to avoid memory pressure
+            for batch in remoteProjects.chunked(into: 20) {
+                await processRemoteProjects(batch)
+                
+                // Small delay between batches to prevent UI stutter
+                try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
+            }
+        } else {
+            // Fallback to company-based filtering if no user ID
+            print("No user ID available, falling back to company-based filtering")
+            let remoteProjects = try await apiService.fetchProjects()
+            
+            // Process batches to avoid memory pressure
+            for batch in remoteProjects.chunked(into: 20) {
+                await processRemoteProjects(batch)
+                
+                // Small delay between batches to prevent UI stutter
+                try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
+            }
         }
     }
     

@@ -148,7 +148,11 @@ extension APIService {
     /// Fetch projects assigned to a specific user
     /// - Parameter userId: The user ID
     /// - Returns: Array of project DTOs
+    /*
     func fetchUserProjects(userId: String) async throws -> [ProjectDTO] {
+        
+        print("running FetchUserProjects")
+        
         // Create constraint for team members containing this user
         let memberConstraint: [String: Any] = [
             "key": BubbleFields.Project.teamMembers,
@@ -187,6 +191,89 @@ extension APIService {
         
         // Return just the projects array
         return wrapper.response.results
+    }
+     */
+    func fetchUserProjects(userId: String) async throws -> [ProjectDTO] {
+        // Create constraint for team members containing this user
+        let memberConstraint: [String: Any] = [
+            "key": BubbleFields.Project.teamMembers,
+            "constraint_type": "contains",
+            "value": userId
+        ]
+        
+        // Convert to JSON string
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: memberConstraint),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            throw APIError.invalidURL
+        }
+        
+        print("🔍 Fetching projects for user ID: \(userId)")
+        print("🔍 With constraint: \(jsonString)")
+        
+        // Create a wrapper structure to match Bubble's response format
+        struct ProjectsResponse: Decodable {
+            let response: ResultsWrapper
+            
+            struct ResultsWrapper: Decodable {
+                let cursor: Int
+                let results: [ProjectDTO]
+                let remaining: Int?
+                let count: Int?
+            }
+        }
+        
+        // Add queryItems for debugging - higher limit to ensure we get everything
+        let queryItems = [
+            URLQueryItem(name: "limit", value: "100"),
+            URLQueryItem(name: "cursor", value: "0"),
+            URLQueryItem(name: "sort_field", value: BubbleFields.Project.startDate),
+            URLQueryItem(name: "sort_order", value: "asc"),
+            URLQueryItem(name: "constraints", value: jsonString)
+        ]
+        
+        do {
+            // Log the raw endpoint we're hitting
+            let endpoint = "api/1.1/obj/\(BubbleFields.Types.project)"
+            print("🔍 API Endpoint: \(endpoint)")
+            
+            // Fetch with proper response handling
+            let wrapper: ProjectsResponse = try await executeRequest(
+                endpoint: endpoint,
+                queryItems: queryItems,
+                requiresAuth: false
+            )
+            
+            // Log the response details
+            print("🔍 API Response - cursor: \(wrapper.response.cursor)")
+            print("🔍 API Response - count: \(wrapper.response.count ?? 0)")
+            print("🔍 API Response - remaining: \(wrapper.response.remaining ?? 0)")
+            print("🔍 API Response - results count: \(wrapper.response.results.count)")
+            
+            // Log the actual projects received
+            if wrapper.response.results.isEmpty {
+                print("❌ No projects returned from API")
+            } else {
+                print("✅ Projects returned: \(wrapper.response.results.count)")
+                
+                // Print brief summary of each project
+                for (index, project) in wrapper.response.results.enumerated() {
+                    print("  Project \(index+1): \(project.projectName), ID: \(project.id)")
+                    // If there are team members, print them
+                    if let teamMembers = project.teamMembers, !teamMembers.isEmpty {
+                        print("    Team Members: \(teamMembers)")
+                    } else {
+                        print("    ⚠️ No team members assigned!")
+                    }
+                }
+            }
+            
+            // Return just the projects array
+            //1745476201929x236655048429806000
+            return wrapper.response.results
+        } catch {
+            print("❌ Error fetching user projects: \(error)")
+            throw error
+        }
     }
     
     /// Fetch projects by status

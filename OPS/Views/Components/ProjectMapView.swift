@@ -11,34 +11,17 @@ import MapKit
 struct ProjectMapView: UIViewRepresentable {
     // MARK: - Style Configuration
     
-    // Map appearance
+    // Map appearance - simple and reliable
     private static let mapType: MKMapType = .mutedStandard
-    private static let usesDarkMode: Bool = true
-    private static let defaultMapPitch: CGFloat = 0.0  // Flat view normally
-    private static let navigationMapPitch: CGFloat = 60.0  // 3D tilted view for navigation
-    private static let navigationMapHeading: CGFloat = 0.0  // North up by default
-    private static let userTrackingMode: MKUserTrackingMode = .none  // Default mode
-    private static let navigationTrackingMode: MKUserTrackingMode = .followWithHeading  // Follow in navigation
-    
-    // Map interaction
-    private static let allowsZoom: Bool = true
-    private static let allowsRotation: Bool = true
-    private static let allowsPitch: Bool = true
-    private static let showsCompass: Bool = false
-    private static let showsScale: Bool = false
-    private static let showsTraffic: Bool = false
-    private static let showsBuildings: Bool = false
-    
-    // Marker appearance
-    private static let markerColor: UIColor = UIColor(.white)
-    private static let markerSymbol = "mappin.and.ellipse.circle"
-    private static let markerSize = CGSize(width: 30, height: 30)
-    private static let selectedMarkerScale: CGFloat = 1.3
-    private static let normalMarkerScale: CGFloat = 1.0
+    private static let defaultMapPitch: CGFloat = 0.0
+    private static let navigationMapPitch: CGFloat = 60.0
+    private static let navigationMapHeading: CGFloat = 0.0
+    private static let userTrackingMode: MKUserTrackingMode = .none
+    private static let navigationTrackingMode: MKUserTrackingMode = .followWithHeading
     
     // Route appearance
-    private static let routeColor: UIColor = UIColor(Color("AccentSecondary"))
-    private static let routeWidth: CGFloat = 5.0
+    private static let routeColor: UIColor = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
+    private static let routeWidth: CGFloat = 6.0
     private static let routeLineCap: CGLineCap = .round
     private static let routeLineJoin: CGLineJoin = .round
     
@@ -57,51 +40,54 @@ struct ProjectMapView: UIViewRepresentable {
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = true
         
-        // Apply styling that works across iOS versions
+        // Apply styling
         mapView.mapType = Self.mapType
-        if Self.usesDarkMode {
-            mapView.overrideUserInterfaceStyle = .dark
-        }
+        mapView.overrideUserInterfaceStyle = .dark
         
-        // Configure map interaction for field use
-        mapView.isZoomEnabled = Self.allowsZoom
-        mapView.isRotateEnabled = Self.allowsRotation
-        mapView.isPitchEnabled = Self.allowsPitch
-        mapView.showsCompass = Self.showsCompass
-        mapView.showsScale = Self.showsScale
-        mapView.showsTraffic = Self.showsTraffic
-        mapView.showsBuildings = Self.showsBuildings
+        // Explicitly ensure all user interactions are enabled
+        mapView.isUserInteractionEnabled = true  // Critical
+        mapView.isZoomEnabled = true
+        mapView.isScrollEnabled = true
+        mapView.isRotateEnabled = true
+        mapView.isPitchEnabled = true
+        
+        // Disable Points of Interest
+        mapView.pointOfInterestFilter = .excludingAll
+        
+        // Ensure gestures are properly setup
+        context.coordinator.setupGestures(for: mapView)
         
         return mapView
     }
     
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        // Verify user interaction every update
+        if !mapView.isUserInteractionEnabled {
+            mapView.isUserInteractionEnabled = true
+        }
+        
         // Update annotations and overlays
         updateAnnotations(for: mapView)
         updateRouteOverlay(for: mapView)
         
         // Configure map presentation based on routing state
-        if routeOverlay != nil {
-            // Routing mode - 3D perspective
-            if mapView.camera.pitch != Self.navigationMapPitch {
-                // Animate to 3D navigation view
+        if routeOverlay != nil && isInProjectMode {
+            let shouldAnimate = mapView.camera.pitch != Self.navigationMapPitch
+            
+            if shouldAnimate {
                 animateToNavigationView(mapView)
             }
-            
-            // Set user tracking mode for navigation
-            if mapView.userTrackingMode != Self.navigationTrackingMode {
-                mapView.setUserTrackingMode(Self.navigationTrackingMode, animated: true)
-            }
         } else {
-            // Normal mode - 2D overview
-            if mapView.camera.pitch != Self.defaultMapPitch {
-                // Animate back to 2D view
+            let shouldAnimate = mapView.camera.pitch != Self.defaultMapPitch
+            
+            if shouldAnimate {
                 animateToStandardView(mapView)
             }
             
-            // Update region normally when not in navigation mode
-            mapView.setRegion(region, animated: true)
-            mapView.setUserTrackingMode(Self.userTrackingMode, animated: false)
+            if !isInProjectMode {
+                mapView.setRegion(region, animated: true)
+                mapView.setUserTrackingMode(Self.userTrackingMode, animated: false)
+            }
         }
     }
     
@@ -131,6 +117,7 @@ struct ProjectMapView: UIViewRepresentable {
     }
     
     private func updateRouteOverlay(for mapView: MKMapView) {
+        // Remove existing route overlays
         mapView.removeOverlays(mapView.overlays)
         
         if let routeOverlay = routeOverlay {
@@ -139,36 +126,61 @@ struct ProjectMapView: UIViewRepresentable {
     }
     
     private func animateToNavigationView(_ mapView: MKMapView) {
-        // First focus on user location
-        if let userLocation = mapView.userLocation.location?.coordinate {
-            // Create a camera centered on user
-            let camera = MKMapCamera(
-                lookingAtCenter: userLocation,
-                fromDistance: 500, // Closer zoom for navigation
-                pitch: Self.navigationMapPitch,
-                heading: Self.navigationMapHeading
-            )
-            
-            // Smooth animation to new camera
-            mapView.setCamera(camera, animated: true)
+        // Reset animation state first
+        mapView.setUserTrackingMode(.none, animated: false)
+        
+        // First focus on user location if available, otherwise use project location
+        let targetCoordinate: CLLocationCoordinate2D
+        
+        if let userLocation = mapView.userLocation.location?.coordinate,
+           CLLocationCoordinate2DIsValid(userLocation) {
+            targetCoordinate = userLocation
+        } else if let projectCoordinate = projects[safe: selectedIndex]?.coordinate {
+            targetCoordinate = projectCoordinate
+        } else {
+            targetCoordinate = region.center
+        }
+        
+        // Create a camera centered on the target
+        let camera = MKMapCamera(
+            lookingAtCenter: targetCoordinate,
+            fromDistance: 500,
+            pitch: Self.navigationMapPitch,
+            heading: Self.navigationMapHeading
+        )
+        
+        // Animate to 3D view with longer duration
+        UIView.animate(withDuration: 0.75) {
+            mapView.camera = camera
+        } completion: { finished in
+            if finished {
+                mapView.setUserTrackingMode(Self.navigationTrackingMode, animated: true)
+            }
         }
     }
     
     private func animateToStandardView(_ mapView: MKMapView) {
-        // Create a standard 2D camera
-        let camera = mapView.camera
-        camera.pitch = Self.defaultMapPitch
+        // Reset tracking mode
+        mapView.setUserTrackingMode(.none, animated: false)
+        
+        // Create a standard 2D camera focused on the region center
+        let camera = MKMapCamera(
+            lookingAtCenter: region.center,
+            fromDistance: 1000,
+            pitch: Self.defaultMapPitch,
+            heading: 0
+        )
         
         // Smooth animation back to 2D
-        mapView.setCamera(camera, animated: true)
+        UIView.animate(withDuration: 0.5) {
+            mapView.camera = camera
+        }
     }
     
     // MARK: - Public Utility Methods
     
-    /// Calculate a map region that ensures all markers are visible in the bottom 70% of the screen
     static func calculateVisibleRegion(for projects: [Project]) -> MKCoordinateRegion {
         guard !projects.isEmpty else {
-            // Default region if no projects
             return MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 48.4132, longitude: -123.3650),
                 span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
@@ -207,11 +219,23 @@ struct ProjectMapView: UIViewRepresentable {
     
     // MARK: - Coordinator
     
-    class Coordinator: NSObject, MKMapViewDelegate {
+    class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var parent: ProjectMapView
         
         init(_ parent: ProjectMapView) {
             self.parent = parent
+        }
+        
+        func setupGestures(for mapView: MKMapView) {
+            // This is key: make sure all gestures on the map view have us as delegate
+            for gestureRecognizer in mapView.gestureRecognizers ?? [] {
+                gestureRecognizer.delegate = self
+            }
+        }
+        
+        // CRITICAL: Allow all gesture recognizers to work simultaneously
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
         }
         
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
@@ -220,32 +244,23 @@ struct ProjectMapView: UIViewRepresentable {
             }
             
             if let projectAnnotation = annotation as? ProjectAnnotation {
-                // Use standard annotation view
-                let identifier = ProjectMapView.markerSymbol
-                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+                let identifier = "ProjectMarker"
+                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
                 
                 if annotationView == nil {
-                    annotationView = MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                    annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
                     annotationView?.canShowCallout = false
                 } else {
                     annotationView?.annotation = annotation
                 }
                 
-                // Create SF Symbol properly with template rendering mode
-                let marker = UIImage(systemName: ProjectMapView.markerSymbol)!.withTintColor(ProjectMapView.markerColor, renderingMode: .alwaysTemplate)
-                let size = ProjectMapView.markerSize
-                let mapmarker = UIGraphicsImageRenderer(size: size).image {
-                    _ in marker.draw(in: CGRect(origin: .zero, size: size))
-                }
-                
-                // Set image and proper offset
-                annotationView?.image = mapmarker
-                annotationView?.centerOffset = CGPoint(x: 0, y: -10)
+                // Configure marker appearance
+                annotationView?.markerTintColor = UIColor.white
+                annotationView?.glyphTintColor = ProjectMapView.routeColor
+                annotationView?.glyphImage = UIImage(systemName: "circle.fill")
                 
                 // Scale selected marker for better visibility
-                let scale: CGFloat = projectAnnotation.isSelected ?
-                    ProjectMapView.selectedMarkerScale :
-                    ProjectMapView.normalMarkerScale
+                let scale: CGFloat = projectAnnotation.isSelected ? 1.3 : 1.0
                 annotationView?.transform = CGAffineTransform(scaleX: scale, y: scale)
                 
                 return annotationView
@@ -266,7 +281,7 @@ struct ProjectMapView: UIViewRepresentable {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 
-                // Apply route styling
+                // Apply route styling - bright blue line
                 renderer.strokeColor = ProjectMapView.routeColor
                 renderer.lineWidth = ProjectMapView.routeWidth
                 renderer.lineCap = ProjectMapView.routeLineCap
@@ -274,6 +289,7 @@ struct ProjectMapView: UIViewRepresentable {
                 
                 return renderer
             }
+            
             return MKOverlayRenderer(overlay: overlay)
         }
     }
@@ -295,5 +311,12 @@ class ProjectAnnotation: NSObject, MKAnnotation {
         self.isSelected = isSelected
         self.isActiveProject = isActiveProject
         super.init()
+    }
+}
+
+// MARK: - Safe Array Extension
+extension Array {
+    subscript(safe index: Index) -> Element? {
+        return indices.contains(index) ? self[index] : nil
     }
 }

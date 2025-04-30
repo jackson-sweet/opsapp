@@ -22,14 +22,13 @@ struct SplashScreen: View {
                     // OPS logo
                     ZStack {
                         // Logo shape - a stylized "P" with square corners
-                        Image(systemName: "p.square.fill")
+                        Image("AppIcon")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(width: 100, height: 100)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(width: 72, height: 72)
+                            .foregroundColor(Color(.gray))
                             .opacity(isAnimating ? 1 : 0)
                     }
-                    .scaleEffect(isAnimating ? 1 : 0.8)
                     
                     // App name
                     Text("OPS")

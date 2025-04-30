@@ -28,8 +28,8 @@ struct ProjectCarousel: View {
             }
         }
         .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
-        .frame(height: 120)
-        .background(backgroundView)
+        .frame(height: 140)
+       // .background(backgroundView)
         .onChange(of: selectedIndex) { _, _ in
             if showStartConfirmation {
                 showStartConfirmation = false

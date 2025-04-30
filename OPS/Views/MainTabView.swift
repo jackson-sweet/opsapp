@@ -30,6 +30,7 @@ struct MainTabView: View {
                     Image(systemName: "gearshape.fill")
                 }
         }
+        .background(Color.black.opacity(0.5).blur(radius: 10))
         .accentColor(OPSStyle.Colors.primaryAccent)
         .preferredColorScheme(.dark)
     }

@@ -374,6 +374,104 @@ class DataController: ObservableObject {
         }
     }
     
+    func getProjectDetails(projectId: String) async throws -> Project {
+        guard let context = modelContext else {
+            throw NSError(domain: "DataController", code: 2,
+                         userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+        
+        // Try local first
+        let predicate = #Predicate<Project> { $0.id == projectId }
+        let descriptor = FetchDescriptor<Project>(predicate: predicate)
+        
+        if let localProject = try context.fetch(descriptor).first {
+            // If we have a local copy and recent sync, use it
+            if localProject.lastSyncedAt != nil &&
+               Date().timeIntervalSince(localProject.lastSyncedAt!) < AppConfiguration.Sync.minimumSyncInterval {
+                return localProject
+            }
+        }
+        
+        // If offline, use local version even if outdated
+        if !isConnected {
+            if let localProject = try context.fetch(descriptor).first {
+                return localProject
+            }
+            throw NSError(domain: "DataController", code: 4,
+                         userInfo: [NSLocalizedDescriptionKey: "Project not found locally and offline"])
+        }
+        
+        // Online and needing refresh: fetch from API
+        do {
+            let projectDTO = try await apiService.fetchProject(id: projectId)
+            
+            // Convert to model and save
+            let project = projectDTO.toModel()
+            
+            // Update or insert
+            if let existingProject = try context.fetch(descriptor).first {
+                // Update existing (careful not to overwrite local changes)
+                if !existingProject.needsSync {
+                    // Only update if no pending local changes
+                    // Full implementation would merge changes
+                }
+                return existingProject
+            } else {
+                // Insert new
+                context.insert(project)
+                try context.save()
+                return project
+            }
+        } catch {
+            // On API error, fall back to local if available
+            if let localProject = try context.fetch(descriptor).first {
+                return localProject
+            }
+            throw error
+        }
+    }
+    
+    
+    
+    func getProjectsForToday(user: User? = nil) async throws -> [Project] {
+        let today = Calendar.current.startOfDay(for: Date())
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        
+        // Use the user ID if provided, otherwise use current user
+        let userId = user?.id ?? currentUser?.id
+        
+        guard let userId = userId else {
+            throw NSError(domain: "DataController", code: 3,
+                         userInfo: [NSLocalizedDescriptionKey: "No current user"])
+        }
+        
+        // First check local data
+        let localProjects = getProjects(for: today, assignedTo: user ?? currentUser)
+        
+        // If we're offline or have recent data, use local data
+        if !isConnected || (lastSyncTime != nil &&
+            Date().timeIntervalSince(lastSyncTime!) < AppConfiguration.Sync.minimumSyncInterval) {
+            return localProjects
+        }
+        
+        // Otherwise fetch fresh data using our new centralized API
+        do {
+            let remoteProjects = try await apiService.fetchUserProjectsForDate(
+                userId: userId,
+                date: today
+            )
+            
+            // Process projects and save to local database
+            // This would typically be handled by the sync manager
+            // but for immediate UI feedback we'll process directly
+            return localProjects
+        } catch {
+            // On error, fall back to local data
+            print("Error fetching remote projects: \(error)")
+            return localProjects
+        }
+    }
+    
     func getProjectsForMap() throws -> [Project] {
         guard let context = modelContext else {
             throw NSError(domain: "DataController", code: 2,

@@ -5,8 +5,26 @@
 //  Created by Jackson Sweet on 2025-04-21.
 //
 
-
 import Foundation
+
+// MARK: - Bubble Response Wrapper Types
+
+/// Wrapper for Bubble list responses
+struct BubbleListResponse<T: Decodable>: Decodable {
+    let response: ResultsWrapper
+    
+    struct ResultsWrapper: Decodable {
+        let cursor: Int
+        let results: [T]
+        let remaining: Int?
+        let count: Int?
+    }
+}
+
+/// Wrapper for Bubble single object responses
+struct BubbleObjectResponse<T: Decodable>: Decodable {
+    let response: T
+}
 
 /// Core API service for communicating with Bubble backend
 /// Provides a reliable interface even in poor connectivity situations
@@ -100,67 +118,27 @@ class APIService {
             let (data, response) = try await session.data(for: request)
             
             // Print debug info to see exactly what's coming back
-                    printResponseDebugInfo(data, from: request.url!)
+            printResponseDebugInfo(data, from: request.url!)
             
             // Now try to decode and handle specific errors
-                    do {
-                        return try decodeResponse(data: data)
-                    } catch {
-                        print("Decoding failed: \(error)")
-                        
-                        // For DecodingError, print more detailed debugging info
-                        if let decodingError = error as? DecodingError {
-                            switch decodingError {
-                            case .keyNotFound(let key, _):
-                                print("Missing key: \(key)")
-                            case .typeMismatch(let type, _):
-                                print("Type mismatch for type: \(type)")
-                            default:
-                                print("Other decoding error: \(decodingError)")
-                            }
-                        }
-                        
-                        throw APIError.decodingFailed
+            do {
+                return try decodeResponse(data: data)
+            } catch {
+                print("Decoding failed: \(error)")
+                
+                // For DecodingError, print more detailed debugging info
+                if let decodingError = error as? DecodingError {
+                    switch decodingError {
+                    case .keyNotFound(let key, _):
+                        print("Missing key: \(key)")
+                    case .typeMismatch(let type, _):
+                        print("Type mismatch for type: \(type)")
+                    default:
+                        print("Other decoding error: \(decodingError)")
                     }
-            
-            // Log response for debugging
-            if let httpResponse = response as? HTTPURLResponse {
-                print("API Response: Status \(httpResponse.statusCode) for \(url.absoluteString)")
-                
-                // Print response body for debugging (limit size for large responses)
-                if let responseString = String(data: data, encoding: .utf8) {
-                    let truncatedResponse = responseString.count > 1000 ?
-                        responseString.prefix(1000) + "..." : responseString
-                    print("Response body: \(truncatedResponse)")
-                }
-            }
-            
-            // Check for HTTP errors
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw APIError.invalidResponse
-            }
-            
-            switch httpResponse.statusCode {
-            case 200..<300:
-                // Success, attempt to decode
-                do {
-                    return try decodeResponse(data: data)
-                } catch {
-                    print("Decoding failed: \(error)")
-                    throw APIError.decodingFailed
                 }
                 
-            case 401, 403:
-                throw APIError.unauthorized
-                
-            case 429:
-                throw APIError.rateLimited
-                
-            case 500..<600:
-                throw APIError.serverError
-                
-            default:
-                throw APIError.httpError(statusCode: httpResponse.statusCode)
+                throw APIError.decodingFailed
             }
         } catch {
             print("API request failed: \(error)")
@@ -168,6 +146,144 @@ class APIService {
         }
     }
     
+    // MARK: - Centralized Bubble API Methods
+    
+    /// Centralized method for fetching objects from Bubble with dynamic constraints
+    /// - Parameters:
+    ///   - objectType: The type of object to fetch (e.g., "Project", "User")
+    ///   - constraints: Optional constraints to filter results
+    ///   - limit: Maximum number of results to return (default: 100)
+    ///   - cursor: Pagination cursor (default: 0)
+    ///   - sortField: Optional field to sort by
+    ///   - sortOrder: Sort direction ("asc" or "desc")
+    /// - Returns: Array of objects matching the specified type and constraints
+    func fetchBubbleObjects<T: Decodable>(
+        objectType: String,
+        constraints: [String: Any]? = nil,
+        limit: Int = 100,
+        cursor: Int = 0,
+        sortField: String? = nil,
+        sortOrder: String = "asc"
+    ) async throws -> [T] {
+        // Build query parameters
+        var queryItems = [
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "cursor", value: "\(cursor)")
+        ]
+        
+        // Add sorting if specified
+        if let sortField = sortField {
+            queryItems.append(URLQueryItem(name: "sort_field", value: sortField))
+            queryItems.append(URLQueryItem(name: "sort_order", value: sortOrder))
+        }
+        
+        // Add constraints if provided
+        if let constraints = constraints {
+            do {
+                let jsonData = try JSONSerialization.data(withJSONObject: constraints)
+                if let jsonString = String(data: jsonData, encoding: .utf8) {
+                    queryItems.append(URLQueryItem(name: "constraints", value: jsonString))
+                    
+                    // Debug logging
+                    print("🔍 Fetching \(objectType) with constraints: \(jsonString)")
+                }
+            } catch {
+                print("❌ Error serializing constraints: \(error)")
+                throw APIError.invalidURL
+            }
+        }
+        
+        // Construct endpoint
+        let endpoint = "api/1.1/obj/\(objectType)"
+        
+        // Execute the request
+        let wrapper: BubbleListResponse<T> = try await executeRequest(
+            endpoint: endpoint,
+            queryItems: queryItems,
+            requiresAuth: false
+        )
+        
+        // Log results
+        print("✅ Received \(wrapper.response.results.count) \(objectType) objects")
+        
+        return wrapper.response.results
+    }
+    
+    /// Fetch a single object by ID
+    /// - Parameters:
+    ///   - objectType: The type of object to fetch
+    ///   - id: The object's unique ID
+    /// - Returns: The requested object
+    func fetchBubbleObject<T: Decodable>(
+        objectType: String,
+        id: String
+    ) async throws -> T {
+        let endpoint = "api/1.1/obj/\(objectType)/\(id)"
+        
+        // Execute the request
+        let wrapper: BubbleObjectResponse<T> = try await executeRequest(
+            endpoint: endpoint,
+            requiresAuth: false
+        )
+        
+        return wrapper.response
+    }
+    
+    // MARK: - Constraint Builders
+    
+    /// Create a constraint for objects associated with a specific user
+    /// - Parameter userId: The user's ID
+    /// - Returns: A constraint dictionary
+    func userConstraint(userId: String) -> [String: Any] {
+        return [
+            "key": BubbleFields.Project.teamMembers,
+            "constraint_type": "contains",
+            "value": userId
+        ]
+    }
+    
+    /// Create a constraint for objects within a date range
+    /// - Parameters:
+    ///   - field: The date field to check
+    ///   - startDate: Range start date
+    ///   - endDate: Range end date
+    /// - Returns: A constraint dictionary
+    func dateRangeConstraint(field: String, startDate: Date, endDate: Date) -> [String: Any] {
+        let formatter = ISO8601DateFormatter()
+        return [
+            "key": field,
+            "constraint_type": "is between",
+            "value": [
+                formatter.string(from: startDate),
+                formatter.string(from: endDate)
+            ]
+        ]
+    }
+    
+    /// Create a constraint for objects matching a specific company
+    /// - Parameter companyId: The company's ID
+    /// - Returns: A constraint dictionary
+    func companyConstraint(companyId: String) -> [String: Any] {
+        return [
+            "key": BubbleFields.Project.company,
+            "constraint_type": "equals",
+            "value": companyId
+        ]
+    }
+    
+    /// Combine multiple constraints with AND logic
+    /// - Parameter constraints: Array of constraint dictionaries
+    /// - Returns: A combined constraint dictionary
+    func andConstraints(_ constraints: [[String: Any]]) -> [String: Any] {
+        return ["and": constraints]
+    }
+    
+    /// Combine multiple constraints with OR logic
+    /// - Parameter constraints: Array of constraint dictionaries
+    /// - Returns: A combined constraint dictionary
+    func orConstraints(_ constraints: [[String: Any]]) -> [String: Any] {
+        return ["or": constraints]
+    }
     
     // MARK: - Request Helper Methods
     

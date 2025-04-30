@@ -25,33 +25,25 @@ struct ProjectCard: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
             
-            HStack {
                 // Client name
                 Text(project.clientName)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Spacer()
                 
                 // Address
                 Text(project.address)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineLimit(1)
-            }
+            
         }
         .padding()
         .background(
             // Custom background with blur effect
-            ZStack {
-                Color("CardBackground")
-                    .opacity(0.5)
-                
-                // Apply blur effect
-                Rectangle()
-                    .fill(Color.clear)
-                    .background(Material.ultraThinMaterial)
-            }
+            BlurView(style: .dark)
+                .cornerRadius(5)
+                .opacity(0.5)
+                .frame(width: 362, height: 85)
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal)

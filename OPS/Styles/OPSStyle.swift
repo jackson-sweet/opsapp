@@ -55,7 +55,7 @@ enum OPSStyle {
         // Title styles
         static let largeTitle = Font.custom("BebaseNeue-Regular", size: 32)
         static let title = Font.custom("BebaseNeue-Regular", size: 28)
-        static let subtitle = Font.custom("Kosugi-Regular", size: 22)
+        static let subtitle = Font.system(size: 22)
         
         // Body text
         static let body = Font.system(size: 17, weight: .regular, design: .default)
@@ -177,4 +177,31 @@ extension View {
     func iconButtonStyle() -> some View {
         self.modifier(IconActionButton())
     }
+}
+
+// MARK: - Blur View
+
+struct BlurView: UIViewRepresentable {
+
+    let style: UIBlurEffect.Style
+
+    func makeUIView(context: UIViewRepresentableContext<BlurView>) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        let blurEffect = UIBlurEffect(style: style)
+        let blurView = UIVisualEffectView(effect: blurEffect)
+        blurView.translatesAutoresizingMaskIntoConstraints = false
+        view.insertSubview(blurView, at: 0)
+        NSLayoutConstraint.activate([
+            blurView.heightAnchor.constraint(equalTo: view.heightAnchor),
+            blurView.widthAnchor.constraint(equalTo: view.widthAnchor),
+        ])
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView,
+                      context: UIViewRepresentableContext<BlurView>) {
+
+    }
+
 }

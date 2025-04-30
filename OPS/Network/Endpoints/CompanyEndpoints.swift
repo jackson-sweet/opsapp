@@ -13,20 +13,18 @@ extension APIService {
     /// - Parameter id: The company ID
     /// - Returns: Company DTO
     func fetchCompany(id: String) async throws -> CompanyDTO {
-        return try await executeRequest(
-            endpoint: "api/1.1/obj/\(BubbleFields.Types.company)/\(id)"
+        return try await fetchBubbleObject(
+            objectType: BubbleFields.Types.company,
+            id: id
         )
     }
     
     /// Fetch all companies
     /// - Returns: Array of company DTOs
     func fetchCompanies() async throws -> [CompanyDTO] {
-        return try await executeRequest(
-            endpoint: "api/1.1/obj/\(BubbleFields.Types.company)",
-            queryItems: [
-                URLQueryItem(name: "limit", value: "100"),
-                URLQueryItem(name: "cursor", value: "0")
-            ]
+        return try await fetchBubbleObjects(
+            objectType: BubbleFields.Types.company,
+            limit: 100
         )
     }
     
@@ -34,26 +32,10 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of project DTOs
     func fetchCompanyProjects(companyId: String) async throws -> [ProjectDTO] {
-        // Create constraint for projects belonging to this company
-        let companyConstraint: [String: Any] = [
-            "key": BubbleFields.Project.company,
-            "constraint_type": "equals",
-            "value": companyId
-        ]
-        
-        // Convert to JSON string
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: companyConstraint),
-              let jsonString = String(data: jsonData, encoding: .utf8) else {
-            throw APIError.invalidURL
-        }
-        
-        return try await executeRequest(
-            endpoint: "api/1.1/obj/\(BubbleFields.Types.project)",
-            queryItems: [
-                URLQueryItem(name: "limit", value: "100"),
-                URLQueryItem(name: "cursor", value: "0"),
-                URLQueryItem(name: "constraints", value: jsonString)
-            ]
+        return try await fetchBubbleObjects(
+            objectType: BubbleFields.Types.project,
+            constraints: companyConstraint(companyId: companyId),
+            sortField: BubbleFields.Project.startDate
         )
     }
     

@@ -58,29 +58,31 @@ struct HomeView: View {
             // UI overlay layers
             VStack(spacing: 0) {
                 // Header layer
-                if appState.isInProjectMode {
-                    ProjectHeader(project: getActiveProject())
-                } else {
-                    UserHeader()
-                }
-                
+                UserHeader()
+                /*
+                 if appState.isInProjectMode {
+                 ProjectHeader(project: getActiveProject())
+                 } else {
+                 UserHeader()
+                 }
+                 */
                 // Project cards
                 if !todaysProjects.isEmpty {
                     
-                               ProjectCarousel(
-                                   projects: todaysProjects,
-                                   selectedIndex: $selectedProjectIndex,
-                                   showStartConfirmation: $showStartConfirmation,
-                                   isInProjectMode: appState.isInProjectMode,
-                                   activeProjectID: appState.activeProjectID,
-                                   onStart: startProject,
-                                   onStop: stopProject,
-                                   onLongPress: { project in
-                                       selectedProject = project
-                                       showProjectDetails = true
-                                   }
-                               )
-                           } else if !isLoading {
+                    ProjectCarousel(
+                        projects: todaysProjects,
+                        selectedIndex: $selectedProjectIndex,
+                        showStartConfirmation: $showStartConfirmation,
+                        isInProjectMode: appState.isInProjectMode,
+                        activeProjectID: appState.activeProjectID,
+                        onStart: startProject,
+                        onStop: stopProject,
+                        onLongPress: { project in
+                            selectedProject = project
+                            showProjectDetails = true
+                        }
+                    )
+                } else if !isLoading {
                     // No projects message
                     VStack {
                         Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects scheduled for today")
@@ -103,28 +105,25 @@ struct HomeView: View {
                 
                 Spacer()
                 
-                // Routing directions
-                if inProgressManager.isRouting {
-                    RouteDirectionsView(
-                        directions: inProgressManager.routeDirections,
-                        estimatedArrival: inProgressManager.estimatedArrival,
-                        distance: inProgressManager.routeDistance
-                    )
-                    .padding()
-                }
+                VStack(spacing: 24){
+                    // Routing directions
+                    if inProgressManager.isRouting {
+                        RouteDirectionsView(
+                            directions: inProgressManager.routeDirections,
+                            estimatedArrival: inProgressManager.estimatedArrival,
+                            distance: inProgressManager.routeDistance
+                        )
+                        .padding()
+                    }
+                    
+                    // Action buttons for active project
+                    if appState.isInProjectMode,
+                       let activeProject = getActiveProject() {
+                        ProjectActionBar(project: activeProject)
+                    }
+                }.padding(.vertical, 70)
                 
-                // Action buttons for active project
-                if appState.isInProjectMode,
-                   let activeProject = getActiveProject() {
-                    ProjectActionBar(project: activeProject)
-                }
             }
-            
-            // Status indicators
-            NetworkStatusIndicator()
-                .padding(.top, 8)
-                .padding(.trailing, 8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             
             // Loading overlay
             if isLoading {

@@ -14,17 +14,10 @@ extension APIService {
     /// - Parameter id: The user ID
     /// - Returns: User DTO
     func fetchUser(id: String) async throws -> UserDTO {
-        // Create wrapper to match Bubble's response format
-        struct UserResponseWrapper: Decodable {
-            let response: UserDTO
-        }
-        
-        // Fetch the user without requiring auth
-        let wrapper: UserResponseWrapper = try await executeRequest(
-            endpoint: "api/1.1/obj/user/\(id)",
-            requiresAuth: false
+        return try await fetchBubbleObject(
+            objectType: BubbleFields.Types.user,
+            id: id
         )
-        return wrapper.response
     }
     
     /// Update user data
@@ -35,29 +28,78 @@ extension APIService {
         let bodyData = try JSONSerialization.data(withJSONObject: userData)
         
         let _: EmptyResponse = try await executeRequest(
-            endpoint: "api/1.1/obj/user/\(id)",
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.user)/\(id)",
             method: "PATCH",
             body: bodyData,
             requiresAuth: false
         )
     }
 
+    /// Fetch all users
+    /// - Returns: Array of user DTOs
     func fetchUsers() async throws -> [UserDTO] {
-        // Create wrapper to match Bubble's response format
-        struct UsersResponseWrapper: Decodable {
-            let response: [UserDTO]
-        }
-        
-        // Fetch all users without requiring auth
-        let wrapper: UsersResponseWrapper = try await executeRequest(
-            endpoint: "api/1.1/obj/user",
-            queryItems: [
-                URLQueryItem(name: "limit", value: "100"),
-                URLQueryItem(name: "cursor", value: "0")
-            ],
-            requiresAuth: false
+        return try await fetchBubbleObjects(
+            objectType: BubbleFields.Types.user,
+            limit: 100
         )
-        return wrapper.response
+    }
+    
+    /// Fetch users by role
+    /// - Parameter role: The role to filter by (e.g., "fieldCrew", "officeCrew")
+    /// - Returns: Array of user DTOs
+    func fetchUsersByRole(role: String) async throws -> [UserDTO] {
+        let roleConstraint: [String: Any] = [
+            "key": BubbleFields.User.employeeType,
+            "constraint_type": "equals",
+            "value": role
+        ]
+        
+        return try await fetchBubbleObjects(
+            objectType: BubbleFields.Types.user,
+            constraints: roleConstraint
+        )
+    }
+    
+    /// Fetch users belonging to a specific company
+    /// - Parameter companyId: The company ID
+    /// - Returns: Array of user DTOs
+    func fetchCompanyUsers(companyId: String) async throws -> [UserDTO] {
+        let companyUserConstraint: [String: Any] = [
+            "key": BubbleFields.User.company,
+            "constraint_type": "equals",
+            "value": companyId
+        ]
+        
+        return try await fetchBubbleObjects(
+            objectType: BubbleFields.Types.user,
+            constraints: companyUserConstraint
+        )
+    }
+    
+    /// Fetch users by company and role
+    /// - Parameters:
+    ///   - companyId: The company ID
+    ///   - role: The role to filter by
+    /// - Returns: Array of user DTOs
+    func fetchCompanyUsersByRole(companyId: String, role: String) async throws -> [UserDTO] {
+        let companyConstraint: [String: Any] = [
+            "key": BubbleFields.User.company,
+            "constraint_type": "equals",
+            "value": companyId
+        ]
+        
+        let roleConstraint: [String: Any] = [
+            "key": BubbleFields.User.employeeType,
+            "constraint_type": "equals",
+            "value": role
+        ]
+        
+        let combined = andConstraints([companyConstraint, roleConstraint])
+        
+        return try await fetchBubbleObjects(
+            objectType: BubbleFields.Types.user,
+            constraints: combined
+        )
     }
 }
 
@@ -75,4 +117,3 @@ struct AuthResponse: Decodable {
     var user: UserDTO? { response.user }
     var userId: String? { user?.id }
 }
-

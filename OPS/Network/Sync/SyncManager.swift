@@ -181,35 +181,24 @@ class SyncManager {
         }
     }
     
-    /// Sync projects between local storage and backend
+    /// Sync projects between local storage and backend using new centralized API
     private func syncProjects() async throws {
         // Get user ID from the provider closure
-        let userId = userIdProvider()
+        guard let userId = userIdProvider() else {
+            print("Sync skipped: No user ID available")
+            return
+        }
         
-        if let userId = userId {
-            // User ID available - fetch just their projects
-            print("Syncing projects for user ID: \(userId)")
-            let remoteProjects = try await apiService.fetchUserProjects(userId: userId)
+        // Now using the new centralized API approach
+        print("Syncing projects for user ID: \(userId)")
+        let remoteProjects = try await apiService.fetchUserProjects(userId: userId)
+        
+        // Process batches to avoid memory pressure
+        for batch in remoteProjects.chunked(into: 20) {
+            await processRemoteProjects(batch)
             
-            // Process batches to avoid memory pressure
-            for batch in remoteProjects.chunked(into: 20) {
-                await processRemoteProjects(batch)
-                
-                // Small delay between batches to prevent UI stutter
-                try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
-            }
-        } else {
-            // Fallback to company-based filtering if no user ID
-            print("No user ID available, falling back to company-based filtering")
-            let remoteProjects = try await apiService.fetchProjects()
-            
-            // Process batches to avoid memory pressure
-            for batch in remoteProjects.chunked(into: 20) {
-                await processRemoteProjects(batch)
-                
-                // Small delay between batches to prevent UI stutter
-                try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
-            }
+            // Small delay between batches to prevent UI stutter
+            try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
         }
     }
     
@@ -262,7 +251,7 @@ class SyncManager {
                 // Update team members
                 if let teamMembers = remoteDTO.teamMembers {
                     let teamMemberIds = teamMembers.map { $0 }
-                    localProject.teamMemberIdsString = teamMemberIds.joined(separator: ",")
+                    localProject.setTeamMemberIds(teamMemberIds)
                     updateProjectTeamMembers(localProject, teamMemberIds: teamMemberIds, usersMap: usersMap)
                 }
             }

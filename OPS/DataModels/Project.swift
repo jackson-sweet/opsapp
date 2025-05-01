@@ -4,12 +4,6 @@
 //
 //  Created by Jackson Sweet on 2025-04-21.
 //
-//
-//  Project.swift
-//  OPS
-//
-//  Created by Jackson Sweet on 2025-04-21.
-//
 import SwiftUI
 import SwiftData
 import CoreLocation
@@ -35,6 +29,9 @@ final class Project {
     var teamMemberIdsString: String = ""
     var projectDescription: String?
     
+    // Store project images as comma-separated string
+    var projectImagesString: String = ""
+    
     // Store relationships to team members with proper inverse
     @Relationship(deleteRule: .noAction)
     var teamMembers: [User]
@@ -52,6 +49,7 @@ final class Project {
         self.clientName = ""
         self.companyId = ""
         self.teamMemberIdsString = ""
+        self.projectImagesString = ""
         self.teamMembers = []
         self.allDay = false
     }
@@ -63,6 +61,20 @@ final class Project {
     
     func setTeamMemberIds(_ ids: [String]) {
         teamMemberIdsString = ids.joined(separator: ",")
+    }
+    
+    // Project images accessor methods
+    func getProjectImageURLs() -> [String] {
+        return projectImagesString.isEmpty ? [] : projectImagesString.components(separatedBy: ",")
+    }
+    
+    func setProjectImageURLs(_ urls: [String]) {
+        projectImagesString = urls.joined(separator: ",")
+    }
+    
+    // Accessor for project images
+    func getProjectImages() -> [String] {
+        return projectImagesString.isEmpty ? [] : projectImagesString.components(separatedBy: ",")
     }
     
     // Computed property for location

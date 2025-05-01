@@ -52,3 +52,8 @@ struct OPSApp: App {
         .modelContainer(sharedModelContainer)
     }
 }
+
+
+extension String: @retroactive Identifiable {
+    public var id: String { self }
+}

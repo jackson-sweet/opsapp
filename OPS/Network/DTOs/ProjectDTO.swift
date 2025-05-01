@@ -26,6 +26,7 @@ struct ProjectDTO: Codable {
     let teamMembers: [String]?
     let thumbnail: String?
     let clientName: String?
+    let projectImages: [String]?  // Added this field
     
     // Additional fields from the actual API response
     let projectValue: Double?
@@ -53,6 +54,7 @@ struct ProjectDTO: Codable {
         case balance = "Balance"
         case slug = "Slug"
         case clientName = "Client Name"
+        case projectImages = "Project Images"
     }
     
     /// Convert DTO to SwiftData model
@@ -70,11 +72,11 @@ struct ProjectDTO: Codable {
                 project.longitude = bubbleAddress.lng
             }
             
-       project.clientName = clientName ?? "Franz"
+        project.clientName = clientName ?? "Unknown Client"
             
-            if let companyRef = company {
-                project.companyId = companyRef.stringValue
-            }
+        if let companyRef = company {
+            project.companyId = companyRef.stringValue
+        }
         
         // Handle dates with robust parsing
         if let startDateString = startDate {
@@ -91,88 +93,16 @@ struct ProjectDTO: Codable {
         project.lastSyncedAt = Date()
         project.syncPriority = 1
         
+        // Store project images
+        if let images = projectImages {
+            project.projectImagesString = images.joined(separator: ",")
+        }
+        
         // Assign team members - using string storage
         if let teamMemberIds = teamMembers {
             project.teamMemberIdsString = teamMemberIds.joined(separator: ",")
         }
         
         return project
-    }
-}
-
-/// Bubble's geographic address structure
-struct BubbleAddress: Codable {
-    let formattedAddress: String
-    let lat: Double?
-    let lng: Double?
-    
-    enum CodingKeys: String, CodingKey {
-        case formattedAddress = "address"  // Updated to match actual API response
-        case lat, lng
-    }
-}
-
-/// Bubble's reference type - updated to handle both string and object references
-struct BubbleReference: Codable {
-    let value: ReferenceValue
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        
-        // Try to decode as string first (direct ID reference)
-        if let stringValue = try? container.decode(String.self) {
-            value = .string(stringValue)
-        }
-        // Then try to decode as object reference
-        else if let objectValue = try? container.decode(ObjectReference.self) {
-            value = .object(objectValue)
-        }
-        // Fallback - treat as empty string
-        else {
-            value = .string("")
-        }
-    }
-    
-    func encode(to encoder: Encoder) throws {
-            var container = encoder.singleValueContainer()
-            switch value {
-            case .string(let stringValue):
-                try container.encode(stringValue)
-            case .object(let objectValue):
-                try container.encode(objectValue)
-            }
-        }
-    
-    struct ObjectReference: Codable {
-        let uniqueID: String
-        let text: String?
-        
-        enum CodingKeys: String, CodingKey {
-            case uniqueID = "unique_id"
-            case text
-        }
-    }
-    
-    enum ReferenceValue {
-        case string(String)
-        case object(ObjectReference)
-    }
-    
-    var stringValue: String {
-        switch value {
-        case .string(let id):
-            return id
-        case .object(let obj):
-            return obj.uniqueID
-        }
-    }
-}
-
-// Add string conversion for BubbleReference
-extension BubbleReference: ExpressibleByStringLiteral {
-    typealias StringLiteralType = String
-    
-    init(stringLiteral value: String) {
-        self.value = .string(value)
     }
 }

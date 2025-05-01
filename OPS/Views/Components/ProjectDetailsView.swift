@@ -5,13 +5,15 @@
 //  Created by Jackson Sweet on 2025-04-25.
 //
 
-
 import SwiftUI
 
 struct ProjectDetailsView: View {
     let project: Project
     @Environment(\.dismiss) var dismiss
     @State private var noteText: String
+    @EnvironmentObject private var dataController: DataController
+    @State private var isSavingNotes = false
+    @State private var notesSaved = false
     
     // Initialize with project's existing notes
     init(project: Project) {
@@ -70,37 +72,60 @@ struct ProjectDetailsView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
-                TextEditor(text: $noteText)
-                    .frame(minHeight: 120)
-                    .padding(8)
-                    .background(OPSStyle.Colors.cardBackground)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .font(OPSStyle.Typography.body)
+                ZStack(alignment: .topTrailing) {
+                    TextEditor(text: $noteText)
+                        .frame(minHeight: 120)
+                        .padding(8)
+                        .background(OPSStyle.Colors.cardBackground)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    // Success indicator that appears briefly after saving
+                    if notesSaved {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(OPSStyle.Colors.successStatus)
+                            .font(.system(size: 24))
+                            .padding(8)
+                            .transition(.scale.combined(with: .opacity))
+                            .onAppear {
+                                // Hide after 2 seconds
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                    withAnimation {
+                                        notesSaved = false
+                                    }
+                                }
+                            }
+                    }
+                }
                 
                 // Save notes button
                 Button(action: saveNotes) {
-                    Text("SAVE NOTES")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(OPSStyle.Colors.secondaryAccent)
-                        .foregroundColor(.white)
-                        .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    HStack {
+                        if isSavingNotes {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
+                                .padding(.trailing, 8)
+                        }
+                        
+                        Text("SAVE NOTES")
+                            .font(OPSStyle.Typography.bodyBold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(OPSStyle.Colors.secondaryAccent)
+                    .foregroundColor(.white)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    .opacity(isSavingNotes ? 0.7 : 1.0)
                 }
+                .disabled(isSavingNotes)
                 .padding(.vertical)
                 
-                // Photos section - placeholder for now
-                Text("PHOTOS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Divider()
+                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
                 
-                Text("No photos added yet")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(24)
-                    .background(OPSStyle.Colors.cardBackground)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                // Photos section
+                ProjectImagesSection(project: project)
             }
             .padding()
         }
@@ -117,14 +142,36 @@ struct ProjectDetailsView: View {
     }
     
     private func saveNotes() {
-        // This would typically update the database through DataController
-        // For now, let's just print the notes
-        print("Saving notes: \(noteText)")
-        // We would call a method on DataController to update project notes
+        guard !isSavingNotes else { return }
+        
+        isSavingNotes = true
+        
+        Task {
+            // Update the model
+            await MainActor.run {
+                project.notes = noteText
+                project.needsSync = true
+                
+                // Save to the database
+                if let modelContext = dataController.modelContext {
+                    try? modelContext.save()
+                }
+            }
+            
+            // Sync will happen automatically via the normal sync mechanism
+            // This is simpler and more reliable than duplicating sync logic here
+            
+            // Show success indicator
+            await MainActor.run {
+                withAnimation {
+                    notesSaved = true
+                    isSavingNotes = false
+                }
+            }
+        }
     }
 }
 
-// Custom labeled content style for consistent field labels
 struct DarkLabeledContentStyle: LabeledContentStyle {
     func makeBody(configuration: Configuration) -> some View {
         VStack(alignment: .leading, spacing: 4) {

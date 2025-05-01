@@ -152,4 +152,23 @@ extension APIService {
             sortField: BubbleFields.Project.startDate
         )
     }
+    
+    // MARK: Update Data
+
+    /// Update project notes
+    /// - Parameters:
+    ///   - id: The project ID
+    ///   - notes: The new notes text
+    func updateProjectNotes(id: String, notes: String) async throws {
+        let updateData = [BubbleFields.Project.teamNotes: notes]
+        let bodyData = try JSONSerialization.data(withJSONObject: updateData)
+        
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(id)",
+            method: "PATCH",
+            body: bodyData,
+            requiresAuth: false
+        )
+    }
+    
 }

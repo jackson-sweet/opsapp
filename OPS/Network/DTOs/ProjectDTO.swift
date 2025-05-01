@@ -25,6 +25,7 @@ struct ProjectDTO: Codable {
     let teamNotes: String?
     let teamMembers: [String]?
     let thumbnail: String?
+    let clientName: String?
     
     // Additional fields from the actual API response
     let projectValue: Double?
@@ -51,6 +52,7 @@ struct ProjectDTO: Codable {
         case projectGrossCost = "Project Gross Cost"
         case balance = "Balance"
         case slug = "Slug"
+        case clientName = "Client Name"
     }
     
     /// Convert DTO to SwiftData model
@@ -68,11 +70,7 @@ struct ProjectDTO: Codable {
                 project.longitude = bubbleAddress.lng
             }
             
-            // Client and company references - extract string IDs
-            if let clientRef = client {
-                project.clientId = clientRef.stringValue
-                project.clientName = "Client" // We might need to fetch client details separately
-            }
+       project.clientName = clientName ?? "Franz"
             
             if let companyRef = company {
                 project.companyId = companyRef.stringValue

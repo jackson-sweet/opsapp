@@ -209,6 +209,55 @@ class APIService {
         return wrapper.response.results
     }
     
+    /// Fetch objects using array-style constraints format
+    func fetchBubbleObjectsWithArrayConstraints<T: Decodable>(
+        objectType: String,
+        constraints: [[String: Any]]?,
+        limit: Int = 100,
+        cursor: Int = 0,
+        sortField: String? = nil,
+        sortOrder: String = "asc"
+    ) async throws -> [T] {
+        // Build endpoint
+        let endpoint = "api/1.1/obj/\(objectType)"
+        
+        // Build query items
+        var queryItems = [
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "cursor", value: "\(cursor)")
+        ]
+        
+        // Add sort parameters if provided
+        if let sortField = sortField {
+            queryItems.append(URLQueryItem(name: "sort_field", value: sortField))
+            queryItems.append(URLQueryItem(name: "sort_order", value: sortOrder))
+        }
+        
+        // Add constraints as an array
+        if let constraints = constraints {
+            do {
+                let jsonData = try JSONSerialization.data(withJSONObject: constraints)
+                if let jsonString = String(data: jsonData, encoding: .utf8) {
+                    queryItems.append(URLQueryItem(name: "constraints", value: jsonString))
+                }
+            } catch {
+                print("Failed to serialize constraints: \(error)")
+            }
+        }
+        
+        // Log request details
+        print("🔍 Fetching \(objectType) with array constraints")
+        
+        // Execute request
+        let wrapper: BubbleListResponse<T> = try await executeRequest(
+            endpoint: endpoint,
+            queryItems: queryItems,
+            requiresAuth: false
+        )
+        
+        return wrapper.response.results
+    }
+    
     /// Fetch a single object by ID
     /// - Parameters:
     ///   - objectType: The type of object to fetch
@@ -378,7 +427,7 @@ class APIService {
     private func printResponseDebugInfo(_ data: Data, from url: URL) {
         if let responseString = String(data: data, encoding: .utf8) {
             print("API Response from \(url.absoluteString):")
-            print(responseString.prefix(500)) // Print first 500 chars to avoid console flooding
+            print(responseString) // Print first 500 chars to avoid console flooding
             print("...")
         }
     }

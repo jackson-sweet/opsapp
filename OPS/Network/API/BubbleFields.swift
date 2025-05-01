@@ -77,6 +77,7 @@ struct BubbleFields {
         static let status = "Status"
         static let teamMembers = "Team Members"
         static let teamNotes = "Team Notes"
+        static let clientName = "Client Name"
     }
     
     /// User entity fields (match your Bubble field names exactly)

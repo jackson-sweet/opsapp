@@ -45,15 +45,25 @@ extension APIService {
     }
     
     /// Fetch projects assigned to a specific user
-    /// - Parameter userId: The user ID
-    /// - Returns: Array of project DTOs
+    /// - Parameter userId: The user ID to filter for
+    /// - Returns: Array of project DTOs where user is a team member
     func fetchUserProjects(userId: String) async throws -> [ProjectDTO] {
-        return try await fetchBubbleObjects(
+        // Create constraint in array format exactly as shown in the example URL
+        let constraints: [[String: Any]] = [
+            [
+                "key": "Team Members",
+                "constraint_type": "contains",
+                "value": userId
+            ]
+        ]
+        
+        return try await fetchBubbleObjectsWithArrayConstraints(
             objectType: BubbleFields.Types.project,
-            constraints: userConstraint(userId: userId),
+            constraints: constraints,
             sortField: BubbleFields.Project.startDate
         )
     }
+
     
     /// Fetch projects by status
     /// - Parameter status: The status to filter by

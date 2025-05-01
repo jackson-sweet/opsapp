@@ -181,7 +181,7 @@ class SyncManager {
         }
     }
     
-    /// Sync projects between local storage and backend using new centralized API
+    /// Sync projects between local storage and backend
     private func syncProjects() async throws {
         // Get user ID from the provider closure
         guard let userId = userIdProvider() else {
@@ -189,7 +189,7 @@ class SyncManager {
             return
         }
         
-        // Now using the new centralized API approach
+        // Now using the optimized function to fetch only projects where user is a team member
         print("Syncing projects for user ID: \(userId)")
         let remoteProjects = try await apiService.fetchUserProjects(userId: userId)
         
@@ -241,12 +241,17 @@ class SyncManager {
     /// Update an existing project efficiently
     private func updateExistingProject(_ remoteDTO: ProjectDTO, usersMap: [String: User]) async {
         do {
+            
+            
+            
             let predicate = #Predicate<Project> { $0.id == remoteDTO.id }
             let descriptor = FetchDescriptor<Project>(predicate: predicate)
             
             if let localProject = try modelContext.fetch(descriptor).first, !localProject.needsSync {
                 // Only update if not modified locally
                 updateLocalProjectFromRemote(localProject, remoteDTO: remoteDTO)
+                
+                print("Found existing project \(remoteDTO.id), needsSync: \(localProject.needsSync ? "true" : "false")")
                 
                 // Update team members
                 if let teamMembers = remoteDTO.teamMembers {
@@ -292,27 +297,20 @@ class SyncManager {
     
     /// Update a local project with remote data
     private func updateLocalProjectFromRemote(_ localProject: Project, remoteDTO: ProjectDTO) {
+        // Update project title and basic info
         localProject.title = remoteDTO.projectName
         
-        // Client name from client reference
-        if let clientRef = remoteDTO.client {
-            if case let .object(objectRef) = clientRef.value {
-                localProject.clientName = objectRef.text ?? "Unknown Client"
-                localProject.clientId = objectRef.uniqueID
-            } else {
-                localProject.clientName = "Unknown Client"
-                localProject.clientId = clientRef.stringValue
-            }
-        }
+        // Update client name directly
+        localProject.clientName = remoteDTO.clientName ?? "Unknown Client"
         
-        // Address and location from Bubble address object
+        // Update address and location
         if let bubbleAddress = remoteDTO.address {
             localProject.address = bubbleAddress.formattedAddress
             localProject.latitude = bubbleAddress.lat
             localProject.longitude = bubbleAddress.lng
         }
         
-        // Dates with robust parsing
+        // Update dates
         if let startDateString = remoteDTO.startDate {
             localProject.startDate = DateFormatter.dateFromBubble(startDateString)
         }
@@ -321,12 +319,13 @@ class SyncManager {
             localProject.endDate = DateFormatter.dateFromBubble(completionString)
         }
         
+        // Update status and other fields
         localProject.status = BubbleFields.JobStatus.toSwiftEnum(remoteDTO.status)
         localProject.notes = remoteDTO.teamNotes ?? remoteDTO.description
         localProject.projectDescription = remoteDTO.description
         localProject.lastSyncedAt = Date()
         
-        // Company ID from company reference
+        // Update company ID from company reference
         if let companyRef = remoteDTO.company {
             localProject.companyId = companyRef.stringValue
         }

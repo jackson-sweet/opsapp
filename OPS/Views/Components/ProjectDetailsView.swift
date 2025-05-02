@@ -12,8 +12,7 @@ struct ProjectDetailsView: View {
     @Environment(\.dismiss) var dismiss
     @State private var noteText: String
     @EnvironmentObject private var dataController: DataController
-    @State private var isSavingNotes = false
-    @State private var notesSaved = false
+    @State private var showingPhotos = false
     
     // Initialize with project's existing notes
     init(project: Project) {
@@ -33,29 +32,13 @@ struct ProjectDetailsView: View {
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
-                // Client and address
-                VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("CLIENT") {
-                        Text(project.clientName)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    
-                    LabeledContent("ADDRESS") {
-                        Text(project.address)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    
-                    LabeledContent("SCHEDULED") {
-                        Text(project.formattedStartDate)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                }
-                .labeledContentStyle(DarkLabeledContentStyle())
+                // Client info
+                clientInfoSection
                 
                 Divider()
                     .background(OPSStyle.Colors.secondaryText.opacity(0.3))
                 
-                // Project details section
+                // Project description
                 Text("PROJECT DETAILS")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -68,64 +51,32 @@ struct ProjectDetailsView: View {
                     .background(OPSStyle.Colors.secondaryText.opacity(0.3))
                 
                 // Notes section
-                Text("NOTES")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                ZStack(alignment: .topTrailing) {
-                    TextEditor(text: $noteText)
-                        .frame(minHeight: 120)
-                        .padding(8)
-                        .background(OPSStyle.Colors.cardBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    
-                    // Success indicator that appears briefly after saving
-                    if notesSaved {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(OPSStyle.Colors.successStatus)
-                            .font(.system(size: 24))
-                            .padding(8)
-                            .transition(.scale.combined(with: .opacity))
-                            .onAppear {
-                                // Hide after 2 seconds
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                    withAnimation {
-                                        notesSaved = false
-                                    }
-                                }
-                            }
-                    }
-                }
-                
-                // Save notes button
-                Button(action: saveNotes) {
-                    HStack {
-                        if isSavingNotes {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
-                                .padding(.trailing, 8)
-                        }
-                        
-                        Text("SAVE NOTES")
-                            .font(OPSStyle.Typography.bodyBold)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(OPSStyle.Colors.secondaryAccent)
-                    .foregroundColor(.white)
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    .opacity(isSavingNotes ? 0.7 : 1.0)
-                }
-                .disabled(isSavingNotes)
-                .padding(.vertical)
+                notesSection
                 
                 Divider()
                     .background(OPSStyle.Colors.secondaryText.opacity(0.3))
                 
-                // Photos section
-                ProjectImagesSection(project: project)
+                // Photos button - simpler approach
+                Text("PHOTOS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Button(action: {
+                    showingPhotos = true
+                }) {
+                    HStack {
+                        Image(systemName: "photo")
+                            .font(.system(size: 20))
+                        
+                        Text("View Project Photos")
+                            .font(OPSStyle.Typography.body)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(.white)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
             }
             .padding()
         }
@@ -139,33 +90,107 @@ struct ProjectDetailsView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryAccent)
             }
         }
+        .sheet(isPresented: $showingPhotos) {
+            ProjectPhotosGrid(project: project)
+        }
+    }
+    
+    // Client info section
+    private var clientInfoSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CLIENT: \(project.clientName)")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+            
+            Text("ADDRESS: \(project.address)")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+            
+            Text("SCHEDULED: \(project.formattedStartDate)")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+    }
+    
+    // Notes section
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("NOTES")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            
+            TextEditor(text: $noteText)
+                .frame(minHeight: 120)
+                .padding(8)
+                .background(OPSStyle.Colors.cardBackground)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+            
+            Button(action: saveNotes) {
+                Text("SAVE NOTES")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(OPSStyle.Colors.secondaryAccent)
+                    .foregroundColor(.white)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+            }
+        }
     }
     
     private func saveNotes() {
-        guard !isSavingNotes else { return }
+        project.notes = noteText
+        project.needsSync = true
         
-        isSavingNotes = true
-        
-        Task {
-            // Update the model
-            await MainActor.run {
-                project.notes = noteText
-                project.needsSync = true
-                
-                // Save to the database
-                if let modelContext = dataController.modelContext {
-                    try? modelContext.save()
+        if let modelContext = dataController.modelContext {
+            try? modelContext.save()
+        }
+    }
+}
+
+// Separate view for photos to avoid loading images in main view
+struct ProjectPhotosSheet: View {
+    let project: Project
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                List {
+                    ForEach(project.getProjectImages(), id: \.self) { urlString in
+                        HStack {
+                            Text("Project Photo")
+                                .font(OPSStyle.Typography.body)
+                            
+                            Spacer()
+                            
+                            Image(systemName: "photo")
+                                .font(.system(size: 24))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // We'll implement this in a separate step
+                        }
+                    }
+                    
+                    if project.getProjectImages().isEmpty {
+                        Text("No photos added yet")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding()
+                    }
                 }
             }
-            
-            // Sync will happen automatically via the normal sync mechanism
-            // This is simpler and more reliable than duplicating sync logic here
-            
-            // Show success indicator
-            await MainActor.run {
-                withAnimation {
-                    notesSaved = true
-                    isSavingNotes = false
+            .navigationTitle("Project Photos")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
                 }
             }
         }

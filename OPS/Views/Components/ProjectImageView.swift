@@ -12,13 +12,8 @@ struct ProjectImageView: View {
     let size: CGSize
     
     @State private var image: UIImage?
-    @State private var loadState: LoadState = .loading
-    
-    enum LoadState {
-        case loading
-        case loaded
-        case failed
-    }
+    @State private var isLoading = true
+    @State private var loadFailed = false
     
     init(urlString: String, size: CGSize = CGSize(width: 150, height: 150)) {
         self.urlString = urlString
@@ -27,61 +22,55 @@ struct ProjectImageView: View {
     
     var body: some View {
         ZStack {
-            // Background
+            // Background placeholder - shows IMMEDIATELY
             Rectangle()
                 .fill(OPSStyle.Colors.cardBackground)
                 .frame(width: size.width, height: size.height)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             
-            // Content based on load state
-            Group {
-                if loadState == .loaded, let image = image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: size.width, height: size.height)
-                        .clipped()
-                } else if loadState == .loading {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.secondaryAccent))
-                } else {
-                    Image(systemName: "photo")
-                        .font(.system(size: 28))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
+            if let image = image {
+                // Image loaded successfully
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size.width, height: size.height)
+                    .clipped()
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+            } else if isLoading {
+                // Loading state
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.secondaryAccent))
+            } else if loadFailed {
+                // Failed state
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 24))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
         .onAppear(perform: loadImage)
     }
     
     private func loadImage() {
-        // Only try to load once
-        if loadState != .loading {
-            return
-        }
-        
-        // Normalize the URL string - handle Bubble's format
+        // Normalize URL and load image as before
         var normalizedURLString = urlString
         if urlString.hasPrefix("//") {
             normalizedURLString = "https:" + urlString
         }
         
         guard let url = URL(string: normalizedURLString) else {
-            loadState = .failed
+            isLoading = false
+            loadFailed = true
             return
         }
         
-        // Use URLCache for better performance
-        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        URLSession.shared.dataTask(with: url) { data, response, error in
             DispatchQueue.main.async {
+                isLoading = false
+                
                 if let data = data, let loadedImage = UIImage(data: data) {
                     self.image = loadedImage
-                    self.loadState = .loaded
                 } else {
-                    self.loadState = .failed
+                    self.loadFailed = true
                 }
             }
         }.resume()

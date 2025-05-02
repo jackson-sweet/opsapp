@@ -156,6 +156,7 @@ struct HomeView: View {
             if let project = selectedProject {
                 NavigationView {
                     ProjectDetailsView(project: project)
+                        .id(UUID())  // Force a new instance every time
                 }
             }
         })

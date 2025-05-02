@@ -11,36 +11,22 @@ struct ProjectImagesSection: View {
     let project: Project
     @State private var selectedImageURL: String?
     
-    // Solid default states - assume loading until proven otherwise
-    @State private var loadingState: ImageLoadState = .determining
-    
-    enum ImageLoadState {
-        case determining  // Initial state - don't know yet
-        case hasImages    // We have images to show
-        case noImages     // Confirmed no images
-    }
-    
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-            // Section header
+            // Section header - always visible immediately
             Text("PHOTOS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             
-            switch loadingState {
-            case .determining:
-                // Simple loading state - clean and unambiguous
-                loadingPlaceholder
-            case .hasImages:
-                // Image grid when we have images
-                imageGrid
-            case .noImages:
-                // Empty state when we know we have none
+            let imageUrls = project.getProjectImages()
+            
+            if imageUrls.isEmpty {
+                // Empty state - shown immediately if no images
                 emptyState
+            } else {
+                // Image grid - images load independently
+                imageGrid(urls: imageUrls)
             }
-        }
-        .onAppear {
-            determineImagesState()
         }
         .fullScreenCover(item: $selectedImageURL) { url in
             // Full screen image view
@@ -62,23 +48,6 @@ struct ProjectImagesSection: View {
         }
     }
     
-    // Clean loading placeholder - simpler is better
-    private var loadingPlaceholder: some View {
-        HStack {
-            Spacer()
-            
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.secondaryAccent))
-                .scaleEffect(1.2)
-                .padding(30)
-            
-            Spacer()
-        }
-        .frame(height: 150)
-        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-    }
-    
     // Empty state view
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
@@ -97,12 +66,12 @@ struct ProjectImagesSection: View {
     }
     
     // Image grid
-    private var imageGrid: some View {
+    private func imageGrid(urls: [String]) -> some View {
         LazyVGrid(columns: [
             GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2),
             GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2)
         ], spacing: OPSStyle.Layout.spacing2) {
-            ForEach(project.getProjectImages(), id: \.self) { url in
+            ForEach(urls, id: \.self) { url in
                 ProjectImageView(urlString: url)
                     .onTapGesture {
                         selectedImageURL = url
@@ -110,16 +79,5 @@ struct ProjectImagesSection: View {
             }
         }
     }
-    
-    // Helper to determine image state
-    private func determineImagesState() {
-        // First check if we have images in string format
-        let imageUrls = project.getProjectImages()
-        
-        if imageUrls.isEmpty {
-            loadingState = .noImages
-        } else {
-            loadingState = .hasImages
-        }
-    }
+
 }

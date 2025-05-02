@@ -29,7 +29,16 @@ struct SettingsView: View {
             case .profile: return "person.fill"
             case .organization: return "building.2.fill"
             case .certifications: return "certificate.fill"
-            case .projectHistory: return "clock.fill"
+            case .projectHistory: return "clock.arrow.circlepath"
+            }
+        }
+        
+        var description: String {
+            switch self {
+            case .profile: return "Personal information, contact details"
+            case .organization: return "Company information, team members"
+            case .certifications: return "Licenses, qualifications, training"
+            case .projectHistory: return "Past projects, expense records"
             }
         }
     }
@@ -37,108 +46,121 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+                // Background gradient
+                OPSStyle.Colors.backgroundGradient
+                .edgesIgnoringSafeArea(.all)
                 
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
-                    // Header
-                    Text("Settings")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.horizontal)
-                    
-                    if let user = dataController.currentUser {
-                        HStack {
-                            // User avatar
-                            Circle()
-                                .fill(OPSStyle.Colors.primaryAccent)
-                                .frame(width: 40, height: 40)
-                                .overlay(
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        // Header
+                        Text("Settings")
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 12)
+                        
+                        // User profile summary
+                        if let user = dataController.currentUser {
+                            HStack(spacing: 16) {
+                                // User avatar
+                                ZStack {
+                                    Circle()
+                                        .fill(OPSStyle.Colors.primaryAccent)
+                                        .frame(width: 60, height: 60)
+                                    
                                     Text(String(user.fullName.prefix(1)))
-                                        .font(OPSStyle.Typography.bodyBold)
+                                        .font(.system(size: 26, weight: .bold))
                                         .foregroundColor(.white)
-                                )
-                            
-                            VStack(alignment: .leading) {
-                                Text(user.fullName)
-                                    .font(OPSStyle.Typography.subtitle)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                }
                                 
-                                Text(user.email ?? "")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(user.fullName)
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundColor(.white)
+                                    
+                                    Text(user.email ?? "")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    
+                                    Text(user.role.displayName)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                }
+                                
+                                Spacer()
                             }
+                            .padding(16)
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                            .cornerRadius(16)
+                            .padding(.horizontal, 20)
                         }
-                        .padding(.horizontal)
-                    }
-                    
-                    // Settings menu options
-                    settingsContent
-                    
-                    Spacer()
-                    
-                    // Sync settings section
-                    VStack(alignment: .leading) {
-                        Text("DATA SYNC")
-                            .font(OPSStyle.Typography.captionBold)
+                        
+                        // Section title
+                        Text("SETTINGS")
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .padding(.top)
-                            .padding(.horizontal)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 12)
                         
-                        VStack(spacing: OPSStyle.Layout.spacing2) {
-                            Toggle("Sync on app launch", isOn: $syncOnLaunch)
-                                .tint(OPSStyle.Colors.secondaryAccent)
-                            
-                            Toggle("Background sync", isOn: $backgroundSyncEnabled)
-                                .tint(OPSStyle.Colors.secondaryAccent)
-                        }
-                        .padding()
-                        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .padding(.horizontal)
-                    }
-                    
-                    // Footer with logout and version
-                    VStack(spacing: OPSStyle.Layout.spacing3) {
-                        // Logout button
-                        Button(action: {
-                            showLogoutConfirmation = true
-                        }) {
-                            HStack {
-                                Text("Log Out")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(Color.red)
-                                
-                                Image(systemName: "arrow.right.square")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(Color.red)
+                        // Settings menu options
+                        settingsContent
+                        
+                        // Sync settings section
+                        Text("DATA SYNCHRONIZATION")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 12)
+                        
+                        syncSettingsContent
+                        
+                        // Footer with logout and version
+                        VStack(spacing: 24) {
+                            // Logout button
+                            Button(action: {
+                                showLogoutConfirmation = true
+                            }) {
+                                HStack {
+                                    Spacer()
+                                    
+                                    Text("Log Out")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                                    
+                                    Image(systemName: "arrow.right.square")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                                    
+                                    Spacer()
+                                }
+                                .padding(.vertical, 16)
+                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                                .cornerRadius(12)
+                                .padding(.horizontal, 20)
                             }
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .center)
-                        }
-                        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .padding(.horizontal)
-                        
-                        // App version and logo
-                        HStack {
-                            Text("OPS APP")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            Text("v1.0.0")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            // App logo
-                            Image(systemName: "building.2.fill") // Using a system icon as placeholder
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .font(.system(size: 18))
+                            // App version and logo
+                            HStack {
+                                Image(systemName: "building.2.fill") // Placeholder for actual logo
+                                    .font(.system(size: 18))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                
+                                Text("OPS APP")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                
+                                Spacer()
+                                
+                                Text("v1.0.0")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 32)
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.bottom, OPSStyle.Layout.spacing4)
+                        .padding(.top, 16)
                     }
                 }
-                .padding(.top)
             }
             .navigationDestination(for: SettingsSection.self) { section in
                 switch section {
@@ -153,45 +175,104 @@ struct SettingsView: View {
                 }
             }
         }
-        .alert(isPresented: $showLogoutConfirmation) {
-            Alert(
-                title: Text("Log Out"),
-                message: Text("Are you sure you want to log out?"),
-                primaryButton: .destructive(Text("Log Out")) {
-                    logout()
-                },
-                secondaryButton: .cancel()
-            )
+        .alert("Log Out", isPresented: $showLogoutConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Log Out", role: .destructive) {
+                logout()
+            }
+        } message: {
+            Text("Are you sure you want to log out of your account?")
         }
     }
     
     private var settingsContent: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
+        VStack(spacing: 12) {
             ForEach(SettingsSection.allCases, id: \.id) { section in
                 NavigationLink(value: section) {
-                    HStack {
-                        Image(systemName: section.iconName)
-                            .font(.system(size: 18))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .frame(width: 30, height: 30)
+                    HStack(spacing: 16) {
+                        // Icon in colored circle
+                        ZStack {
+                            Circle()
+                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
+                                .frame(width: 40, height: 40)
+                            
+                            Image(systemName: section.iconName)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
                         
-                        Text(section.rawValue)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(section.rawValue)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white)
+                            
+                            Text(section.description)
+                                .font(.system(size: 12))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
                         
                         Spacer()
                         
                         Image(systemName: "chevron.right")
                             .font(.system(size: 14))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
-                    .padding()
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(16)
+                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .cornerRadius(12)
                 }
             }
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 20)
+    }
+    
+    private var syncSettingsContent: some View {
+        VStack(spacing: 16) {
+            // Sync toggle row
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sync on App Launch")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                    
+                    Text("Automatically sync data when app starts")
+                        .font(.system(size: 13))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                Toggle("", isOn: $syncOnLaunch)
+                    .labelsHidden()
+                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+            }
+            .padding(16)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            .cornerRadius(12)
+            
+            // Background sync toggle row
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Background Sync")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                    
+                    Text("Sync data when app is in the background")
+                        .font(.system(size: 13))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                Toggle("", isOn: $backgroundSyncEnabled)
+                    .labelsHidden()
+                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+            }
+            .padding(16)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            .cornerRadius(12)
+        }
+        .padding(.horizontal, 20)
     }
     
     private func logout() {
@@ -202,3 +283,4 @@ struct SettingsView: View {
 
 // MARK: - Extensions
 extension SettingsView.SettingsSection: CaseIterable {}
+

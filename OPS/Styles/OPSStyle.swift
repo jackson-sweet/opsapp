@@ -13,23 +13,34 @@ enum OPSStyle {
     // MARK: - Colors
     enum Colors {
         // Brand colors
-        static let primaryAccent = Color("AccentPrimary") // Orange
+        static let primaryAccent = Color("AccentPrimary") // Orange (#FF7733)
         static let secondaryAccent = Color("AccentSecondary") // Blue for secondary actions
         
         // Background colors
         static let background = Color("Background") // Main background (black)
+        static let darkBackground = Color("DarkBackground") // Darker background (#090C15)
         static let cardBackground = Color("CardBackground") // Card background (dark gray)
+        static let cardBackgroundDark = Color("CardBackgroundDark") // Darker card background (#1F293D)
         static let statusBackground = Color("StatusBackground") // Status badge background
         
         // Text colors
         static let primaryText = Color("TextPrimary") // White
-        static let secondaryText = Color("TextSecondary") // Light gray
+        static let secondaryText = Color("TextSecondary") // Light gray (#AAAAAA)
+        static let tertiaryText = Color("TextTertiary") // Darker gray (#777777)
         static let inactiveText = Color("TextInactive") // Dark gray
         
         // Status colors
-        static let successStatus = Color("StatusSuccess") // Green
+        static let successStatus = Color("StatusSuccess") // Green (#34C759)
         static let warningStatus = Color("StatusWarning") // Yellow/Orange
-        static let errorStatus = Color("StatusError") // Red
+        static let errorStatus = Color("StatusError") // Red (#FF3B30)
+        static let inactiveStatus = Color("StatusInactive") // Gray (#8E8E93)
+        
+        // Gradients
+        static let backgroundGradient = LinearGradient(
+            gradient: Gradient(colors: [Color("BackgroundGradientStart"), Color("BackgroundGradientEnd")]),
+            startPoint: .top,
+            endPoint: .bottom
+        )
         
         // Utility
         static func statusColor(for status: Status) -> Color {

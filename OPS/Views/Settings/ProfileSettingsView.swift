@@ -23,23 +23,30 @@ struct ProfileSettingsView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            // Background gradient
+            OPSStyle.Colors.backgroundGradient
+            .edgesIgnoringSafeArea(.all)
             
             ScrollView {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
-                    // Header
+                VStack(alignment: .leading, spacing: 24) {
+                    // Header area with back button and title
                     HStack {
                         Button(action: {
                             dismiss()
                         }) {
-                            Image(systemName: "arrow.left")
-                                .font(.system(size: 20))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(.white)
                         }
+                        .frame(width: 44, height: 44)
+                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                        .cornerRadius(12)
+                        
+                        Spacer()
                         
                         Text("Profile Settings")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(.white)
                         
                         Spacer()
                         
@@ -47,89 +54,131 @@ struct ProfileSettingsView: View {
                             toggleEditing()
                         }) {
                             Text(isEditing ? "Cancel" : "Edit")
-                                .font(OPSStyle.Typography.bodyBold)
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
+                        .frame(width: 80, height: 44)
+                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                        .cornerRadius(12)
                     }
-                    .padding()
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
                     
                     // Profile image section
-                    VStack {
+                    HStack(spacing: 24) {
                         if let profileImage = profileImage {
                             Image(uiImage: profileImage)
                                 .resizable()
                                 .scaledToFill()
-                                .frame(width: 100, height: 100)
+                                .frame(width: 80, height: 80)
                                 .clipShape(Circle())
                                 .overlay(
                                     Circle()
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: isEditing ? 2 : 0)
                                 )
                         } else {
                             // Default profile circle with initial
-                            Circle()
-                                .fill(OPSStyle.Colors.primaryAccent)
-                                .frame(width: 100, height: 100)
-                                .overlay(
-                                    Text(getInitials())
-                                        .font(OPSStyle.Typography.title)
-                                        .foregroundColor(.white)
-                                )
+                            ZStack {
+                                Circle()
+                                    .fill(OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 80, height: 80)
+                                
+                                Text(getInitials())
+                                    .font(.system(size: 32, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
                         }
                         
-                        if isEditing {
-                            Button(action: {
-                                showImagePicker = true
-                            }) {
-                                Text("Change Photo")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("\(firstName) \(lastName)")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.white)
+                            
+                            if let user = dataController.currentUser {
+                                Text(user.role.displayName)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
-                            .padding(.top, 8)
+                            
+                            if isEditing {
+                                Button(action: {
+                                    showImagePicker = true
+                                }) {
+                                    Text("Change Photo")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                }
+                                .padding(.top, 4)
+                            }
                         }
+                        
+                        Spacer()
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .cornerRadius(16)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
                     
                     // Form fields
-                    VStack(spacing: OPSStyle.Layout.spacing3) {
+                    VStack(spacing: 24) {
                         // PERSONAL INFORMATION section
-                        Text("PERSONAL INFORMATION")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .padding(.horizontal)
+                        sectionHeader("PERSONAL INFORMATION")
                         
                         formField(title: "First Name", text: $firstName, isEditable: isEditing)
                         formField(title: "Last Name", text: $lastName, isEditable: isEditing)
-                        formField(title: "Email", text: $email, isEditable: isEditing)
-                        formField(title: "Phone", text: $phone, isEditable: isEditing)
+                        
+                        // Email - not editable
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Email Address")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            // Email is always shown as non-editable
+                            HStack {
+                                Text(email.isEmpty ? "Not set" : email)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(email.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
+                                
+                                Spacer()
+                                
+                                // Lock icon to indicate non-editable
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                            .cornerRadius(12)
+                        }
+                        .padding(.horizontal, 20)
+                        
+                        formField(title: "Phone Number", text: $phone, isEditable: isEditing)
                         
                         // CREDENTIALS section
-                        Text("CREDENTIALS")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .padding(.top, OPSStyle.Layout.spacing3)
-                            .padding(.horizontal)
+                        sectionHeader("CREDENTIALS")
                         
                         Button(action: {
                             // Reset password action
                         }) {
                             HStack {
                                 Text("Reset Password")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
                                 
                                 Spacer()
                                 
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 14))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                            .cornerRadius(12)
                         }
-                        .padding(.horizontal)
+                        .padding(.horizontal, 20)
                         .disabled(!isEditing)
                         .opacity(isEditing ? 1.0 : 0.6)
                         
@@ -139,17 +188,18 @@ struct ProfileSettingsView: View {
                                 saveChanges()
                             }) {
                                 Text("Save Changes")
-                                    .font(OPSStyle.Typography.bodyBold)
+                                    .font(.system(size: 16, weight: .bold))
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
-                                    .padding()
+                                    .padding(.vertical, 16)
                                     .background(OPSStyle.Colors.primaryAccent)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .cornerRadius(12)
                             }
-                            .padding(.horizontal)
-                            .padding(.top, OPSStyle.Layout.spacing4)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 16)
                         }
                     }
+                    .padding(.bottom, 40)
                 }
             }
         }
@@ -171,30 +221,42 @@ struct ProfileSettingsView: View {
         }
     }
     
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 13, weight: .bold))
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+    }
+    
     private func formField(title: String, text: Binding<String>, isEditable: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(OPSStyle.Typography.caption)
+                .font(.system(size: 14, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             
             if isEditable {
                 TextField("", text: text)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(.system(size: 16))
+                    .foregroundColor(.white)
                     .padding()
-                    .background(OPSStyle.Colors.cardBackground)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                    )
             } else {
                 Text(text.wrappedValue.isEmpty ? "Not set" : text.wrappedValue)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(text.wrappedValue.isEmpty ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.primaryText)
+                    .font(.system(size: 16))
+                    .foregroundColor(text.wrappedValue.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .cornerRadius(12)
             }
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 20)
     }
     
     private func getInitials() -> String {
@@ -244,7 +306,7 @@ struct ProfileSettingsView: View {
             let success = await dataController.updateUserProfile(
                 firstName: firstName,
                 lastName: lastName,
-                email: email,
+                email: email, // Email won't actually change as the field is not editable
                 phone: phone
             )
             
@@ -256,6 +318,7 @@ struct ProfileSettingsView: View {
         }
     }
 }
+
 
 #Preview {
     ProfileSettingsView()

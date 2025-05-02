@@ -19,39 +19,77 @@ struct OrganizationSettingsView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            // Background gradient
+            OPSStyle.Colors.backgroundGradient
+            .edgesIgnoringSafeArea(.all)
             
             ScrollView {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
-                    // Header
+                VStack(alignment: .leading, spacing: 24) {
+                    // Header area with back button and title
                     HStack {
                         Button(action: {
                             dismiss()
                         }) {
-                            Image(systemName: "arrow.left")
-                                .font(.system(size: 20))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(.white)
                         }
-                        
-                        Text("Organization")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(width: 44, height: 44)
+                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                        .cornerRadius(12)
                         
                         Spacer()
+                        
+                        Text("Organization")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        // Empty spacer to balance the header
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 44, height: 44)
                     }
-                    .padding()
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
                     
                     if isLoading {
                         loadingView
                     } else {
+                        // Company logo and name
+                        VStack(spacing: 16) {
+                            // Company logo/icon
+                            ZStack {
+                                Circle()
+                                    .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
+                                    .frame(width: 80, height: 80)
+                                
+                                Image(systemName: "building.2.fill")
+                                    .font(.system(size: 30))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            
+                            // Company name
+                            Text(organization?.name ?? "Company Name")
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
+                        .padding(.vertical, 16)
+                        
                         // Organization info section
+                        sectionHeader("ORGANIZATION DETAILS")
                         organizationSection
                         
                         // Team section
+                        sectionHeader("TEAM MEMBERS")
                         teamSection
                     }
                 }
-                .padding(.bottom, OPSStyle.Layout.spacing4)
+                .padding(.bottom, 40)
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -60,99 +98,136 @@ struct OrganizationSettingsView: View {
         }
     }
     
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 13, weight: .bold))
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+    }
+    
     private var loadingView: some View {
-        VStack {
+        VStack(spacing: 16) {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                .scaleEffect(1.5)
+                .scaleEffect(1.8)
             
             Text("Loading organization data...")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .padding(.top)
+                .font(.system(size: 16))
+                .foregroundColor(.white)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: 200)
         .padding()
     }
     
     private var organizationSection: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-            Text("ORGANIZATION DETAILS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal)
+        VStack(spacing: 16) {
+            // Company info card
+            infoCard(items: [
+                InfoItem(title: "Company Name", value: organization?.name ?? "Not available", icon: "building.2"),
+                InfoItem(title: "Address", value: organization?.address ?? "Not available", icon: "location")
+            ])
             
-            VStack(spacing: OPSStyle.Layout.spacing3) {
-                infoRow(title: "Company Name", value: organization?.name ?? "Not available")
-                infoRow(title: "Address", value: organization?.address ?? "Not available")
-                infoRow(title: "Phone", value: organization?.phone ?? "Not available")
-                infoRow(title: "Email", value: organization?.email ?? "Not available")
-                infoRow(title: "Website", value: organization?.website ?? "Not available")
-            }
-            .padding()
-            .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .padding(.horizontal)
+            // Contact info card
+            infoCard(items: [
+                InfoItem(title: "Phone", value: organization?.phone ?? "Not available", icon: "phone"),
+                InfoItem(title: "Email", value: organization?.email ?? "Not available", icon: "envelope"),
+                InfoItem(title: "Website", value: organization?.website ?? "Not available", icon: "globe")
+            ])
         }
+        .padding(.horizontal, 20)
     }
     
     private var teamSection: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-            Text("TEAM MEMBERS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal)
-                .padding(.top, OPSStyle.Layout.spacing3)
-            
+        VStack(spacing: 12) {
             if teamMembers.isEmpty {
-                Text("No team members found")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .padding(.horizontal)
+                emptyTeamView
             } else {
                 ForEach(teamMembers, id: \.id) { member in
                     memberRow(member: member)
                 }
             }
         }
+        .padding(.horizontal, 20)
     }
     
-    private func infoRow(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+    private var emptyTeamView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "person.3")
+                .font(.system(size: 36))
+                .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.6))
             
-            Text(value)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+            Text("No team members found")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.white)
+            
+            Text("Team members will appear here when added to your organization")
+                .font(.system(size: 14))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .cornerRadius(12)
+    }
+    
+    private func infoCard(items: [InfoItem]) -> some View {
+        VStack(spacing: 20) {
+            ForEach(items, id: \.title) { item in
+                HStack(spacing: 16) {
+                    // Icon
+                    ZStack {
+                        Circle()
+                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .frame(width: 36, height: 36)
+                        
+                        Image(systemName: item.icon)
+                            .font(.system(size: 16))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.title)
+                            .font(.system(size: 14))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        
+                        Text(item.value)
+                            .font(.system(size: 16))
+                            .foregroundColor(.white)
+                    }
+                    
+                    Spacer()
+                }
+            }
+        }
+        .padding(20)
+        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .cornerRadius(12)
     }
     
     private func memberRow(member: User) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing3) {
+        HStack(spacing: 16) {
             // User avatar
-            Circle()
-                .fill(OPSStyle.Colors.primaryAccent)
-                .frame(width: 40, height: 40)
-                .overlay(
-                    Text(String(member.fullName.prefix(1)))
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
-                )
+            ZStack {
+                Circle()
+                    .fill(OPSStyle.Colors.primaryAccent)
+                    .frame(width: 48, height: 48)
+                
+                Text(String(member.fullName.prefix(1)))
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+            }
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(member.fullName)
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
                 
                 Text(member.role.displayName)
-                    .font(OPSStyle.Typography.caption)
+                    .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             
@@ -161,26 +236,25 @@ struct OrganizationSettingsView: View {
             // Status badge - active/inactive
             if member.isActive ?? true {
                 Text("Active")
-                    .font(OPSStyle.Typography.captionBold)
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(OPSStyle.Colors.successStatus)
                     .cornerRadius(12)
             } else {
                 Text("Inactive")
-                    .font(OPSStyle.Typography.captionBold)
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.gray)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(OPSStyle.Colors.inactiveStatus)
                     .cornerRadius(12)
             }
         }
-        .padding()
-        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .padding(.horizontal)
+        .padding(16)
+        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .cornerRadius(12)
     }
     
     private func loadOrganizationData() {
@@ -204,6 +278,19 @@ struct OrganizationSettingsView: View {
             }
         }
     }
+}
+
+// Helper struct for organization info items
+struct InfoItem {
+    let title: String
+    let value: String
+    let icon: String
+}
+
+#Preview {
+    OrganizationSettingsView()
+        .environmentObject(DataController())
+        .preferredColorScheme(.dark)
 }
 
 #Preview {

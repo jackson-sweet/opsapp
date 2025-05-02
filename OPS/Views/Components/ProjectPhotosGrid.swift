@@ -12,6 +12,11 @@ struct ProjectPhotosGrid: View {
     @Environment(\.dismiss) var dismiss
     @State private var selectedPhotoIndex: Int? = nil
     @State private var showingCamera = false
+    @State private var cameraImage: UIImage?
+    @State private var processingImage = false
+    @State private var showingDeleteConfirmation = false
+    @State private var photoToDelete: String? = nil
+    @EnvironmentObject private var dataController: DataController
     
     // Three-column grid with minimal spacing
     private let columns = [
@@ -41,7 +46,13 @@ struct ProjectPhotosGrid: View {
                                         .clipped()
                                         .contentShape(Rectangle())
                                         .onTapGesture {
+                                            // View photo in viewer
                                             selectedPhotoIndex = index
+                                        }
+                                        .onLongPressGesture {
+                                            // Show delete confirmation
+                                            photoToDelete = url
+                                            showingDeleteConfirmation = true
                                         }
                                 }
                             }
@@ -68,6 +79,22 @@ struct ProjectPhotosGrid: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)
                     }
+                    .disabled(processingImage)
+                }
+                
+                // Loading overlay when processing image
+                if processingImage {
+                    ZStack {
+                        Color.black.opacity(0.7)
+                        VStack {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                            Text("Processing image...")
+                                .foregroundColor(.white)
+                                .padding(.top, 10)
+                        }
+                    }
+                    .edgesIgnoringSafeArea(.all)
                 }
             }
             .navigationBarTitle("Project Photos", displayMode: .inline)
@@ -85,7 +112,36 @@ struct ProjectPhotosGrid: View {
             )
         }
         .sheet(isPresented: $showingCamera) {
-            CameraPlaceholder()
+            ImagePicker(
+                images: Binding<[UIImage]>(
+                    get: { cameraImage != nil ? [cameraImage!] : [] },
+                    set: { images in
+                        if let first = images.first {
+                            cameraImage = first
+                        }
+                    }
+                ), 
+                selectionLimit: 1,
+                onSelectionComplete: {
+                    // Process image when selection is complete
+                    if let image = cameraImage {
+                        addPhotoToProject(image)
+                    }
+                }
+            )
+        }
+        // Delete confirmation alert
+        .alert("Delete Photo?", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                photoToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let urlToDelete = photoToDelete {
+                    deletePhoto(urlToDelete)
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete this photo? This action cannot be undone.")
         }
     }
     
@@ -162,23 +218,87 @@ struct PhotoThumbnail: View {
         
         isLoading = true
         
-        // Handle Bubble URL format
+        // Handle local URL format for our simulated server
+        if url.hasPrefix("local://") {
+            print("Loading local image: \(url)")
+            
+            // Try to load from UserDefaults
+            if let base64String = UserDefaults.standard.string(forKey: url),
+               let imageData = Data(base64Encoded: base64String),
+               let loadedImage = UIImage(data: imageData) {
+                
+                DispatchQueue.main.async {
+                    isLoading = false
+                    self.image = loadedImage
+                    print("Successfully loaded image from UserDefaults")
+                }
+            } else {
+                print("Failed to load image from UserDefaults for key: \(url)")
+                DispatchQueue.main.async {
+                    isLoading = false
+                }
+            }
+            return
+        }
+        
+        // Handle Bubble URL format (https://opsapp.co/version-test/img/...)
         var normalizedURL = url
+        
+        // Handle // prefix by adding https:
         if url.hasPrefix("//") {
             normalizedURL = "https:" + url
         }
         
+        // Check if it's a Bubble URL but stored locally (for offline access)
+        if normalizedURL.contains("opsapp.co/version-test/img/") {
+            if let base64String = UserDefaults.standard.string(forKey: normalizedURL),
+               let imageData = Data(base64Encoded: base64String),
+               let loadedImage = UIImage(data: imageData) {
+                
+                DispatchQueue.main.async {
+                    isLoading = false
+                    self.image = loadedImage
+                    print("Successfully loaded Bubble image from local cache")
+                }
+                return
+            }
+        }
+        
+        // If not found locally, try to load from network
         guard let imageURL = URL(string: normalizedURL) else {
+            print("Invalid URL: \(normalizedURL)")
             isLoading = false
             return
         }
         
-        URLSession.shared.dataTask(with: imageURL) { data, _, _ in
+        print("Loading remote image: \(imageURL)")
+        
+        URLSession.shared.dataTask(with: imageURL) { data, response, error in
             DispatchQueue.main.async {
-                isLoading = false
+                self.isLoading = false
+                
+                if let error = error {
+                    print("Error loading image: \(error.localizedDescription)")
+                    return
+                }
+                
+                if let httpResponse = response as? HTTPURLResponse, 
+                   !(200...299).contains(httpResponse.statusCode) {
+                    print("HTTP Error: \(httpResponse.statusCode)")
+                    return
+                }
                 
                 if let data = data, let loadedImage = UIImage(data: data) {
                     self.image = loadedImage
+                    print("Successfully loaded remote image")
+                    
+                    // Cache the remote image locally
+                    if let base64String = data.base64EncodedString() as String? {
+                        UserDefaults.standard.set(base64String, forKey: normalizedURL)
+                        print("Cached remote image locally")
+                    }
+                } else {
+                    print("Failed to create image from data")
                 }
             }
         }.resume()
@@ -280,55 +400,222 @@ struct SinglePhotoView: View {
         
         isLoading = true
         
-        // Handle Bubble URL format
+        // Handle local URL format for our simulated server
+        if url.hasPrefix("local://") {
+            print("Loading local image: \(url)")
+            
+            // Try to load from UserDefaults
+            if let base64String = UserDefaults.standard.string(forKey: url),
+               let imageData = Data(base64Encoded: base64String),
+               let loadedImage = UIImage(data: imageData) {
+                
+                DispatchQueue.main.async {
+                    isLoading = false
+                    self.image = loadedImage
+                    print("Successfully loaded image from UserDefaults")
+                }
+            } else {
+                print("Failed to load image from UserDefaults for key: \(url)")
+                DispatchQueue.main.async {
+                    isLoading = false
+                }
+            }
+            return
+        }
+        
+        // Handle Bubble URL format (https://opsapp.co/version-test/img/...)
         var normalizedURL = url
+        
+        // Handle // prefix by adding https:
         if url.hasPrefix("//") {
             normalizedURL = "https:" + url
         }
         
+        // Check if it's a Bubble URL but stored locally (for offline access)
+        if normalizedURL.contains("opsapp.co/version-test/img/") {
+            if let base64String = UserDefaults.standard.string(forKey: normalizedURL),
+               let imageData = Data(base64Encoded: base64String),
+               let loadedImage = UIImage(data: imageData) {
+                
+                DispatchQueue.main.async {
+                    isLoading = false
+                    self.image = loadedImage
+                    print("Successfully loaded Bubble image from local cache")
+                }
+                return
+            }
+        }
+        
+        // If not found locally, try to load from network
         guard let imageURL = URL(string: normalizedURL) else {
+            print("Invalid URL: \(normalizedURL)")
             isLoading = false
             return
         }
         
-        URLSession.shared.dataTask(with: imageURL) { data, _, _ in
+        print("Loading remote image: \(imageURL)")
+        
+        URLSession.shared.dataTask(with: imageURL) { data, response, error in
             DispatchQueue.main.async {
-                isLoading = false
+                self.isLoading = false
+                
+                if let error = error {
+                    print("Error loading image: \(error.localizedDescription)")
+                    return
+                }
+                
+                if let httpResponse = response as? HTTPURLResponse, 
+                   !(200...299).contains(httpResponse.statusCode) {
+                    print("HTTP Error: \(httpResponse.statusCode)")
+                    return
+                }
                 
                 if let data = data, let loadedImage = UIImage(data: data) {
                     self.image = loadedImage
+                    print("Successfully loaded remote image")
+                    
+                    // Cache the remote image locally
+                    if let base64String = data.base64EncodedString() as String? {
+                        UserDefaults.standard.set(base64String, forKey: normalizedURL)
+                        print("Cached remote image locally")
+                    }
+                } else {
+                    print("Failed to create image from data")
                 }
             }
         }.resume()
     }
 }
 
-// Simple camera placeholder
-struct CameraPlaceholder: View {
-    @Environment(\.dismiss) var dismiss
+// MARK: - Project Photo Management
+extension ProjectPhotosGrid {
     
-    var body: some View {
-        ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
-            
-            VStack(spacing: 30) {
-                Text("Camera Coming Soon")
-                    .font(.title2)
-                    .foregroundColor(.white)
+    /// Delete a single photo from the project
+    private func deletePhoto(_ url: String) {
+        // Start a background task for deletion
+        Task {
+            do {
+                print("Deleting photo: \(url)")
                 
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 60))
-                    .foregroundColor(.gray)
+                // Get current project images
+                var currentImages = project.getProjectImages()
                 
-                Button("Close") {
-                    dismiss()
+                // Remove the specified image
+                if let index = currentImages.firstIndex(of: url) {
+                    currentImages.remove(at: index)
+                    print("Photo removed from project images array")
+                    
+                    // Update project in database
+                    await MainActor.run {
+                        // Update project
+                        project.setProjectImageURLs(currentImages)
+                        project.needsSync = true
+                        project.syncPriority = 2 // Higher priority for image changes
+                        
+                        // Save changes to the database
+                        if let modelContext = dataController.modelContext {
+                            do {
+                                try modelContext.save()
+                                print("✅ Successfully deleted photo")
+                            } catch {
+                                print("⚠️ Error saving changes after deletion: \(error.localizedDescription)")
+                            }
+                        } else {
+                            print("⚠️ ModelContext is nil, can't save changes")
+                        }
+                    }
+                    
+                    // Cleanup UserDefaults (optional but good practice)
+                    if url.hasPrefix("local://") {
+                        UserDefaults.standard.removeObject(forKey: url)
+                        print("Removed image data from local storage")
+                    }
+                    
+                    // Reset state
+                    photoToDelete = nil
+                } else {
+                    print("⚠️ Could not find photo in project images")
                 }
-                .foregroundColor(.white)
-                .frame(height: 56)
-                .frame(width: 200)
-                .background(Color.gray.opacity(0.5))
-                .cornerRadius(16)
-                .padding(.top, 20)
+            } catch {
+                print("❌ Error deleting photo: \(error.localizedDescription)")
+            }
+        }
+    }
+    private func addPhotoToProject(_ image: UIImage) {
+        // Start loading indicator
+        processingImage = true
+        
+        print("ProjectPhotosGrid: Starting to process image")
+        
+        Task {
+            do {
+                // Compress image
+                guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+                    print("ProjectPhotosGrid: ⚠️ Failed to compress image")
+                    await MainActor.run {
+                        processingImage = false
+                    }
+                    return
+                }
+                
+                print("ProjectPhotosGrid: Successfully compressed image: \(imageData.count) bytes")
+                
+                // Simulate upload delay
+                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                
+                // Generate a unique filename
+                let timestamp = Date().timeIntervalSince1970
+                let filename = "project_\(project.id)_\(timestamp)_\(UUID().uuidString).jpg"
+                
+                // Save image data to UserDefaults with the key as the URL
+                // This simulates a server but keeps the image locally
+                let simulatedURL = "local://project_images/\(filename)"
+                
+                // Store the image in UserDefaults (as a workaround since we have no real server)
+                if let imageBase64 = imageData.base64EncodedString() as String? {
+                    UserDefaults.standard.set(imageBase64, forKey: simulatedURL)
+                    print("ProjectPhotosGrid: Stored image data for: \(simulatedURL)")
+                }
+                
+                print("ProjectPhotosGrid: Generated URL: \(simulatedURL)")
+                
+                // Add to project's images
+                await MainActor.run {
+                    var currentImages = project.getProjectImages()
+                    print("ProjectPhotosGrid: Current images count before: \(currentImages.count)")
+                    currentImages.append(simulatedURL)
+                    print("ProjectPhotosGrid: Current images count after: \(currentImages.count)")
+                    
+                    project.setProjectImageURLs(currentImages)
+                    print("ProjectPhotosGrid: Updated project image URLs")
+                    
+                    // Mark project for sync
+                    project.needsSync = true
+                    
+                    // Save to database
+                    if let modelContext = dataController.modelContext {
+                        do {
+                            try modelContext.save()
+                            print("ProjectPhotosGrid: ✅ Saved to model context successfully")
+                        } catch {
+                            print("ProjectPhotosGrid: ⚠️ Error saving to model context: \(error.localizedDescription)")
+                        }
+                    } else {
+                        print("ProjectPhotosGrid: ⚠️ Model context is nil")
+                    }
+                    
+                    // Clear selected image and hide loading
+                    cameraImage = nil
+                    processingImage = false
+                    
+                    print("ProjectPhotosGrid: ✅ Image processing complete. Current project images: \(project.getProjectImages().count)")
+                }
+            } catch {
+                print("ProjectPhotosGrid: ❌ Error processing image: \(error.localizedDescription)")
+                await MainActor.run {
+                    // Handle error
+                    processingImage = false
+                }
             }
         }
     }

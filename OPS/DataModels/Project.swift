@@ -74,7 +74,20 @@ final class Project {
     
     // Accessor for project images
     func getProjectImages() -> [String] {
-        return projectImagesString.isEmpty ? [] : projectImagesString.components(separatedBy: ",")
+        let images = projectImagesString.isEmpty ? [] : projectImagesString.components(separatedBy: ",")
+        print("Project[\(id)] - getProjectImages() returning \(images.count) images")
+        return images
+    }
+    
+    // Debug method to show project state
+    func debugProjectState() {
+        print("Project Debug Info:")
+        print("  - ID: \(id)")
+        print("  - Title: \(title)")
+        print("  - Status: \(status.rawValue)")
+        print("  - Images String: \(projectImagesString)")
+        print("  - Images Count: \(getProjectImages().count)")
+        print("  - Needs Sync: \(needsSync)")
     }
     
     // Computed property for location

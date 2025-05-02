@@ -16,6 +16,9 @@ class ConnectivityMonitor {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NetworkMonitor")
     
+    // Notification name for connectivity changes
+    static let connectivityChangedNotification = Notification.Name("ConnectivityMonitorDidChangeConnectivity")
+    
     // Current connectivity state
     private(set) var isConnected = false
     private(set) var connectionType: ConnectionType = .none
@@ -61,6 +64,13 @@ class ConnectivityMonitor {
                 // Execute callback on main thread
                 DispatchQueue.main.async {
                     self.onConnectionTypeChanged?(newConnectionType)
+                    
+                    // Post notification for observers
+                    NotificationCenter.default.post(
+                        name: ConnectivityMonitor.connectivityChangedNotification,
+                        object: self,
+                        userInfo: ["connectionType": newConnectionType]
+                    )
                 }
             }
         }

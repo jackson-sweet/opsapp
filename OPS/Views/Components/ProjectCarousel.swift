@@ -28,7 +28,7 @@ struct ProjectCarousel: View {
                         .tag(index)
                 }
             }
-            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Hide default dots
             .frame(height: 140)
             
             
@@ -50,6 +50,8 @@ struct ProjectCarousel: View {
             isSelected: selectedIndex == index,
             showConfirmation: showStartConfirmation && selectedIndex == index,
             isActiveProject: activeProjectID == project.id,
+            currentIndex: selectedIndex,
+            totalCount: projects.count,
             onTap: {
                 handleCardTap(forIndex: index)
             },
@@ -92,6 +94,8 @@ struct ProjectCardView: View {
     let isSelected: Bool
     let showConfirmation: Bool
     let isActiveProject: Bool
+    let currentIndex: Int
+    let totalCount: Int
     let onTap: () -> Void
     let onStart: () -> Void
     let onStop: () -> Void
@@ -102,46 +106,67 @@ struct ProjectCardView: View {
     
     var body: some View {
         ZStack {
-            // Card content with visual feedback
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                // Project title
-                Text(project.title)
-                    .font(OPSStyle.Typography.subtitle)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .lineLimit(1)
-                
-                HStack {
-                    // Client name
-                    Text(project.clientName)
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
-                    Spacer()
-                    
-                    // Address
-                    Text(project.address)
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-            .padding()
-            .background(
+            // Fixed size container for card
+            ZStack {
+                // Card background
                 ZStack {
-                    // Base background
+                    // Base background - more transparent
                     Color("CardBackground")
-                        .opacity(0.5)
+                        .opacity(0.3)
                     
+                    // Less blur
                     Rectangle()
                         .fill(Color.clear)
-                        .background(Material.ultraThinMaterial)
+                        .background(Material.thinMaterial.opacity(0.7))
                     
                     // Highlight effect - only applied to background
                     if isLongPressing {
                         OPSStyle.Colors.primaryAccent.opacity(0.15)
                     }
                 }
-            )
+                
+                // Content with fixed width and exactly 12px perimeter padding
+                ZStack(alignment: .topTrailing) {
+                    // Main content
+                    VStack(alignment: .leading, spacing: 2) {
+                        // Project title
+                        Text(project.title)
+                            .font(OPSStyle.Typography.cardTitle)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+                        
+                        // Client name
+                        Text(project.clientName)
+                            .font(OPSStyle.Typography.cardBody)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                        
+                        // Address with components
+                        Text(extractAddressComponents(project.address))
+                            .font(OPSStyle.Typography.cardBody)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    }
+                    .padding(12) // Exactly 12px of perimeter padding
+                    .frame(width: 362, alignment: .leading)
+                    
+                    // Page indicators in top right corner
+                    HStack(spacing: 12) {
+                        ForEach(0..<totalCount, id: \.self) { index in
+                            Circle()
+                                .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.5))
+                                .frame(width: 13, height: 13)
+                        }
+                    }
+                    .padding(6)
+                    //.background(Color.black.opacity(0.3))
+                    .cornerRadius(10)
+                    .padding(.top, 6)
+                    .padding(.trailing, 10)
+                }
+            }
+            // Fixed exact dimensions - no additional padding needed
+            .frame(width: 362, height: 85)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .scaleEffect(isLongPressing ? 0.97 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isLongPressing)
@@ -173,7 +198,6 @@ struct ProjectCardView: View {
                 }
             }
         }
-        .padding(.horizontal)
         .contentShape(Rectangle()) // Make entire card tappable
         .onTapGesture(perform: onTap)
         .onLongPressGesture(minimumDuration: 0.5, pressing: { isPressing in
@@ -184,5 +208,22 @@ struct ProjectCardView: View {
             HapticFeedback.impact(.medium)
             onLongPress()
         })
+    }
+    
+    // Format address components
+    private func extractAddressComponents(_ address: String) -> String {
+        // Split the address if possible to extract components
+        let components = address.components(separatedBy: ",")
+        
+        if components.count > 1 {
+            // If we have components, format them nicely
+            let streetInfo = components[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            let cityInfo = components.count > 1 ? components[1].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            
+            return "\(streetInfo), \(cityInfo)"
+        } else {
+            // If no clear components, just return the original
+            return address
+        }
     }
 }

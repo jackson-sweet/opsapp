@@ -208,8 +208,24 @@ struct ProfileSettingsView: View {
             loadUserData()
         }
         .sheet(isPresented: $showImagePicker) {
-            ImagePicker(image: $profileImage)
-                .presentationDetents([.medium, .large])
+            ImagePicker(
+                images: Binding<[UIImage]>(
+                    get: { profileImage != nil ? [profileImage!] : [] },
+                    set: { images in
+                        if let first = images.first {
+                            profileImage = first
+                        }
+                    }
+                ), 
+                selectionLimit: 1,
+                onSelectionComplete: {
+                    // Automatically dismiss sheet when selection is complete
+                    DispatchQueue.main.async {
+                        showImagePicker = false
+                    }
+                }
+            )
+            .presentationDetents([.medium, .large])
         }
         .alert("Save Changes", isPresented: $showSaveConfirmation) {
             Button("Cancel", role: .cancel) { }

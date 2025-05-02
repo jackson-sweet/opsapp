@@ -77,6 +77,11 @@ enum OPSStyle {
         static let captionBold = Font.system(size: 15, weight: .bold, design: .default)
         static let smallCaption = Font.system(size: 13, weight: .regular, design: .default)
         
+        // Cards
+        static let cardTitle = Font.system(size: 14, weight: .bold, design: .default)
+        static let cardSubtitle = Font.system(size: 12, weight: .bold, design: .default)
+        static let cardBody = Font.system(size: 12, weight: .regular, design: .default)
+        
         // Status text
         static let status = Font.system(size: 13, weight: .bold, design: .default)
     }

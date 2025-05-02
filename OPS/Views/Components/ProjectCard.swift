@@ -21,18 +21,18 @@ struct ProjectCard: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Project title
             Text(project.title)
-                .font(OPSStyle.Typography.subtitle)
+                .font(OPSStyle.Typography.cardTitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
             
                 // Client name
                 Text(project.clientName)
-                    .font(OPSStyle.Typography.caption)
+                    .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
                 // Address
                 Text(project.address)
-                    .font(OPSStyle.Typography.caption)
+                .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineLimit(1)
             

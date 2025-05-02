@@ -89,41 +89,42 @@ struct HomeView: View {
                     AppHeader(headerType: .home)
                 }
                 
-                // Project cards
-                if !todaysProjects.isEmpty {
-                    
-                    ProjectCarousel(
-                        projects: todaysProjects,
-                        selectedIndex: $selectedProjectIndex,
-                        showStartConfirmation: $showStartConfirmation,
-                        isInProjectMode: appState.isInProjectMode,
-                        activeProjectID: appState.activeProjectID,
-                        onStart: startProject,
-                        onStop: stopProject,
-                        onLongPress: { project in
-                            selectedProject = project
-                            showProjectDetails = true
+                // Project cards - only show when not in project mode
+                if !appState.isInProjectMode {
+                    if !todaysProjects.isEmpty {
+                        ProjectCarousel(
+                            projects: todaysProjects,
+                            selectedIndex: $selectedProjectIndex,
+                            showStartConfirmation: $showStartConfirmation,
+                            isInProjectMode: appState.isInProjectMode,
+                            activeProjectID: appState.activeProjectID,
+                            onStart: startProject,
+                            onStop: stopProject,
+                            onLongPress: { project in
+                                // Just set selectedProject; sheet(item:) will present the view automatically
+                                selectedProject = project
+                            }
+                        )
+                    } else if !isLoading {
+                        // No projects message
+                        VStack {
+                            Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects scheduled for today")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .multilineTextAlignment(.center)
                         }
-                    )
-                } else if !isLoading {
-                    // No projects message
-                    VStack {
-                        Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects scheduled for today")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .multilineTextAlignment(.center)
+                        .padding()
+                        .frame(height: 120)
+                        .background(
+                            ZStack {
+                                Color(.green)
+                                    .opacity(0.5)
+                                Rectangle()
+                                    .fill(Color.clear)
+                                    .background(Material.ultraThinMaterial)
+                            }
+                        )
                     }
-                    .padding()
-                    .frame(height: 120)
-                    .background(
-                        ZStack {
-                            Color(.green)
-                                .opacity(0.5)
-                            Rectangle()
-                                .fill(Color.clear)
-                                .background(Material.ultraThinMaterial)
-                        }
-                    )
                 }
                 
                 Spacer()
@@ -175,14 +176,12 @@ struct HomeView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }
-        .sheet(isPresented: $showProjectDetails, content: {
-            if let project = selectedProject {
-                NavigationView {
-                    ProjectDetailsView(project: project)
-                        .id(UUID())  // Force a new instance every time
-                }
+        .sheet(item: $selectedProject, onDismiss: { selectedProject = nil }) { project in
+            NavigationView {
+                ProjectDetailsView(project: project)
+                    // Remove the force refresh UUID to allow proper view lifecycle
             }
-        })
+        }
         .preferredColorScheme(.dark) // Enforce dark mode for the entire view
         .onAppear {
             loadTodaysProjects()

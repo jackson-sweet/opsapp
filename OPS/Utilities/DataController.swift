@@ -30,6 +30,7 @@ class DataController: ObservableObject {
     
     // MARK: - Public Access
     var syncManager: SyncManager!
+    var imageSyncManager: ImageSyncManager!
     
     // MARK: - Initialization
     init() {
@@ -91,11 +92,19 @@ class DataController: ObservableObject {
             return self?.currentUser?.id
         }
         
+        // Initialize the standard sync manager
         self.syncManager = SyncManager(
             modelContext: modelContext,
             apiService: apiService,
             connectivityMonitor: connectivityMonitor,
             userIdProvider: userIdProvider
+        )
+        
+        // Initialize the image sync manager
+        self.imageSyncManager = ImageSyncManager(
+            modelContext: modelContext,
+            apiService: apiService,
+            connectivityMonitor: connectivityMonitor
         )
         
         // Listen for sync state changes
@@ -129,6 +138,12 @@ class DataController: ObservableObject {
         Task {
             print("PERFORMING SYNC ON APP LAUNCH")
             await syncManager?.triggerBackgroundSync()
+            
+            // Also sync any pending images
+            if let imageSyncManager = imageSyncManager {
+                await imageSyncManager.syncPendingImages()
+            }
+            
             lastSyncTime = Date()
         }
     }

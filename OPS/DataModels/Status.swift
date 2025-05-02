@@ -8,7 +8,7 @@
 import SwiftUI
 
 /// Status enum matching your Bubble Job Status exactly
-enum Status: String, Codable, CustomStringConvertible {
+enum Status: String, Codable, CustomStringConvertible, CaseIterable {
     case rfq = "RFQ"
     case estimated = "Estimated"
     case accepted = "Accepted"

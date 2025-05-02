@@ -16,11 +16,11 @@ struct ScheduleView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 16) {
-                // User header
-                UserHeader()
+                // Header without gradient
+                AppHeader(headerType: .schedule)
                 
                 // Calendar header
                 CalendarHeaderView(viewModel: viewModel)

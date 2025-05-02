@@ -30,8 +30,24 @@ struct MainTabView: View {
                     Image(systemName: "gearshape.fill")
                 }
         }
-        .background(Color.black.opacity(0.5).blur(radius: 10))
         .accentColor(OPSStyle.Colors.primaryAccent)
         .preferredColorScheme(.dark)
+        .onAppear {
+            let tabBarAppearance = UITabBarAppearance()
+            tabBarAppearance.configureWithOpaqueBackground()
+            tabBarAppearance.backgroundColor = UIColor(OPSStyle.Colors.cardBackgroundDark).withAlphaComponent(0.7)
+            
+            // Apply blur effect
+            let blurEffect = UIBlurEffect(style: .systemThinMaterialDark)
+            tabBarAppearance.backgroundEffect = blurEffect
+            
+            // Remove the separator line
+            tabBarAppearance.shadowColor = .clear
+            
+            UITabBar.appearance().standardAppearance = tabBarAppearance
+            if #available(iOS 15.0, *) {
+                UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+            }
+        }
     }
 }

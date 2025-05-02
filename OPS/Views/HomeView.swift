@@ -55,17 +55,40 @@ struct HomeView: View {
             }
             .edgesIgnoringSafeArea(.all)
             
+            // Gradient overlay on top of map
+            VStack(spacing: 0) {
+                // Top gradient overlay that extends halfway through the carousel
+                LinearGradient(
+                    gradient: Gradient(
+                        stops: [
+                            .init(color: Color.black.opacity(1), location: 0),
+                            .init(color: Color.black.opacity(0.9), location: 0.15),
+                            .init(color: Color.black.opacity(0.8), location: 0.25),
+                            .init(color: Color.black.opacity(0.7), location: 0.4),
+                            .init(color: Color.black.opacity(0.5), location: 0.6),
+                            .init(color: OPSStyle.Colors.cardBackground.opacity(0.3), location: 0.8),
+                            .init(color: OPSStyle.Colors.cardBackground.opacity(0), location: 1)
+                        ]
+                    ),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 300) // Height that extends halfway through carousel
+                
+                Spacer()
+            }
+            .edgesIgnoringSafeArea(.all)
+            
             // UI overlay layers
             VStack(spacing: 0) {
-                // Header layer
-                UserHeader()
-                /*
-                 if appState.isInProjectMode {
-                 ProjectHeader(project: getActiveProject())
-                 } else {
-                 UserHeader()
-                 }
-                 */
+                // No extra padding needed - we'll handle safe areas differently
+                // Header content without gradient
+                if appState.isInProjectMode {
+                    ProjectHeader(project: getActiveProject())
+                } else {
+                    AppHeader(headerType: .home)
+                }
+                
                 // Project cards
                 if !todaysProjects.isEmpty {
                     

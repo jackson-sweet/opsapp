@@ -48,14 +48,5 @@ struct ProjectHeader: View {
             }
         }
         .padding()
-        .background(
-            // Semi-transparent background with blur
-            ZStack {
-                Color.black.opacity(0.7)
-                Rectangle()
-                    .fill(Color.clear)
-                    .background(Material.ultraThinMaterial)
-            }
-        )
     }
 }

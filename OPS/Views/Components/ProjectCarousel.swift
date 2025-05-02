@@ -20,34 +20,29 @@ struct ProjectCarousel: View {
     let onLongPress: (Project) -> Void
     
     var body: some View {
-        TabView(selection: $selectedIndex) {
-            // Create card views for each project
-            ForEach(projects.indices, id: \.self) { index in
-                makeProjectCard(for: index)
-                    .tag(index)
+            ZStack(alignment: .top){
+            TabView(selection: $selectedIndex) {
+                // Create card views for each project
+                ForEach(projects.indices, id: \.self) { index in
+                    makeProjectCard(for: index)
+                        .tag(index)
+                }
             }
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
+            .frame(height: 140)
+            
+            
         }
-        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
-        .frame(height: 140)
-       // .background(backgroundView)
         .onChange(of: selectedIndex) { _, _ in
             if showStartConfirmation {
                 showStartConfirmation = false
             }
         }
+
+    
     }
     
-    // Extract the background to a separate view
-    private var backgroundView: some View {
-        ZStack {
-            Color("CardBackground").opacity(0.5)
-            Rectangle()
-                .fill(Color.clear)
-                .background(Material.ultraThinMaterial)
-        }
-    }
     
-    // Create a separate function to build each card
     private func makeProjectCard(for index: Int) -> some View {
         let project = projects[index]
         return ProjectCardView(
@@ -70,7 +65,6 @@ struct ProjectCarousel: View {
         )
     }
     
-    // Extract tap logic to its own function
     private func handleCardTap(forIndex index: Int) {
         if selectedIndex == index {
             // Toggle confirmation if already selected
@@ -84,6 +78,15 @@ struct ProjectCarousel: View {
 }
 
 // Create a dedicated view for the card content
+enum HapticFeedback {
+    static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .medium) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+}
+
+// Then fix the ProjectCardView implementation
 struct ProjectCardView: View {
     let project: Project
     let isSelected: Bool
@@ -94,83 +97,92 @@ struct ProjectCardView: View {
     let onStop: () -> Void
     let onLongPress: () -> Void
     
+    // State for visual feedback, separate from other logic
+    @State private var isLongPressing = false
+    
     var body: some View {
-        cardContent
-            .padding(.horizontal)
-            .contentShape(Rectangle()) // Make entire card tappable
-            .onTapGesture(perform: onTap)
-            .onLongPressGesture(perform: onLongPress)
-    }
-    
-    // Extract card content to reduce nesting
-    private var cardContent: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            // Project title
-            Text(project.title)
-                .font(OPSStyle.Typography.subtitle)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .lineLimit(1)
-            
-            HStack {
-                // Client name
-                Text(project.clientName)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Spacer()
-                
-                // Address
-                Text(project.address)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(1)
-            }
-        }
-        .padding()
-        .background(cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(confirmationOverlay)
-    }
-    
-    // Extract background to reduce complexity
-    private var cardBackground: some View {
         ZStack {
-            Color("CardBackground")
-                .opacity(0.5)
-            
-            Rectangle()
-                .fill(Color.clear)
-                .background(Material.ultraThinMaterial)
-        }
-    }
-    
-    // Extract overlay to separate view builder
-    @ViewBuilder
-    private var confirmationOverlay: some View {
-        if showConfirmation {
-            if isActiveProject {
-                // Stop overlay
-                Button(action: onStop) {
-                    Text("Stop Project?")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .padding()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.7))
-                        .foregroundColor(Color.red)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+            // Card content with visual feedback
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                // Project title
+                Text(project.title)
+                    .font(OPSStyle.Typography.subtitle)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
+                
+                HStack {
+                    // Client name
+                    Text(project.clientName)
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    Spacer()
+                    
+                    // Address
+                    Text(project.address)
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(1)
                 }
-            } else {
-                // Start overlay
-                Button(action: onStart) {
-                    Text("Start Project?")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .padding()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.7))
-                        .foregroundColor(OPSStyle.Colors.secondaryAccent)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+            .padding()
+            .background(
+                ZStack {
+                    // Base background
+                    Color("CardBackground")
+                        .opacity(0.5)
+                    
+                    Rectangle()
+                        .fill(Color.clear)
+                        .background(Material.ultraThinMaterial)
+                    
+                    // Highlight effect - only applied to background
+                    if isLongPressing {
+                        OPSStyle.Colors.primaryAccent.opacity(0.15)
+                    }
+                }
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .scaleEffect(isLongPressing ? 0.97 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isLongPressing)
+            
+            // Confirmation overlay as a separate layer
+            if showConfirmation {
+                if isActiveProject {
+                    // Stop overlay
+                    Button(action: onStop) {
+                        Text("Stop Project?")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .padding()
+                            .frame(width: 362, height: 85)
+                            .background(Color.black.opacity(0.7))
+                            .foregroundColor(Color.red)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+                } else {
+                    // Start overlay
+                    Button(action: onStart) {
+                        Text("Start Project?")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .padding()
+                            .frame(width: 362, height: 85)
+                            .background(Color.black.opacity(0.7))
+                            .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
                 }
             }
         }
+        .padding(.horizontal)
+        .contentShape(Rectangle()) // Make entire card tappable
+        .onTapGesture(perform: onTap)
+        .onLongPressGesture(minimumDuration: 0.5, pressing: { isPressing in
+            // Update visual state only
+            isLongPressing = isPressing
+        }, perform: {
+            // Trigger haptic and action when complete
+            HapticFeedback.impact(.medium)
+            onLongPress()
+        })
     }
 }

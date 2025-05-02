@@ -93,8 +93,8 @@ enum OPSStyle {
         static let touchTargetLarge = 64.0
         
         // Radius
-        static let cornerRadius = 12.0
-        static let buttonRadius = 12.0
+        static let cornerRadius = 5.0
+        static let buttonRadius = 5.0
     }
     
     // MARK: - Animation

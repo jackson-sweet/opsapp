@@ -11,6 +11,15 @@ struct ProjectImagesSection: View {
     let project: Project
     @State private var selectedImageURL: String?
     
+    // Solid default states - assume loading until proven otherwise
+    @State private var loadingState: ImageLoadState = .determining
+    
+    enum ImageLoadState {
+        case determining  // Initial state - don't know yet
+        case hasImages    // We have images to show
+        case noImages     // Confirmed no images
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Section header
@@ -18,14 +27,20 @@ struct ProjectImagesSection: View {
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             
-            // Check if images exist
-            if project.getProjectImages().isEmpty {
-                // Empty state
-                emptyState
-            } else {
-                // Image grid
+            switch loadingState {
+            case .determining:
+                // Simple loading state - clean and unambiguous
+                loadingPlaceholder
+            case .hasImages:
+                // Image grid when we have images
                 imageGrid
+            case .noImages:
+                // Empty state when we know we have none
+                emptyState
             }
+        }
+        .onAppear {
+            determineImagesState()
         }
         .fullScreenCover(item: $selectedImageURL) { url in
             // Full screen image view
@@ -45,6 +60,23 @@ struct ProjectImagesSection: View {
                 }
             }
         }
+    }
+    
+    // Clean loading placeholder - simpler is better
+    private var loadingPlaceholder: some View {
+        HStack {
+            Spacer()
+            
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.secondaryAccent))
+                .scaleEffect(1.2)
+                .padding(30)
+            
+            Spacer()
+        }
+        .frame(height: 150)
+        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
     
     // Empty state view
@@ -76,6 +108,18 @@ struct ProjectImagesSection: View {
                         selectedImageURL = url
                     }
             }
+        }
+    }
+    
+    // Helper to determine image state
+    private func determineImagesState() {
+        // First check if we have images in string format
+        let imageUrls = project.getProjectImages()
+        
+        if imageUrls.isEmpty {
+            loadingState = .noImages
+        } else {
+            loadingState = .hasImages
         }
     }
 }

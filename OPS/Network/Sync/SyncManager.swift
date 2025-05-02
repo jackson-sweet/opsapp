@@ -310,6 +310,11 @@ class SyncManager {
             localProject.longitude = bubbleAddress.lng
         }
         
+        if let projectImages = remoteDTO.projectImages, !projectImages.isEmpty {
+            print("🔄 Syncing \(projectImages.count) images for project \(remoteDTO.id)")
+            localProject.projectImagesString = projectImages.joined(separator: ",")
+        }
+        
         // Update dates
         if let startDateString = remoteDTO.startDate {
             localProject.startDate = DateFormatter.dateFromBubble(startDateString)

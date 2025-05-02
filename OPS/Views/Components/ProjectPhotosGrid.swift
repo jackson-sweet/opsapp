@@ -10,10 +10,10 @@ import SwiftUI
 struct ProjectPhotosGrid: View {
     let project: Project
     @Environment(\.dismiss) var dismiss
-    @State private var selectedImageIndex: Int?
+    @State private var selectedPhotoIndex: Int?
     @State private var showingCamera = false
     
-    // Column layout for grid - 3 columns for camera roll feel
+    // Three-column grid with minimal spacing
     private let columns = [
         GridItem(.flexible(), spacing: 2),
         GridItem(.flexible(), spacing: 2),
@@ -23,21 +23,27 @@ struct ProjectPhotosGrid: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // Black background like Photos app for field visibility
+                // Black background for photos visibility
                 Color.black.edgesIgnoringSafeArea(.all)
                 
-                VStack {
-                    let images = project.getProjectImages()
+                VStack(spacing: 0) {
+                    let photos = project.getProjectImages()
                     
-                    if images.isEmpty {
+                    if photos.isEmpty {
                         // Empty state
                         emptyStateView
                     } else {
-                        // Images grid
+                        // Simple grid of square photos
                         ScrollView {
                             LazyVGrid(columns: columns, spacing: 2) {
-                                ForEach(Array(images.enumerated()), id: \.element) { index, url in
-                                    gridCell(url: url, index: index)
+                                ForEach(Array(photos.enumerated()), id: \.element) { index, url in
+                                    GridImageCell(imageURL: url)
+                                        .aspectRatio(1, contentMode: .fill)
+                                        .clipped()
+                                        .contentShape(Rectangle()) // Make entire cell tappable
+                                        .onTapGesture {
+                                            selectedPhotoIndex = index
+                                        }
                                 }
                             }
                             .padding(.horizontal, 2)
@@ -71,10 +77,12 @@ struct ProjectPhotosGrid: View {
             .navigationBarTitle("Project Photos", displayMode: .inline)
             .navigationBarItems(trailing: Button("Done") { dismiss() })
             .preferredColorScheme(.dark) // Force dark mode for photo viewing
-            // Fix for the fullScreenCover issue
-            .fullScreenCover(item: $selectedImageIndex) { index in
+            .fullScreenCover(item: Binding<PhotoViewerItem?>(
+                get: { selectedPhotoIndex.map { PhotoViewerItem(index: $0) } },
+                set: { item in selectedPhotoIndex = item?.index }
+            )) { item in
                 PhotoBrowser(
-                    initialIndex: index,
+                    initialIndex: item.index,
                     imageURLs: project.getProjectImages()
                 )
             }
@@ -125,21 +133,12 @@ struct ProjectPhotosGrid: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
-    // Grid cell for photo thumbnail
-    private func gridCell(url: String, index: Int) -> some View {
-        GridImageCell(imageURL: url)
-            .aspectRatio(1, contentMode: .fill)
-            .clipped()
-            .onTapGesture {
-                selectedImageIndex = index
-            }
-    }
 }
 
-// Add this extension to make Int conform to Identifiable
-extension Int: Identifiable {
-    public var id: Int { self }
+// Simple wrapper to make an index Identifiable
+struct PhotoViewerItem: Identifiable {
+    let id = UUID()
+    let index: Int
 }
 
 // Simple grid cell component - focus on reliability
@@ -204,11 +203,12 @@ struct GridImageCell: View {
     }
 }
 
-// Horizontal paging photo browser with swipe to dismiss
+// Revised photo browser with simplified gesture handling
 struct PhotoBrowser: View {
     @Environment(\.dismiss) var dismiss
     let initialIndex: Int
     let imageURLs: [String]
+    
     @State private var currentIndex: Int
     
     init(initialIndex: Int, imageURLs: [String]) {
@@ -222,10 +222,10 @@ struct PhotoBrowser: View {
             // Black background
             Color.black.edgesIgnoringSafeArea(.all)
             
-            // Paging view for horizontal swipe
+            // Simplified photo carousel with standard paging behavior
             TabView(selection: $currentIndex) {
                 ForEach(0..<imageURLs.count, id: \.self) { index in
-                    ZoomablePhotoView(
+                    PhotoPage(
                         imageURL: imageURLs[index],
                         onDismiss: { dismiss() }
                     )
@@ -234,9 +234,20 @@ struct PhotoBrowser: View {
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             
-            // Counter display (e.g., "2 of 5")
+            // UI overlay - counter and close button
             VStack {
                 HStack {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Color.black.opacity(0.6))
+                            .clipShape(Circle())
+                    }
+                    .padding(.top, 50)
+                    .padding(.leading, 16)
+                    
                     Spacer()
                     
                     Text("\(currentIndex + 1) of \(imageURLs.count)")
@@ -247,72 +258,84 @@ struct PhotoBrowser: View {
                         .cornerRadius(8)
                         .padding(.top, 50)
                         .padding(.trailing, 16)
-                        .shadow(radius: 2)
-                }
-                
-                Spacer()
-            }
-            
-            // Close button
-            VStack {
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(12)
-                            .background(Color.black.opacity(0.6))
-                            .clipShape(Circle())
-                            .shadow(radius: 2)
-                    }
-                    .padding(.top, 50)
-                    .padding(.leading, 16)
-                    
-                    Spacer()
                 }
                 
                 Spacer()
             }
         }
         .edgesIgnoringSafeArea(.all)
+        .statusBar(hidden: true)
     }
 }
 
-// Single photo view with zoom and vertical dismiss
-struct ZoomablePhotoView: View {
+// Individual photo page with zoom and dismiss functionality
+struct PhotoPage: View {
     let imageURL: String
     let onDismiss: () -> Void
     
     @State private var image: UIImage?
     @State private var isLoading = true
     @State private var scale: CGFloat = 1.0
-    @State private var lastScale: CGFloat = 1.0
-    @State private var offset: CGSize = .zero
-    @State private var lastOffset: CGSize = .zero
-    @GestureState private var dragState = CGSize.zero
+    @State private var verticalOffset: CGFloat = 0
     
     var body: some View {
-        GeometryReader { proxy in
+        GeometryReader { geometry in
             ZStack {
                 if let image = image {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .scaleEffect(scale)
-                        .offset(x: offset.width + dragState.width, y: offset.height + dragState.height)
-                        .gesture(dragGesture(proxy: proxy))
-                        .gesture(magnificationGesture())
-                        .gesture(doubleTapGesture())
+                        .offset(y: verticalOffset)
+                        // Only handle vertical drag for dismiss
+                        .gesture(
+                            DragGesture(minimumDistance: 10)
+                                .onChanged { value in
+                                    // Only process vertical drags (for dismiss)
+                                    // and only when not zoomed in
+                                    if scale <= 1.0 && abs(value.translation.height) > abs(value.translation.width) {
+                                        verticalOffset = value.translation.height
+                                    }
+                                }
+                                .onEnded { value in
+                                    if scale <= 1.0 && value.translation.height > 100 {
+                                        onDismiss()
+                                    } else {
+                                        // Spring back to position
+                                        withAnimation(.spring()) {
+                                            verticalOffset = 0
+                                        }
+                                    }
+                                }
+                        )
+                        // Pinch to zoom
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    scale = min(max(value, 1.0), 4.0)
+                                }
+                                .onEnded { _ in
+                                    if scale < 1.0 {
+                                        withAnimation {
+                                            scale = 1.0
+                                        }
+                                    }
+                                }
+                        )
+                        // Double tap to toggle zoom
+                        .onTapGesture(count: 2) {
+                            withAnimation(.spring()) {
+                                if scale > 1.0 {
+                                    scale = 1.0
+                                } else {
+                                    scale = 2.0
+                                }
+                            }
+                        }
                 } else if isLoading {
-                    VStack {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(1.5)
-                        
-                        Text("Loading...")
-                            .foregroundColor(.gray)
-                            .padding(.top, 12)
-                    }
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.5)
                 } else {
                     VStack {
                         Image(systemName: "exclamationmark.triangle")
@@ -325,81 +348,9 @@ struct ZoomablePhotoView: View {
                     }
                 }
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .contentShape(Rectangle()) // Make the entire view tappable
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .onAppear(perform: loadImage)
-    }
-    
-    // Vertical drag gesture for dismiss
-    private func dragGesture(proxy: GeometryProxy) -> some Gesture {
-        DragGesture()
-            .updating($dragState) { value, state, _ in
-                // Only update state while dragging
-                state = value.translation
-            }
-            .onEnded { value in
-                // If scaled, just move the image
-                if scale > 1.0 {
-                    offset = CGSize(
-                        width: lastOffset.width + value.translation.width,
-                        height: lastOffset.height + value.translation.height
-                    )
-                    lastOffset = offset
-                } else {
-                    // If vertical drag is significant, dismiss
-                    if abs(value.translation.height) > 150 {
-                        onDismiss()
-                    } else {
-                        // Snap back to position
-                        withAnimation(.spring()) {
-                            offset = lastOffset
-                        }
-                    }
-                }
-            }
-    }
-    
-    // Pinch to zoom
-    private func magnificationGesture() -> some Gesture {
-        MagnificationGesture()
-            .onChanged { value in
-                let delta = value / lastScale
-                lastScale = value
-                
-                // Limit minimum scale to 0.5 and maximum to 4
-                scale = min(max(scale * delta, 0.5), 4.0)
-            }
-            .onEnded { _ in
-                lastScale = 1.0
-                
-                // If scaled down below 1, reset to 1
-                if scale < 1.0 {
-                    withAnimation {
-                        scale = 1.0
-                        offset = .zero
-                        lastOffset = .zero
-                    }
-                }
-            }
-    }
-    
-    // Double tap to zoom in/out
-    private func doubleTapGesture() -> some Gesture {
-        TapGesture(count: 2)
-            .onEnded {
-                withAnimation(.spring()) {
-                    if scale > 1.0 {
-                        // Reset to normal
-                        scale = 1.0
-                        offset = .zero
-                        lastOffset = .zero
-                    } else {
-                        // Zoom in to 2x
-                        scale = 2.0
-                    }
-                }
-            }
     }
     
     private func loadImage() {
@@ -418,7 +369,7 @@ struct ZoomablePhotoView: View {
             return
         }
         
-        // Use URLCache for better performance in the field
+        // Use URLCache for better field performance
         let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
         
         URLSession.shared.dataTask(with: request) { data, _, _ in

@@ -20,6 +20,9 @@ final class Company {
     var externalId: String?
     var companyDescription: String?
     var address: String?
+    var phone: String?
+    var email: String?
+    var website: String?
     var latitude: Double?
     var longitude: Double?
     var openHour: String?

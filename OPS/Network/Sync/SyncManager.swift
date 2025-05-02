@@ -11,6 +11,7 @@ import Combine
 
 @MainActor
 class SyncManager {
+    // MARK: - Sync State Publisher
     // MARK: - Properties
     
     typealias UserIdProvider = () -> String?
@@ -52,6 +53,34 @@ class SyncManager {
     }
     
     // MARK: - Public Methods
+    
+    /// Sync a user to the API
+    func syncUser(_ user: User) async {
+        guard !syncInProgress, connectivityMonitor.isConnected else {
+            return
+        }
+        
+        syncInProgress = true
+        syncStateSubject.send(true)
+        
+        do {
+            // In a real implementation, this would call the API service to update the user
+            // apiService.updateUser(user)
+            
+            // For now, just mark as synced
+            user.needsSync = false
+            user.lastSyncedAt = Date()
+            try modelContext.save()
+            
+            // Simulate network delay
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+        } catch {
+            print("Error syncing user: \(error.localizedDescription)")
+        }
+        
+        syncInProgress = false
+        syncStateSubject.send(false)
+    }
     
     /// Trigger background sync with intelligent retry
     func triggerBackgroundSync() {

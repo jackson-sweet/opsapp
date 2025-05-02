@@ -8,7 +8,7 @@
 import SwiftUI
 
 /// Status enum matching your Bubble Job Status exactly
-enum Status: String, Codable {
+enum Status: String, Codable, CustomStringConvertible {
     case rfq = "RFQ"
     case estimated = "Estimated"
     case accepted = "Accepted"
@@ -17,6 +17,10 @@ enum Status: String, Codable {
     case closed = "Closed"
     
     var displayName: String {
+        return self.rawValue
+    }
+    
+    var description: String {
         return self.rawValue
     }
     
@@ -46,20 +50,4 @@ enum Status: String, Codable {
     }
 }
 
-/// User role enum matching your Bubble Employee Type
-enum UserRole: String, Codable {
-    case fieldCrew = "Field Crew"
-    case officeCrew = "Office Crew"
-    
-    var displayName: String {
-        return self.rawValue
-    }
-}
-
-/// User type enum matching your Bubble User Type
-enum UserType: String, Codable {
-    case company = "Company"
-    case employee = "Employee"
-    case client = "Client"
-    case admin = "Admin"
-}
+// UserRole and UserType have been moved to UserRole.swift

@@ -15,6 +15,7 @@ final class User {
     var firstName: String
     var lastName: String
     var email: String?
+    var phone: String?
     var profileImageURL: String?
     var profileImageData: Data?
     var role: UserRole
@@ -26,6 +27,7 @@ final class User {
     var longitude: Double?
     var locationName: String?
     var clientId: String?
+    var isActive: Bool?
     
     // Fixed relationship with proper inverse that matches Project's declaration
     @Relationship(deleteRule: .noAction, inverse: \Project.teamMembers)
@@ -42,6 +44,7 @@ final class User {
          self.role = role
          self.companyId = companyId
          self.assignedProjects = []
+         self.isActive = true
      }
     
     // Computed properties for convenience

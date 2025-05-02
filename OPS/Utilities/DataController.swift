@@ -521,4 +521,167 @@ class DataController: ObservableObject {
     func appDidEnterBackground() {
         // Handled by SyncManager
     }
+    
+    // MARK: - Settings View Methods
+    
+    /// Gets a company by ID
+    func getCompany(id: String) -> Company? {
+        guard let context = modelContext else { return nil }
+        
+        do {
+            let descriptor = FetchDescriptor<Company>(
+                predicate: #Predicate<Company> { $0.id == id }
+            )
+            let companies = try context.fetch(descriptor)
+            
+            if let company = companies.first {
+                return company
+            } else {
+                // Create a dummy company for preview/testing
+                let dummyCompany = Company(id: id, name: "Example Company")
+                dummyCompany.address = "123 Main Street, San Francisco, CA 94105"
+                dummyCompany.phone = "(555) 123-4567"
+                dummyCompany.email = "info@example.com"
+                dummyCompany.website = "www.example.com"
+                return dummyCompany
+            }
+        } catch {
+            print("Error fetching company: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    /// Gets team members for a company
+    func getTeamMembers(companyId: String) -> [User] {
+        guard let context = modelContext else { return [] }
+        
+        do {
+            let descriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { $0.companyId == companyId }
+            )
+            let users = try context.fetch(descriptor)
+            
+            if !users.isEmpty {
+                return users
+            } else {
+                // Return sample team members for preview/testing
+                // This is just for UI testing - in a real app, we'd fetch from the API
+                let sampleUsers: [User] = [
+                    createSampleUser(id: "1", firstName: "John", lastName: "Doe", role: .fieldCrew, companyId: companyId),
+                    createSampleUser(id: "2", firstName: "Jane", lastName: "Smith", role: .officeCrew, companyId: companyId),
+                    createSampleUser(id: "3", firstName: "Michael", lastName: "Johnson", role: .fieldCrew, companyId: companyId)
+                ]
+                return sampleUsers
+            }
+        } catch {
+            print("Error fetching team members: \(error.localizedDescription)")
+            return []
+        }
+    }
+    
+    private func createSampleUser(id: String, firstName: String, lastName: String, role: UserRole, companyId: String) -> User {
+        let user = User(id: id, firstName: firstName, lastName: lastName, role: role, companyId: companyId)
+        user.email = "\(firstName.lowercased()).\(lastName.lowercased())@example.com"
+        user.phone = "(555) \(Int.random(in: 100...999))-\(Int.random(in: 1000...9999))"
+        user.isActive = true
+        return user
+    }
+    
+    /// Gets project history for a user
+    func getProjectHistory(for userId: String) -> [Project] {
+        guard let context = modelContext else { return [] }
+        
+        do {
+            // Get all projects where the user is a team member
+            let allProjects = try context.fetch(FetchDescriptor<Project>())
+            
+            // Filter projects for the specified user
+            let userProjects = allProjects.filter { project in
+                project.getTeamMemberIds().contains(userId) || 
+                project.teamMembers.contains(where: { $0.id == userId })
+            }
+            
+            // If we have real projects, return them
+            if !userProjects.isEmpty {
+                // Sort by start date, most recent first
+                return userProjects.sorted { 
+                    guard let date1 = $0.startDate, let date2 = $1.startDate else {
+                        return false
+                    }
+                    return date1 > date2
+                }
+            } else {
+                // Create sample projects for preview/testing
+                let now = Date()
+                let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
+                let lastWeek = Calendar.current.date(byAdding: .day, value: -7, to: now)!
+                let nextWeek = Calendar.current.date(byAdding: .day, value: 7, to: now)!
+                
+                let sampleProjects: [Project] = [
+                    createSampleProject(id: "p1", title: "Office Renovation", status: .completed, 
+                                      startDate: lastWeek, endDate: yesterday),
+                    createSampleProject(id: "p2", title: "Retail Store Buildout", status: .inProgress, 
+                                      startDate: yesterday, endDate: nextWeek),
+                    createSampleProject(id: "p3", title: "Home Kitchen Remodel", status: .accepted, 
+                                      startDate: nextWeek, endDate: nil)
+                ]
+                
+                // Add the user to each project's team members
+                for project in sampleProjects {
+                    project.setTeamMemberIds([userId])
+                }
+                
+                return sampleProjects
+            }
+        } catch {
+            print("Error fetching project history: \(error.localizedDescription)")
+            return []
+        }
+    }
+    
+    private func createSampleProject(id: String, title: String, status: Status, 
+                                  startDate: Date?, endDate: Date?) -> Project {
+        let project = Project(id: id, title: title, status: status)
+        project.startDate = startDate
+        project.endDate = endDate
+        project.clientName = ["Acme Corp", "TechStart Inc", "Smith Family", "City Hospital"].randomElement()!
+        project.address = [
+            "123 Main St, San Francisco, CA",
+            "456 Park Ave, New York, NY",
+            "789 Oak Blvd, Chicago, IL",
+            "101 Pine St, Seattle, WA"
+        ].randomElement()!
+        
+        // Add some location data
+        project.latitude = Double.random(in: 37.7...37.8)
+        project.longitude = Double.random(in: -122.5...(-122.4))
+        
+        return project
+    }
+    
+    /// Updates user profile
+    func updateUserProfile(firstName: String, lastName: String, email: String, phone: String) async -> Bool {
+        guard let user = currentUser, let context = modelContext else { return false }
+        
+        // Update local model
+        user.firstName = firstName
+        user.lastName = lastName
+        user.email = email
+        user.phone = phone
+        user.needsSync = true
+        
+        do {
+            try context.save()
+            
+            // Sync to API if connected
+            if isConnected {
+                await syncManager?.syncUser(user)
+            }
+            
+            return true
+        } catch {
+            print("Error updating user profile: \(error.localizedDescription)")
+            return false
+        }
+    }
 }

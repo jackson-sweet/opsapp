@@ -17,6 +17,8 @@ struct ProjectHistorySettingsView: View {
     @State private var isLoading = true
     @State private var dateFilter: DateFilter = .all
     @State private var statusFilter: StatusFilter = .all
+    // State for modal presentation - using optional Project as the item
+    @State private var selectedProject: Project? = nil
     
     // Placeholder model
     struct Expense: Identifiable {
@@ -169,7 +171,22 @@ struct ProjectHistorySettingsView: View {
         }
         .navigationBarBackButtonHidden(true)
         .onAppear {
+            // Reset filters to default values when view appears
+            dateFilter = .all
+            statusFilter = .all
+            // Load initial data
             loadHistoryData()
+        }
+        // Show project details in modal - using item instead of isPresented for better lifecycle management
+        .sheet(item: $selectedProject, onDismiss: {
+            // Reload data when returning from details
+            loadHistoryData()
+        }) { project in
+            // Using a NavigationStack to provide navigation functionality within the modal
+            NavigationStack {
+                ProjectDetailsView(project: project)
+                    .environmentObject(dataController)
+            }
         }
     }
     
@@ -211,17 +228,26 @@ struct ProjectHistorySettingsView: View {
         ScrollView {
             VStack(spacing: OPSStyle.Layout.spacing3) {
                 if projectHistory.isEmpty {
-                    // Empty state
+                    // Empty state with context about the filters
+                    let (title, message) = emptyStateMessageForFilters()
                     emptyStateView(
                         icon: "folder.fill",
-                        title: "No projects found",
-                        message: "Projects you've worked on will appear here"
+                        title: title,
+                        message: message
                     )
                 } else {
                     // Project history cards
                     ForEach(projectHistory) { project in
                         projectHistoryCard(project: project)
                     }
+                    
+                    // Total count
+                    Text("\(projectHistory.count) projects match your filters")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 8)
+                        .padding(.bottom, 16)
                 }
             }
             .padding()
@@ -232,14 +258,33 @@ struct ProjectHistorySettingsView: View {
         ScrollView {
             VStack(spacing: OPSStyle.Layout.spacing3) {
                 if expenses.isEmpty {
-                    // Empty state
-                    emptyStateView(
-                        icon: "dollarsign.circle.fill",
-                        title: "No expenses found",
-                        message: "Expenses you've submitted will appear here"
-                    )
+                    // Coming soon banner for expenses feature
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
+                        // Empty state with coming soon message
+                        emptyStateView(
+                            icon: "dollarsign.circle.fill",
+                            title: "Expense tracking coming soon",
+                            message: "In the next update, you'll be able to submit and track expenses directly from the app"
+                        )
+                        
+                        // Feature highlight
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            Text("UPCOMING FEATURES")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .padding(.bottom, 2)
+                            
+                            featureRow(icon: "receipt.fill", text: "Submit expense receipts with photos")
+                            featureRow(icon: "chart.bar.fill", text: "Track expense approvals and payments")
+                            featureRow(icon: "folder.badge.plus", text: "Organize expenses by projects and categories")
+                            featureRow(icon: "icloud.and.arrow.up", text: "Automatic syncing with office accounting")
+                        }
+                        .padding()
+                        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
                 } else {
-                    // Expense cards
+                    // Expense cards - this section will be used when the feature is implemented
                     ForEach(expenses) { expense in
                         expenseCard(expense: expense)
                     }
@@ -270,6 +315,22 @@ struct ProjectHistorySettingsView: View {
         }
     }
     
+    private func featureRow(icon: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .frame(width: 24, height: 24)
+            
+            Text(text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+            
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+    
     private func emptyStateView(icon: String, title: String, message: String) -> some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: icon)
@@ -294,84 +355,84 @@ struct ProjectHistorySettingsView: View {
     }
     
     private func projectHistoryCard(project: Project) -> some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            // Header with project title and status
-            HStack {
-                Text(project.title)
-                    .font(OPSStyle.Typography.bodyBold)
+        Button(action: {
+            // Just set the selected project, the sheet binding will handle the presentation
+            selectedProject = project
+        }) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                // Header with project title and status
+                HStack {
+                    Text(project.title)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    Spacer()
+                    
+                    // Status badge - use the centralized StatusBadge component
+                    StatusBadge(status: project.status)
+                }
+                
+                // Client and address
+                Text(project.clientName)
+                    .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
-                Spacer()
+                Text(project.address)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                 
-                // Status badge
-                Text(project.status.description)
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(project.statusColor)
-                    .cornerRadius(12)
-            }
-            
-            // Client and address
-            Text(project.clientName)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-            
-            Text(project.address)
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            
-            Divider()
-                .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-            
-            // Dates
-            HStack {
-                if let startDate = project.startDate {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Start Date")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        Text(formatDate(startDate))
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                }
+                Divider()
+                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
                 
-                Spacer()
-                
-                if let endDate = project.endDate {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("End Date")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        Text(formatDate(endDate))
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                }
-            }
-            
-            // View details button
-            Button(action: {
-                // Action to view project details
-            }) {
+                // Dates
                 HStack {
-                    Text("View Details")
-                        .font(OPSStyle.Typography.captionBold)
+                    if let startDate = project.startDate {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Start Date")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            Text(formatDate(startDate))
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                    }
                     
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 12))
+                    Spacer()
+                    
+                    if let endDate = project.endDate {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("End Date")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            Text(formatDate(endDate))
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                    }
                 }
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .padding(.top, 4)
+                
+                // View details button
+                HStack {
+                    Spacer()
+                    
+                    HStack {
+                        Text("View Details")
+                            .font(OPSStyle.Typography.captionBold)
+                        
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 12))
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .padding(.top, 6)
+                }
             }
+            .padding()
+            .background(OPSStyle.Colors.cardBackground.opacity(0.3))
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
-        .padding()
-        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .buttonStyle(PlainButtonStyle()) // Prevent default button styling
     }
     
     private func expenseCard(expense: Expense) -> some View {
@@ -460,59 +521,192 @@ struct ProjectHistorySettingsView: View {
     }
     
     private func loadHistoryData() {
-        // This would normally load from your data controller
         isLoading = true
         
         Task {
-            // Load projects assigned to current user
-            let history = dataController.getProjectHistory(
+            // Load all projects assigned to current user
+            let allProjects = dataController.getProjectHistory(
                 for: dataController.currentUser?.id ?? ""
             )
+            
+            // Apply initial filters
+            let filteredProjects = allProjects.filter { project in
+                let matchesStatus = filterProjectByStatus(project, filter: statusFilter)
+                let matchesDate = filterProjectByDate(project, filter: dateFilter)
+                return matchesStatus && matchesDate
+            }
+            
+            // Sort projects by date (most recent first)
+            let sortedProjects = filteredProjects.sorted { 
+                guard let date1 = $0.startDate, let date2 = $1.startDate else {
+                    return false
+                }
+                return date1 > date2
+            }
+            
+            print("ProjectHistorySettingsView: Loaded \(allProjects.count) total projects, \(filteredProjects.count) after filtering")
             
             // In a real app, you would load expenses from the data controller
             // For now, using sample data
             
             await MainActor.run {
-                self.projectHistory = history
+                self.projectHistory = sortedProjects
+                
+                // Uncomment to enable expenses feature
                 self.expenses = []  // Empty for now to show empty state
                 
-                // Sample data - uncomment to see populated UI:
-                /*
-                self.expenses = [
-                    Expense(
-                        id: "1",
-                        projectId: history.first?.id,
-                        projectTitle: history.first?.title,
-                        amount: 126.50,
-                        description: "Construction materials",
-                        date: Date().addingTimeInterval(-7*24*60*60),
-                        status: .approved,
-                        category: "Materials",
-                        receiptURL: "https://example.com/receipt1.pdf"
-                    ),
-                    Expense(
-                        id: "2",
-                        projectId: history.first?.id,
-                        projectTitle: history.first?.title,
-                        amount: 45.75,
-                        description: "Lunch for team",
-                        date: Date().addingTimeInterval(-3*24*60*60),
-                        status: .pending,
-                        category: "Meals",
-                        receiptURL: nil
-                    )
-                ]
-                */
+                // Create sample expense data if needed (only for UI testing)
+                if !sortedProjects.isEmpty && AppConfiguration.Debug.useSampleData {
+                    self.expenses = generateSampleExpenses(for: sortedProjects.first!)
+                }
                 
                 self.isLoading = false
             }
         }
     }
     
+    // Generate sample expenses for UI testing
+    private func generateSampleExpenses(for project: Project) -> [Expense] {
+        return [
+            Expense(
+                id: "1",
+                projectId: project.id,
+                projectTitle: project.title,
+                amount: 126.50,
+                description: "Construction materials",
+                date: Date().addingTimeInterval(-7*24*60*60),
+                status: .approved,
+                category: "Materials",
+                receiptURL: "https://example.com/receipt1.pdf"
+            ),
+            Expense(
+                id: "2",
+                projectId: project.id,
+                projectTitle: project.title,
+                amount: 45.75,
+                description: "Lunch for team",
+                date: Date().addingTimeInterval(-3*24*60*60),
+                status: .pending,
+                category: "Meals",
+                receiptURL: nil
+            )
+        ]
+    }
+    
+    // Generate appropriate empty state messages based on applied filters
+    private func emptyStateMessageForFilters() -> (String, String) {
+        // Check if we have restrictive filters applied
+        let hasDateFilter = dateFilter != .all
+        let hasStatusFilter = statusFilter != .all
+        
+        // Generate appropriate empty state message
+        if hasDateFilter && hasStatusFilter {
+            // Both date and status filters are applied
+            return (
+                "No projects match your filters",
+                "Try adjusting your date or status filters to see more projects"
+            )
+        } else if hasDateFilter {
+            // Only date filter is applied
+            return (
+                "No projects found for \(dateFilter.rawValue.lowercased())",
+                "Try selecting a different date range to see your projects"
+            )
+        } else if hasStatusFilter {
+            // Only status filter is applied
+            let statusType = statusFilter == .completed ? "completed" : "in progress"
+            return (
+                "No \(statusType) projects found",
+                "Projects with \(statusType) status will appear here"
+            )
+        } else {
+            // No filters applied
+            return (
+                "No projects found",
+                "Projects you've worked on will appear here"
+            )
+        }
+    }
+    
     private func applyFilters() {
-        // Apply date and status filters to the data
-        // In a real implementation, this would requery the filtered data
-        loadHistoryData()
+        isLoading = true
+        
+        Task {
+            // First get all projects for the user
+            let allProjects = dataController.getProjectHistory(
+                for: dataController.currentUser?.id ?? ""
+            )
+            
+            // Then apply filters
+            let filteredProjects = allProjects.filter { project in
+                let matchesStatus = filterProjectByStatus(project, filter: statusFilter)
+                let matchesDate = filterProjectByDate(project, filter: dateFilter)
+                return matchesStatus && matchesDate
+            }
+            
+            // Update UI on main thread
+            await MainActor.run {
+                self.projectHistory = filteredProjects
+                self.isLoading = false
+            }
+        }
+    }
+    
+    // Filter project by status
+    private func filterProjectByStatus(_ project: Project, filter: StatusFilter) -> Bool {
+        switch filter {
+        case .all:
+            return true
+        case .completed:
+            return project.status == .completed || project.status == .closed
+        case .inProgress:
+            return project.status == .inProgress || project.status == .accepted
+        }
+    }
+    
+    // Filter project by date
+    private func filterProjectByDate(_ project: Project, filter: DateFilter) -> Bool {
+        guard let startDate = project.startDate else {
+            // If no start date, only include in "all" filter
+            return filter == .all
+        }
+        
+        let calendar = Calendar.current
+        let now = Date()
+        
+        switch filter {
+        case .all:
+            return true
+            
+        case .thisMonth:
+            let currentMonth = calendar.component(.month, from: now)
+            let currentYear = calendar.component(.year, from: now)
+            let projectMonth = calendar.component(.month, from: startDate)
+            let projectYear = calendar.component(.year, from: startDate)
+            
+            return currentMonth == projectMonth && currentYear == projectYear
+            
+        case .lastMonth:
+            let lastMonth = calendar.date(byAdding: .month, value: -1, to: now)!
+            let lastMonthComponent = calendar.component(.month, from: lastMonth)
+            let lastMonthYear = calendar.component(.year, from: lastMonth)
+            let projectMonth = calendar.component(.month, from: startDate)
+            let projectYear = calendar.component(.year, from: startDate)
+            
+            return lastMonthComponent == projectMonth && lastMonthYear == projectYear
+            
+        case .thisQuarter:
+            let currentMonth = calendar.component(.month, from: now)
+            let currentYear = calendar.component(.year, from: now)
+            let projectMonth = calendar.component(.month, from: startDate)
+            let projectYear = calendar.component(.year, from: startDate)
+            
+            // Determine current quarter
+            let currentQuarter = (currentMonth - 1) / 3 + 1
+            let projectQuarter = (projectMonth - 1) / 3 + 1
+            
+            return currentQuarter == projectQuarter && currentYear == projectYear
+        }
     }
 }
 

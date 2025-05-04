@@ -104,9 +104,10 @@ struct SettingsView: View {
                             
                             // App version and logo
                             HStack {
-                                Image(systemName: "building.2.fill") // Placeholder for actual logo
-                                    .font(.system(size: 18))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                Image("AppIcon") // Placeholder for actual logo
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 44, height: 44)
                                 
                                 Text("OPS APP")
                                     .font(.system(size: 14, weight: .semibold))

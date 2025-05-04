@@ -10,7 +10,7 @@ import CoreLocation
 
 /// Project model - central entity for field crew
 @Model
-final class Project {
+final class Project: Identifiable {
     var id: String
     var title: String
     var clientName: String

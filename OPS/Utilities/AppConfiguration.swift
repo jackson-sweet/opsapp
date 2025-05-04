@@ -103,6 +103,19 @@ struct AppConfiguration {
                 "Down day. There are no down days. Only opportunities for improvement.",
                 "No work scheduled. GOOD. Preparation is where battles are won. Get after it."
             ]
+    }
+    
+    // MARK: - Debug Settings
+    
+    struct Debug {
+        /// Whether to use sample data for UI development
+        /// Set to false for production builds
+        static let useSampleData = false
         
+        /// Enable verbose logging
+        static let verboseLogging = false
+        
+        /// Show debug overlays in UI
+        static let showDebugOverlays = false
     }
 }

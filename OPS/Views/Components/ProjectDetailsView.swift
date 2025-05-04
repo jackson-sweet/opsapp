@@ -28,127 +28,141 @@ struct ProjectDetailsView: View {
     }
     
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Status badge
-                StatusBadge(status: project.status)
-                    .padding(.top, 4)
-                
-                // Project title
-                Text(project.title)
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                // Client info
-                clientInfoSection
-                
-                Divider()
-                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                
-                // Project description
-                Text("PROJECT DETAILS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Text(project.projectDescription ?? "No detailed description provided.")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Divider()
-                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                
-                // Notes section
-                notesSection
-                
-                Divider()
-                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                
-                // Project Photos Section
-                Text("PHOTOS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                // Photo Carousel
-                VStack(spacing: 12) {
-                    let photos = project.getProjectImages()
+        // Use environment dismiss for navigation
+        // Print debug information to diagnose the issue
+        ZStack {
+            // Debug check
+            Color.clear.onAppear {
+                print("ProjectDetailsView appeared for project: \(project.id) - \(project.title)")
+                print("Has dataController: \(dataController)")
+                print("Has modelContext: \(dataController.modelContext != nil)")
+            }
+            // Background gradient
+            OPSStyle.Colors.backgroundGradient
+                .edgesIgnoringSafeArea(.all)
+            
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Status badge
+                    StatusBadge(status: project.status)
+                        .padding(.top, 4)
                     
-                    if photos.isEmpty {
-                        // Empty state for no photos
-                        VStack(spacing: 16) {
-                            Image(systemName: "photo.on.rectangle")
-                                .font(.system(size: 32))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            Text("No photos added yet")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        .frame(height: 180)
-                        .frame(maxWidth: .infinity)
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                        .cornerRadius(12)
-                    } else {
-                        // Scrollable carousel of photos
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(Array(photos.enumerated()), id: \.0) { index, url in
-                                    ZStack {
-                                        PhotoThumbnail(url: url)
-                                            .frame(width: 120, height: 120)
-                                            .cornerRadius(12)
-                                            .contentShape(Rectangle())
-                                            .onTapGesture {
-                                                selectedPhotoIndex = index
-                                                showingPhotoViewer = true
-                                            }
-                                            .onLongPressGesture {
-                                                // Show delete confirmation
-                                                photoToDelete = url
-                                                showingDeleteConfirmation = true
-                                            }
+                    // Project title
+                    Text(project.title)
+                        .font(OPSStyle.Typography.title)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    // Client info
+                    clientInfoSection
+                    
+                    Divider()
+                        .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                    
+                    // Project description
+                    Text("PROJECT DETAILS")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    Text(project.projectDescription ?? "No detailed description provided.")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    Divider()
+                        .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                    
+                    // Notes section
+                    notesSection
+                    
+                    Divider()
+                        .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                    
+                    // Project Photos Section
+                    Text("PHOTOS")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    // Photo Carousel
+                    VStack(spacing: 12) {
+                        let photos = project.getProjectImages()
+                        
+                        if photos.isEmpty {
+                            // Empty state for no photos
+                            VStack(spacing: 16) {
+                                Image(systemName: "photo.on.rectangle")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                
+                                Text("No photos added yet")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                            .frame(height: 180)
+                            .frame(maxWidth: .infinity)
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+                            .cornerRadius(12)
+                        } else {
+                            // Scrollable carousel of photos
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(Array(photos.enumerated()), id: \.0) { index, url in
+                                        ZStack {
+                                            PhotoThumbnail(url: url)
+                                                .frame(width: 120, height: 120)
+                                                .cornerRadius(12)
+                                                .contentShape(Rectangle())
+                                                .onTapGesture {
+                                                    selectedPhotoIndex = index
+                                                    showingPhotoViewer = true
+                                                }
+                                                .onLongPressGesture {
+                                                    // Show delete confirmation
+                                                    photoToDelete = url
+                                                    showingDeleteConfirmation = true
+                                                }
+                                        }
                                     }
                                 }
+                                .padding(.horizontal)
                             }
-                            .padding(.horizontal)
+                            .frame(height: 120)
                         }
-                        .frame(height: 120)
-                    }
-                    
-                    // Add Photos Button
-                    Button(action: {
-                        showingImagePicker = true
-                    }) {
-                        HStack {
-                            Image(systemName: "plus.circle")
-                                .font(.system(size: 20))
-                            
-                            Text("Add Photos")
-                                .font(OPSStyle.Typography.body)
+                        
+                        // Add Photos Button
+                        Button(action: {
+                            showingImagePicker = true
+                        }) {
+                            HStack {
+                                Image(systemName: "plus.circle")
+                                    .font(.system(size: 20))
+                                
+                                Text("Add Photos")
+                                    .font(OPSStyle.Typography.body)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(.white)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(OPSStyle.Colors.primaryAccent)
-                        .foregroundColor(.white)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-                    .disabled(processingImages)
-                    
-                    // Loading indicator for processing images
-                    if processingImages {
-                        HStack {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                            Text("Processing images...")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .disabled(processingImages)
+                        
+                        // Loading indicator for processing images
+                        if processingImages {
+                            HStack {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                Text("Processing images...")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                            .padding(.top, 4)
                         }
-                        .padding(.top, 4)
                     }
                 }
+                .padding()
             }
-            .padding()
         }
-        .background(OPSStyle.Colors.background.edgesIgnoringSafeArea(.all))
+        .navigationTitle("Project Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

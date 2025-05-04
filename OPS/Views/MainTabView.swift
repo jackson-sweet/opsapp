@@ -12,6 +12,7 @@ import SwiftUI
 struct MainTabView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var locationManager: LocationManager
     
     var body: some View {
         TabView {

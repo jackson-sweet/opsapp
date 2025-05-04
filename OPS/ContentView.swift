@@ -12,10 +12,11 @@ struct ContentView: View {
     @EnvironmentObject private var dataController: DataController
     @StateObject private var appState = AppState()
     
-    let locationManager = LocationManager()
+    @StateObject private var locationManager = LocationManager()
     
     // Add a state to track initial loading
     @State private var isCheckingAuth = true
+    @State private var showLocationPermissionView = false
     
     var body: some View {
         Group {
@@ -29,15 +30,17 @@ struct ContentView: View {
                 // Only show main app if authenticated
                 MainTabView()
                     .environmentObject(appState)
+                    .environmentObject(locationManager)
             }
         }
         .preferredColorScheme(.dark)
         .onAppear {
+            // Request Locations Permission if necessary
+            // Use the enhanced version that logs more details
+            locationManager.requestPermissionIfNeeded(requestAlways: true)
+            print("ContentView: onAppear - requesting location permission")
             
-            //Request Locations Permission if necessary
-            locationManager.requestPermissionIfNeeded()
             // Check if user is already authenticated
-            // This calls the existing authentication check processes
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 // Finish the loading phase to show the appropriate screen
                 isCheckingAuth = false
@@ -46,6 +49,21 @@ struct ContentView: View {
                 // by the checkExistingAuth method called during initialization
             }
         }
+        // Watch for changes to the location denied state
+        .onChange(of: locationManager.isLocationDenied) { _, isDenied in
+            if isDenied && dataController.isAuthenticated {
+                print("ContentView: Location denied, showing permission view")
+                showLocationPermissionView = true
+            }
+        }
+        // Add the location permission overlay
+        .locationPermissionOverlay(
+            isPresented: $showLocationPermissionView,
+            locationManager: locationManager,
+            onRequestPermission: {
+                locationManager.requestPermissionIfNeeded(requestAlways: true)
+            }
+        )
     }
 }
 

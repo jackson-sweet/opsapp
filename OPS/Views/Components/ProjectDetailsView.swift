@@ -13,6 +13,7 @@ struct ProjectDetailsView: View {
     @Environment(\.dismiss) var dismiss
     @State private var noteText: String
     @EnvironmentObject private var dataController: DataController
+    @StateObject private var locationManager = LocationManager()
     @State private var showingPhotoViewer = false
     @State private var selectedPhotoIndex: Int = 0
     @State private var showingImagePicker = false
@@ -205,6 +206,11 @@ struct ProjectDetailsView: View {
             }
         } message: {
             Text("Are you sure you want to delete this photo? This action cannot be undone.")
+        }
+        .onAppear {
+            // Request location permission when project details are viewed
+            locationManager.requestPermissionIfNeeded()
+            print("ProjectDetailsView: Requested location permission for project: \(project.id)")
         }
     }
     

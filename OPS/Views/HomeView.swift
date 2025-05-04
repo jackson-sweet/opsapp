@@ -19,6 +19,9 @@ struct HomeView: View {
     @StateObject private var inProgressManager = InProgressManager()
     @StateObject private var locationManager = LocationManager()
     
+    // Track location manager status changes
+    @State private var locationStatus: CLAuthorizationStatus = .notDetermined
+    
     @State private var mapRegion = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 48.4132, longitude: -123.3650),
         span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
@@ -28,156 +31,30 @@ struct HomeView: View {
     @State private var showStartConfirmation = false
     @State private var isLoading = true
     @State private var showLocationPrompt = false
+    @State private var showLocationPermissionView = false
     
-    
+    // Route refresh timer
+    @State private var routeRefreshTimer: Timer? = nil
+    private let routeRefreshInterval: TimeInterval = 30 // seconds
+    @State private var showFullDirectionsView = false
     
     var body: some View {
-        ZStack {
-            // Map layer
-            ZStack {
-                ProjectMapView(
-                    region: $mapRegion,
-                    projects: todaysProjects,
-                    selectedIndex: $selectedProjectIndex,
-                    onTapMarker: { index in
-                        withAnimation {
-                            selectedProjectIndex = index
-                            showStartConfirmation = false
-                        }
-                    },
-                    routeOverlay: inProgressManager.getRouteOverlay(),
-                    isInProjectMode: appState.isInProjectMode
-                )
-                
-                // Semi-transparent dark overlay to match design - ENSURE it doesn't block interaction
-                Color.black.opacity(0.2)
-                    .edgesIgnoringSafeArea(.all)
-                    .allowsHitTesting(false) // Critical - let touches pass through to the map
-            }
-            .edgesIgnoringSafeArea(.all)
-            
-            // Gradient overlay on top of map
-            VStack(spacing: 0) {
-                // Top gradient overlay that extends halfway through the carousel
-                LinearGradient(
-                    gradient: Gradient(
-                        stops: [
-                            .init(color: Color.black.opacity(1), location: 0),
-                            .init(color: Color.black.opacity(0.9), location: 0.15),
-                            .init(color: Color.black.opacity(0.8), location: 0.25),
-                            .init(color: Color.black.opacity(0.7), location: 0.4),
-                            .init(color: Color.black.opacity(0.5), location: 0.6),
-                            .init(color: OPSStyle.Colors.cardBackground.opacity(0.3), location: 0.8),
-                            .init(color: OPSStyle.Colors.cardBackground.opacity(0), location: 1)
-                        ]
-                    ),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 300) // Height that extends halfway through carousel
-                
-                Spacer()
-            }
-            .edgesIgnoringSafeArea(.all)
-            .allowsHitTesting(false) // Allow touches to pass through to the map
-            
-            // UI overlay layers
-            VStack(spacing: 0) {
-                // No extra padding needed - we'll handle safe areas differently
-                // Header content without gradient
-                if appState.isInProjectMode {
-                    ProjectHeader(project: getActiveProject())
-                } else {
-                    AppHeader(headerType: .home)
-                }
-                
-                // Project cards - only show when not in project mode
-                if !appState.isInProjectMode {
-                    if !todaysProjects.isEmpty {
-                        ProjectCarousel(
-                            projects: todaysProjects,
-                            selectedIndex: $selectedProjectIndex,
-                            showStartConfirmation: $showStartConfirmation,
-                            isInProjectMode: appState.isInProjectMode,
-                            activeProjectID: appState.activeProjectID,
-                            onStart: startProject,
-                            onStop: stopProject,
-                            onLongPress: { project in
-                                // Just set selectedProject; sheet(item:) will present the view automatically
-                                selectedProject = project
-                            }
-                        )
-                    } else if !isLoading {
-                        // No projects message
-                        VStack {
-                            Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects scheduled for today")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding()
-                        .frame(height: 120)
-                        .background(
-                            ZStack {
-                                Color(.green)
-                                    .opacity(0.5)
-                                Rectangle()
-                                    .fill(Color.clear)
-                                    .background(Material.ultraThinMaterial)
-                            }
-                        )
-                    }
-                }
-                
-                Spacer()
-                
-                VStack(spacing: 24){
-                    // Routing directions
-                    if inProgressManager.isRouting {
-                        RouteDirectionsView(
-                            directions: inProgressManager.routeDirections,
-                            estimatedArrival: inProgressManager.estimatedArrival,
-                            distance: inProgressManager.routeDistance
-                        )
-                        .padding()
-                    }
-                    
-                    // Action buttons for active project
-                    if appState.isInProjectMode,
-                       let activeProject = getActiveProject() {
-                        ProjectActionBar(project: activeProject)
-                    }
-                }.padding(.vertical, 70)
-                
-            }
-            
-            // Loading overlay
-            if isLoading {
-                Color.black.opacity(0.5)
-                    .edgesIgnoringSafeArea(.all)
-                
-                VStack {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                        .scaleEffect(1.5)
-                    
-                    Text("Loading projects...")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.top)
-                }
-                .padding()
-                .background(
-                    ZStack {
-                        Color(.blue)
-                        Rectangle()
-                            .fill(Color.clear)
-                            .background(Material.ultraThinMaterial)
-                    }
-                )
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-            }
-        }
+        // Extract to smaller components to help compiler
+        HomeContentView(
+            mapRegion: $mapRegion,
+            todaysProjects: todaysProjects,
+            selectedProjectIndex: $selectedProjectIndex,
+            showStartConfirmation: $showStartConfirmation,
+            selectedProject: $selectedProject,
+            showFullDirectionsView: $showFullDirectionsView,
+            isLoading: isLoading,
+            showLocationPermissionView: $showLocationPermissionView,
+            appState: appState,
+            inProgressManager: inProgressManager,
+            startProject: startProject,
+            stopProject: stopProject,
+            getActiveProject: getActiveProject
+        )
         .sheet(item: $selectedProject, onDismiss: { selectedProject = nil }) { project in
             NavigationView {
                 ProjectDetailsView(project: project)
@@ -185,13 +62,69 @@ struct HomeView: View {
             }
         }
         .preferredColorScheme(.dark) // Enforce dark mode for the entire view
+        // Listen for complete project stop
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("EndNavigation"))) { _ in
+            if let activeProject = getActiveProject() {
+                stopProject(activeProject)
+            }
+        }
+        // Listen for navigation stop only (keep project active)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StopRouting"))) { _ in
+            // Only stop routing without ending project
+            inProgressManager.stopRouting()
+            showFullDirectionsView = false
+            
+            // Reset zoom flag to allow normal map region updates again
+            hasSetInitialZoom = false
+            
+            // Reset map to show active project if there is one
+            if let projectId = appState.activeProjectID,
+               let project = todaysProjects.first(where: { $0.id == projectId }) {
+                updateMapRegion(for: project)
+            }
+        }
         .onAppear {
+            // Initialize location status
+            locationStatus = locationManager.authorizationStatus
+            
+            // Load projects
             loadTodaysProjects()
+            
+            // Debug log
+            print("HomeView: onAppear - location status: \(locationStatus.rawValue)")
+            
+            // Set up periodic route refreshes for navigation
+            if appState.isInProjectMode {
+                // Schedule route refresh every 30 seconds while in project mode
+                startRouteRefreshTimer()
+            }
+        }
+        .onDisappear {
+            // Clean up any timers
+            stopRouteRefreshTimer()
+        }
+        // Watch for changes to locationManager's denied state
+        .onChange(of: locationManager.isLocationDenied) { _, isDenied in
+            if isDenied && (appState.isInProjectMode || showStartConfirmation) {
+                print("HomeView: Location denied status changed to \(isDenied), showing alert")
+                showLocationPermissionView = true
+            }
+        }
+        // Use onReceive with NotificationCenter for location changes
+        .onReceive(NotificationCenter.default.publisher(for: .locationDidChange)) { _ in
+            if inProgressManager.isRouting, 
+               appState.isInProjectMode, 
+               let location = locationManager.userLocation {
+                inProgressManager.updateNavigationStep(with: location)
+            }
         }
         .onChange(of: appState.activeProjectID) { _, newProjectID in
             if let newProjectID = newProjectID,
                let project = todaysProjects.first(where: { $0.id == newProjectID }),
                let coordinate = project.coordinate {
+                
+                // Start route refresh timer when entering project mode
+                startRouteRefreshTimer()
                 
                 // Check location permission before routing
                 if locationManager.authorizationStatus == .authorizedWhenInUse ||
@@ -199,18 +132,27 @@ struct HomeView: View {
                     // Start routing with user's location
                     if let userLocation = locationManager.userLocation {
                         inProgressManager.startRouting(to: coordinate, from: userLocation)
+                        
+                        // IMPORTANT: Zoom to user location for navigation
+                        zoomToShowRoute(from: userLocation, to: coordinate)
                     } else {
                         inProgressManager.startRouting(to: coordinate)
+                        
+                        // Just zoom to destination if user location not available
+                        updateMapRegion(for: project)
                     }
                 } else if locationManager.authorizationStatus == .notDetermined {
-                    // Show the permission prompt
-                    withAnimation {
-                        showLocationPrompt = true
-                    }
+                    // Show the permission view
+                    showLocationPermissionView = true
+                } else if locationManager.authorizationStatus == .denied || locationManager.authorizationStatus == .restricted {
+                    // Show the permission view for denied state
+                    showLocationPermissionView = true
                 }
             } else {
-                // Stop routing when exiting project mode
+                // Stop routing and timer when exiting project mode
                 inProgressManager.stopRouting()
+                stopRouteRefreshTimer()
+                showFullDirectionsView = false
             }
         }
         .onChange(of: locationManager.authorizationStatus) { _, newStatus in
@@ -223,12 +165,32 @@ struct HomeView: View {
                     
                     if let userLocation = locationManager.userLocation {
                         inProgressManager.startRouting(to: coordinate, from: userLocation)
+                        
+                        // IMPORTANT: Zoom to user location for navigation
+                        zoomToShowRoute(from: userLocation, to: coordinate)
                     } else {
                         inProgressManager.startRouting(to: coordinate)
+                        
+                        // Just zoom to destination if user location not available
+                        updateMapRegion(for: project)
                     }
+                }
+            } else if newStatus == .denied || newStatus == .restricted {
+                // Show location permission view if in project mode or trying to start a project
+                if appState.isInProjectMode || showStartConfirmation {
+                    showLocationPermissionView = true
                 }
             }
         }
+        // Add the location permission overlay
+        .locationPermissionOverlay(
+            isPresented: $showLocationPermissionView,
+            locationManager: locationManager,
+            onRequestPermission: {
+                // Request location permissions when the user taps the button
+                locationManager.requestPermissionIfNeeded(requestAlways: true)
+            }
+        )
     }
     
     // MARK: - Helper Methods
@@ -284,7 +246,15 @@ struct HomeView: View {
     private func updateMapRegion(for project: Project) {
         guard let coordinate = project.coordinate else { return }
         
-        withAnimation {
+        // Skip if we've already set a custom zoom for navigation
+        if hasSetInitialZoom {
+            print("HomeView: Skipping map region update - already zoomed for navigation")
+            return
+        }
+        
+        // Update map region with animation for better user experience
+        print("HomeView: Updating map region to show project")
+        withAnimation(.easeInOut(duration: 0.5)) {
             mapRegion = MKCoordinateRegion(
                 center: coordinate,
                 span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
@@ -295,6 +265,12 @@ struct HomeView: View {
     private func updateMapRegion(for projects: [Project]) {
         let coordinates = projects.compactMap { $0.coordinate }
         guard !coordinates.isEmpty else { return }
+        
+        // Skip if we've already set a custom zoom for navigation
+        if hasSetInitialZoom {
+            print("HomeView: Skipping projects map region update - already zoomed for navigation")
+            return
+        }
         
         if coordinates.count == 1 {
             updateMapRegion(for: projects[0])
@@ -318,10 +294,60 @@ struct HomeView: View {
             longitudeDelta: max(0.01, (maxLon - minLon) + padding)
         )
         
-        withAnimation {
+        // Update map region with animation
+        print("HomeView: Updating map region to show all projects")
+        withAnimation(.easeInOut(duration: 0.5)) {
             mapRegion = MKCoordinateRegion(center: center, span: span)
         }
     }
+    
+    // Track when we've set a custom zoom region
+    @State private var hasSetInitialZoom = false
+    
+    // Zoom map to show user location for effective navigation
+    private func zoomToShowRoute(from userLocation: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) {
+        print("HomeView: Zooming to user location for navigation")
+        
+        // Set flag to prevent other code from overriding our zoom
+        hasSetInitialZoom = true
+        
+        // First, create a starting wide-view region (if we're not already zoomed in)
+        let initialRegion = mapRegion
+        
+        // Then define our target close-up region focused on user location for navigation
+        let closeZoom = MKCoordinateRegion(
+            center: userLocation,
+            span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005) // Street-level detail
+        )
+        
+        // Use a two-step animation for a more engaging zoom effect
+        // Step 1: Transition to the location with a slight zoom
+        let intermediateRegion = MKCoordinateRegion(
+            center: userLocation,
+            span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02) // Medium zoom level
+        )
+        
+        // First animation - center on location
+        withAnimation(.easeInOut(duration: 0.5)) {
+            mapRegion = intermediateRegion
+        }
+        
+        // Step 2: Zoom in further after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // Second animation - zoom in closer
+            withAnimation(.easeOut(duration: 1.0)) {
+                mapRegion = closeZoom
+            }
+        }
+    }
+    
+    // Calculate distance between two coordinates in meters
+    private func calculateDistance(from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) -> CLLocationDistance {
+        let sourceLocation = CLLocation(latitude: source.latitude, longitude: source.longitude)
+        let destinationLocation = CLLocation(latitude: destination.latitude, longitude: destination.longitude)
+        return sourceLocation.distance(from: destinationLocation)
+    }
+    
     
     private func startProject(_ project: Project) {
         // Enter project mode
@@ -338,22 +364,52 @@ struct HomeView: View {
             }
         }
         
-        // Always request location permission when starting a project
-        // This will do nothing if permission is already granted or denied
-        locationManager.requestPermissionIfNeeded()
+        // CRITICAL: Check for denied permissions first for immediate feedback
+        if locationManager.authorizationStatus == .denied || locationManager.authorizationStatus == .restricted {
+            print("HomeView: ⚠️ Location permission already denied, showing permission view immediately")
+            showLocationPermissionView = true
+            // Still continue with the project but without location features
+        } else if locationManager.authorizationStatus == .notDetermined {
+            // First time permission request - show our custom UI
+            print("HomeView: 🆕 Location permission not determined yet, showing permission view")
+            showLocationPermissionView = true
+        }
+        
+        // ALWAYS request location permission when starting a project
+        locationManager.requestPermissionIfNeeded(requestAlways: true)
         
         // Try to start routing if we have coordinates
         if let coordinate = project.coordinate {
-            // If we have permission, start routing
-            if locationManager.authorizationStatus == .authorizedWhenInUse ||
-               locationManager.authorizationStatus == .authorizedAlways {
-                
+            // Check permission status
+            switch locationManager.authorizationStatus {
+            case .authorizedWhenInUse, .authorizedAlways:
+                // We have permission - start routing
+                print("HomeView: Location permission granted, starting routing")
                 if let userLocation = locationManager.userLocation {
                     inProgressManager.startRouting(to: coordinate, from: userLocation)
+                    
+                    // Zoom to show both user location and destination
+                    zoomToShowRoute(from: userLocation, to: coordinate)
                 } else {
                     inProgressManager.startRouting(to: coordinate)
+                    
+                    // Just zoom to destination if user location not available
+                    updateMapRegion(for: project)
                 }
+                
+            case .notDetermined:
+                // First-time request - we'll handle in the onChange handler when user responds
+                print("HomeView: Requesting location permission for the first time")
+                
+            case .denied, .restricted:
+                // Already handled above - just log
+                print("HomeView: Location permission denied, alert already shown")
+                
+            @unknown default:
+                print("HomeView: Unknown location authorization status")
             }
+        } else {
+            print("HomeView: Project has no coordinate")
         }
     }
     
@@ -361,6 +417,54 @@ struct HomeView: View {
         appState.exitProjectMode()
         showStartConfirmation = false
         inProgressManager.stopRouting()
+        stopRouteRefreshTimer()
+        showFullDirectionsView = false
+        
+        // Reset zoom flag to allow normal map region updates
+        hasSetInitialZoom = false
+        
+        // Return to overall project view
+        if !todaysProjects.isEmpty {
+            updateMapRegion(for: todaysProjects)
+        }
+    }
+    
+    // MARK: - Timer Methods
+    
+    private func startRouteRefreshTimer() {
+        // Stop any existing timer first
+        stopRouteRefreshTimer()
+        
+        // Create new timer
+        routeRefreshTimer = Timer.scheduledTimer(withTimeInterval: routeRefreshInterval, repeats: true) { _ in
+            self.refreshRouteIfNeeded()
+        }
+        
+        // Make sure it runs even when scrolling
+        if let timer = routeRefreshTimer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        
+        print("HomeView: Started route refresh timer at \(routeRefreshInterval) second intervals")
+    }
+    
+    private func stopRouteRefreshTimer() {
+        routeRefreshTimer?.invalidate()
+        routeRefreshTimer = nil
+        print("HomeView: Stopped route refresh timer")
+    }
+    
+    private func refreshRouteIfNeeded() {
+        // Only refresh if we're actively routing
+        guard appState.isInProjectMode, inProgressManager.isRouting else { return }
+        
+        // Update navigation step with current user location if available
+        if let userLocation = locationManager.userLocation {
+            inProgressManager.updateNavigationStep(with: userLocation)
+        }
+        
+        print("HomeView: Refreshing route automatically")
+        inProgressManager.refreshRoute()
     }
     
     private func getActiveProject() -> Project? {

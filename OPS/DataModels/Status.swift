@@ -15,6 +15,7 @@ enum Status: String, Codable, CustomStringConvertible, CaseIterable {
     case inProgress = "In Progress"
     case completed = "Completed"
     case closed = "Closed"
+    case pending = "Pending" // Added for new code
     
     var displayName: String {
         return self.rawValue
@@ -38,6 +39,8 @@ enum Status: String, Codable, CustomStringConvertible, CaseIterable {
             return .green
         case .closed:
             return .red
+        case .pending:
+            return .yellow
         }
     }
     

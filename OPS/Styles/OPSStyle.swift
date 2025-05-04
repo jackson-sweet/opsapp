@@ -57,6 +57,8 @@ enum OPSStyle {
                 return Color("StatusCompleted")
             case .closed:
                 return Color("StatusClosed")
+            case .pending:
+                return Color("StatusWarning") // Using warning color for pending
             }
         }
     }
@@ -76,6 +78,7 @@ enum OPSStyle {
         static let caption = Font.system(size: 15, weight: .regular, design: .default)
         static let captionBold = Font.system(size: 15, weight: .bold, design: .default)
         static let smallCaption = Font.system(size: 13, weight: .regular, design: .default)
+        static let smallBody = Font.system(size: 13, weight: .regular, design: .default)
         
         // Cards
         static let cardTitle = Font.system(size: 14, weight: .bold, design: .default)
@@ -84,6 +87,9 @@ enum OPSStyle {
         
         // Status text
         static let status = Font.system(size: 13, weight: .bold, design: .default)
+        
+        // Button text
+        static let smallButton = Font.system(size: 12, weight: .bold, design: .default)
     }
     
     // MARK: - Layout

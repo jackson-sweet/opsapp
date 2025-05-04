@@ -47,9 +47,8 @@ struct OrganizationSettingsView: View {
                         Spacer()
                         
                         // Empty spacer to balance the header
-                        Rectangle()
-                            .fill(Color.clear)
-                            .frame(width: 44, height: 44)
+                        Spacer()
+                            .frame(width: 44)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 12)
@@ -67,14 +66,27 @@ struct OrganizationSettingsView: View {
                                 
                                 if let organization = organization, 
                                    let logoURL = organization.logoURL, 
-                                   !logoURL.isEmpty,
-                                   let cachedImage = ImageCache.shared.get(forKey: logoURL) {
-                                    // Show cached company logo
-                                    Image(uiImage: cachedImage)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 80, height: 80)
-                                        .clipShape(Circle())
+                                   !logoURL.isEmpty {
+                                    if let cachedImage = ImageCache.shared.get(forKey: logoURL) {
+                                        // Show cached company logo
+                                        Image(uiImage: cachedImage)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 80, height: 80)
+                                            .clipShape(Circle())
+                                    } else {
+                                        // Logo URL exists but image not loaded yet
+                                        // Show loading placeholder
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                            .scaleEffect(1.2)
+                                            .onAppear {
+                                                // Trigger image loading
+                                                Task {
+                                                    _ = await loadImage(from: logoURL)
+                                                }
+                                            }
+                                    }
                                 } else {
                                     // Default icon
                                     Image(systemName: "building.2.fill")
@@ -85,7 +97,7 @@ struct OrganizationSettingsView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                             
                             // Company name
-                            Text(organization?.name ?? "Company Name")
+                            Text(organization?.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? organization!.name : "Company Name")
                                 .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.white)
                                 .multilineTextAlignment(.center)
@@ -138,15 +150,38 @@ struct OrganizationSettingsView: View {
         VStack(spacing: 16) {
             // Company info card
             infoCard(items: [
-                InfoItem(title: "Company Name", value: organization?.name ?? "Not available", icon: "building.2"),
-                InfoItem(title: "Address", value: organization?.address ?? "Not available", icon: "location")
+                InfoItem(title: "Company Name", 
+                         value: organization?.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
+                                organization!.name : "Not available", 
+                         icon: "building.2"),
+                InfoItem(title: "Description", 
+                         value: organization?.companyDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
+                                organization!.companyDescription! : "Not available", 
+                         icon: "doc.text"),
+                InfoItem(title: "Address", 
+                         value: organization?.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
+                                organization!.address! : "Not available", 
+                         icon: "location")
             ])
             
             // Contact info card
             infoCard(items: [
-                InfoItem(title: "Phone", value: organization?.phone ?? "Not available", icon: "phone"),
-                InfoItem(title: "Email", value: organization?.email ?? "Not available", icon: "envelope"),
-                InfoItem(title: "Website", value: organization?.website ?? "Not available", icon: "globe")
+                InfoItem(title: "Business Hours", 
+                         value: (organization?.openHour != nil && organization?.closeHour != nil) ? 
+                                organization!.hoursDisplay : "Not available", 
+                         icon: "clock"),
+                InfoItem(title: "Phone", 
+                         value: organization?.phone?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
+                                organization!.phone! : "Not available", 
+                         icon: "phone"),
+                InfoItem(title: "Email", 
+                         value: organization?.email?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
+                                organization!.email! : "Not available", 
+                         icon: "envelope"),
+                InfoItem(title: "Website", 
+                         value: organization?.website?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
+                                organization!.website! : "Not available", 
+                         icon: "globe")
             ])
         }
         .padding(.horizontal, 20)
@@ -157,7 +192,8 @@ struct OrganizationSettingsView: View {
             if teamMembers.isEmpty {
                 emptyTeamView
             } else {
-                ForEach(teamMembers, id: \.id) { member in
+                // Use an enumerated array to ensure uniqueness even if duplicate IDs exist
+                ForEach(Array(zip(teamMembers.indices, teamMembers)), id: \.0) { index, member in
                     memberRow(member: member)
                 }
             }
@@ -247,7 +283,7 @@ struct OrganizationSettingsView: View {
             Spacer()
             
             // Status badge - active/inactive
-            if member.isActive ?? true {
+            if member.isActive != false { // Show as active unless explicitly set to false
                 Text("Active")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white)
@@ -276,20 +312,43 @@ struct OrganizationSettingsView: View {
         Task {
             // Fetch organization data
             if let companyID = dataController.currentUser?.companyId {
+                print("Loading organization data for company ID: \(companyID)")
+                
+                // Attempt to fetch fresh data from API if we're online
+                if dataController.isConnected {
+                    do {
+                        // Try to force a refresh of company data from the API
+                        try await dataController.forceRefreshCompany(id: companyID)
+                        print("Successfully refreshed company data from API")
+                    } catch {
+                        print("Failed to refresh company data from API: \(error.localizedDescription)")
+                        // Continue with local data even if API refresh fails
+                    }
+                }
+                
+                // Get company from local database (newly refreshed if the API call succeeded)
                 let company = dataController.getCompany(id: companyID)
                 let users = dataController.getTeamMembers(companyId: companyID)
                 
+                print("Loaded company: \(company?.name ?? "nil")")
+                print("Company logo URL: \(company?.logoURL ?? "nil")")
+                
                 // Load company logo if available
                 if let company = company, let logoURL = company.logoURL, !logoURL.isEmpty {
+                    print("Attempting to load logo from URL: \(logoURL)")
+                    
                     // Check if logo is already cached
                     if ImageCache.shared.get(forKey: logoURL) == nil {
                         // Not cached, load from URL
-                        if let image = await loadImage(from: logoURL) {
+                        print("Logo not cached, loading from URL...")
+                        if await loadImage(from: logoURL) != nil {
                             print("OrganizationSettingsView: Successfully loaded company logo")
                             // Image is now cached by the loadImage function
                         } else {
                             print("OrganizationSettingsView: Failed to load company logo")
                         }
+                    } else {
+                        print("Using cached logo image")
                     }
                 }
                 
@@ -297,8 +356,19 @@ struct OrganizationSettingsView: View {
                     self.organization = company
                     self.teamMembers = users
                     self.isLoading = false
+                    
+                    // Debug info
+                    if let org = self.organization {
+                        print("Organization set: \(org.name)")
+                        print("Address: \(org.address ?? "nil")")
+                        print("Email: \(org.email ?? "nil")")
+                        print("Logo URL: \(org.logoURL ?? "nil")")
+                    } else {
+                        print("Organization is nil after loading!")
+                    }
                 }
             } else {
+                print("No company ID found for current user")
                 await MainActor.run {
                     self.isLoading = false
                 }
@@ -349,12 +419,6 @@ struct InfoItem {
     let title: String
     let value: String
     let icon: String
-}
-
-#Preview {
-    OrganizationSettingsView()
-        .environmentObject(DataController())
-        .preferredColorScheme(.dark)
 }
 
 #Preview {

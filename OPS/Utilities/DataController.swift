@@ -77,9 +77,22 @@ class DataController: ObservableObject {
     
     @MainActor
     func setModelContext(_ context: ModelContext) {
+        print("Setting model context")
         self.modelContext = context
-        if isAuthenticated {
-            initializeSyncManager()
+        
+        // Set up in proper sequence to avoid race conditions
+        Task {
+            // First clean up any duplicate users that might exist
+            print("Running database cleanup")
+            await cleanupDuplicateUsers()
+            
+            // Only after cleanup is done, initialize sync manager if needed
+            await MainActor.run {
+                if isAuthenticated {
+                    print("Initializing sync manager after cleanup")
+                    initializeSyncManager()
+                }
+            }
         }
     }
     
@@ -164,7 +177,7 @@ class DataController: ObservableObject {
     private func checkExistingAuth() async {
         // Check for stored credentials
         if let userId = keychainManager.retrieveUserId(),
-           let token = keychainManager.retrieveToken() {
+           let _ = keychainManager.retrieveToken() {
             
             // Validate token expiration
             if let expiration = keychainManager.retrieveTokenExpiration(),
@@ -232,27 +245,121 @@ class DataController: ObservableObject {
                           userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
         
+        // First, check if this user already exists in the database
+        let descriptor = FetchDescriptor<User>(predicate: #Predicate<User> { $0.id == userId })
+        let existingUsers = try context.fetch(descriptor)
+        
+        print("Fetching user data for ID: \(userId) from API")
         let userDTO = try await apiService.fetchUser(id: userId)
-        let user = userDTO.toModel()
+        print("Successfully fetched user data from API")
         
-        context.insert(user)
-        try context.save()
+        var user: User
         
+        // Transaction to update or create user
+        do {
+            if let existingUser = existingUsers.first {
+                // Update existing user instead of creating a new one
+                print("Found existing user with ID \(userId) - updating instead of creating new")
+                user = existingUser
+                
+                // Store existing projects to preserve relationships
+                let existingProjects = existingUser.assignedProjects
+                
+                // Update the user fields from DTO while preserving relationships
+                user.firstName = userDTO.nameFirst ?? user.firstName
+                user.lastName = userDTO.nameLast ?? user.lastName
+                
+                // Handle email - prioritize authentication email if available
+                if let emailAuth = userDTO.authentication?.email?.email {
+                    user.email = emailAuth
+                } else if let email = userDTO.email {
+                    user.email = email
+                }
+                
+                // Handle profile image URL
+                if let avatarUrl = userDTO.avatar {
+                    user.profileImageURL = avatarUrl
+                }
+                
+                // Handle role based on employee type
+                if let employeeTypeString = userDTO.employeeType {
+                    user.role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
+                }
+                
+                // Handle company ID
+                if let companyId = userDTO.company, !companyId.isEmpty {
+                    user.companyId = companyId
+                }
+                
+                // Handle user type
+                if let userType = userDTO.userType {
+                    user.userType = UserType(rawValue: userType) ?? user.userType
+                }
+                
+                // Handle home address
+                if let address = userDTO.homeAddress {
+                    user.homeAddress = address
+                }
+                
+                // We don't have these fields in the DTO currently
+                // user.phone = userDTO.phone ?? user.phone 
+                // user.latitude = userDTO.latitude ?? user.latitude
+                // user.longitude = userDTO.longitude ?? user.longitude
+                // user.locationName = userDTO.locationName ?? user.locationName
+                // user.clientId = userDTO.clientId ?? user.clientId
+                // user.isActive = userDTO.isActive ?? true
+                
+                // Set sync status
+                user.lastSyncedAt = Date()
+                user.needsSync = false
+                
+                // Don't overwrite existing project relationships
+                if existingProjects.isEmpty && !user.assignedProjects.isEmpty {
+                    print("Preserving \(user.assignedProjects.count) existing project relationships")
+                }
+            } else {
+                // Create new user
+                print("Creating new user with ID \(userId)")
+                user = userDTO.toModel()
+                context.insert(user)
+            }
+            
+            try context.save()
+            print("Successfully saved user to database")
+        } catch {
+            print("Error saving user: \(error.localizedDescription)")
+            throw error
+        }
+        
+        // Update app state with the current user
         self.currentUser = user
         self.isAuthenticated = true
         
+        // Save important IDs to UserDefaults
         if let companyId = user.companyId {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+            print("Saved company ID to UserDefaults: \(companyId)")
+        } else {
+            print("Warning: User has no company ID")
         }
         
         UserDefaults.standard.set(user.id, forKey: "currentUserId")
         
+        // Initialize sync managers
         initializeSyncManager()
         
+        // Fetch company data if needed
         if isConnected, let companyId = user.companyId {
-            Task {
+            do {
+                print("Fetching company data for ID: \(companyId)")
                 try await fetchCompanyData(companyId: companyId)
+                print("Successfully fetched company data")
+            } catch {
+                print("Non-critical error fetching company data: \(error.localizedDescription)")
+                // Continue even if company data fetch fails - don't block authentication
             }
+        } else if !isConnected {
+            print("Skipping company data fetch - offline mode")
         }
     }
     
@@ -265,6 +372,99 @@ class DataController: ObservableObject {
         isAuthenticated = false
         currentUser = nil
         UserDefaults.standard.removeObject(forKey: "currentUserCompanyId")
+    }
+    
+    /// Cleans up duplicate users in the database
+    @MainActor
+    func cleanupDuplicateUsers() async {
+        guard let context = modelContext else { 
+            print("Cannot clean up duplicates: ModelContext is nil")
+            return 
+        }
+        
+        do {
+            // Fetch all users
+            let descriptor = FetchDescriptor<User>()
+            let allUsers = try context.fetch(descriptor)
+            
+            // Group users by ID
+            var usersByID: [String: [User]] = [:]
+            for user in allUsers {
+                if usersByID[user.id] == nil {
+                    usersByID[user.id] = [user]
+                } else {
+                    usersByID[user.id]?.append(user)
+                }
+            }
+            
+            // Find duplicate users
+            let duplicateIDs = usersByID.filter { $0.value.count > 1 }.keys
+            if duplicateIDs.isEmpty {
+                print("No duplicate users found")
+                return
+            }
+            
+            print("Found \(duplicateIDs.count) user IDs with duplicates. Cleaning up...")
+            
+            // For each set of duplicates, intelligently merge and clean up
+            for id in duplicateIDs {
+                guard let duplicates = usersByID[id], duplicates.count > 1 else { continue }
+                
+                // Sort duplicates by lastSyncedAt - keep the most recently synced one
+                let sortedDuplicates = duplicates.sorted { 
+                    guard let date1 = $0.lastSyncedAt, let date2 = $1.lastSyncedAt else {
+                        // If one doesn't have a sync date, prefer the one that does
+                        return $0.lastSyncedAt != nil 
+                    }
+                    return date1 > date2
+                }
+                
+                let userToKeep = sortedDuplicates[0]
+                print("Keeping most recent user \(userToKeep.fullName) (\(userToKeep.id)) and merging/removing \(duplicates.count - 1) duplicates")
+                
+                // Collect any projects from duplicates to ensure we don't lose relationships
+                var allProjects = Set<Project>(userToKeep.assignedProjects)
+                
+                for i in 1..<sortedDuplicates.count {
+                    let dupe = sortedDuplicates[i]
+                    
+                    // Merge any unique projects from this duplicate
+                    for project in dupe.assignedProjects {
+                        allProjects.insert(project)
+                        
+                        // Update project's reference to point to the user we're keeping
+                        if let index = project.teamMembers.firstIndex(where: { $0.id == dupe.id }) {
+                            // Only update if it's not already pointing to the user we're keeping
+                            if !project.teamMembers.contains(where: { $0.id == userToKeep.id }) {
+                                project.teamMembers.remove(at: index)
+                                project.teamMembers.append(userToKeep)
+                            } else {
+                                // If we already have this user, just remove the duplicate reference
+                                project.teamMembers.remove(at: index)
+                            }
+                        }
+                    }
+                    
+                    // Now that we've migrated projects, we can safely delete
+                    context.delete(dupe)
+                }
+                
+                // Update the user we're keeping with all the projects
+                userToKeep.assignedProjects = Array(allProjects)
+            }
+            
+            // Save all changes in a single transaction
+            do {
+                try context.save()
+                print("Cleanup complete - removed duplicate users and preserved relationships")
+            } catch {
+                print("Error saving after cleanup: \(error.localizedDescription)")
+                // We should consider a way to recover from this error in a production app
+            }
+            
+        } catch {
+            print("Error cleaning up duplicate users: \(error.localizedDescription)")
+        }
     }
     
     // MARK: - Data Operations
@@ -450,7 +650,7 @@ class DataController: ObservableObject {
     
     func getProjectsForToday(user: User? = nil) async throws -> [Project] {
         let today = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        let _ = Calendar.current.date(byAdding: .day, value: 1, to: today)!
         
         // Use the user ID if provided, otherwise use current user
         let userId = user?.id ?? currentUser?.id
@@ -471,14 +671,14 @@ class DataController: ObservableObject {
         
         // Otherwise fetch fresh data using our new centralized API
         do {
-            let remoteProjects = try await apiService.fetchUserProjectsForDate(
+            // Fetch remote projects but discard them for now
+            // In the future, we'll process and merge them with local data
+            _ = try await apiService.fetchUserProjectsForDate(
                 userId: userId,
                 date: today
             )
             
-            // Process projects and save to local database
-            // This would typically be handled by the sync manager
-            // but for immediate UI feedback we'll process directly
+            // Return local projects for now until full sync is implemented
             return localProjects
         } catch {
             // On error, fall back to local data
@@ -525,6 +725,50 @@ class DataController: ObservableObject {
         Task {
             await syncManager?.triggerBackgroundSync()
         }
+    }
+    
+    /// Force refresh company data from API
+    @MainActor
+    func forceRefreshCompany(id: String) async throws {
+        guard isConnected, isAuthenticated, let context = modelContext else {
+            if !isConnected {
+                throw NSError(domain: "DataController", code: 100, 
+                             userInfo: [NSLocalizedDescriptionKey: "No internet connection"])
+            }
+            if !isAuthenticated {
+                throw NSError(domain: "DataController", code: 101, 
+                             userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
+            }
+            throw NSError(domain: "DataController", code: 102, 
+                         userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+        
+        print("Forcing refresh of company data for ID: \(id)")
+        
+        // Fetch fresh data from API
+        let companyDTO = try await apiService.fetchCompany(id: id)
+        print("Successfully fetched company data from API")
+        
+        // Check if we already have this company locally
+        let descriptor = FetchDescriptor<Company>(
+            predicate: #Predicate<Company> { $0.id == id }
+        )
+        let companies = try context.fetch(descriptor)
+        
+        if let existingCompany = companies.first {
+            // Update existing company
+            print("Updating existing company: \(existingCompany.name)")
+            updateCompany(existingCompany, from: companyDTO)
+        } else {
+            // Create new company
+            print("Creating new company from API data")
+            let newCompany = companyDTO.toModel()
+            context.insert(newCompany)
+        }
+        
+        // Save changes
+        try context.save()
+        print("Company data saved to database")
     }
     
     func appDidBecomeActive() {

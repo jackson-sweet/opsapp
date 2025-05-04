@@ -494,50 +494,46 @@ extension ProjectPhotosGrid {
     private func deletePhoto(_ url: String) {
         // Start a background task for deletion
         Task {
-            do {
-                print("Deleting photo: \(url)")
+            print("Deleting photo: \(url)")
+            
+            // Get current project images
+            var currentImages = project.getProjectImages()
+            
+            // Remove the specified image
+            if let index = currentImages.firstIndex(of: url) {
+                currentImages.remove(at: index)
+                print("Photo removed from project images array")
                 
-                // Get current project images
-                var currentImages = project.getProjectImages()
-                
-                // Remove the specified image
-                if let index = currentImages.firstIndex(of: url) {
-                    currentImages.remove(at: index)
-                    print("Photo removed from project images array")
+                // Update project in database
+                await MainActor.run {
+                    // Update project
+                    project.setProjectImageURLs(currentImages)
+                    project.needsSync = true
+                    project.syncPriority = 2 // Higher priority for image changes
                     
-                    // Update project in database
-                    await MainActor.run {
-                        // Update project
-                        project.setProjectImageURLs(currentImages)
-                        project.needsSync = true
-                        project.syncPriority = 2 // Higher priority for image changes
-                        
-                        // Save changes to the database
-                        if let modelContext = dataController.modelContext {
-                            do {
-                                try modelContext.save()
-                                print("✅ Successfully deleted photo")
-                            } catch {
-                                print("⚠️ Error saving changes after deletion: \(error.localizedDescription)")
-                            }
-                        } else {
-                            print("⚠️ ModelContext is nil, can't save changes")
+                    // Save changes to the database
+                    if let modelContext = dataController.modelContext {
+                        do {
+                            try modelContext.save()
+                            print("✅ Successfully deleted photo")
+                        } catch {
+                            print("⚠️ Error saving changes after deletion: \(error.localizedDescription)")
                         }
+                    } else {
+                        print("⚠️ ModelContext is nil, can't save changes")
                     }
-                    
-                    // Cleanup UserDefaults (optional but good practice)
-                    if url.hasPrefix("local://") {
-                        UserDefaults.standard.removeObject(forKey: url)
-                        print("Removed image data from local storage")
-                    }
-                    
-                    // Reset state
-                    photoToDelete = nil
-                } else {
-                    print("⚠️ Could not find photo in project images")
                 }
-            } catch {
-                print("❌ Error deleting photo: \(error.localizedDescription)")
+                
+                // Cleanup UserDefaults (optional but good practice)
+                if url.hasPrefix("local://") {
+                    UserDefaults.standard.removeObject(forKey: url)
+                    print("Removed image data from local storage")
+                }
+                
+                // Reset state
+                photoToDelete = nil
+            } else {
+                print("⚠️ Could not find photo in project images")
             }
         }
     }

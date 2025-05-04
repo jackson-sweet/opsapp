@@ -165,7 +165,7 @@ struct ImagePicker: UIViewControllerRepresentable {
                 
                 dispatchGroup.enter()
                 
-                result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] image, error in
+                result.itemProvider.loadObject(ofClass: UIImage.self) { image, error in
                     defer { dispatchGroup.leave() }
                     
                     if let image = image as? UIImage {

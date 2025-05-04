@@ -237,13 +237,13 @@ class ImageSyncManager {
     private func syncSingleImage(_ upload: PendingImageUpload) async -> Bool {
         print("ImageSyncManager: Syncing image \(upload.localURL)")
         
-        do {
-            // Use real API call to upload the image
-            let success = await uploadImageToBubble(upload)
-            
-            if success {
+        // Use real API call to upload the image
+        let success = await uploadImageToBubble(upload)
+        
+        if success {
+            do {
                 // If the upload was successful, update all projects that reference this image
-                if let projects = try? modelContext?.fetch(FetchDescriptor<Project>()) {
+                if let projects = try modelContext?.fetch(FetchDescriptor<Project>()) {
                     for project in projects {
                         let images = project.getProjectImages()
                         if images.contains(upload.localURL) {
@@ -262,19 +262,19 @@ class ImageSyncManager {
                     pendingUploads.removeAll { $0.localURL == upload.localURL }
                     savePendingUploads()
                 }
-                
-                // Even after successful upload, store the image locally with Bubble URL for offline access
-                if let imageBase64 = upload.imageData.base64EncodedString() as String? {
-                    UserDefaults.standard.set(imageBase64, forKey: upload.bubbleURL)
-                }
-                
-                return true
-            } else {
-                print("ImageSyncManager: ⚠️ Failed to upload image to Bubble")
-                return false
+            } catch {
+                print("ImageSyncManager: ❌ Error updating project references: \(error.localizedDescription)")
+                // Still consider the upload successful even if we fail to update all references
             }
-        } catch {
-            print("ImageSyncManager: ❌ Error syncing image: \(error.localizedDescription)")
+            
+            // Even after successful upload, store the image locally with Bubble URL for offline access
+            if let imageBase64 = upload.imageData.base64EncodedString() as String? {
+                UserDefaults.standard.set(imageBase64, forKey: upload.bubbleURL)
+            }
+            
+            return true
+        } else {
+            print("ImageSyncManager: ⚠️ Failed to upload image to Bubble")
             return false
         }
     }

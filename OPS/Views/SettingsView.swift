@@ -19,7 +19,6 @@ struct SettingsView: View {
     enum SettingsSection: String, Identifiable {
         case profile = "Profile Settings"
         case organization = "Organization Settings"
-        case certifications = "Certifications & Training"
         case projectHistory = "Project & Expense History"
         
         var id: String { self.rawValue }
@@ -28,7 +27,6 @@ struct SettingsView: View {
             switch self {
             case .profile: return "person.fill"
             case .organization: return "building.2.fill"
-            case .certifications: return "certificate.fill"
             case .projectHistory: return "clock.arrow.circlepath"
             }
         }
@@ -37,7 +35,6 @@ struct SettingsView: View {
             switch self {
             case .profile: return "Personal information, contact details"
             case .organization: return "Company information, team members"
-            case .certifications: return "Licenses, qualifications, training"
             case .projectHistory: return "Past projects, expense records"
             }
         }
@@ -134,8 +131,6 @@ struct SettingsView: View {
                     ProfileSettingsView()
                 case .organization:
                     OrganizationSettingsView()
-                case .certifications:
-                    CertificationsSettingsView()
                 case .projectHistory:
                     ProjectHistorySettingsView()
                 }

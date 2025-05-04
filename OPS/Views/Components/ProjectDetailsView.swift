@@ -91,7 +91,7 @@ struct ProjectDetailsView: View {
                         // Scrollable carousel of photos
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
-                                ForEach(Array(photos.enumerated()), id: \.element) { index, url in
+                                ForEach(Array(photos.enumerated()), id: \.0) { index, url in
                                     ZStack {
                                         PhotoThumbnail(url: url)
                                             .frame(width: 120, height: 120)
@@ -409,9 +409,7 @@ struct ProjectDetailsView: View {
                 } else {
                     print("ProjectDetailsView: ⚠️ Could not find photo in project images")
                 }
-            } catch {
-                print("ProjectDetailsView: ❌ Error deleting photo: \(error.localizedDescription)")
-            }
+            } 
         }
     }
 }

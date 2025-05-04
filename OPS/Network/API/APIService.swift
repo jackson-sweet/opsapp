@@ -111,7 +111,7 @@ class APIService {
         
         // Execute request with logging
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, _) = try await session.data(for: request)
             
             // Print debug info to see exactly what's coming back
             printResponseDebugInfo(data, from: request.url!)

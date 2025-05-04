@@ -19,4 +19,46 @@ struct BubbleImage: Codable {
         case width = "image_width"
         case height = "image_height"
     }
+    
+    // Custom init to handle either direct URL string or structured object
+    init(from decoder: Decoder) throws {
+        if let container = try? decoder.container(keyedBy: CodingKeys.self) {
+            // Standard decoding path - it's a proper BubbleImage object
+            self.url = try container.decodeIfPresent(String.self, forKey: .url)
+            self.width = try container.decodeIfPresent(Int.self, forKey: .width)
+            self.height = try container.decodeIfPresent(Int.self, forKey: .height)
+        } else {
+            // Alternative path - it's just a string URL
+            let container = try decoder.singleValueContainer()
+            do {
+                let urlString = try container.decode(String.self)
+                self.url = urlString
+                self.width = nil
+                self.height = nil
+                
+                print("BubbleImage: Successfully decoded from string URL: \(urlString)")
+            } catch {
+                // Try to handle a null value
+                if container.decodeNil() {
+                    print("BubbleImage: Decoded nil value")
+                    self.url = nil
+                    self.width = nil
+                    self.height = nil
+                } else {
+                    // If it's neither a string nor null, log the error but don't fail
+                    print("BubbleImage: Could not decode as string or null: \(error)")
+                    self.url = nil
+                    self.width = nil
+                    self.height = nil
+                }
+            }
+        }
+    }
+    
+    // Standard initializer for creating instances in code
+    init(url: String? = nil, width: Int? = nil, height: Int? = nil) {
+        self.url = url
+        self.width = width
+        self.height = height
+    }
 }

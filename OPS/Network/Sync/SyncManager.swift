@@ -748,7 +748,30 @@ class SyncManager {
     private func fetchUsersMap() throws -> [String: User] {
         let descriptor = FetchDescriptor<User>()
         let users = try modelContext.fetch(descriptor)
-        return Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+        
+        // Handle potential duplicate IDs by logging and filtering
+        var uniqueUsers: [String: User] = [:]
+        let userIds = users.map { $0.id }
+        
+        // Check for duplicates
+        let duplicateIds = Set(userIds.filter { id in
+            userIds.filter { $0 == id }.count > 1
+        })
+        
+        if !duplicateIds.isEmpty {
+            print("SyncManager: WARNING - Detected duplicate user IDs: \(duplicateIds)")
+            
+            // Just use the first instance of each user with a duplicate ID
+            for user in users {
+                if uniqueUsers[user.id] == nil {
+                    uniqueUsers[user.id] = user
+                }
+            }
+            return uniqueUsers
+        } else {
+            // No duplicates, use the faster method
+            return Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+        }
     }
     
     /// Update an existing project efficiently

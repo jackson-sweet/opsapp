@@ -21,10 +21,11 @@ struct ProfileSettingsView: View {
     @State private var showSaveConfirmation = false
     @State private var showSaveError = false
     @State private var saveErrorMessage = ""
+    // Private state ID to force view refresh when needed
     @State private var refreshID = UUID()
     
     var body: some View {
-        // Force view to refresh when refreshID changes
+        // View content, refreshes when necessary based on state changes
         ZStack {
             // Background gradient
             OPSStyle.Colors.backgroundGradient
@@ -78,10 +79,7 @@ struct ProfileSettingsView: View {
                                 .scaledToFill()
                                 .frame(width: 80, height: 80)
                                 .clipShape(Circle())
-                                .overlay(
-                                    Circle()
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 0)
-                                )
+                                // No overlay needed
                         } else {
                             // Default profile circle with initial
                             ZStack {
@@ -105,8 +103,6 @@ struct ProfileSettingsView: View {
                                     .font(.system(size: 16))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
-                            
-                            // Removed button to change profile photo
                         }
                         
                         Spacer()
@@ -160,7 +156,7 @@ struct ProfileSettingsView: View {
                         sectionHeader("CREDENTIALS")
                         
                         Button(action: {
-                            // Reset password action
+                            // TODO: Implement reset password functionality
                         }) {
                             HStack {
                                 Text("Reset Password")
@@ -206,7 +202,6 @@ struct ProfileSettingsView: View {
         .onAppear {
             loadUserData()
         }
-        // Image picker removed
         .alert("Save Changes", isPresented: $showSaveConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Save") {
@@ -272,8 +267,7 @@ struct ProfileSettingsView: View {
     }
     
     private func loadUserData() {
-        // Create a new UUID to force refresh profile image
-        self.refreshID = UUID()
+        // Load user data from data controller
         
         if let user = dataController.currentUser {
             // Load first and last name directly from user model
@@ -284,8 +278,6 @@ struct ProfileSettingsView: View {
             phone = user.phone ?? ""
             homeAddress = user.homeAddress ?? ""
             
-            // Profile images are now only loaded from server, not from local data
-            
             // Load profile image if available from URL
             if let profileImageURL = user.profileImageURL {
                 // Load image asynchronously
@@ -295,16 +287,13 @@ struct ProfileSettingsView: View {
                     // First check if it's already in the image cache
                     if let _ = ImageCache.shared.get(forKey: profileImageURL) {
                         print("ProfileSettingsView: Image already in cache")
-                        // Force refresh UI
-                        self.refreshID = UUID()
                         return
                     }
                     
                     // Otherwise load from URL
-                    if let image = await loadImage(from: profileImageURL) {
+                    if await loadImage(from: profileImageURL) != nil {
                         print("ProfileSettingsView: Successfully loaded image from URL")
-                        // The image is now cached, just force refresh UI
-                        self.refreshID = UUID()
+                        // The image is now cached in the ImageCache
                     } else {
                         print("ProfileSettingsView: Failed to load image from URL")
                     }
@@ -369,34 +358,25 @@ struct ProfileSettingsView: View {
             // Print debug info about the profile update
             print("ProfileSettingsView: Saving profile information")
             
-            do {
-                // First update basic profile information
-                let success = await dataController.updateUserProfile(
-                    firstName: firstName,
-                    lastName: lastName,
-                    email: email, // Email won't actually change as the field is not editable
-                    phone: phone,
-                    homeAddress: homeAddress
-                )
-                
-                // Update UI based on result
-                await MainActor.run {
-                    if success {
-                        isEditing = false
-                        print("ProfileSettingsView: Successfully saved profile changes")
-                    } else {
-                        // Show error alert
-                        saveErrorMessage = "Failed to save profile changes. Please try again."
-                        showSaveError = true
-                        print("ProfileSettingsView: Failed to save profile changes")
-                    }
-                }
-            } catch {
-                // Handle any errors
-                await MainActor.run {
-                    saveErrorMessage = "Error: \(error.localizedDescription)"
+            // Update profile information (no try/catch needed since method returns Bool)
+            let success = await dataController.updateUserProfile(
+                firstName: firstName,
+                lastName: lastName,
+                email: email, // Email won't actually change as the field is not editable
+                phone: phone,
+                homeAddress: homeAddress
+            )
+            
+            // Update UI based on result
+            await MainActor.run {
+                if success {
+                    isEditing = false
+                    print("ProfileSettingsView: Successfully saved profile changes")
+                } else {
+                    // Show error alert
+                    saveErrorMessage = "Failed to save profile changes. Please try again."
                     showSaveError = true
-                    print("ProfileSettingsView: Error saving profile: \(error.localizedDescription)")
+                    print("ProfileSettingsView: Failed to save profile changes")
                 }
             }
         }

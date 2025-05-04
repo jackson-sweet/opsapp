@@ -493,7 +493,7 @@ struct ReceiptScannerView: View {
     }
     
     private func saveReceipt() {
-        guard let image = receiptImage, let amount = Double(receiptAmount.replacingOccurrences(of: "$", with: "")) else {
+        guard let image = receiptImage, let _ = Double(receiptAmount.replacingOccurrences(of: "$", with: "")) else {
             return
         }
         
@@ -502,8 +502,8 @@ struct ReceiptScannerView: View {
         // Simulate saving the receipt
         Task {
             do {
-                // Compress image
-                guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+                // Verify image can be compressed
+                guard let _ = image.jpegData(compressionQuality: 0.7) else {
                     return
                 }
                 
@@ -511,7 +511,7 @@ struct ReceiptScannerView: View {
                 try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                 
                 // Generate a unique filename
-                let filename = "receipt_\(project.id)_\(Date().timeIntervalSince1970).jpg"
+                let _ = "receipt_\(project.id)_\(Date().timeIntervalSince1970).jpg"
                 
                 // In a real app, this would save to the database and sync
                 // For this demo, we'll just simulate success

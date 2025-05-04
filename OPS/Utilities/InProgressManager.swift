@@ -73,7 +73,7 @@ class InProgressManager: ObservableObject {
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = [.hour, .minute]
         formatter.unitsStyle = .abbreviated
-        let travelTime = formatter.string(from: route.expectedTravelTime) ?? "Unknown"
+        let _ = formatter.string(from: route.expectedTravelTime) ?? "Unknown"
         
         // Format distance
         let distanceFormatter = MKDistanceFormatter()

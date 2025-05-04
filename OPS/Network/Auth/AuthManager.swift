@@ -40,6 +40,26 @@ class AuthManager {
     /// - Returns: A valid authentication token
     /// - Throws: AuthError if authentication fails
     func getValidToken() async throws -> String {
+        // Check if we have a cached token that's still valid
+        if let token = token, 
+           let expiration = tokenExpiration, 
+           expiration > Date().addingTimeInterval(300) { // 5-minute buffer
+            return token
+        }
+        
+        // Check if we have stored credentials to authenticate
+        if keychain.retrieveUsername() != nil && keychain.retrievePassword() != nil {
+            do {
+                // Try to authenticate and get a new token
+                return try await authenticate()
+            } catch {
+                // If authentication fails, fall back to API token
+                print("Authentication failed, falling back to API token: \(error.localizedDescription)")
+                return AppConfiguration.bubbleAPIToken
+            }
+        }
+        
+        // If no credentials available, use the API token
         return AppConfiguration.bubbleAPIToken
     }
     

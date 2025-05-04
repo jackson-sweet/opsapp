@@ -16,12 +16,15 @@ struct ProfileSettingsView: View {
     @State private var lastName: String = ""
     @State private var email: String = ""
     @State private var phone: String = ""
-    @State private var showImagePicker = false
-    @State private var profileImage: UIImage?
+    @State private var homeAddress: String = ""
     @State private var isEditing = false
     @State private var showSaveConfirmation = false
+    @State private var showSaveError = false
+    @State private var saveErrorMessage = ""
+    @State private var refreshID = UUID()
     
     var body: some View {
+        // Force view to refresh when refreshID changes
         ZStack {
             // Background gradient
             OPSStyle.Colors.backgroundGradient
@@ -66,15 +69,18 @@ struct ProfileSettingsView: View {
                     
                     // Profile image section
                     HStack(spacing: 24) {
-                        if let profileImage = profileImage {
-                            Image(uiImage: profileImage)
+                        // Profile avatar - will load from profileImageURL when available
+                        if let user = dataController.currentUser, let profileURL = user.profileImageURL, 
+                           !profileURL.isEmpty, let cachedImage = ImageCache.shared.get(forKey: profileURL) {
+                            // Show the cached image if available
+                            Image(uiImage: cachedImage)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 80, height: 80)
                                 .clipShape(Circle())
                                 .overlay(
                                     Circle()
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: isEditing ? 2 : 0)
+                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 0)
                                 )
                         } else {
                             // Default profile circle with initial
@@ -100,16 +106,7 @@ struct ProfileSettingsView: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             
-                            if isEditing {
-                                Button(action: {
-                                    showImagePicker = true
-                                }) {
-                                    Text("Change Photo")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                }
-                                .padding(.top, 4)
-                            }
+                            // Removed button to change profile photo
                         }
                         
                         Spacer()
@@ -156,6 +153,8 @@ struct ProfileSettingsView: View {
                         .padding(.horizontal, 20)
                         
                         formField(title: "Phone Number", text: $phone, isEditable: isEditing)
+                        
+                        formField(title: "Home Address", text: $homeAddress, isEditable: isEditing)
                         
                         // CREDENTIALS section
                         sectionHeader("CREDENTIALS")
@@ -207,26 +206,7 @@ struct ProfileSettingsView: View {
         .onAppear {
             loadUserData()
         }
-        .sheet(isPresented: $showImagePicker) {
-            ImagePicker(
-                images: Binding<[UIImage]>(
-                    get: { profileImage != nil ? [profileImage!] : [] },
-                    set: { images in
-                        if let first = images.first {
-                            profileImage = first
-                        }
-                    }
-                ), 
-                selectionLimit: 1,
-                onSelectionComplete: {
-                    // Automatically dismiss sheet when selection is complete
-                    DispatchQueue.main.async {
-                        showImagePicker = false
-                    }
-                }
-            )
-            .presentationDetents([.medium, .large])
-        }
+        // Image picker removed
         .alert("Save Changes", isPresented: $showSaveConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Save") {
@@ -234,6 +214,11 @@ struct ProfileSettingsView: View {
             }
         } message: {
             Text("Save your profile changes?")
+        }
+        .alert("Error", isPresented: $showSaveError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(saveErrorMessage)
         }
     }
     
@@ -287,22 +272,84 @@ struct ProfileSettingsView: View {
     }
     
     private func loadUserData() {
+        // Create a new UUID to force refresh profile image
+        self.refreshID = UUID()
+        
         if let user = dataController.currentUser {
-            // Split name into first and last
-            let nameParts = user.fullName.split(separator: " ")
-            if nameParts.count > 0 {
-                firstName = String(nameParts[0])
-            }
-            if nameParts.count > 1 {
-                lastName = nameParts[1...].joined(separator: " ")
-            }
+            // Load first and last name directly from user model
+            firstName = user.firstName
+            lastName = user.lastName
             
             email = user.email ?? ""
             phone = user.phone ?? ""
+            homeAddress = user.homeAddress ?? ""
             
-            // Load profile image if available
-            // This would need to be implemented based on your data model
+            // Profile images are now only loaded from server, not from local data
+            
+            // Load profile image if available from URL
+            if let profileImageURL = user.profileImageURL {
+                // Load image asynchronously
+                Task {
+                    print("ProfileSettingsView: Attempting to load image from URL: \(profileImageURL)")
+                    
+                    // First check if it's already in the image cache
+                    if let _ = ImageCache.shared.get(forKey: profileImageURL) {
+                        print("ProfileSettingsView: Image already in cache")
+                        // Force refresh UI
+                        self.refreshID = UUID()
+                        return
+                    }
+                    
+                    // Otherwise load from URL
+                    if let image = await loadImage(from: profileImageURL) {
+                        print("ProfileSettingsView: Successfully loaded image from URL")
+                        // The image is now cached, just force refresh UI
+                        self.refreshID = UUID()
+                    } else {
+                        print("ProfileSettingsView: Failed to load image from URL")
+                    }
+                }
+            } else {
+                print("ProfileSettingsView: No profile image URL available")
+            }
         }
+    }
+    
+    private func loadImage(from urlString: String) async -> UIImage? {
+        // Check if it's a local URL
+        if urlString.starts(with: "local://") {
+            if let imageBase64 = UserDefaults.standard.string(forKey: urlString),
+               let imageData = Data(base64Encoded: imageBase64),
+               let image = UIImage(data: imageData) {
+                // Cache the loaded image
+                ImageCache.shared.set(image, forKey: urlString)
+                return image
+            }
+            return nil
+        }
+        
+        // Handle remote URL
+        var imageURL = urlString
+        
+        // Fix for URLs starting with //
+        if imageURL.starts(with: "//") {
+            imageURL = "https:" + imageURL
+        }
+        
+        guard let url = URL(string: imageURL) else { return nil }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = UIImage(data: data) {
+                // Cache the loaded image
+                ImageCache.shared.set(image, forKey: urlString)
+                return image
+            }
+        } catch {
+            print("Failed to load image: \(error.localizedDescription)")
+        }
+        
+        return nil
     }
     
     private func toggleEditing() {
@@ -319,16 +366,37 @@ struct ProfileSettingsView: View {
     
     private func performSave() {
         Task {
-            let success = await dataController.updateUserProfile(
-                firstName: firstName,
-                lastName: lastName,
-                email: email, // Email won't actually change as the field is not editable
-                phone: phone
-            )
+            // Print debug info about the profile update
+            print("ProfileSettingsView: Saving profile information")
             
-            await MainActor.run {
-                if success {
-                    isEditing = false
+            do {
+                // First update basic profile information
+                let success = await dataController.updateUserProfile(
+                    firstName: firstName,
+                    lastName: lastName,
+                    email: email, // Email won't actually change as the field is not editable
+                    phone: phone,
+                    homeAddress: homeAddress
+                )
+                
+                // Update UI based on result
+                await MainActor.run {
+                    if success {
+                        isEditing = false
+                        print("ProfileSettingsView: Successfully saved profile changes")
+                    } else {
+                        // Show error alert
+                        saveErrorMessage = "Failed to save profile changes. Please try again."
+                        showSaveError = true
+                        print("ProfileSettingsView: Failed to save profile changes")
+                    }
+                }
+            } catch {
+                // Handle any errors
+                await MainActor.run {
+                    saveErrorMessage = "Error: \(error.localizedDescription)"
+                    showSaveError = true
+                    print("ProfileSettingsView: Error saving profile: \(error.localizedDescription)")
                 }
             }
         }

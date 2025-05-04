@@ -65,9 +65,22 @@ struct OrganizationSettingsView: View {
                                     .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
                                     .frame(width: 80, height: 80)
                                 
-                                Image(systemName: "building.2.fill")
-                                    .font(.system(size: 30))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                if let organization = organization, 
+                                   let logoURL = organization.logoURL, 
+                                   !logoURL.isEmpty,
+                                   let cachedImage = ImageCache.shared.get(forKey: logoURL) {
+                                    // Show cached company logo
+                                    Image(uiImage: cachedImage)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 80, height: 80)
+                                        .clipShape(Circle())
+                                } else {
+                                    // Default icon
+                                    Image(systemName: "building.2.fill")
+                                        .font(.system(size: 30))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .center)
                             
@@ -266,6 +279,20 @@ struct OrganizationSettingsView: View {
                 let company = dataController.getCompany(id: companyID)
                 let users = dataController.getTeamMembers(companyId: companyID)
                 
+                // Load company logo if available
+                if let company = company, let logoURL = company.logoURL, !logoURL.isEmpty {
+                    // Check if logo is already cached
+                    if ImageCache.shared.get(forKey: logoURL) == nil {
+                        // Not cached, load from URL
+                        if let image = await loadImage(from: logoURL) {
+                            print("OrganizationSettingsView: Successfully loaded company logo")
+                            // Image is now cached by the loadImage function
+                        } else {
+                            print("OrganizationSettingsView: Failed to load company logo")
+                        }
+                    }
+                }
+                
                 await MainActor.run {
                     self.organization = company
                     self.teamMembers = users
@@ -277,6 +304,43 @@ struct OrganizationSettingsView: View {
                 }
             }
         }
+    }
+    
+    private func loadImage(from urlString: String) async -> UIImage? {
+        // Check if it's a local URL
+        if urlString.starts(with: "local://") {
+            if let imageBase64 = UserDefaults.standard.string(forKey: urlString),
+               let imageData = Data(base64Encoded: imageBase64),
+               let image = UIImage(data: imageData) {
+                // Cache the loaded image
+                ImageCache.shared.set(image, forKey: urlString)
+                return image
+            }
+            return nil
+        }
+        
+        // Handle remote URL
+        var imageURL = urlString
+        
+        // Fix for URLs starting with //
+        if imageURL.starts(with: "//") {
+            imageURL = "https:" + imageURL
+        }
+        
+        guard let url = URL(string: imageURL) else { return nil }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = UIImage(data: data) {
+                // Cache the loaded image
+                ImageCache.shared.set(image, forKey: urlString)
+                return image
+            }
+        } catch {
+            print("Failed to load image: \(error.localizedDescription)")
+        }
+        
+        return nil
     }
 }
 

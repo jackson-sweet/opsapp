@@ -107,6 +107,85 @@ class ImageSyncManager {
         }
     }
     
+    /// Delete an image both locally and from the Bubble backend
+    func deleteImage(_ urlString: String, from project: Project) async -> Bool {
+        print("ImageSyncManager: Deleting image: \(urlString)")
+        
+        // Check if it's a local URL
+        if urlString.starts(with: "local://") {
+            // Remove from UserDefaults
+            UserDefaults.standard.removeObject(forKey: urlString)
+            
+            // Remove from pending uploads if present
+            pendingUploads.removeAll { $0.localURL == urlString }
+            savePendingUploads()
+            
+            print("ImageSyncManager: Deleted local image: \(urlString)")
+            return true
+        }
+        
+        // If it's a Bubble URL, we need to delete it from both local cache and server
+        if urlString.contains("opsapp.co/version-test/img/") {
+            // Remove local cache
+            UserDefaults.standard.removeObject(forKey: urlString)
+            
+            // If we're online, try to delete from server
+            if connectivityMonitor.isConnected {
+                // Extract filename from URL
+                if let filename = URL(string: urlString)?.lastPathComponent {
+                    return await deleteImageFromBubble(filename: filename, projectId: project.id)
+                }
+            }
+        }
+        
+        return false
+    }
+    
+    /// Delete an image from the Bubble backend
+    private func deleteImageFromBubble(filename: String, projectId: String) async -> Bool {
+        do {
+            // Create the delete request
+            let deleteURL = URL(string: "\(AppConfiguration.bubbleBaseURL)/api/1.1/wf/delete_project_image")!
+            var request = URLRequest(url: deleteURL)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            // Create request body
+            let deleteBody: [String: String] = [
+                "project_id": projectId,
+                "filename": filename
+            ]
+            
+            request.httpBody = try JSONSerialization.data(withJSONObject: deleteBody)
+            
+            // Execute the request
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            // Check response status
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("ImageSyncManager: Invalid response type for image deletion")
+                return false
+            }
+            
+            // Log the response for debugging
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("ImageSyncManager: Delete response (\(httpResponse.statusCode)): \(responseString)")
+            }
+            
+            // Check if the delete was successful
+            if (200...299).contains(httpResponse.statusCode) {
+                print("ImageSyncManager: Successfully deleted image from Bubble: \(filename)")
+                return true
+            } else {
+                print("ImageSyncManager: Failed to delete image - HTTP \(httpResponse.statusCode)")
+                return false
+            }
+        } catch {
+            print("ImageSyncManager: Error deleting image: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
     /// Save multiple images locally and queue them for upload
     func saveImages(_ images: [UIImage], for project: Project) async -> [String] {
         var localURLs: [String] = []
@@ -159,8 +238,8 @@ class ImageSyncManager {
         print("ImageSyncManager: Syncing image \(upload.localURL)")
         
         do {
-            // Simulate the API call for now
-            let success = await simulateImageUpload(upload)
+            // Use real API call to upload the image
+            let success = await uploadImageToBubble(upload)
             
             if success {
                 // If the upload was successful, update all projects that reference this image
@@ -184,6 +263,11 @@ class ImageSyncManager {
                     savePendingUploads()
                 }
                 
+                // Even after successful upload, store the image locally with Bubble URL for offline access
+                if let imageBase64 = upload.imageData.base64EncodedString() as String? {
+                    UserDefaults.standard.set(imageBase64, forKey: upload.bubbleURL)
+                }
+                
                 return true
             } else {
                 print("ImageSyncManager: ⚠️ Failed to upload image to Bubble")
@@ -195,20 +279,86 @@ class ImageSyncManager {
         }
     }
     
-    /// Simulate an image upload to Bubble (for now)
-    private func simulateImageUpload(_ upload: PendingImageUpload) async -> Bool {
-        // In a real implementation, this would make an API call to Bubble
-        // For now, just simulate a successful upload after a delay
-        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-        
-        // Store the image with the Bubble URL too (for demo purposes)
-        if let imageBase64 = upload.imageData.base64EncodedString() as String? {
-            UserDefaults.standard.set(imageBase64, forKey: upload.bubbleURL)
-            print("ImageSyncManager: Simulated successful upload: \(upload.bubbleURL)")
-            return true
+    /// Upload image to Bubble API
+    private func uploadImageToBubble(_ upload: PendingImageUpload) async -> Bool {
+        guard connectivityMonitor.isConnected else {
+            print("ImageSyncManager: Cannot upload image - no connectivity")
+            return false
         }
         
-        return false
+        do {
+            // Extract filename from Bubble URL
+            let filename = URL(string: upload.bubbleURL)?.lastPathComponent ?? "unnamed_image.jpg"
+            
+            // Prepare the multipart form data
+            let boundary = "Boundary-\(UUID().uuidString)"
+            let formData = createMultipartFormData(
+                boundary: boundary,
+                imageData: upload.imageData,
+                filename: filename,
+                projectId: upload.projectId
+            )
+            
+            // Create the upload request to the specific Bubble API endpoint for image uploads
+            let uploadURL = URL(string: "\(AppConfiguration.bubbleBaseURL)/api/1.1/wf/upload_project_image")!
+            var request = URLRequest(url: uploadURL)
+            request.httpMethod = "POST"
+            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            request.httpBody = formData
+            
+            // Execute the request with a longer timeout for slow connections
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 60.0  // 60 seconds
+            config.timeoutIntervalForResource = 60.0
+            
+            let session = URLSession(configuration: config)
+            let (data, response) = try await session.data(for: request)
+            
+            // Check response status
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("ImageSyncManager: Invalid response type")
+                return false
+            }
+            
+            // Log the response for debugging
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("ImageSyncManager: Upload response (\(httpResponse.statusCode)): \(responseString)")
+            }
+            
+            // Check if the upload was successful
+            if (200...299).contains(httpResponse.statusCode) {
+                print("ImageSyncManager: Successfully uploaded image to Bubble: \(filename)")
+                return true
+            } else {
+                print("ImageSyncManager: Failed to upload image - HTTP \(httpResponse.statusCode)")
+                return false
+            }
+        } catch {
+            print("ImageSyncManager: Error uploading image: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    /// Create multipart form data for image upload
+    private func createMultipartFormData(boundary: String, imageData: Data, filename: String, projectId: String) -> Data {
+        var formData = Data()
+        
+        // Add the project ID field
+        formData.append("--\(boundary)\r\n".data(using: .utf8)!)
+        formData.append("Content-Disposition: form-data; name=\"project_id\"\r\n\r\n".data(using: .utf8)!)
+        formData.append("\(projectId)\r\n".data(using: .utf8)!)
+        
+        // Add the image file
+        formData.append("--\(boundary)\r\n".data(using: .utf8)!)
+        formData.append("Content-Disposition: form-data; name=\"image\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        formData.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        formData.append(imageData)
+        formData.append("\r\n".data(using: .utf8)!)
+        
+        // End of form data
+        formData.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        return formData
     }
     
     /// Helper to load pending uploads from UserDefaults

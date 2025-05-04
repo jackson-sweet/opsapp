@@ -244,24 +244,141 @@ struct ProjectMapView: UIViewRepresentable {
             }
             
             if let projectAnnotation = annotation as? ProjectAnnotation {
-                let identifier = "ProjectMarker"
-                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
+                // Use custom annotation view instead of marker
+                let identifier = "ProjectCustomMarker"
+                
+                // Remove any existing subviews from reused annotation views
+                if let existingView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) {
+                    for subview in existingView.subviews {
+                        subview.removeFromSuperview()
+                    }
+                    existingView.layer.sublayers?.forEach { layer in
+                        if layer.animationKeys()?.count ?? 0 > 0 {
+                            layer.removeAllAnimations()
+                        }
+                    }
+                }
+                
+                // Create or reuse annotation view
+                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
                 
                 if annotationView == nil {
-                    annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                    annotationView = MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
                     annotationView?.canShowCallout = false
                 } else {
                     annotationView?.annotation = annotation
                 }
                 
-                // Configure marker appearance
-                annotationView?.markerTintColor = UIColor.white
-                annotationView?.glyphTintColor = ProjectMapView.routeColor
-                annotationView?.glyphImage = UIImage(systemName: "circle.fill")
+                // Configure common annotation properties
                 
-                // Scale selected marker for better visibility
-                let scale: CGFloat = projectAnnotation.isSelected ? 1.3 : 1.0
-                annotationView?.transform = CGAffineTransform(scaleX: scale, y: scale)
+                // Configure size and appearance based on state
+                if projectAnnotation.isActiveProject {
+                    // Active project marker
+                    let circleSize: CGFloat = 36
+                    
+                    // Create a circle with border
+                    let circleView = UIView(frame: CGRect(x: 0, y: 0, width: circleSize, height: circleSize))
+                    circleView.backgroundColor = UIColor(OPSStyle.Colors.primaryAccent)
+                    circleView.layer.cornerRadius = circleSize / 2
+                    circleView.layer.borderWidth = 3
+                    circleView.layer.borderColor = UIColor.white.cgColor
+                    
+                    // Add inner icon
+                    let iconImageView = UIImageView(frame: CGRect(x: 8, y: 8, width: 20, height: 20))
+                    iconImageView.contentMode = .scaleAspectFit
+                    iconImageView.tintColor = UIColor.white
+                    iconImageView.image = UIImage(systemName: "location.fill")
+                    circleView.addSubview(iconImageView)
+                    
+                    // Shadow for depth
+                    circleView.layer.shadowColor = UIColor.black.cgColor
+                    circleView.layer.shadowOpacity = 0.4
+                    circleView.layer.shadowOffset = CGSize(width: 0, height: 2)
+                    circleView.layer.shadowRadius = 4
+                    
+                    // Add pulse effect
+                    let pulseLayer = CALayer()
+                    pulseLayer.backgroundColor = UIColor(OPSStyle.Colors.primaryAccent).withAlphaComponent(0.3).cgColor
+                    pulseLayer.frame = CGRect(x: 0, y: 0, width: circleSize, height: circleSize)
+                    pulseLayer.cornerRadius = circleSize / 2
+                    pulseLayer.position = CGPoint(x: circleSize/2, y: circleSize/2)
+                    circleView.layer.insertSublayer(pulseLayer, at: 0)
+                    
+                    let pulseAnimation = CABasicAnimation(keyPath: "transform.scale")
+                    pulseAnimation.duration = 1.5
+                    pulseAnimation.fromValue = 1.0
+                    pulseAnimation.toValue = 1.3
+                    pulseAnimation.autoreverses = true
+                    pulseAnimation.repeatCount = Float.infinity
+                    pulseLayer.add(pulseAnimation, forKey: "pulse")
+                    
+                    // Assign as annotation view's image
+                    annotationView?.addSubview(circleView)
+                    annotationView?.frame = circleView.frame
+                    
+                    // Center marker at the point
+                    annotationView?.centerOffset = CGPoint(x: 0, y: -circleSize/2)
+                    
+                } else if projectAnnotation.isSelected {
+                    // Selected project marker
+                    let circleSize: CGFloat = 30
+                    
+                    // Create a circle with border
+                    let circleView = UIView(frame: CGRect(x: 0, y: 0, width: circleSize, height: circleSize))
+                    circleView.backgroundColor = UIColor(OPSStyle.Colors.primaryAccent)
+                    circleView.layer.cornerRadius = circleSize / 2
+                    circleView.layer.borderWidth = 2
+                    circleView.layer.borderColor = UIColor.white.cgColor
+                    
+                    // Add inner icon
+                    let iconImageView = UIImageView(frame: CGRect(x: 7, y: 7, width: 16, height: 16))
+                    iconImageView.contentMode = .scaleAspectFit
+                    iconImageView.tintColor = UIColor.white
+                    iconImageView.image = UIImage(systemName: "location.fill")
+                    circleView.addSubview(iconImageView)
+                    
+                    // Shadow for depth
+                    circleView.layer.shadowColor = UIColor.black.cgColor
+                    circleView.layer.shadowOpacity = 0.3
+                    circleView.layer.shadowOffset = CGSize(width: 0, height: 2)
+                    circleView.layer.shadowRadius = 3
+                    
+                    // Assign as annotation view's image
+                    annotationView?.addSubview(circleView)
+                    annotationView?.frame = circleView.frame
+                    
+                    // Center marker at the point
+                    annotationView?.centerOffset = CGPoint(x: 0, y: -circleSize/2)
+                    
+                } else {
+                    // Normal project marker
+                    let circleSize: CGFloat = 24
+                    
+                    // Create a circle
+                    let circleView = UIView(frame: CGRect(x: 0, y: 0, width: circleSize, height: circleSize))
+                    circleView.backgroundColor = UIColor.white
+                    circleView.layer.cornerRadius = circleSize / 2
+                    
+                    // Add inner icon
+                    let iconImageView = UIImageView(frame: CGRect(x: 6, y: 6, width: 12, height: 12))
+                    iconImageView.contentMode = .scaleAspectFit
+                    iconImageView.tintColor = UIColor(OPSStyle.Colors.secondaryAccent)
+                    iconImageView.image = UIImage(systemName: "location.fill")
+                    circleView.addSubview(iconImageView)
+                    
+                    // Subtle shadow
+                    circleView.layer.shadowColor = UIColor.black.cgColor
+                    circleView.layer.shadowOpacity = 0.2
+                    circleView.layer.shadowOffset = CGSize(width: 0, height: 1)
+                    circleView.layer.shadowRadius = 2
+                    
+                    // Assign as annotation view's image
+                    annotationView?.addSubview(circleView)
+                    annotationView?.frame = circleView.frame
+                    
+                    // Center marker at the point
+                    annotationView?.centerOffset = CGPoint(x: 0, y: -circleSize/2)
+                }
                 
                 return annotationView
             }
@@ -270,10 +387,30 @@ struct ProjectMapView: UIViewRepresentable {
         }
         
         func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
-            if let projectAnnotation = annotation as? ProjectAnnotation {
-                parent.onTapMarker(projectAnnotation.index)
+            guard let projectAnnotation = annotation as? ProjectAnnotation else {
+                mapView.deselectAnnotation(annotation, animated: false)
+                return
             }
             
+            // Call the tap handler immediately
+            parent.onTapMarker(projectAnnotation.index)
+            
+            // Create a subtle visual feedback by animating only the circle subview
+            if let annotationView = mapView.view(for: annotation),
+               let circleView = annotationView.subviews.first {
+                // Animate just the circle view for better visual effect
+                UIView.animate(withDuration: 0.15, animations: {
+                    // Slightly reduce size
+                    circleView.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
+                }, completion: { _ in
+                    // Return to normal size
+                    UIView.animate(withDuration: 0.15) {
+                        circleView.transform = .identity
+                    }
+                })
+            }
+            
+            // Deselect the annotation to prevent built-in selection UI
             mapView.deselectAnnotation(annotation, animated: false)
         }
         

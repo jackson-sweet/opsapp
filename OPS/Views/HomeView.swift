@@ -49,9 +49,10 @@ struct HomeView: View {
                     isInProjectMode: appState.isInProjectMode
                 )
                 
-                // Semi-transparent dark overlay to match design
+                // Semi-transparent dark overlay to match design - ENSURE it doesn't block interaction
                 Color.black.opacity(0.2)
                     .edgesIgnoringSafeArea(.all)
+                    .allowsHitTesting(false) // Critical - let touches pass through to the map
             }
             .edgesIgnoringSafeArea(.all)
             
@@ -78,6 +79,7 @@ struct HomeView: View {
                 Spacer()
             }
             .edgesIgnoringSafeArea(.all)
+            .allowsHitTesting(false) // Allow touches to pass through to the map
             
             // UI overlay layers
             VStack(spacing: 0) {

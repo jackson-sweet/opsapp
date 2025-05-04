@@ -14,6 +14,7 @@ struct UserDTO: Codable {
     let avatar: String?
     let company: String?
     let email: String?
+    let homeAddress: String?
     let authentication: Authentication?
     
     // Authentication information
@@ -42,6 +43,7 @@ struct UserDTO: Codable {
         case company = "Company"
         case authentication
         case email
+        case homeAddress = "Home Address"
     }
     
     /// Convert DTO to SwiftData model
@@ -72,6 +74,11 @@ struct UserDTO: Codable {
             user.email = emailAuth
         } else {
             user.email = email
+        }
+        
+        // Handle home address if available
+        if let address = homeAddress {
+            user.homeAddress = address
         }
         
         // Handle profile image if available

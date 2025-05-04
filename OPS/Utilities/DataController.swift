@@ -675,7 +675,7 @@ class DataController: ObservableObject {
     }
     
     /// Updates user profile
-    func updateUserProfile(firstName: String, lastName: String, email: String, phone: String) async -> Bool {
+    func updateUserProfile(firstName: String, lastName: String, email: String, phone: String, homeAddress: String? = nil) async -> Bool {
         guard let user = currentUser, let context = modelContext else { return false }
         
         // Update local model
@@ -683,6 +683,9 @@ class DataController: ObservableObject {
         user.lastName = lastName
         user.email = email
         user.phone = phone
+        if let homeAddress = homeAddress {
+            user.homeAddress = homeAddress
+        }
         user.needsSync = true
         
         do {
@@ -699,4 +702,7 @@ class DataController: ObservableObject {
             return false
         }
     }
+    
+    // We're removing the ability to update profile images for now
+    // Instead we'll rely on the API to provide profile images
 }

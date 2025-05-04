@@ -26,6 +26,7 @@ final class User {
     var latitude: Double?
     var longitude: Double?
     var locationName: String?
+    var homeAddress: String?  // User's home address
     var clientId: String?
     var isActive: Bool?
     

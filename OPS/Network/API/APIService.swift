@@ -94,11 +94,7 @@ class APIService {
         var request = URLRequest(url: url)
         request.httpMethod = method
         
-        // Add authentication token only if required
-        if requiresAuth {
-            let token = try await authManager.getValidToken()
-            request.addValue(token, forHTTPHeaderField: "Authorization")
-        }
+        // No authentication token needed for this Bubble API
         
         // Add content type for POST/PUT/PATCH requests
         if method != "GET" {
@@ -200,7 +196,7 @@ class APIService {
         let wrapper: BubbleListResponse<T> = try await executeRequest(
             endpoint: endpoint,
             queryItems: queryItems,
-            requiresAuth: false
+            requiresAuth: true  // Changed to true to ensure proper authentication
         )
         
         // Log results
@@ -252,7 +248,7 @@ class APIService {
         let wrapper: BubbleListResponse<T> = try await executeRequest(
             endpoint: endpoint,
             queryItems: queryItems,
-            requiresAuth: false
+            requiresAuth: true  // Changed to true to ensure proper authentication
         )
         
         return wrapper.response.results
@@ -272,11 +268,12 @@ class APIService {
         // Execute the request
         let wrapper: BubbleObjectResponse<T> = try await executeRequest(
             endpoint: endpoint,
-            requiresAuth: false
+            requiresAuth: true  // Changed to true to ensure proper authentication
         )
         
         return wrapper.response
     }
+    
     
     // MARK: - Constraint Builders
     

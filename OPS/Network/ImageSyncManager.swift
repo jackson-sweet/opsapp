@@ -75,9 +75,9 @@ class ImageSyncManager {
         let localURL = "local://project_images/\(filename)"
         let bubbleURL = "\(bubbleBaseImagesURL)\(filename)"
         
-        // Store the image in UserDefaults
-        if let imageBase64 = imageData.base64EncodedString() as String? {
-            UserDefaults.standard.set(imageBase64, forKey: localURL)
+        // Store the image in file system
+        let success = ImageFileManager.shared.saveImage(data: imageData, localID: localURL)
+        if success {
             print("ImageSyncManager: Stored image data locally for: \(localURL)")
             
             // Create pending upload
@@ -113,8 +113,8 @@ class ImageSyncManager {
         
         // Check if it's a local URL
         if urlString.starts(with: "local://") {
-            // Remove from UserDefaults
-            UserDefaults.standard.removeObject(forKey: urlString)
+            // Remove from file system
+            ImageFileManager.shared.deleteImage(localID: urlString)
             
             // Remove from pending uploads if present
             pendingUploads.removeAll { $0.localURL == urlString }
@@ -268,9 +268,8 @@ class ImageSyncManager {
             }
             
             // Even after successful upload, store the image locally with Bubble URL for offline access
-            if let imageBase64 = upload.imageData.base64EncodedString() as String? {
-                UserDefaults.standard.set(imageBase64, forKey: upload.bubbleURL)
-            }
+            // For remote URLs, we'll use UserDefaults as they're temporary caches
+            UserDefaults.standard.set(upload.imageData, forKey: upload.bubbleURL)
             
             return true
         } else {

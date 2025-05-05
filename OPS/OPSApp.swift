@@ -47,6 +47,12 @@ struct OPSApp: App {
                     // Sync to Bubble on app launch
                     dataController.performAppLaunchSync()
                     print("Synced")
+                    
+                    // Migrate images from UserDefaults to file system
+                    Task {
+                        // Run migration in background
+                        ImageFileManager.shared.migrateAllImages()
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)

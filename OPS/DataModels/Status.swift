@@ -26,22 +26,8 @@ enum Status: String, Codable, CustomStringConvertible, CaseIterable {
     }
     
     var color: Color {
-        switch self {
-        case .rfq:
-            return .gray
-        case .estimated:
-            return .blue
-        case .accepted:
-            return .purple
-        case .inProgress:
-            return .orange
-        case .completed:
-            return .green
-        case .closed:
-            return .red
-        case .pending:
-            return .yellow
-        }
+        // Use the app's styled status colors from OPSStyle
+        return OPSStyle.Colors.statusColor(for: self)
     }
     
     var isActive: Bool {

@@ -16,26 +16,47 @@ struct ProjectListView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                // Selected date header
-                HStack {
-                    Text(dateString.uppercased())
-                        .font(OPSStyle.Typography.subtitle)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                // Selected date header based on reference design
+                HStack(alignment: .top) {
+                    // Day of week and month/day in vertical layout
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(dayOfWeek)
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        
+                        Text(monthDayText)
+                            .font(.system(size: 18))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
                     
                     Spacer()
                     
+                    // Card with project count - not tappable
                     ZStack {
-                        Rectangle()
-                            .fill(Color.black.opacity(0.4))
+                        // Project count card with softer edges
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.black.opacity(0.5))
                             .frame(width: 60, height: 60)
-                            .cornerRadius(10)
-                            
+                        
+                        // Stacked cards effect for depth
+                        if viewModel.projectsForSelectedDate.count > 0 {
+                            ForEach(0..<min(3, viewModel.projectsForSelectedDate.count), id: \.self) { index in
+                                // Use project status color for the border if available
+                                let project = viewModel.projectsForSelectedDate[min(index, viewModel.projectsForSelectedDate.count - 1)]
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(project.statusColor.opacity(0.6), lineWidth: 1)
+                                    .frame(width: 50 + CGFloat(index * 2), height: 50 + CGFloat(index * 2))
+                            }
+                        }
+                        
+                        // Project count number
                         Text("\(viewModel.projectsForSelectedDate.count)")
-                            .font(OPSStyle.Typography.largeTitle)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundColor(.white)
                     }
                 }
-                .padding()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
                 
                 if viewModel.projectsForSelectedDate.isEmpty {
                     emptyStateView
@@ -46,9 +67,16 @@ struct ProjectListView: View {
         }
     }
     
-    private var dateString: String {
+    // Split the date into components for better styling
+    private var dayOfWeek: String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE\nMMMM d"
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: viewModel.selectedDate).uppercased()
+    }
+    
+    private var monthDayText: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM d"
         return formatter.string(from: viewModel.selectedDate)
     }
     

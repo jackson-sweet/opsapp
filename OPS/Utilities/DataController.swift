@@ -949,4 +949,20 @@ class DataController: ObservableObject {
     
     // We're removing the ability to update profile images for now
     // Instead we'll rely on the API to provide profile images
+    
+    /// Gets a project by ID
+    func getProject(id: String) -> Project? {
+        guard let context = modelContext else { return nil }
+        
+        do {
+            let descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.id == id }
+            )
+            let projects = try context.fetch(descriptor)
+            return projects.first
+        } catch {
+            print("Error fetching project: \(error.localizedDescription)")
+            return nil
+        }
+    }
 }

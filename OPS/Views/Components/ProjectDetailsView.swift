@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import MapKit
 
 struct ProjectDetailsView: View {
     let project: Project
@@ -29,138 +30,42 @@ struct ProjectDetailsView: View {
     }
     
     var body: some View {
-        // Use environment dismiss for navigation
-        // Print debug information to diagnose the issue
         ZStack {
-            // Debug check
-            Color.clear.onAppear {
-                print("ProjectDetailsView appeared for project: \(project.id) - \(project.title)")
-                print("Has dataController: \(dataController)")
-                print("Has modelContext: \(dataController.modelContext != nil)")
-            }
             // Background gradient
             OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
             
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Status badge
-                    StatusBadge(status: project.status)
-                        .padding(.top, 4)
+                VStack(spacing: 16) {
+                    // Header section with status and title
+                    headerSection
                     
-                    // Project title
-                    Text(project.title)
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    // Sections with consistent styling
+                    
+                    // Location map
+                    locationSection
                     
                     // Client info
-                    clientInfoSection
+                    infoSection
                     
-                    Divider()
-                        .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                    // Team members
+                    teamSection
                     
-                    // Project description
-                    Text("PROJECT DETAILS")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    // Notes (expandable)
+                    ExpandableNotesView(
+                        notes: project.notes ?? "",
+                        editedNotes: $noteText,
+                        onSave: saveNotes
+                    )
+                    .padding(.horizontal)
                     
-                    Text(project.projectDescription ?? "No detailed description provided.")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    // Photos
+                    photosSection
                     
-                    Divider()
-                        .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                    
-                    // Notes section
-                    notesSection
-                    
-                    Divider()
-                        .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                    
-                    // Project Photos Section
-                    Text("PHOTOS")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
-                    // Photo Carousel
-                    VStack(spacing: 12) {
-                        let photos = project.getProjectImages()
-                        
-                        if photos.isEmpty {
-                            // Empty state for no photos
-                            VStack(spacing: 16) {
-                                Image(systemName: "photo.on.rectangle")
-                                    .font(.system(size: 32))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                Text("No photos added yet")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            .frame(height: 180)
-                            .frame(maxWidth: .infinity)
-                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                            .cornerRadius(12)
-                        } else {
-                            // Scrollable carousel of photos
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 12) {
-                                    ForEach(Array(photos.enumerated()), id: \.0) { index, url in
-                                        ZStack {
-                                            PhotoThumbnail(url: url)
-                                                .frame(width: 120, height: 120)
-                                                .cornerRadius(12)
-                                                .contentShape(Rectangle())
-                                                .onTapGesture {
-                                                    selectedPhotoIndex = index
-                                                    showingPhotoViewer = true
-                                                }
-                                                .onLongPressGesture {
-                                                    // Show delete confirmation
-                                                    photoToDelete = url
-                                                    showingDeleteConfirmation = true
-                                                }
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal)
-                            }
-                            .frame(height: 120)
-                        }
-                        
-                        // Add Photos Button
-                        Button(action: {
-                            showingImagePicker = true
-                        }) {
-                            HStack {
-                                Image(systemName: "plus.circle")
-                                    .font(.system(size: 20))
-                                
-                                Text("Add Photos")
-                                    .font(OPSStyle.Typography.body)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(OPSStyle.Colors.primaryAccent)
-                            .foregroundColor(.white)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                        .disabled(processingImages)
-                        
-                        // Loading indicator for processing images
-                        if processingImages {
-                            HStack {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                                Text("Processing images...")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            .padding(.top, 4)
-                        }
-                    }
+                    // Bottom padding
+                    Spacer()
+                        .frame(height: 20)
                 }
-                .padding()
             }
         }
         .navigationTitle("Project Details")
@@ -210,52 +115,232 @@ struct ProjectDetailsView: View {
         .onAppear {
             // Request location permission when project details are viewed
             locationManager.requestPermissionIfNeeded()
-            print("ProjectDetailsView: Requested location permission for project: \(project.id)")
         }
     }
     
-    // Client info section
-    private var clientInfoSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CLIENT: \(project.clientName)")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+    // Header with status and title
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                StatusBadge(status: project.status)
+                
+                Spacer()
+                
+                // Date pill
+                if let startDate = project.startDate {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 12))
+                        
+                        Text(formatDate(startDate))
+                            .font(OPSStyle.Typography.smallCaption)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(OPSStyle.Colors.cardBackground.opacity(0.7))
+                    .cornerRadius(12)
+                }
+            }
             
-            Text("ADDRESS: \(project.address)")
-                .font(OPSStyle.Typography.body)
+            // Project title
+            Text(project.title)
+                .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-            
-            Text("SCHEDULED: \(project.formattedStartDate)")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .padding(.top, 4)
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+    
+    // Location map
+    private var locationSection: some View {
+        VStack(spacing: 0) {
+            MiniMapView(
+                coordinate: project.coordinate,
+                address: project.address
+            ) {
+                openInMaps(coordinate: project.coordinate, address: project.address)
+            }
+            .padding(.horizontal)
         }
     }
     
-    // Notes section
-    private var notesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("NOTES")
+    // Project info
+    private var infoSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Section title
+            Text("PROJECT INFO")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal)
             
-            TextEditor(text: $noteText)
-                .frame(minHeight: 120)
-                .padding(8)
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+            // Info cards
+            VStack(spacing: 2) {
+                // Client card
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("CLIENT")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        
+                        Text(project.clientName)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                    
+                    Spacer()
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.3))
+                
+                // Address card
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ADDRESS")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        
+                        Text(project.address)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                    
+                    Spacer()
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+                
+                // Description card
+                if let description = project.projectDescription, !description.isEmpty {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("DESCRIPTION")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            Text(description)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 12)
+                        
+                        Spacer()
+                    }
+                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
+                }
+            }
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .padding(.horizontal)
+        }
+    }
+    
+    // Team members section
+    private var teamSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            TeamMemberListView(teamMembers: project.teamMembers)
+                .padding(.horizontal)
+        }
+    }
+    
+    // Photos section
+    private var photosSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Section title
+            Text("PHOTOS")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal)
             
-            Button(action: saveNotes) {
-                Text("SAVE NOTES")
-                    .font(OPSStyle.Typography.bodyBold)
+            // Photo grid/carousel
+            VStack(spacing: 12) {
+                let photos = project.getProjectImages()
+                
+                if photos.isEmpty {
+                    // Empty state for no photos
+                    VStack(spacing: 16) {
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.system(size: 32))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        
+                        Text("No photos added yet")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    .frame(height: 160)
                     .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(OPSStyle.Colors.secondaryAccent)
+                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.horizontal)
+                } else {
+                    // Photo grid
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(Array(photos.enumerated()), id: \.0) { index, url in
+                                PhotoThumbnail(url: url)
+                                    .frame(width: 110, height: 110)
+                                    .cornerRadius(8)
+                                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 2)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        selectedPhotoIndex = index
+                                        showingPhotoViewer = true
+                                    }
+                                    .onLongPressGesture {
+                                        photoToDelete = url
+                                        showingDeleteConfirmation = true
+                                    }
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 2) // For shadow space
+                    }
+                    .frame(height: 120)
+                }
+                
+                // Add photos button
+                Button(action: {
+                    showingImagePicker = true
+                }) {
+                    HStack {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 16))
+                        
+                        Text("ADD PHOTOS")
+                            .font(OPSStyle.Typography.bodyBold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(OPSStyle.Colors.primaryAccent)
                     .foregroundColor(.white)
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+                .disabled(processingImages)
+                .padding(.horizontal)
+                
+                // Loading indicator for processing images
+                if processingImages {
+                    HStack {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                        Text("Processing images...")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    .padding(.top, 4)
+                    .padding(.horizontal)
+                }
             }
         }
+    }
+    
+    // Helper to format date
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: date)
     }
     
     private func saveNotes() {

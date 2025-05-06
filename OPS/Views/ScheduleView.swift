@@ -13,6 +13,7 @@ struct ScheduleView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel = CalendarViewModel()
+    @State private var showDaySheet = false
     
     var body: some View {
         ZStack {
@@ -31,12 +32,35 @@ struct ScheduleView: View {
                 // Day selector
                 CalendarDaySelector(viewModel: viewModel)
                 
-                // Project list - passing appState properly
-                ProjectListView(viewModel: viewModel)
+                // Project list - only shown in week view
+                if viewModel.viewMode == .week {
+                    ProjectListView(viewModel: viewModel)
+                } else {
+                    // Spacer for month view to push content up
+                    Spacer()
+                }
                 
                 Spacer()
             }
             .padding(.top)
+            
+            // Add the ProjectSheetContainer to enable project details display
+            ProjectSheetContainer()
+        }
+        .onChange(of: viewModel.selectedDate) { oldDate, newDate in
+            // Show sheet when day selected in month view
+            if viewModel.viewMode == .month && !DateHelper.isSameDay(oldDate, newDate) {
+                showDaySheet = true
+            }
+        }
+        .sheet(isPresented: $showDaySheet) {
+            // Sheet displayed when selecting a day in month view
+            DayProjectSheet(
+                date: viewModel.selectedDate,
+                projects: viewModel.projectsForSelectedDate
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .onAppear {
             // Initialize with proper data controller

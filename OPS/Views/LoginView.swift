@@ -10,7 +10,7 @@ import Combine
 
 struct LoginView: View {
     @EnvironmentObject private var dataController: DataController
-    @Environment(\.useConsolidatedOnboarding) private var useConsolidatedOnboarding
+    // Always use consolidated onboarding flow
     
     // Login states
     @State private var username = ""
@@ -20,6 +20,9 @@ struct LoginView: View {
     @State private var showError = false
     @State private var showOnboarding = false
     @State private var resumeFromCompanyStep = false
+    
+    // Used to check if we need to automatically resume onboarding
+    private let resumeOnboarding = UserDefaults.standard.bool(forKey: "resume_onboarding")
     
     // UI states
     @State private var showLoginMode = false
@@ -81,8 +84,16 @@ struct LoginView: View {
                         Spacer()
                         // Primary action - Sign Up button
                         Button(action: {
+                            // Clear any existing user data before starting new onboarding
+                            UserDefaults.standard.removeObject(forKey: "resume_onboarding")
+                            UserDefaults.standard.removeObject(forKey: "is_authenticated")
+                            UserDefaults.standard.removeObject(forKey: "user_id")
+                            UserDefaults.standard.removeObject(forKey: "user_email")
+                            print("LoginView: Starting fresh onboarding flow")
+                            
                             // Show onboarding directly
                             withAnimation(.easeInOut(duration: 0.3)) {
+                                resumeFromCompanyStep = false
                                 showOnboarding = true
                             }
                         }) {
@@ -276,61 +287,38 @@ struct LoginView: View {
             
             // Onboarding overlay
             if showOnboarding {
-                if useConsolidatedOnboarding || AppConfiguration.UX.useConsolidatedOnboardingFlow {
-                    // Use the new consolidated flow
-                    OnboardingView(
-                        initialStep: resumeFromCompanyStep ? .companyCode : .welcome,
-                        onComplete: {
-                            // Hide onboarding when complete
-                            print("LoginView: Consolidated onboarding complete callback received")
-                            showOnboarding = false
-                            
-                            // Check if the onboarding set authentication flag directly
-                            if UserDefaults.standard.bool(forKey: "is_authenticated") {
-                                // Force update the dataController authentication state
-                                print("LoginView: Onboarding set is_authenticated=true, updating dataController")
-                                DispatchQueue.main.async {
-                                    dataController.isAuthenticated = true
-                                }
-                            }
-                            // Fallback to old behavior if needed
-                            else if UserDefaults.standard.bool(forKey: "has_joined_company") {
-                                // Attempt to log in again to enter the app
-                                print("LoginView: Falling back to login attempt to authenticate")
-                                login()
+                // Use the consolidated flow with the appropriate starting step
+                OnboardingView(
+                    initialStep: resumeFromCompanyStep ? 
+                        // Start at organization join when resuming after account creation
+                        .organizationJoin : .welcome,
+                    onComplete: {
+                        // Hide onboarding when complete
+                        print("LoginView: Onboarding complete callback received")
+                        showOnboarding = false
+                        
+                        // Check if the onboarding set authentication flag directly
+                        if UserDefaults.standard.bool(forKey: "is_authenticated") {
+                            // Force update the dataController authentication state
+                            print("LoginView: Onboarding set is_authenticated=true, updating dataController")
+                            DispatchQueue.main.async {
+                                dataController.isAuthenticated = true
                             }
                         }
-                    )
-                    .environmentObject(dataController)
-                    .transition(.opacity)
-                    .zIndex(2) // Ensure it appears above login content
-                } else {
-                    // Use the original flow
-                    OnboardingView(
-                        initialStep: resumeFromCompanyStep ? .companyCode : .welcome,
-                        onComplete: {
-                            // Hide onboarding when complete
-                            print("LoginView: Onboarding complete callback received")
-                            showOnboarding = false
-                            
-                            // Check if the onboarding set authentication flag directly
-                            if UserDefaults.standard.bool(forKey: "is_authenticated") {
-                                // Force update the dataController authentication state
-                                print("LoginView: Onboarding set is_authenticated=true, updating dataController")
-                                DispatchQueue.main.async {
-                                    dataController.isAuthenticated = true
-                                }
-                            }
-                            // Fallback to old behavior if needed
-                            else if UserDefaults.standard.bool(forKey: "has_joined_company") {
-                                // Attempt to log in again to enter the app
-                                print("LoginView: Falling back to login attempt to authenticate")
-                                login()
-                            }
+                        // Fallback to old behavior if needed
+                        else if UserDefaults.standard.bool(forKey: "has_joined_company") {
+                            // Attempt to log in again to enter the app
+                            print("LoginView: Falling back to login attempt to authenticate")
+                            login()
                         }
-                    )
-                    .transition(.opacity)
-                    .zIndex(2) // Ensure it appears above login content
+                    }
+                )
+                .environmentObject(dataController)
+                .transition(.opacity)
+                .zIndex(2) // Ensure it appears above login content
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("DismissOnboarding"))) { _ in
+                    // Dismiss onboarding when notification is received
+                    showOnboarding = false
                 }
             }
         }
@@ -342,6 +330,9 @@ struct LoginView: View {
                 dismissButton: .default(Text("OK"))
             )
         })
+        .onAppear {
+            checkResumeOnboarding()
+        }
     }
     
     private func login() {
@@ -404,6 +395,66 @@ struct LoginView: View {
         return await dataController.login(username: username, password: password)
     }
     
+    private func checkResumeOnboarding() {
+        // If the resume flag is set, check what step to resume from
+        if resumeOnboarding {
+            print("LoginView: Found resume_onboarding=true, preparing to resume flow")
+            
+            // Check for authentication state
+            let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
+            let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
+            
+            // If onboarding is already completed but we somehow have the resume flag set,
+            // just clear it and let the user proceed to the main app
+            if isAuthenticated && onboardingCompleted {
+                print("LoginView: User is already authenticated and onboarding is complete")
+                UserDefaults.standard.set(false, forKey: "resume_onboarding")
+                
+                // Set authentication in DataController
+                DispatchQueue.main.async {
+                    self.dataController.isAuthenticated = true
+                }
+                return
+            }
+            
+            // Determine which step to resume from
+            let hasUserId = UserDefaults.standard.string(forKey: "user_id") != nil
+            let lastStepRaw = UserDefaults.standard.integer(forKey: "last_onboarding_step_v2")
+            
+            if hasUserId && isAuthenticated {
+                print("LoginView: User has created account (user_id exists and is_authenticated=true)")
+                
+                // Resume from the appropriate step
+                if lastStepRaw > 0 {
+                    // Use the saved step if available
+                    let lastStep = OnboardingStep(rawValue: lastStepRaw) ?? .organizationJoin
+                    resumeFromCompanyStep = true
+                    
+                    // Show onboarding at the appropriate step
+                    print("LoginView: Resuming onboarding at step: \(lastStep.title)")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.showOnboarding = true
+                    }
+                } else {
+                    // Default to organization join if no step was saved
+                    resumeFromCompanyStep = true
+                    
+                    // Show onboarding starting from organization join
+                    print("LoginView: Resuming onboarding at organization join step")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.showOnboarding = true
+                    }
+                }
+                
+                // Don't clear the resume flag until onboarding is completed
+                // It will be cleared in CompletionView when onboarding is finished
+            } else {
+                // No user ID or not authenticated - this shouldn't happen, but clear the flag
+                print("LoginView: Found resume flag but no user ID or authentication - clearing flag")
+                UserDefaults.standard.set(false, forKey: "resume_onboarding")
+            }
+        }
+    }
 }
 
 #Preview("LoginView Preview") {

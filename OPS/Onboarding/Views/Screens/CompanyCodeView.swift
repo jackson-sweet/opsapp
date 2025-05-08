@@ -120,6 +120,23 @@ struct CompanyCodeView: View {
                         onPrimaryTapped: {
                             print("CompanyCodeView: Continue button tapped with code: \(viewModel.companyCode)")
                             
+                            // Check required fields
+                            if viewModel.email.isEmpty {
+                                viewModel.errorMessage = "Email is missing. Please go back to the account setup screen."
+                                return
+                            }
+                            
+                            if viewModel.password.isEmpty {
+                                // Try to retrieve password from UserDefaults
+                                if let savedPassword = UserDefaults.standard.string(forKey: "user_password"), !savedPassword.isEmpty {
+                                    print("CompanyCodeView: Retrieved password from UserDefaults")
+                                    viewModel.password = savedPassword
+                                } else {
+                                    viewModel.errorMessage = "Password is missing. Please restart the onboarding process."
+                                    return
+                                }
+                            }
+                            
                             // Set loading state
                             viewModel.isLoading = true
                             viewModel.errorMessage = ""
@@ -180,6 +197,9 @@ struct CompanyCodeView: View {
                                         // Make sure error message is user-friendly
                                         if viewModel.errorMessage.isEmpty {
                                             viewModel.errorMessage = "Invalid company code. Please check and try again."
+                                        } else if viewModel.errorMessage.lowercased().contains("password") {
+                                            // Handle password-related errors
+                                            viewModel.errorMessage = "Authentication error. Please restart the onboarding process."
                                         }
                                         
                                         // Ensure user cannot skip company joining

@@ -1,8 +1,8 @@
 //
-//  OnboardingViewModel.swift
+//  OnboardingViewModelV2.swift
 //  OPS
 //
-//  Created by Jackson Sweet on 2025-05-05.
+//  Created by Jackson Sweet on 2025-05-08.
 //
 
 import Foundation
@@ -10,12 +10,13 @@ import SwiftUI
 import Combine
 import SwiftData
 
+/// View model for the consolidated onboarding flow
 class OnboardingViewModel: ObservableObject {
     // Reference to DataController for database operations
     var dataController: DataController?
     
     // Current step in the onboarding process
-    @Published var currentStep: OnboardingStep = .welcome
+    @Published var currentStepV2: OnboardingStepV2 = .welcome
     
     // User input data
     @Published var email: String = ""
@@ -49,63 +50,7 @@ class OnboardingViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     init() {
-        // Check if we're resuming onboarding
-        let isResuming = UserDefaults.standard.bool(forKey: "resume_onboarding")
-        
-        // If resuming, load any saved user data
-        if isResuming {
-            // Load email, password and user ID
-            self.email = UserDefaults.standard.string(forKey: "user_email") ?? ""
-            self.password = UserDefaults.standard.string(forKey: "user_password") ?? ""
-            self.userId = UserDefaults.standard.string(forKey: "user_id") ?? ""
-            
-            // Mark as signed up if we have a valid user ID
-            self.isSignedUp = !self.userId.isEmpty && !self.email.isEmpty
-            
-            // Load personal information if available
-            self.firstName = UserDefaults.standard.string(forKey: "user_first_name") ?? ""
-            self.lastName = UserDefaults.standard.string(forKey: "user_last_name") ?? ""
-            self.phoneNumber = UserDefaults.standard.string(forKey: "user_phone_number") ?? ""
-            self.companyCode = UserDefaults.standard.string(forKey: "company_code") ?? ""
-            
-            // Load company information if available
-            if let companyId = UserDefaults.standard.string(forKey: "company_id") {
-                self.isCompanyJoined = true
-                self.companyName = UserDefaults.standard.string(forKey: "Company Name") ?? "Your Company"
-            }
-            
-            print("OnboardingViewModel: Initialized with resumed data - User ID: \(userId), Email: \(email)")
-        } else {
-            // Not resuming - make sure we start with clean state
-            clearUserData()
-        }
-        
         setupValidations()
-    }
-    
-    /// Clears all user data from UserDefaults to ensure we don't mix data between different users
-    private func clearUserData() {
-        // Reset all local properties
-        self.email = ""
-        self.password = ""
-        self.confirmPassword = ""
-        self.firstName = ""
-        self.lastName = ""
-        self.phoneNumber = ""
-        self.companyCode = ""
-        self.userId = ""
-        self.isSignedUp = false
-        self.isCompanyJoined = false
-        
-        // Clear data from UserDefaults (only onboarding-specific fields)
-        UserDefaults.standard.removeObject(forKey: "user_email")
-        UserDefaults.standard.removeObject(forKey: "user_password")
-        UserDefaults.standard.removeObject(forKey: "user_first_name")
-        UserDefaults.standard.removeObject(forKey: "user_last_name")
-        UserDefaults.standard.removeObject(forKey: "user_phone_number")
-        UserDefaults.standard.removeObject(forKey: "company_code")
-        
-        print("OnboardingViewModel: Cleared all user data for new onboarding flow")
     }
     
     // Setup field validations
@@ -151,20 +96,61 @@ class OnboardingViewModel: ObservableObject {
             .assign(to: &$isPhoneValid)
     }
     
-    // Move to the next step in the onboarding flow
-    func moveToNextStep() {
-        moveToNextStepV2()
+    // MARK: - Navigation
+    
+    // Move to the next step in the flow
+    func moveToNextStepV2() {
+        print("OnboardingViewModel: Moving from V2 step: \(currentStepV2.title) (raw: \(currentStepV2.rawValue))")
+        
+        if let nextStep = currentStepV2.nextStep() {
+            print("OnboardingViewModel: Found next V2 step: \(nextStep.title) (raw: \(nextStep.rawValue))")
+            
+            DispatchQueue.main.async {
+                self.currentStepV2 = nextStep
+                print("OnboardingViewModel: ✅ UPDATED currentStepV2 to: \(self.currentStepV2.title) (raw: \(self.currentStepV2.rawValue))")
+            }
+        } else {
+            print("OnboardingViewModel: ❌ No next V2 step available after: \(currentStepV2.title)")
+        }
     }
     
     // Move to a specific step
-    func moveTo(step: OnboardingStep) {
-        moveToV2(step: step)
+    func moveToV2(step: OnboardingStepV2) {
+        print("OnboardingViewModel: Directly moving from \(currentStepV2.title) to \(step.title)")
+        
+        DispatchQueue.main.async {
+            self.currentStepV2 = step
+            print("OnboardingViewModel: ✅ DIRECTLY UPDATED currentStepV2 to: \(self.currentStepV2.title) (raw: \(self.currentStepV2.rawValue))")
+        }
     }
     
     // Move back one step
-    func moveToPreviousStep() {
-        moveToPreviousStepV2()
+    func moveToPreviousStepV2() {
+        print("OnboardingViewModel: Moving back from V2 step: \(currentStepV2.title) (raw: \(currentStepV2.rawValue))")
+        
+        // Special case: if we're at the company code step and we loaded directly into it
+        // because the user needs to complete it, don't allow going back
+        if currentStepV2 == .companyCode && UserDefaults.standard.bool(forKey: "user_id") != nil {
+            print("OnboardingViewModel: ❌ Cannot go back from company code step when resuming incomplete signup")
+            
+            // Set error message to explain why
+            errorMessage = "You must complete company registration to continue. Please enter your company code."
+            return
+        }
+        
+        if let prevStep = currentStepV2.previousStep() {
+            print("OnboardingViewModel: Found previous V2 step: \(prevStep.title) (raw: \(prevStep.rawValue))")
+            
+            DispatchQueue.main.async {
+                self.currentStepV2 = prevStep
+                print("OnboardingViewModel: ✅ UPDATED currentStepV2 to previous: \(self.currentStepV2.title) (raw: \(self.currentStepV2.rawValue))")
+            }
+        } else {
+            print("OnboardingViewModel: ❌ No previous V2 step available before: \(currentStepV2.title)")
+        }
     }
+    
+    // MARK: - Data Operations
     
     // Format and validate phone number
     func formatPhoneNumber() {
@@ -232,19 +218,9 @@ class OnboardingViewModel: ObservableObject {
                         UserDefaults.standard.set(placeholderId, forKey: "user_id")
                     }
                     
-                    // Store email and password in UserDefaults for later (crucial for API calls)
+                    // Store email in UserDefaults for later
                     UserDefaults.standard.set(email, forKey: "user_email")
                     UserDefaults.standard.set(password, forKey: "user_password")
-                    
-                    // Log that we've saved these important credentials
-                    print("OnboardingViewModel: Saved email and password to UserDefaults for future API calls")
-                    
-                    // Mark the user as authenticated but with onboarding incomplete
-                    UserDefaults.standard.set(true, forKey: "is_authenticated")
-                    UserDefaults.standard.set(false, forKey: "onboarding_completed")
-                    
-                    // Save the current onboarding step - at this point they've completed account setup
-                    UserDefaults.standard.set(OnboardingStep.organizationJoin.rawValue, forKey: "last_onboarding_step_v2")
                 } else {
                     isSignedUp = false
                     if let errMsg = response.error_message, !errMsg.isEmpty {
@@ -305,23 +281,6 @@ class OnboardingViewModel: ObservableObject {
         guard !companyCode.isEmpty else {
             errorMessage = "Company code is required"
             return false
-        }
-        
-        // Ensure we have email and password
-        guard !email.isEmpty else {
-            errorMessage = "Email is required"
-            return false
-        }
-        
-        // Handle missing password (try to get from UserDefaults)
-        if password.isEmpty {
-            if let savedPassword = UserDefaults.standard.string(forKey: "user_password"), !savedPassword.isEmpty {
-                print("OnboardingViewModel: Found password in UserDefaults, using that for company join")
-                password = savedPassword
-            } else {
-                errorMessage = "Password is missing. Please restart the onboarding process."
-                return false
-            }
         }
         
         // Format phone number
@@ -417,31 +376,7 @@ class OnboardingViewModel: ObservableObject {
         }
     }
     
-    // Save phone number validation
-    func validatePhoneNumber() -> Bool {
-        // Format phone number
-        let digitsOnly = phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
-        phoneNumber = digitsOnly
-        
-        // Check if valid
-        return isPhoneValid
-    }
-    
-    // Skip company code step
-    func skipCompanyCode() {
-        companyCode = ""
-        moveToNextStepV2()
-    }
-    
-    // Request location permission
-    func requestLocationPermission() {
-        // This would connect to your location manager
-        // For now, we'll simulate granting permission
-        isLocationPermissionGranted = true
-        moveToNextStepV2()
-    }
-    
-    // MARK: - Navigation Methods
+    // MARK: - Permissions
     
     // Request notifications permission
     func requestNotificationsPermission() {
@@ -452,123 +387,15 @@ class OnboardingViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Validation Helpers
+    
     // Check if user can proceed from account setup screen (combined email/password)
     var canProceedFromAccountSetup: Bool {
-        // Allow proceeding if already authenticated (resuming onboarding)
-        let isAlreadyAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
-        
-        return isAlreadyAuthenticated || (isEmailValid && isPasswordValid)
+        return isEmailValid && isPasswordValid && isPasswordMatching
     }
     
     // Check if user can proceed from user details screen
     var canProceedFromUserDetails: Bool {
-        // Allow proceeding if resuming onboarding with existing user info
-        let isResuming = UserDefaults.standard.bool(forKey: "resume_onboarding")
-        let hasUserInfo = UserDefaults.standard.string(forKey: "user_first_name") != nil
-        
-        if isResuming && hasUserInfo {
-            // Load saved values if resuming
-            if firstName.isEmpty {
-                firstName = UserDefaults.standard.string(forKey: "user_first_name") ?? ""
-            }
-            if lastName.isEmpty {
-                lastName = UserDefaults.standard.string(forKey: "user_last_name") ?? ""
-            }
-            if phoneNumber.isEmpty {
-                phoneNumber = UserDefaults.standard.string(forKey: "user_phone_number") ?? ""
-            }
-            return true
-        }
-        
         return !firstName.isEmpty && !lastName.isEmpty && isPhoneValid
-    }
-    
-    // Make this a computed property to maintain compatibility with existing code
-    var currentStepV2: OnboardingStep {
-        get { return currentStep }
-        set { currentStep = newValue }
-    }
-    
-    // Move to the next step in the flow
-    func moveToNextStepV2() {
-        print("OnboardingViewModel: Moving from step: \(currentStep.title) (raw: \(currentStep.rawValue))")
-        
-        // Special handling for resuming onboarding
-        let isResuming = UserDefaults.standard.bool(forKey: "resume_onboarding")
-        
-        if isResuming && currentStep == .welcome {
-            // When resuming, check if we can skip directly to a later step based on what's already done
-            
-            // If user is already signed up, skip account setup
-            if isSignedUp && !userId.isEmpty {
-                print("OnboardingViewModel: User already signed up, skipping to organization join")
-                
-                // Go directly to organization join step
-                let skipToStep = OnboardingStep.organizationJoin
-                
-                // Save the step to UserDefaults
-                UserDefaults.standard.set(skipToStep.rawValue, forKey: "last_onboarding_step_v2")
-                
-                DispatchQueue.main.async {
-                    self.currentStep = skipToStep
-                    print("OnboardingViewModel: ✅ SKIPPED to: \(self.currentStep.title) (raw: \(self.currentStep.rawValue))")
-                }
-                return
-            }
-        }
-        
-        // Normal flow - get the next step
-        if let nextStep = currentStep.nextStep() {
-            print("OnboardingViewModel: Found next step: \(nextStep.title) (raw: \(nextStep.rawValue))")
-            
-            // Save the step to UserDefaults for potential resume later
-            UserDefaults.standard.set(nextStep.rawValue, forKey: "last_onboarding_step_v2")
-            
-            DispatchQueue.main.async {
-                self.currentStep = nextStep
-                print("OnboardingViewModel: ✅ UPDATED currentStep to: \(self.currentStep.title) (raw: \(self.currentStep.rawValue))")
-            }
-        } else {
-            print("OnboardingViewModel: ❌ No next step available after: \(currentStep.title)")
-        }
-    }
-    
-    // Move to a specific step
-    func moveToV2(step: OnboardingStep) {
-        print("OnboardingViewModel: Directly moving from \(currentStep.title) to \(step.title)")
-        
-        // Save the step to UserDefaults for potential resume later
-        UserDefaults.standard.set(step.rawValue, forKey: "last_onboarding_step_v2")
-        
-        DispatchQueue.main.async {
-            self.currentStep = step
-            print("OnboardingViewModel: ✅ DIRECTLY UPDATED currentStep to: \(self.currentStep.title) (raw: \(self.currentStep.rawValue))")
-        }
-    }
-    
-    // Move back one step
-    func moveToPreviousStepV2() {
-        print("OnboardingViewModel: Moving back from step: \(currentStep.title) (raw: \(currentStep.rawValue))")
-        
-        // Special case: if we're at the company code step and we loaded directly into it
-        // because the user needs to complete it, don't allow going back
-        if currentStep == .companyCode && UserDefaults.standard.bool(forKey: "user_id") != nil {
-            print("OnboardingViewModel: ❌ Cannot go back from company code step when resuming incomplete signup")
-            
-            // Set error message to explain why
-            errorMessage = "You must complete company registration to continue. Please enter your company code."
-            return
-        }
-        
-        if let prevStep = currentStep.previousStep() {
-            print("OnboardingViewModel: Found previous step: \(prevStep.title) (raw: \(prevStep.rawValue))")
-            
-            DispatchQueue.main.async {
-                self.currentStep = prevStep
-                print("OnboardingViewModel: ✅ UPDATED currentStep to previous: \(self.currentStep.title) (raw: \(self.currentStep.rawValue))")
-            }
-        } else {
-            print("OnboardingViewModel: ❌ No previous step available before: \(currentStep.title)")
-        }
     }
 }

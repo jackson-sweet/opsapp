@@ -180,9 +180,25 @@ class DataController: ObservableObject {
     @MainActor
     private func checkExistingAuth() async {
         // First check if we have a direct authentication flag from onboarding
-        if UserDefaults.standard.bool(forKey: "is_authenticated") && 
-           UserDefaults.standard.bool(forKey: "onboarding_completed") {
-            print("DataController: Found is_authenticated=true from onboarding")
+        let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
+        let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
+        
+        // Check for incomplete onboarding - user created account but didn't finish onboarding
+        if isAuthenticated && !onboardingCompleted {
+            print("DataController: User is authenticated but has not completed onboarding")
+            
+            // Set flag to resume onboarding where they left off
+            UserDefaults.standard.set(true, forKey: "resume_onboarding")
+            
+            // Important: Do NOT set self.isAuthenticated = true here
+            // We want to redirect to the login page with onboarding
+            print("DataController: Will redirect to login with resumed onboarding")
+            return
+        }
+        
+        // Normal case: fully authenticated and completed onboarding
+        if isAuthenticated && onboardingCompleted {
+            print("DataController: Found is_authenticated=true and onboarding_completed=true")
             
             // Get the user ID if available
             let userId = UserDefaults.standard.string(forKey: "user_id") ?? 
@@ -419,8 +435,34 @@ class DataController: ObservableObject {
         }
     }
     
+    @MainActor
     func logout() {
+        // Sign out from auth manager
         authManager.signOut()
+        
+        // Delete the current user from the database if needed
+        if let userId = currentUser?.id, let context = modelContext {
+            do {
+                let descriptor = FetchDescriptor<User>(
+                    predicate: #Predicate<User> { $0.id == userId }
+                )
+                
+                let users = try context.fetch(descriptor)
+                
+                // Delete the user records
+                for user in users {
+                    print("DataController: Deleting user record for \(user.fullName)")
+                    context.delete(user)
+                }
+                
+                try context.save()
+                print("DataController: Successfully cleaned up user database")
+            } catch {
+                print("DataController: Error cleaning up user database: \(error.localizedDescription)")
+            }
+        }
+        
+        // Clear all auth state and user defaults
         clearAuthentication()
     }
     
@@ -431,9 +473,25 @@ class DataController: ObservableObject {
         // Clear all authentication-related UserDefaults
         UserDefaults.standard.removeObject(forKey: "currentUserCompanyId")
         UserDefaults.standard.removeObject(forKey: "is_authenticated")
+        UserDefaults.standard.removeObject(forKey: "onboarding_completed")
+        UserDefaults.standard.removeObject(forKey: "resume_onboarding")
+        UserDefaults.standard.removeObject(forKey: "last_onboarding_step_v2")
+        
+        // Clear all user data
+        UserDefaults.standard.removeObject(forKey: "user_id")
+        UserDefaults.standard.removeObject(forKey: "currentUserId")
+        UserDefaults.standard.removeObject(forKey: "user_email")
+        UserDefaults.standard.removeObject(forKey: "user_password")
+        UserDefaults.standard.removeObject(forKey: "user_first_name")
+        UserDefaults.standard.removeObject(forKey: "user_last_name")
+        UserDefaults.standard.removeObject(forKey: "user_phone_number")
+        UserDefaults.standard.removeObject(forKey: "company_code")
+        UserDefaults.standard.removeObject(forKey: "company_id")
+        UserDefaults.standard.removeObject(forKey: "Company Name")
+        UserDefaults.standard.removeObject(forKey: "has_joined_company")
         
         // Log the cleanup
-        print("DataController: Authentication state cleared")
+        print("DataController: Authentication and all user data cleared")
     }
     
     /// Cleans up duplicate users in the database

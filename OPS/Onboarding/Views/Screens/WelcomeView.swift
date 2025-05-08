@@ -34,6 +34,29 @@ struct WelcomeView: View {
                         .scaleEffect(logoScale)
                     
                     Spacer()
+                    
+                    Button(action: {
+                        // Clear all user data before returning to login
+                        let userDefaults = UserDefaults.standard
+                        userDefaults.removeObject(forKey: "resume_onboarding")
+                        userDefaults.removeObject(forKey: "is_authenticated")
+                        userDefaults.removeObject(forKey: "user_id")
+                        userDefaults.removeObject(forKey: "user_email")
+                        userDefaults.removeObject(forKey: "user_password")
+                        userDefaults.removeObject(forKey: "user_first_name")
+                        userDefaults.removeObject(forKey: "user_last_name")
+                        userDefaults.removeObject(forKey: "user_phone_number")
+                        userDefaults.removeObject(forKey: "company_code")
+                        print("WelcomeView: Cleared all user data before dismissing")
+                        
+                        // Dismiss onboarding and return to login page
+                        NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
+                    }) {
+                        Text("Sign In")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    .opacity(buttonOpacity)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 40)

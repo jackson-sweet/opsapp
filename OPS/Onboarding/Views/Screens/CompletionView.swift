@@ -128,6 +128,13 @@ struct CompletionView: View {
                     // Enter button
                     Button(action: {
                         print("CompletionView: ENTER APP button tapped")
+                        // Mark onboarding as complete explicitly
+                        UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                        UserDefaults.standard.set(true, forKey: "is_authenticated")
+                        // Clear the resume flag
+                        UserDefaults.standard.set(false, forKey: "resume_onboarding")
+                        print("CompletionView: Saved authentication state and completed onboarding")
+                        // Continue with callback
                         onComplete()
                     }) {
                         Text("ENTER OPS")

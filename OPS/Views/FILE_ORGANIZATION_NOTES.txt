@@ -1,0 +1,54 @@
+# File Organization Notes
+
+## Reorganization Overview
+
+We've reorganized the project files to improve maintainability and code organization. The new structure organizes components by their functionality and scope, making it easier to find and work with related files.
+
+## Resolving Build Issues
+
+We encountered a build issue with multiple README.md files being included in the build products. To resolve this, we:
+
+1. Renamed all documentation files from .md to .txt to prevent Xcode from including them in the build.
+   - This includes README files, organization plans, and import guidelines.
+
+2. Kept the same organization structure with components grouped by functionality:
+   - Common - for shared UI elements
+   - Project - for project-related components
+   - User - for user-related components
+   - Map - for map and location components
+   - Images - for image handling components
+
+## File Structure
+
+```
+Views/
+│
+├── Components/                    # Shared components across all views
+│   ├── Common/                    # Universal UI elements
+│   ├── Project/                   # Project-related components
+│   ├── User/                      # User-related components
+│   ├── Map/                       # Map and location components
+│   └── Images/                    # Image-related components
+│
+├── Calendar Tab/                  # Calendar-specific views
+│   ├── Components/                # Calendar-specific components
+│   └── ProjectViews/              # Project-related views within Calendar
+│
+├── Home/                          # Home tab views
+│   ├── Components/                # Home-specific components
+│   └── [Main views]
+│
+├── Settings/                      # Settings views
+│   ├── Components/                # Settings-specific components
+│   └── [Settings views]
+│
+└── [Documentation files (.txt)]   # Documentation on organization
+```
+
+## No Import Changes Required
+
+Swift projects typically don't require import changes when reorganizing files within the same target. All Swift files in the same target are compiled together into a single module, so they can reference each other without explicit imports.
+
+## Next Steps
+
+After this reorganization, the project should build successfully. The new structure provides logical grouping of components that will make the codebase more maintainable as it continues to grow.

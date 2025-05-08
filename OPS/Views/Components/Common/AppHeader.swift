@@ -45,26 +45,37 @@ struct AppHeader: View {
             
             Spacer()
             
-            // User profile image
+            // User profile image - always shown for all header types now
             if let imageData = dataController.currentUser?.profileImageData,
                let uiImage = UIImage(data: imageData) {
                 Image(uiImage: uiImage)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 50, height: 50)
+                    .frame(width: 44, height: 44)
                     .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                    )
+                    .shadow(radius: 2)
             } else {
                 Circle()
                     .fill(OPSStyle.Colors.primaryAccent)
-                    .frame(width: 50, height: 50)
+                    .frame(width: 44, height: 44)
                     .overlay(
                         Text(dataController.currentUser?.firstName.prefix(1) ?? "U")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 18, weight: .bold))
                             .foregroundColor(.white)
                     )
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                    )
+                    .shadow(radius: 2)
             }
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
     
     private func getGreeting() -> String {

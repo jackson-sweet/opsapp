@@ -1,0 +1,60 @@
+# Swift Import Guidelines
+
+## Import Behavior in Swift/SwiftUI
+
+When reorganizing files in a Swift project, it's important to understand how imports work:
+
+1. **Module-Level Imports**: Swift primarily uses module-level imports, not file-level imports like other languages.
+
+2. **Target Membership**: Files included in the same target/module can reference each other without explicit imports, as long as they're part of the same compilation unit.
+
+3. **Xcode Build System**: Xcode manages the build system and combines all Swift files in a target into a single module.
+
+## After Reorganization
+
+After moving files around within the project:
+
+1. **No Import Changes Needed**: As long as files remain in the same target, you typically don't need to change any import statements.
+
+2. **Build Your Project**: After reorganization, build the project to ensure everything compiles correctly.
+
+3. **Fixing Build Errors**: If you encounter "Use of unresolved identifier" errors, check that:
+   - The file is included in the correct target
+   - The class/struct is properly declared as `public` or `internal` if needed
+   - There are no circular dependencies
+
+## Import Best Practices
+
+1. **System Frameworks First**:
+   ```swift
+   import SwiftUI
+   import UIKit
+   import MapKit
+   ```
+
+2. **Third-Party Dependencies Next**:
+   ```swift
+   import Alamofire
+   import SDWebImage
+   ```
+
+3. **Your Own Modules Last** (if applicable):
+   ```swift
+   import YourCompanyNetworking
+   import YourCompanyUI
+   ```
+
+4. **Use @_exported for Submodule Convenience** (advanced):
+   ```swift
+   // In a file at the root of your module
+   @_exported import SubmoduleA
+   ```
+
+## Getting Help
+
+If you encounter import issues after the reorganization:
+
+1. Check the target membership of problematic files
+2. Ensure proper access control modifiers are used
+3. Try cleaning the build folder (Cmd+Shift+K followed by Option+Cmd+Shift+K)
+4. Check for circular dependencies in your import structure

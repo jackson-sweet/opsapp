@@ -76,7 +76,7 @@ struct TeamMemberRow: View {
             
             Spacer()
             
-            // Role badge or contact action
+            // Call button
             if let phone = user.phone, !phone.isEmpty {
                 Button(action: {
                     if let url = URL(string: "tel:\(phone.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression))") {

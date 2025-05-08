@@ -11,7 +11,7 @@ import SwiftUI
 struct MonthGridView: View {
     @ObservedObject var viewModel: CalendarViewModel
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
-    private let weekdayLabels = ["S", "M", "T", "W", "T", "F", "S"]
+    private let weekdayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
     
     var body: some View {
         VStack(spacing: 12) {
@@ -35,8 +35,12 @@ struct MonthGridView: View {
                         projectCount: viewModel.projectCount(for: date),
                         isCurrentMonth: isSameMonth(date),
                         onTap: {
-                            withAnimation {
-                                viewModel.selectDate(date)
+                            // Only select if it's the current month
+                            if isSameMonth(date) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    // Select the date which will trigger the sheet
+                                    viewModel.selectDate(date)
+                                }
                             }
                         }
                     )
@@ -72,7 +76,7 @@ struct MonthDayCell: View {
                 if projectCount > 0 {
                     ZStack {
                         Circle()
-                            .fill(OPSStyle.Colors.secondaryAccent.opacity(0.7))
+                            .fill(OPSStyle.Colors.primaryAccent)
                             .frame(width: 20, height: 20)
                         
                         Text("\(projectCount)")

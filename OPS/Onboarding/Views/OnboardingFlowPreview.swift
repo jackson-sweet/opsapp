@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 // MARK: - Preview showing all onboarding steps
 struct OnboardingFlowPreview: View {

@@ -22,15 +22,19 @@ struct ProjectHeader: View {
                     .foregroundColor(OPSStyle.Colors.secondaryAccent)
                 
                 if let project = project {
-                    // Project and client name
-                    Text("\(project.clientName), \(project.title)")
-                        .font(OPSStyle.Typography.subtitle)
+                    // Project
+                    Text(project.title)
+                        .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
-                    
+                    // Client Name
+                    Text(project.clientName)
+                        .font(OPSStyle.Typography.cardSubtitle)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(1)
                     // Address
                     Text(project.address)
-                        .font(OPSStyle.Typography.caption)
+                        .font(OPSStyle.Typography.cardSubtitle)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(1)
                 }

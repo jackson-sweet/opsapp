@@ -8,8 +8,12 @@
 import Foundation
 import SwiftUI
 import Combine
+import SwiftData
 
 class OnboardingViewModel: ObservableObject {
+    // Reference to DataController for database operations
+    var dataController: DataController?
+    
     // Current step in the onboarding process
     @Published var currentStep: OnboardingStep = .welcome
     

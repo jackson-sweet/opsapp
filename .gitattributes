@@ -1,0 +1,3 @@
+# Mark all documentation files so they're not included in the build
+*.md linguist-documentation
+VIEWS_*.md linguist-documentation

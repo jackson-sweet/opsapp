@@ -80,6 +80,9 @@ struct AppConfiguration {
         /// Prevents multiple rapid taps from causing issues
         static let statusUpdateCooldown: TimeInterval = 2.0
         
+        /// Feature flag for the consolidated onboarding flow
+        static let useConsolidatedOnboardingFlow = true
+        
         /// Collection of quotes to display when there are no projects scheduled
         static let noProjectQuotes = [
                 "No projects. GOOD. Time to train, prepare, improve.",
@@ -110,10 +113,10 @@ struct AppConfiguration {
     struct Debug {
         /// Whether to use sample data for UI development
         /// Set to false for production builds
-        static let useSampleData = false
+        static let useSampleData = false // Using real production API calls
         
         /// Enable verbose logging
-        static let verboseLogging = false
+        static let verboseLogging = true
         
         /// Show debug overlays in UI
         static let showDebugOverlays = false

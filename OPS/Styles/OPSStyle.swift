@@ -71,14 +71,14 @@ enum OPSStyle {
         static let subtitle = Font.system(size: 22)
         
         // Body text
-        static let body = Font.system(size: 17, weight: .regular, design: .default)
-        static let bodyBold = Font.system(size: 17, weight: .bold, design: .default)
+        static let body = Font.system(size: 14, weight: .regular, design: .default)
+        static let bodyBold = Font.system(size: 14, weight: .bold, design: .default)
         
         // Supporting text
         static let caption = Font.system(size: 15, weight: .regular, design: .default)
         static let captionBold = Font.system(size: 15, weight: .bold, design: .default)
-        static let smallCaption = Font.system(size: 13, weight: .regular, design: .default)
-        static let smallBody = Font.system(size: 13, weight: .regular, design: .default)
+        static let smallCaption = Font.system(size: 12, weight: .regular, design: .default)
+        static let smallBody = Font.system(size: 12, weight: .regular, design: .default)
         
         // Cards
         static let cardTitle = Font.system(size: 14, weight: .bold, design: .default)

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct FieldSetupView: View {
     @ObservedObject var viewModel: OnboardingViewModel

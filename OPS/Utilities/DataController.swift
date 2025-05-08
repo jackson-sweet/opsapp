@@ -47,6 +47,10 @@ class DataController: ObservableObject {
         // Setup connectivity monitoring
         setupConnectivityMonitoring()
         
+        // Migrate any images from UserDefaults to FileManager
+        // This prevents the "attempting to store >= 4194304 bytes" error
+        ImageFileManager.shared.migrateAllImages()
+        
         // Check for existing authentication - plain Task for async work
         Task {
             await checkExistingAuth()
@@ -175,6 +179,55 @@ class DataController: ObservableObject {
     // MARK: - Authentication
     @MainActor
     private func checkExistingAuth() async {
+        // First check if we have a direct authentication flag from onboarding
+        if UserDefaults.standard.bool(forKey: "is_authenticated") && 
+           UserDefaults.standard.bool(forKey: "onboarding_completed") {
+            print("DataController: Found is_authenticated=true from onboarding")
+            
+            // Get the user ID if available
+            let userId = UserDefaults.standard.string(forKey: "user_id") ?? 
+                         UserDefaults.standard.string(forKey: "currentUserId")
+            
+            // Get the company ID if available
+            let companyId = UserDefaults.standard.string(forKey: "company_id") ?? 
+                           UserDefaults.standard.string(forKey: "currentUserCompanyId")
+            
+            if let companyId = companyId {
+                UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+                print("DataController: Using company ID from UserDefaults: \(companyId)")
+            }
+            
+            // Set authentication state
+            self.isAuthenticated = true
+            
+            // Try to get the user from SwiftData if available
+            if let userId = userId, let context = modelContext {
+                do {
+                    let descriptor = FetchDescriptor<User>(
+                        predicate: #Predicate<User> { $0.id == userId }
+                    )
+                    
+                    let users = try context.fetch(descriptor)
+                    
+                    if let user = users.first {
+                        self.currentUser = user
+                        print("DataController: Found user in SwiftData: \(user.fullName)")
+                        
+                        // Initialize sync manager
+                        initializeSyncManager()
+                        return
+                    }
+                } catch {
+                    print("DataController: Error checking for user in SwiftData: \(error.localizedDescription)")
+                }
+            }
+            
+            // Even without a user object, maintain authentication
+            print("DataController: Maintaining authenticated state from UserDefaults flag")
+            return
+        }
+        
+        // Fall back to traditional authentication check if needed
         // Check for stored credentials
         if let userId = keychainManager.retrieveUserId(),
            let _ = keychainManager.retrieveToken() {
@@ -343,6 +396,9 @@ class DataController: ObservableObject {
             print("Warning: User has no company ID")
         }
         
+        // Set authentication flag for consistency with onboarding flow
+        UserDefaults.standard.set(true, forKey: "is_authenticated")
+        
         UserDefaults.standard.set(user.id, forKey: "currentUserId")
         
         // Initialize sync managers
@@ -371,7 +427,13 @@ class DataController: ObservableObject {
     private func clearAuthentication() {
         isAuthenticated = false
         currentUser = nil
+        
+        // Clear all authentication-related UserDefaults
         UserDefaults.standard.removeObject(forKey: "currentUserCompanyId")
+        UserDefaults.standard.removeObject(forKey: "is_authenticated")
+        
+        // Log the cleanup
+        print("DataController: Authentication state cleared")
     }
     
     /// Cleans up duplicate users in the database
@@ -962,6 +1024,23 @@ class DataController: ObservableObject {
             return projects.first
         } catch {
             print("Error fetching project: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    
+    /// Gets a user by ID
+    func getUser(id: String) -> User? {
+        guard let context = modelContext else { return nil }
+        
+        do {
+            let descriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { $0.id == id }
+            )
+            let users = try context.fetch(descriptor)
+            return users.first
+        } catch {
+            print("Error fetching user: \(error.localizedDescription)")
             return nil
         }
     }

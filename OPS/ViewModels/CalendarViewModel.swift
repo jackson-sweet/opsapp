@@ -57,6 +57,41 @@ class CalendarViewModel: ObservableObject {
         viewMode = viewMode == .week ? .month : .week
     }
     
+    // Navigation methods for months and weeks
+    func navigateNextPeriod() {
+        let calendar = Calendar.current
+        
+        switch viewMode {
+        case .week:
+            // Move forward 7 days
+            if let newDate = calendar.date(byAdding: .day, value: 7, to: selectedDate) {
+                selectDate(newDate)
+            }
+        case .month:
+            // Move forward one month
+            if let newDate = calendar.date(byAdding: .month, value: 1, to: selectedDate) {
+                selectDate(newDate)
+            }
+        }
+    }
+    
+    func navigatePreviousPeriod() {
+        let calendar = Calendar.current
+        
+        switch viewMode {
+        case .week:
+            // Move backward 7 days
+            if let newDate = calendar.date(byAdding: .day, value: -7, to: selectedDate) {
+                selectDate(newDate)
+            }
+        case .month:
+            // Move backward one month
+            if let newDate = calendar.date(byAdding: .month, value: -1, to: selectedDate) {
+                selectDate(newDate)
+            }
+        }
+    }
+    
     func getVisibleDays() -> [Date] {
         switch viewMode {
         case .week:
@@ -126,10 +161,10 @@ class CalendarViewModel: ObservableObject {
     
     private func getWeekDays() -> [Date] {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let selectedDay = calendar.startOfDay(for: selectedDate)
         
-        // Get the start of the week containing today
-        let weekStart = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
+        // Get the start of the week containing the selected date
+        let weekStart = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: selectedDay)
         let startOfWeek = calendar.date(from: weekStart)!
         
         // Generate an array of the 7 days of the week

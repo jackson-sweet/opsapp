@@ -234,8 +234,9 @@ struct OnboardingNavigationButtons: View {
                         }
                     }
                     .foregroundColor(.white)
-                    .frame(height: 44)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 20)
+                    .frame(height: 52)
+                    .frame(maxWidth: .infinity)
                 }
                 .disabled(isLoading)
             }

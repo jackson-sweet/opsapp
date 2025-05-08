@@ -49,12 +49,7 @@ struct ProjectCard: View {
         .padding(.horizontal)
         .overlay(confirmationOverlay)
         .contentShape(Rectangle()) // Make entire card tappable
-        .onTapGesture {
-            onTap()
-        }
-        .onLongPressGesture {
-            onLongPress()
-        }
+        // REMOVE ALL GESTURE HANDLERS HERE - Let ProjectCardView handle gestures
     
     }
     

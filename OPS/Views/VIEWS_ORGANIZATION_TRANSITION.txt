@@ -1,0 +1,59 @@
+# Project Organization Transition Guide
+
+## Summary of Changes
+
+We've reorganized the project files to improve maintainability and code organization. The new structure organizes components by their functionality and scope, making it easier to find and work with related files.
+
+## Key Benefits
+
+1. **Improved Discoverability**: Related components are now grouped together
+2. **Reduced Folder Clutter**: The Components folder is now logically subdivided
+3. **Better Contextual Organization**: Components are now organized by their domain (Project, User, Map, etc.)
+4. **View-Specific Components**: Each main view now has its own Components folder for view-specific UI elements
+5. **Clearer Dependencies**: The new structure makes component relationships more explicit
+
+## Implementation Strategy
+
+To minimize disruption, we recommend implementing this reorganization in the following phases:
+
+### Phase 1: Set Up New Structure (Current)
+- Create new directories
+- Add README and organization documentation
+- Prepare transition plan
+
+### Phase 2: Move Files (Next Sprint)
+- Move files in logical groups, starting with the least dependent components
+- Update imports as files are moved
+- Test compilation after each group move
+
+### Phase 3: Cleanup (Following Sprint)
+- Remove empty directories
+- Update build configurations if needed
+- Ensure documentation is complete
+
+## How This Affects Your Work
+
+### For Developers
+- When editing moved files, check the REORGANIZATION_PLAN.md to find their new location
+- Follow the new organization guidelines when adding new components
+- Use relative imports to reference components in the new structure
+
+### For Code Reviewers
+- Ensure new files follow the organization guidelines
+- Verify imports are properly updated in PRs that modify moved files
+
+## Getting Help
+
+If you encounter any issues with the reorganization or have questions about where to place new components, refer to:
+
+1. The README.md in the Views folder
+2. The REORGANIZATION_PLAN.md for the complete folder structure
+3. Ask for guidance in the #dev-ios Slack channel
+
+## Next Steps
+
+Once the reorganization is complete, we'll continue refining our architecture with:
+
+1. Better separation of view models and views
+2. More consistent state management patterns
+3. Improved testing structure for UI components

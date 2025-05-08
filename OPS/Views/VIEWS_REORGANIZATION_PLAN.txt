@@ -1,0 +1,195 @@
+# OPS App File Reorganization Plan
+
+This document outlines the steps needed to reorganize the OPS app file structure for better maintainability.
+
+## New Folder Structure
+
+```
+Views/
+│
+├── README.md                      # Documentation for view organization
+├── Components/                    # Shared components across all views
+│   ├── Common/                    # Universal UI elements
+│   │   ├── AppHeader.swift
+│   │   ├── ExpandableNotesView.swift
+│   │   ├── NavigationBanner.swift
+│   │   ├── NavigationControlsView.swift
+│   │   ├── TabBarBackground.swift
+│   │   └── LocationPermissionView.swift
+│   │
+│   ├── Project/                   # Project-related components
+│   │   ├── ProjectCard.swift
+│   │   ├── ProjectCarousel.swift
+│   │   ├── ProjectDetailsView.swift
+│   │   ├── ProjectHeader.swift
+│   │   ├── ProjectActionBar.swift
+│   │   └── ProjectSheetContainer.swift
+│   │
+│   ├── User/                      # User-related components
+│   │   ├── TeamMemberListView.swift
+│   │   └── UserProfileCard.swift
+│   │
+│   ├── Map/                       # Map and location components
+│   │   ├── MiniMapView.swift
+│   │   ├── ProjectMapView.swift
+│   │   ├── ProjectMapAnnotation.swift
+│   │   ├── ProjectMarkerPopup.swift
+│   │   └── RouteDirectionsView.swift
+│   │
+│   └── Images/                    # Image-related components
+│       ├── ImagePicker.swift
+│       ├── ImagePickerView.swift
+│       ├── ProjectImageView.swift
+│       ├── ProjectImagesSection.swift
+│       ├── ProjectImagesSimple.swift
+│       └── ProjectPhotosGrid.swift
+│
+├── Calendar Tab/                  # Calendar-specific views
+│   ├── ScheduleView.swift         # Main Calendar view
+│   ├── MonthGridView.swift        # Main month view
+│   │
+│   ├── Components/                # Calendar-specific components
+│   │   ├── CalendarDaySelector.swift
+│   │   ├── CalendarHeaderView.swift
+│   │   ├── CalendarProjectCard.swift
+│   │   ├── CalendarToggleView.swift
+│   │   ├── DatePickerPopover.swift
+│   │   └── DayCell.swift
+│   │
+│   └── ProjectViews/              # Project-related views within Calendar
+│       ├── DayProjectSheet.swift
+│       └── ProjectListView.swift
+│
+├── Home/                          # Home tab views
+│   ├── HomeView.swift             # Main Home view
+│   ├── HomeContentView.swift      # Content for Home view
+│   └── Components/                # Home-specific components (future)
+│
+├── Settings/                      # Settings views
+│   ├── SettingsView.swift         # Main Settings view
+│   ├── ProfileSettingsView.swift
+│   ├── OrganizationSettingsView.swift
+│   ├── ProjectHistorySettingsView.swift
+│   └── Components/                # Settings-specific components (future)
+│
+├── MainTabView.swift              # Main tab view controller
+├── LoginView.swift                # Authentication view
+├── SplashScreen.swift             # App splash screen
+└── NetworkStatusIndicator.swift   # Network status component
+```
+
+## Implementation Steps
+
+### 1. Create New Directory Structure
+Create all the required directories as outlined in the structure above.
+
+```bash
+# Create component subdirectories
+mkdir -p Views/Components/Common
+mkdir -p Views/Components/Project
+mkdir -p Views/Components/User
+mkdir -p Views/Components/Map
+mkdir -p Views/Components/Images
+
+# Create view-specific component directories
+mkdir -p Views/Calendar\ Tab/Components
+mkdir -p Views/Calendar\ Tab/ProjectViews
+mkdir -p Views/Home/Components
+mkdir -p Views/Settings/Components
+```
+
+### 2. Move Files to New Locations
+
+```bash
+# Move Common components
+mv Views/Components/AppHeader.swift Views/Components/Common/
+mv Views/Components/ExpandableNotesView.swift Views/Components/Common/
+mv Views/Components/NavigationBanner.swift Views/Components/Common/
+mv Views/Components/NavigationControlsView.swift Views/Components/Common/
+mv Views/Components/TabBarBackground.swift Views/Components/Common/
+mv Views/Components/LocationPermissionView.swift Views/Components/Common/
+
+# Move Project components
+mv Views/Components/ProjectCard.swift Views/Components/Project/
+mv Views/Components/ProjectCarousel.swift Views/Components/Project/
+mv Views/Components/ProjectDetailsView.swift Views/Components/Project/
+mv Views/Components/ProjectHeader.swift Views/Components/Project/
+mv Views/Components/ProjectActionBar.swift Views/Components/Project/
+mv Views/Components/ProjectSheetContainer.swift Views/Components/Project/
+
+# Move User components
+mv Views/Components/TeamMemberListView.swift Views/Components/User/
+mv Views/Components/UserProfileCard.swift Views/Components/User/
+
+# Move Map components
+mv Views/Components/MiniMapView.swift Views/Components/Map/
+mv Views/Components/ProjectMapView.swift Views/Components/Map/
+mv Views/Components/ProjectMapAnnotation.swift Views/Components/Map/
+mv Views/Components/ProjectMarkerPopup.swift Views/Components/Map/
+mv Views/Components/RouteDirectionsView.swift Views/Components/Map/
+
+# Move Image components
+mv Views/Components/ImagePicker.swift Views/Components/Images/
+mv Views/Components/ImagePickerView.swift Views/Components/Images/
+mv Views/Components/ProjectImageView.swift Views/Components/Images/
+mv Views/Components/ProjectImagesSection.swift Views/Components/Images/
+mv Views/Components/ProjectImagesSimple.swift Views/Components/Images/
+mv Views/Components/ProjectPhotosGrid.swift Views/Components/Images/
+
+# Move Calendar components
+mv Views/Calendar\ Tab/CalendarDaySelector.swift Views/Calendar\ Tab/Components/
+mv Views/Calendar\ Tab/CalendarHeaderView.swift Views/Calendar\ Tab/Components/
+mv Views/Calendar\ Tab/CalendarProjectCard.swift Views/Calendar\ Tab/Components/
+mv Views/Calendar\ Tab/CalendarToggleView.swift Views/Calendar\ Tab/Components/
+mv Views/Calendar\ Tab/DatePickerPopover.swift Views/Calendar\ Tab/Components/
+mv Views/Calendar\ Tab/DayCell.swift Views/Calendar\ Tab/Components/
+
+# Move Calendar project views
+mv Views/Calendar\ Tab/DayProjectSheet.swift Views/Calendar\ Tab/ProjectViews/
+mv Views/Calendar\ Tab/ProjectListView.swift Views/Calendar\ Tab/ProjectViews/
+
+# Move Home views
+mv Views/HomeView.swift Views/Home/
+mv Views/HomeContentView.swift Views/Home/
+```
+
+### 3. Update Imports
+
+After moving files, imports will need to be updated. Here's an example pattern for updating imports:
+
+```swift
+// Original import
+import SwiftUI
+
+// Updated import structure
+import SwiftUI
+import UIKit // If needed
+
+// Import components from new locations
+import "../Common/ComponentName.swift"
+import "../Project/AnotherComponent.swift"
+```
+
+Key files that will need import updates:
+
+1. ProjectDetailsView.swift - import MiniMapView, ExpandableNotesView, TeamMemberListView
+2. HomeView.swift - import ProjectCarousel, NavigationBanner
+3. ScheduleView.swift - import Calendar components
+4. MainTabView.swift - import view controllers
+
+### 4. Testing Strategy
+
+After reorganization, thoroughly test the application to ensure no functionality was broken during the move:
+
+1. Compile the project to verify all imports are correctly set up
+2. Test each main tab to ensure views load correctly
+3. Test navigation flow between screens
+4. Verify project details and calendar functionality
+5. Test map integration and photo viewing
+
+### 5. Future Organization Recommendations
+
+- When adding new components, follow the established pattern
+- Create subdirectories when a category grows too large
+- Consider feature-based organization for future modules
+- Document new organizational changes in the README.md file

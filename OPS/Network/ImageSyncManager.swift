@@ -268,8 +268,9 @@ class ImageSyncManager {
             }
             
             // Even after successful upload, store the image locally with Bubble URL for offline access
-            // For remote URLs, we'll use UserDefaults as they're temporary caches
-            UserDefaults.standard.set(upload.imageData, forKey: upload.bubbleURL)
+            // Use ImageFileManager instead of UserDefaults for storing large image data
+            let imageFileManager = ImageFileManager.shared
+            _ = imageFileManager.saveImage(data: upload.imageData, localID: upload.bubbleURL)
             
             return true
         } else {

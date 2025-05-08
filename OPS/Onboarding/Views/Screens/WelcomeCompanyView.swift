@@ -19,25 +19,21 @@ struct WelcomeCompanyView: View {
                 Spacer()
                 
                 // Logo/icon (placeholder)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 80))
+                Image(systemName: "checkmark.circle")
+                    .font(.system(size: 40))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 
                 // Welcome message
                 VStack(spacing: 12) {
-                    Text("Welcome to the")
+                    Text("WELCOME TO THE")
                         .font(.system(size: 22, weight: .medium))
                         .foregroundColor(.white)
                     
-                    Text("\(viewModel.companyName) OPS Center")
+                    Text("\(viewModel.companyName) OPS CENTER.")
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
-                    
-                    Text("\(viewModel.firstName)!")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.top, 4)
+                
                 }
                 
                 Spacer()

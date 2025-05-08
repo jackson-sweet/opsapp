@@ -18,7 +18,13 @@ struct DateHelper {
     
     static let weekdayFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "E"
+        formatter.dateFormat = "EEEEE" // Using ultra short format for first letter only
+        return formatter
+    }()
+    
+    static let twoLetterWeekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EE" // Two-letter abbreviation (Mo, Tu, We, etc.)
         return formatter
     }()
     
@@ -54,6 +60,10 @@ struct DateHelper {
     
     static func weekdayString(from date: Date) -> String {
         return weekdayFormatter.string(from: date)
+    }
+    
+    static func twoLetterWeekdayString(from date: Date) -> String {
+        return twoLetterWeekdayFormatter.string(from: date)
     }
     
     static func monthYearString(from date: Date) -> String {

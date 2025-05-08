@@ -40,8 +40,27 @@ class ImageFileManager {
         }
     }
     
+    /// Encode a remote URL to make it safe for use as a file name
+    private func encodeRemoteURL(_ url: String) -> String {
+        // Use Base64 encoding to create a safe file name that preserves the original URL
+        let data = url.data(using: .utf8)!
+        let base64 = data.base64EncodedString()
+        
+        // Truncate if the encoded string is too long to avoid path length issues
+        if base64.count > 200 {
+            return "remote_\(base64.prefix(200))"
+        }
+        return "remote_\(base64)"
+    }
+    
     /// Get the file URL for a local image identifier
     func getFileURL(for localID: String) -> URL? {
+        // Handle remote URLs
+        if localID.hasPrefix("http") || localID.hasPrefix("//") {
+            let encodedID = encodeRemoteURL(localID)
+            return imagesDirectory.appendingPathComponent(encodedID)
+        }
+        
         // Extract filename from localID (format: "local://project_images/filename.jpg")
         guard localID.hasPrefix("local://project_images/") else {
             print("ImageFileManager: Invalid local ID format: \(localID)")
@@ -75,10 +94,32 @@ class ImageFileManager {
     
     /// Load image data from file system
     func loadImage(localID: String) -> UIImage? {
-        // First check if this is actually a remote URL that's been cached
-        if localID.hasPrefix("http") || localID.hasPrefix("//"), 
-           let cachedData = UserDefaults.standard.data(forKey: localID) {
-            return UIImage(data: cachedData)
+        // For remote URLs, we still need to handle them, but check file system first
+        // instead of UserDefaults, since we now save them to disk
+        if localID.hasPrefix("http") || localID.hasPrefix("//") {
+            let encodedID = encodeRemoteURL(localID)
+            
+            // Try to load from file system first
+            if let fileURL = getFileURL(for: encodedID),
+               FileManager.default.fileExists(atPath: fileURL.path) {
+                do {
+                    let data = try Data(contentsOf: fileURL)
+                    return UIImage(data: data)
+                } catch {
+                    print("ImageFileManager: Error loading remote image from file: \(error.localizedDescription)")
+                }
+            }
+            
+            // For backward compatibility - check UserDefaults as fallback
+            if let cachedData = UserDefaults.standard.data(forKey: localID) {
+                // Migrate to file system for future use
+                _ = saveImage(data: cachedData, localID: encodedID)
+                
+                // Remove from UserDefaults to free up space
+                UserDefaults.standard.removeObject(forKey: localID)
+                
+                return UIImage(data: cachedData)
+            }
         }
         
         // Otherwise load from file system
@@ -190,14 +231,29 @@ class ImageFileManager {
         var migratedCount = 0
         var failedCount = 0
         
-        for (key, _) in dict {
-            // Only migrate project image keys
+        for (key, value) in dict {
+            // Handle local project image keys
             if key.hasPrefix("local://project_images/") {
                 let success = migrateFromUserDefaults(localID: key)
                 if success {
                     migratedCount += 1
                 } else {
                     failedCount += 1
+                }
+            }
+            // Handle remote URLs (http or https)
+            else if (key.hasPrefix("http") || key.hasPrefix("//")) && value is Data {
+                if let imageData = userDefaults.data(forKey: key) {
+                    let encodedID = encodeRemoteURL(key)
+                    let success = saveImage(data: imageData, localID: key)
+                    if success {
+                        // Remove from UserDefaults to free up space
+                        userDefaults.removeObject(forKey: key)
+                        migratedCount += 1
+                        print("ImageFileManager: Successfully migrated remote URL to file system")
+                    } else {
+                        failedCount += 1
+                    }
                 }
             }
         }

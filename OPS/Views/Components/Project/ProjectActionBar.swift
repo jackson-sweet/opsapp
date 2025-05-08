@@ -76,10 +76,13 @@ struct ProjectActionBar: View {
                 ProjectDetailsView(project: project)
             }
         }
-        // Photo Picker for project photos
+        // Photo Picker for project photos - modified to use both camera and library
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(
                 images: $selectedImages,
+                allowsEditing: true,
+                sourceType: .both, // Allow user to choose between camera and library
+                selectionLimit: 10, // Allow multiple photos
                 onSelectionComplete: {
                     // Process images immediately when selection is complete
                     if !selectedImages.isEmpty {
@@ -342,11 +345,17 @@ struct ReceiptScannerView: View {
                                 Button(action: {
                                     showImagePicker = true
                                 }) {
-                                    VStack {
-                                        Image(systemName: "doc.text.viewfinder")
+                                    VStack(spacing: 16) {
+                                        Image(systemName: "camera.fill")
                                             .font(.system(size: 40))
                                             .padding()
+                                        
                                         Text("Take Receipt Photo")
+                                            .font(.headline)
+                                        
+                                        Text("or choose from library")
+                                            .font(.caption)
+                                            .foregroundColor(Color.gray)
                                     }
                                     .frame(height: 200)
                                     .frame(maxWidth: .infinity)
@@ -472,7 +481,7 @@ struct ReceiptScannerView: View {
                 }
             }
             .sheet(isPresented: $showImagePicker) {
-                // For receipt scanner, we still use single image mode
+                // For receipt scanner, use both camera and library with preference for camera
                 ImagePicker(
                     images: Binding<[UIImage]>(
                         get: { receiptImage != nil ? [receiptImage!] : [] },
@@ -483,7 +492,8 @@ struct ReceiptScannerView: View {
                         }
                     ), 
                     allowsEditing: true,
-                    selectionLimit: 1,
+                    sourceType: .both, // Allow both camera and photo library
+                    selectionLimit: 1, // Only one receipt image at a time
                     onSelectionComplete: {
                         // Nothing extra needed, binding handles updating receiptImage
                     }

@@ -16,13 +16,13 @@ struct OnboardingView: View {
     
     // Optional completion handler
     var onComplete: (() -> Void)?
-    private let useConsolidatedFlow = AppConfiguration.UX.useConsolidatedOnboardingFlow
+    // Always use the consolidated flow
+    private let useConsolidatedFlow = true
     
-    init(initialStep: OnboardingStep = .welcome, consolidatedStep: OnboardingStepV2 = .welcome, onComplete: (() -> Void)? = nil) {
+    init(initialStep: OnboardingStep = .welcome, onComplete: (() -> Void)? = nil) {
         // Initialize the view model with the specified step
         let vm = OnboardingViewModel()
         vm.currentStep = initialStep
-        vm.currentStepV2 = consolidatedStep
         
         // Use underscore to initialize the @StateObject
         _viewModel = StateObject(wrappedValue: vm)
@@ -42,78 +42,25 @@ struct OnboardingView: View {
             // Background
             Color.black.edgesIgnoringSafeArea(.all)
             
-            if useConsolidatedFlow {
-                // Consolidated flow (V2)
-                consolidatedFlowView
-            } else {
-                // Original flow
-                originalFlowView
-            }
+            // Consolidated flow
+            consolidatedFlowView
         }
         .onAppear {
             // Configure ViewModel with DataController
             configureViewModel()
         }
-        .animation(.easeInOut, value: useConsolidatedFlow ? viewModel.currentStepV2.rawValue : viewModel.currentStep.rawValue)
+        .animation(.easeInOut, value: viewModel.currentStep.rawValue)
     }
     
-    // Original 11-step flow
-    private var originalFlowView: some View {
-        VStack(spacing: 0) {
-            // Only show progress indicator for appropriate steps
-            if viewModel.currentStep != .welcome && viewModel.currentStep != .completion {
-                OnboardingProgressIndicator(currentStep: viewModel.currentStep)
-                    .padding(.bottom, 4)
-            }
-            
-            // Current step view - use ID to force recreation
-            Group {
-                switch viewModel.currentStep {
-                case .welcome:
-                    WelcomeView(viewModel: viewModel)
-                case .email:
-                    EmailView(viewModel: viewModel)
-                case .password:
-                    PasswordView(viewModel: viewModel)
-                case .accountCreated:
-                    AccountCreatedView(viewModel: viewModel)
-                case .organizationJoin:
-                    OrganizationJoinView(viewModel: viewModel)
-                case .userInfo:
-                    UserInfoView(viewModel: viewModel)
-                case .phoneNumber:
-                    PhoneNumberView(viewModel: viewModel)
-                case .companyCode:
-                    CompanyCodeView(viewModel: viewModel)
-                case .welcomeCompany:
-                    WelcomeCompanyView(viewModel: viewModel)
-                case .permissions:
-                    PermissionsView(viewModel: viewModel)
-                case .notifications:
-                    NotificationsView(viewModel: viewModel)
-                case .completion:
-                    CompleteOnboarding()
-                }
-            }
-            .id("step_\(viewModel.currentStep.rawValue)") // Force recreation on step change
-            .transition(.opacity)
-        }
-    }
     
-    // Consolidated 7-step flow
+    // Main onboarding flow view
     private var consolidatedFlowView: some View {
         VStack(spacing: 0) {
             // Current step view
             Group {
-                switch viewModel.currentStepV2 {
+                switch viewModel.currentStep {
                 case .welcome:
                     WelcomeView(viewModel: viewModel)
-                        .onReceive(viewModel.$currentStep) { _ in
-                            // Handle legacy step changes
-                            if viewModel.currentStep == .email {
-                                viewModel.moveToV2(step: .accountSetup)
-                            }
-                        }
                 case .accountSetup:
                     // Use existing EmailView but configured for consolidated flow
                     EmailView(viewModel: viewModel, isInConsolidatedFlow: true)
@@ -125,14 +72,6 @@ struct OnboardingView: View {
                     UserInfoView(viewModel: viewModel, isInConsolidatedFlow: true)
                 case .companyCode:
                     CompanyCodeView(viewModel: viewModel)
-                        .onReceive(viewModel.$currentStep) { newStep in
-                            // Handle legacy step changes
-                            if newStep == .userInfo || newStep == .phoneNumber {
-                                viewModel.moveToV2(step: .userDetails)
-                            } else if newStep == .welcomeCompany || newStep == .permissions {
-                                viewModel.moveToV2(step: .permissions)
-                            }
-                        }
                 case .permissions:
                     // Use existing PermissionsView but configured for consolidated flow
                     PermissionsView(viewModel: viewModel, isInConsolidatedFlow: true)
@@ -144,7 +83,7 @@ struct OnboardingView: View {
                     CompleteOnboarding()
                 }
             }
-            .id("v2_step_\(viewModel.currentStepV2.rawValue)")
+            .id("step_\(viewModel.currentStep.rawValue)")
             .transition(.opacity)
         }
     }
@@ -235,11 +174,7 @@ struct OnboardingView: View {
             }
             
             // Store onboarding step progress (for resuming if needed)
-            if useConsolidatedFlow {
-                UserDefaults.standard.set(viewModel.currentStepV2.rawValue, forKey: "last_onboarding_step_v2")
-            } else {
-                UserDefaults.standard.set(viewModel.currentStep.rawValue, forKey: "last_onboarding_step")
-            }
+            UserDefaults.standard.set(viewModel.currentStep.rawValue, forKey: "last_onboarding_step_v2")
             
             // Save basic user preference settings
             UserDefaults.standard.set(viewModel.isLocationPermissionGranted, forKey: "location_permission_granted")
@@ -261,7 +196,7 @@ struct OnboardingView: View {
 #Preview("Onboarding Flow") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
     
-    return OnboardingView(initialStep: .welcome)
+    OnboardingView(initialStep: .welcome)
         .environmentObject(previewHelper)
         .environment(\.colorScheme, .dark)
 }
@@ -269,15 +204,15 @@ struct OnboardingView: View {
 #Preview("Welcome Screen") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
     
-    return OnboardingView(initialStep: .welcome)
+    OnboardingView(initialStep: .welcome)
         .environmentObject(previewHelper)
         .environment(\.colorScheme, .dark)
 }
 
-#Preview("Email Screen") {
+#Preview("Account Setup Screen") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
     
-    return OnboardingView(initialStep: .email)
+    OnboardingView(initialStep: .accountSetup)
         .environmentObject(previewHelper)
         .environment(\.colorScheme, .dark)
 }
@@ -285,7 +220,7 @@ struct OnboardingView: View {
 #Preview("Completion Screen") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
     
-    return OnboardingView(initialStep: .completion)
+    OnboardingView(initialStep: .completion)
         .environmentObject(previewHelper)
         .environment(\.colorScheme, .dark)
 }

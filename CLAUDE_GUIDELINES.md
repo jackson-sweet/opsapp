@@ -101,6 +101,151 @@
 - Make sure text is readable and appropriately sized
 - Support dark mode throughout the app
 - Use the established color system from OPSStyle
-- Consider glove-friendly touch targets for all interactive elements
-- Design for outdoor visibility and variable lighting conditions
+- Design for glove-friendly touch targets for all interactive elements
+- Consider outdoor visibility and variable lighting conditions
 - Create consistent visual hierarchies across screens
+
+## API Integration and Data Structure
+
+### Bubble.io API Integration
+
+#### API Configuration
+- **Base URL**: The app uses `https://opsapp.co/version-test` as the Bubble.io API base URL
+- **API Token**: A public API token is used as a fallback when no user authentication is available
+- **API Paths**:
+  - Data API: `/api/1.1/obj` - For direct data manipulation
+  - Workflow API: `/api/1.1/wf` - For triggering Bubble workflows
+
+#### Authentication Flow
+- Authentication is managed through `AuthManager` which handles:
+  - User login with email/password
+  - Secure token storage in Keychain
+  - Token expiration and refresh
+  - Authorization for API requests
+- Authentication errors are user-friendly and tailored for field workers
+
+#### API Request/Response Structure
+- All API calls use `APIService` which provides:
+  - Centralized request handling with proper error management
+  - Automatic retry for network issues
+  - Response parsing and decoding
+  - Rate limiting protection
+- Responses follow specific Bubble.io formats:
+  - List responses: `BubbleListResponse<T>` with results wrapper
+  - Single object responses: `BubbleObjectResponse<T>`
+
+#### API Error Handling
+- Custom `APIError` and `AuthError` types with field-worker-friendly error messages
+- Structured error handling with specific scenarios:
+  - Authentication failures
+  - Network issues
+  - Server errors
+  - Decoding problems
+  - Rate limiting
+- Robust retry logic for transient errors
+
+### Data Model Structure
+
+#### Core Domain Models
+1. **Project**
+   - Central entity for field crew operations
+   - Maps to Bubble "Project" collection
+   - Contains job status, location, scheduling, and team assignment information
+   - Supports image attachments and notes
+
+2. **User**
+   - Represents field workers and office staff
+   - Maps to Bubble "User" collection
+   - Contains role information, authentication details, and profile data
+   - Maintains relationship with assigned projects
+
+3. **Company**
+   - Organization entity
+   - Maps to Bubble "Company" collection
+   - Contains company information, branding, and operational details
+
+#### Domain Enums
+- **Status**: Job status values matching Bubble's "Job Status" custom type
+  - RFQ, Estimated, Accepted, In Progress, Completed, Closed
+- **UserRole**: Field/Office role distinction
+  - Field Crew, Office Crew
+- **UserType**: User category
+  - Company, Employee, Client, Admin, Contractor, Other
+
+#### Data Transfer Objects (DTOs)
+- DTOs exactly match Bubble.io data structure
+- Conversion methods (`toModel()`) transform API responses into SwiftData models
+- Custom `CodingKeys` map Swift properties to Bubble field names
+
+#### Data Relationships
+- Projects have team members (users)
+- Users have assigned projects
+- Companies have projects and team members
+- Relationships are maintained bidirectionally
+
+### Synchronization Strategy
+
+#### Sync Management
+- `SyncManager` handles bidirectional synchronization between local and remote data
+- Data is fetched in batches to prevent memory issues
+- Changes are tracked with `lastSyncedAt` and `needsSync` flags
+- Sync operations are prioritized by importance (status changes > data updates)
+
+#### Offline Support
+- Local edits are tracked and synced when connectivity is restored
+- `ConnectivityMonitor` tracks network availability
+- Background sync tasks maintain data freshness
+- Changes made offline are preserved until successfully synced
+
+#### Image Handling
+- Images are managed through `ImageSyncManager`
+- Project and profile images have special handling
+- Images can be stored locally while offline
+- Automatic synchronization of images when connectivity is restored
+
+### API Endpoints
+
+#### Project Endpoints
+- Fetch all projects
+- Fetch projects by status, date, or user assignment
+- Update project status
+- Update project notes and details
+
+#### User Endpoints
+- Fetch user profile
+- Update user information
+- User authentication
+- Fetch users by role or company
+
+#### Company Endpoints
+- Fetch company details
+- Fetch company projects and team members
+- Update company information
+
+### Best Practices for API Development
+
+1. **Field-Centric Design**
+   - API calls are optimized for field conditions with poor connectivity
+   - Error messages are written for field workers
+   - Timeouts and retries are calibrated for mobile networks
+
+2. **Data Efficiency**
+   - Fetches only necessary data to minimize bandwidth usage
+   - Local caching to reduce API calls
+   - Batched updates to reduce round trips
+
+3. **Resilience**
+   - Graceful handling of network interruptions
+   - Data integrity preservation during sync
+   - Appropriate fallbacks when API is unavailable
+
+4. **Security**
+   - Token-based authentication
+   - Secure storage of credentials
+   - Proper validation of input/output
+
+5. **Development Patterns**
+   - Use Swift Concurrency (async/await) for all API calls
+   - Follow consistent error handling patterns
+   - Document all API integrations
+   - Keep Bubble field mapping centralized in BubbleFields

@@ -248,7 +248,7 @@ struct OnboardingNavigationButtons: View {
 #Preview("Button Styles") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
     
-    return VStack(spacing: 20) {
+    VStack(spacing: 20) {
         Button("Continue") {}
             .buttonStyle(PrimaryButtonStyle())
         
@@ -267,7 +267,7 @@ struct OnboardingNavigationButtons: View {
 #Preview("Progress Indicator") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
     
-    return VStack(spacing: 20) {
+    VStack(spacing: 20) {
         ForEach(OnboardingStep.allCases, id: \.self) { step in
             if step != .welcome && step != .completion {
                 VStack(spacing: 4) {
@@ -289,7 +289,7 @@ struct OnboardingNavigationButtons: View {
 #Preview("UI Components") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
     
-    return VStack(spacing: 30) {
+    VStack(spacing: 30) {
         // Header
         OnboardingHeaderView(
             title: "Create your account",

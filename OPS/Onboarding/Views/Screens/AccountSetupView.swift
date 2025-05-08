@@ -23,7 +23,7 @@ struct AccountSetupView: View {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        viewModel.moveToPreviousStepV2()
+                        viewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -68,7 +68,7 @@ struct AccountSetupView: View {
                                 .foregroundColor(.white)
                                 .padding(.bottom, 12)
                             
-                            Text(OnboardingStepV2.accountSetup.subtitle)
+                            Text(OnboardingStep.accountSetup.subtitle)
                                 .font(.system(size: 16))
                                 .foregroundColor(Color.gray)
                                 .lineSpacing(4)
@@ -86,7 +86,7 @@ struct AccountSetupView: View {
                                 .textContentType(.emailAddress)
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
-                                .onboardingTextFieldStyle(isValid: viewModel.isEmailValid)
+                                .onboardingTextFieldStyle()
                         }
                         
                         // Password Field
@@ -100,14 +100,14 @@ struct AccountSetupView: View {
                                         .textContentType(.newPassword)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
-                                        .onboardingTextFieldStyle(isValid: viewModel.isPasswordValid)
+                                        .onboardingTextFieldStyle()
                                 } else {
                                     SecureField("Your password", text: $viewModel.password)
                                         .font(.system(size: 16))
                                         .textContentType(.newPassword)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
-                                        .onboardingTextFieldStyle(isValid: viewModel.isPasswordValid)
+                                        .onboardingTextFieldStyle()
                                 }
                                 
                                 // Visibility toggle button
@@ -142,14 +142,14 @@ struct AccountSetupView: View {
                                         .textContentType(.newPassword)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
-                                        .onboardingTextFieldStyle(isValid: viewModel.isPasswordMatching)
+                                        .onboardingTextFieldStyle()
                                 } else {
                                     SecureField("Confirm password", text: $viewModel.confirmPassword)
                                         .font(.system(size: 16))
                                         .textContentType(.newPassword)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
-                                        .onboardingTextFieldStyle(isValid: viewModel.isPasswordMatching)
+                                        .onboardingTextFieldStyle()
                                 }
                                 
                                 // Visibility toggle button
@@ -183,8 +183,8 @@ struct AccountSetupView: View {
                         // Navigation buttons
                         OnboardingNavigationButtons(
                             primaryText: "Create Account",
-                            isLoading: viewModel.isLoading,
                             isPrimaryDisabled: !viewModel.canProceedFromAccountSetup,
+                            isLoading: viewModel.isLoading,
                             onPrimaryTapped: {
                                 submitAccountSetup()
                             }
@@ -220,7 +220,7 @@ struct AccountSetupView: View {
                     
                     if success {
                         print("Account creation successful!")
-                        viewModel.moveToNextStepV2()
+                        viewModel.moveToNextStep()
                     }
                     // Error message is already set by the signup method if it fails
                 }

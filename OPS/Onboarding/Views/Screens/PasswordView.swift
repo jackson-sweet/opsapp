@@ -138,7 +138,7 @@ struct PasswordView: View {
                                 viewModel.isLoading = false
                                 
                                 if success {
-                                    viewModel.moveTo(step: .accountCreated) // Go to account created confirmation
+                                    viewModel.moveTo(step: .organizationJoin) // Go to organization join screen
                                 }
                             }
                         }

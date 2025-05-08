@@ -38,7 +38,7 @@ struct FieldSetupView: View {
                     // Progress indicator
                     OnboardingStepIndicator(
                         currentStep: .fieldSetup,
-                        text: OnboardingStepV2.fieldSetup.stepIndicator
+                        text: OnboardingStep.fieldSetup.stepIndicator
                     )
                     .padding(.top, 20)
                     .padding(.bottom, 10)
@@ -159,7 +159,7 @@ struct FieldSetupView: View {
         // Simulate a brief loading period
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             isLoading = false
-            viewModel.moveToNextStepV2()
+            viewModel.moveToNextStep()
         }
     }
     

@@ -80,7 +80,7 @@ struct UserDetailsView: View {
                                 .font(.system(size: 16))
                                 .textContentType(.givenName)
                                 .disableAutocorrection(true)
-                                .onboardingTextFieldStyle(isValid: !viewModel.firstName.isEmpty)
+                                .onboardingTextFieldStyle()
                                 .transition(.opacity)
                                 .animation(.easeInOut, value: viewModel.firstName)
                         }
@@ -93,7 +93,7 @@ struct UserDetailsView: View {
                                 .font(.system(size: 16))
                                 .textContentType(.familyName)
                                 .disableAutocorrection(true)
-                                .onboardingTextFieldStyle(isValid: !viewModel.lastName.isEmpty)
+                                .onboardingTextFieldStyle()
                                 .transition(.opacity)
                                 .animation(.easeInOut, value: viewModel.lastName)
                         }
@@ -107,7 +107,7 @@ struct UserDetailsView: View {
                                 .textContentType(.telephoneNumber)
                                 .keyboardType(.phonePad)
                                 .disableAutocorrection(true)
-                                .onboardingTextFieldStyle(isValid: viewModel.isPhoneValid)
+                                .onboardingTextFieldStyle()
                                 .transition(.opacity)
                                 .animation(.easeInOut, value: viewModel.phoneNumber)
                                 .onChange(of: viewModel.phoneNumber) { oldValue, newValue in

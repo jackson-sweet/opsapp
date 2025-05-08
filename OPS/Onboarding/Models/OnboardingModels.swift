@@ -218,72 +218,10 @@ enum SignUpError: Error, LocalizedError {
     }
 }
 
-// Steps in the onboarding process
-// MARK: - Original Onboarding Steps (Legacy)
-enum OnboardingStep: Int, CaseIterable {
-    case welcome = 0
-    case email = 1
-    case password = 2
-    case accountCreated = 3 // Account created confirmation
-    case organizationJoin = 4 // New organization join screen
-    case userInfo = 5  // First and last name
-    case phoneNumber = 6
-    case companyCode = 7
-    case welcomeCompany = 8 // Welcome to company screen
-    case permissions = 9
-    case notifications = 10
-    case completion = 11
-    
-    var title: String {
-        switch self {
-        case .welcome: return "Welcome"
-        case .email: return "Email"
-        case .password: return "Password"
-        case .accountCreated: return "Account"
-        case .organizationJoin: return "Organization"
-        case .userInfo: return "Your Name"
-        case .phoneNumber: return "Phone Number"
-        case .companyCode: return "Company"
-        case .welcomeCompany: return "Welcome"
-        case .permissions: return "Location"
-        case .notifications: return "Notifications"
-        case .completion: return "Complete"
-        }
-    }
-    
-    // Get the next step in the flow
-    func nextStep() -> OnboardingStep? {
-        switch self {
-        case .welcome:
-            return .email
-        case .email:
-            return .password
-        case .password:
-            return .accountCreated
-        case .accountCreated:
-            return .organizationJoin
-        case .organizationJoin:
-            return .userInfo
-        case .userInfo:
-            return .phoneNumber
-        case .phoneNumber:
-            return .companyCode
-        case .companyCode:
-            return .welcomeCompany
-        case .welcomeCompany:
-            return .permissions
-        case .permissions:
-            return .notifications
-        case .notifications:
-            return .completion
-        case .completion:
-            return nil
-        }
-    }
-}
+// MARK: - Onboarding Steps
 
-// MARK: - Consolidated Onboarding Steps (New)
-enum OnboardingStepV2: Int, CaseIterable {
+// V2 version of the onboarding steps - consolidated flow
+enum OnboardingStep: Int, CaseIterable {
     case welcome = 0
     case accountSetup = 1     // Combined email/password
     case organizationJoin = 2 // New organization join screen
@@ -352,7 +290,7 @@ enum OnboardingStepV2: Int, CaseIterable {
     }
     
     // Get the next step in the flow
-    func nextStep() -> OnboardingStepV2? {
+    func nextStep() -> OnboardingStep? {
         switch self {
         case .welcome:
             return .accountSetup
@@ -374,7 +312,7 @@ enum OnboardingStepV2: Int, CaseIterable {
     }
     
     // Get the previous step in the flow
-    func previousStep() -> OnboardingStepV2? {
+    func previousStep() -> OnboardingStep? {
         switch self {
         case .welcome:
             return nil
@@ -396,3 +334,4 @@ enum OnboardingStepV2: Int, CaseIterable {
     }
 }
 
+// No duplicate enums here - we already have OnboardingStep defined above

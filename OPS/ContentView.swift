@@ -51,11 +51,23 @@ struct ContentView: View {
             
             // Check if user is already authenticated
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                // Check if the user has an account but is in the middle of onboarding
+                let hasUserId = UserDefaults.standard.string(forKey: "user_id") != nil
+                let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
+                
+                if hasUserId && !onboardingCompleted {
+                    // Set authentication to true if they created an account
+                    // They'll be directed to the login view but will immediately see the onboarding flow
+                    // from the step they left off
+                    print("ContentView: User has account but needs to complete onboarding")
+                    dataController.isAuthenticated = false
+                    
+                    // Set a flag in UserDefaults to indicate we need to resume onboarding
+                    UserDefaults.standard.set(true, forKey: "resume_onboarding")
+                }
+                
                 // Finish the loading phase to show the appropriate screen
                 isCheckingAuth = false
-                
-                // Note: DataController.isAuthenticated should already be set correctly
-                // by the checkExistingAuth method called during initialization
             }
         }
         // Watch for changes to the location denied state

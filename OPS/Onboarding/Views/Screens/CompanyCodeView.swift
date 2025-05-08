@@ -7,6 +7,8 @@
 
 import SwiftUI
 import Combine
+import SwiftData
+import Foundation
 
 struct CompanyCodeView: View {
     @ObservedObject var viewModel: OnboardingViewModel
@@ -83,9 +85,10 @@ struct CompanyCodeView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         InputFieldLabel(label: "COMPANY CODE")
                         
+                        //DO NOT FORCE CAPITALIZATION
                         TextField("Enter code", text: $viewModel.companyCode)
                             .font(.system(size: 16))
-                            .autocapitalization(.allCharacters)
+                            .autocapitalization(.none)
                             .disableAutocorrection(true)
                             .onboardingTextFieldStyle()
                             .transition(.opacity)
@@ -98,7 +101,7 @@ struct CompanyCodeView: View {
                             .foregroundColor(.white.opacity(0.7))
                             .font(.system(size: 14))
                         
-                        Text("Company codes are typically provided by your manager or in your welcome email.")
+                        Text("Obtain your company code from your manager, in your organization's settings.")
                             .font(.system(size: 14))
                             .foregroundColor(.white.opacity(0.6))
                     }
@@ -134,6 +137,36 @@ struct CompanyCodeView: View {
                                         print("Company join successful! Company: \(viewModel.companyName)")
                                         // Store the fact that the user has successfully joined a company
                                         UserDefaults.standard.set(true, forKey: "has_joined_company")
+                                        
+                                        // Create company record in SwiftData for immediate access
+                                        let companyIdValue = UserDefaults.standard.string(forKey: "company_id") ?? ""
+                                        let companyNameValue = UserDefaults.standard.string(forKey: "Company Name") ?? "Your Company"
+                                        
+                                        if !companyIdValue.isEmpty,
+                                           let dataController = viewModel.dataController,
+                                           let modelContext = dataController.modelContext {
+                                            
+                                            print("Creating FetchDescriptor for company with ID: \(companyIdValue)")
+                                            // Check if company already exists
+                                            let descriptor = FetchDescriptor<Company>(
+                                                predicate: #Predicate<Company> { $0.id == companyIdValue }
+                                            )
+                                            print("FetchDescriptor created successfully")
+                                            if let companies = try? modelContext.fetch(descriptor), companies.isEmpty {
+                                                // Create new company record
+                                                let company = Company(id: companyIdValue, name: companyNameValue)
+                                                
+                                                // Add any additional info from API if available
+                                                if viewModel.companyName.isEmpty == false {
+                                                    company.name = viewModel.companyName
+                                                }
+                                                
+                                                modelContext.insert(company)
+                                                try? modelContext.save()
+                                                print("Company data created in database: \(company.name)")
+                                            }
+                                        }
+                                        
                                         // Continue to next step based on flow
                                         if isInV2Flow {
                                             viewModel.moveToNextStepV2()

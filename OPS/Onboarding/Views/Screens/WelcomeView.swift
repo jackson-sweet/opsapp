@@ -1,0 +1,181 @@
+//
+//  WelcomeView.swift
+//  OPS
+//
+//  Created by Jackson Sweet on 2025-05-05.
+//
+
+import SwiftUI
+import Combine
+
+struct WelcomeView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @State private var textOpacity: Double = 0
+    @State private var buttonOpacity: Double = 0
+    @State private var logoScale: CGFloat = 0.8
+    
+    var body: some View {
+        ZStack {
+            // Background with subtle gradient
+            LinearGradient(
+                gradient: Gradient(colors: [Color.black, Color(red: 0.05, green: 0.05, blue: 0.1)]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .edgesIgnoringSafeArea(.all)
+            
+            VStack(alignment: .leading, spacing: 0) {
+                // Logo in top corner
+                HStack {
+                    Image("LogoWhite")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 40, height: 40)
+                        .scaleEffect(logoScale)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 40)
+                
+                // Main content with spacing
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer()
+                        .frame(height: 40)
+                    
+                    // Headline messaging
+                    VStack(alignment: .leading, spacing: 24) {
+                        // Bold headline
+                        Text("Your jobsite streamlined.")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.white)
+                        
+                        // Key benefits
+                        VStack(alignment: .leading, spacing: 16) {
+                            Spacer()
+                            BenefitRow(
+                                icon: "list.clipboard",
+                                text: "Track projects from estimate to completion"
+                            )
+                            
+                            BenefitRow(
+                                icon: "person.2",
+                                text: "Coordinate your entire crew in one place"
+                            )
+                            
+                            BenefitRow(
+                                icon: "doc.text.image",
+                                text: "Document jobsite conditions with photos"
+                            )
+                            Spacer()
+                        }
+                    }
+                    .opacity(textOpacity)
+                    
+                    Spacer()
+                    
+                    Text("OPS.")
+                    // Builder message
+                    Text("Built by trades, for trades.")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Color.gray)
+                        .padding(.bottom, 40)
+                        .opacity(textOpacity)
+                    
+                    // Get Started Button - modern style
+                    Button(action: {
+                        print("WelcomeView: Get Started button tapped")
+                        
+                        // Use the appropriate method for the flow
+                        if AppConfiguration.UX.useConsolidatedOnboardingFlow {
+                            viewModel.moveToNextStepV2()
+                            print("WelcomeView: Moving to next V2 step: \(viewModel.currentStepV2.title)")
+                        } else {
+                            viewModel.moveToNextStep()
+                            print("WelcomeView: Moving to next step: \(viewModel.currentStep.title)")
+                        }
+                    }) {
+                        HStack {
+                            Text("Continue")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                            
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.black)
+                        }
+                        .frame(height: 52)
+                        .background(Color.white)
+                        .cornerRadius(26)
+                        .padding(.horizontal, 24)
+                    }
+                    .opacity(buttonOpacity)
+                    .padding(.bottom, 30)
+                }
+                .padding(.horizontal, 24)
+            }
+        }
+        .onAppear {
+            animateContent()
+        }
+    }
+    
+    private func animateContent() {
+        // Logo animation
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2)) {
+            logoScale = 1.0
+        }
+        
+        // Text animation
+        withAnimation(.easeIn(duration: 0.8).delay(0.3)) {
+            textOpacity = 1.0
+        }
+        
+        // Button animation
+        withAnimation(.easeIn(duration: 0.6).delay(0.7)) {
+            buttonOpacity = 1.0
+        }
+    }
+}
+
+// Modern benefit row with icon
+struct BenefitRow: View {
+    var icon: String
+    var text: String
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 22))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .frame(width: 30)
+            
+            Text(text)
+                .font(.system(size: 16))
+                .foregroundColor(.white)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+// Helper view for info text items
+struct InfoText: View {
+    var text: String
+    
+    var body: some View {
+        Text(text)
+            .font(.system(size: 16))
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Preview
+#Preview("Welcome Screen") {
+    let viewModel = OnboardingViewModel()
+    
+    return WelcomeView(viewModel: viewModel)
+        .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environment(\.colorScheme, .dark)
+}

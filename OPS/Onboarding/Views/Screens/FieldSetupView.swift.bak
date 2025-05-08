@@ -1,0 +1,309 @@
+//
+//  FieldSetupView.swift
+//  OPS
+//
+//  Created by Jackson Sweet on 2025-05-07.
+//
+
+import SwiftUI
+import Combine
+import SwiftData
+
+struct FieldSetupView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @EnvironmentObject private var dataController: DataController
+    
+    // Local state for field setup options
+    @State private var enableOfflineMode: Bool = true
+    @State private var optimizeForLowData: Bool = true
+    @State private var syncProgress: Double = 0.0
+    @State private var isSyncing: Bool = false
+    @State private var syncMessage: String = "Preparing..."
+    
+    // Simulate sync progress for demo
+    private func startSync() {
+        isSyncing = true
+        syncMessage = "Downloading project data..."
+        
+        // Reset progress
+        syncProgress = 0.0
+        
+        // Simulate sync progress
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+            withAnimation {
+                syncProgress += 0.02
+                
+                if syncProgress >= 0.3 {
+                    syncMessage = "Caching images for offline use..."
+                }
+                
+                if syncProgress >= 0.6 {
+                    syncMessage = "Preparing offline maps..."
+                }
+                
+                if syncProgress >= 0.85 {
+                    syncMessage = "Finishing setup..."
+                }
+                
+                if syncProgress >= 1.0 {
+                    syncProgress = 1.0
+                    syncMessage = "Setup complete!"
+                    timer.invalidate()
+                    
+                    // Mark the field setup as complete
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        isSyncing = false
+                        UserDefaults.standard.set(true, forKey: "field_setup_completed")
+                        UserDefaults.standard.set(enableOfflineMode, forKey: "offline_mode_enabled")
+                        UserDefaults.standard.set(optimizeForLowData, forKey: "optimize_data_usage")
+                        
+                        // Trigger a background sync if offline mode is enabled
+                        if enableOfflineMode {
+                            dataController.forceSync()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    var body: some View {
+        ZStack {
+            // Background color
+            Color.black.edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 0) {
+                // Navigation bar with back button and step indicator
+                HStack {
+                    Button(action: {
+                        viewModel.moveToPreviousStepV2()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 14, weight: .medium))
+                            Text("Back")
+                                .font(.system(size: 16, weight: .medium))
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    
+                    Spacer()
+                    
+                    Text("Step 5 of 6")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Color.gray)
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                
+                // Step indicator bars
+                HStack(spacing: 4) {
+                    ForEach(0..<6) { step in
+                        Rectangle()
+                            .fill(step <= 4 ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.4))
+                            .frame(height: 4)
+                    }
+                }
+                .padding(.bottom, 16)
+                
+                // Content
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        // Header
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Field Setup")
+                                .font(OPSStyle.Typography.title)
+                                .foregroundColor(.white)
+                            
+                            Text("Prepare OPS for field use where connectivity is limited.")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(Color.gray)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        // Field-ready features card
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("FIELD-READY FEATURES")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            
+                            // Offline access toggle
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Enable Offline Mode")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(.white)
+                                    
+                                    Text("Work without cellular signal or Wi-Fi")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(Color.gray)
+                                }
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: $enableOfflineMode)
+                                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                                    .labelsHidden()
+                            }
+                            .padding(.vertical, 8)
+                            
+                            Divider()
+                                .background(Color.gray.opacity(0.3))
+                            
+                            // Data usage toggle
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Optimize for Low Data")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(.white)
+                                    
+                                    Text("Reduce data usage on cellular networks")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(Color.gray)
+                                }
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: $optimizeForLowData)
+                                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                                    .labelsHidden()
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .padding()
+                        .background(Color(white: 0.15))
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        
+                        // Initial data download section
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("INITIAL DATA DOWNLOAD")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Color.gray)
+                            
+                            if isSyncing {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    // Progress message
+                                    Text(syncMessage)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(.white)
+                                    
+                                    // Progress bar
+                                    GeometryReader { geometry in
+                                        ZStack(alignment: .leading) {
+                                            // Background
+                                            Rectangle()
+                                                .fill(Color.gray.opacity(0.3))
+                                                .frame(height: 8)
+                                                .cornerRadius(4)
+                                            
+                                            // Progress indicator
+                                            Rectangle()
+                                                .fill(OPSStyle.Colors.primaryAccent)
+                                                .frame(width: geometry.size.width * syncProgress, height: 8)
+                                                .cornerRadius(4)
+                                        }
+                                    }
+                                    .frame(height: 8)
+                                    
+                                    // Percentage
+                                    Text("\(Int(syncProgress * 100))%")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(Color.gray)
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                }
+                            } else {
+                                // Start sync button
+                                Button(action: {
+                                    startSync()
+                                }) {
+                                    HStack {
+                                        Image(systemName: "arrow.down.circle.fill")
+                                            .font(.system(size: 18))
+                                        
+                                        Text("Download Initial Data")
+                                            .font(OPSStyle.Typography.body)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                                    .frame(maxWidth: .infinity)
+                                    .background(OPSStyle.Colors.primaryAccent)
+                                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                                }
+                                
+                                Text("This will sync essential project data for offline use (recommended).")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(Color.gray)
+                            }
+                        }
+                        .padding()
+                        .background(Color(white: 0.15))
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        
+                        // Info message
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .font(.system(size: 16))
+                            
+                            Text("You can change these settings later in the app's settings menu.")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(Color.gray)
+                        }
+                        .padding(.top, 4)
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                }
+                
+                // Continue button
+                Button(action: {
+                    // If not yet syncing, start sync before continuing
+                    if !isSyncing && syncProgress == 0 {
+                        startSync()
+                    } else if !isSyncing || syncProgress >= 1.0 {
+                        // If sync complete or user skips, proceed to completion
+                        viewModel.moveToNextStepV2()
+                    }
+                }) {
+                    Text(syncProgress == 0 ? "DOWNLOAD & CONTINUE" : (syncProgress >= 1.0 ? "CONTINUE" : "DOWNLOADING..."))
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.white)
+                        .padding()
+                        .frame(height: OPSStyle.Layout.touchTargetStandard)
+                        .frame(maxWidth: .infinity)
+                        .background(OPSStyle.Colors.primaryAccent)
+                        .cornerRadius(OPSStyle.Layout.buttonRadius)
+                }
+                .disabled(isSyncing && syncProgress < 1.0)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+        }
+        .onAppear {
+            // Initialize settings from existing preferences if available
+            enableOfflineMode = UserDefaults.standard.bool(forKey: "offline_mode_enabled")
+            optimizeForLowData = UserDefaults.standard.bool(forKey: "optimize_data_usage")
+            
+            // Check if field setup already completed
+            if UserDefaults.standard.bool(forKey: "field_setup_completed") {
+                syncProgress = 1.0
+            }
+        }
+    }
+}
+
+// MARK: - Preview
+#Preview("Field Setup") {
+    let viewModel = OnboardingViewModel()
+    let dataController = DataController()
+    
+    return FieldSetupView(viewModel: viewModel)
+        .environmentObject(dataController)
+        .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environment(\.colorScheme, .dark)
+}

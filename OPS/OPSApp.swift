@@ -18,7 +18,8 @@ struct OPSApp: App {
         let schema = Schema([
             User.self,
             Project.self,
-            Company.self
+            Company.self,
+            TeamMember.self
         ])
         
         let modelConfiguration = ModelConfiguration(

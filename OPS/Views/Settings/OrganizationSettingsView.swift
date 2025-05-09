@@ -9,6 +9,8 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+// We're explicitly using the CompanyTeamListView from the Common folder
+
 struct OrganizationSettingsView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
@@ -189,9 +191,14 @@ struct OrganizationSettingsView: View {
     
     private var teamSection: some View {
         VStack(spacing: 12) {
-            if teamMembers.isEmpty {
+            if let company = organization {
+                CompanyTeamListView(company: company)
+                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .cornerRadius(12)
+            } else if teamMembers.isEmpty {
                 emptyTeamView
             } else {
+                // Fallback to old view if we have teamMembers but no company
                 // Use an enumerated array to ensure uniqueness even if duplicate IDs exist
                 ForEach(Array(zip(teamMembers.indices, teamMembers)), id: \.0) { index, member in
                     memberRow(member: member)
@@ -320,6 +327,12 @@ struct OrganizationSettingsView: View {
                         // Try to force a refresh of company data from the API
                         try await dataController.forceRefreshCompany(id: companyID)
                         print("Successfully refreshed company data from API")
+                        
+                        // Sync company team members if we're online
+                        if let company = dataController.getCompany(id: companyID) {
+                            await dataController.syncManager?.syncCompanyTeamMembers(company)
+                            print("Triggered team member sync")
+                        }
                     } catch {
                         print("Failed to refresh company data from API: \(error.localizedDescription)")
                         // Continue with local data even if API refresh fails
@@ -332,6 +345,9 @@ struct OrganizationSettingsView: View {
                 
                 print("Loaded company: \(company?.name ?? "nil")")
                 print("Company logo URL: \(company?.logoURL ?? "nil")")
+                if let company = company {
+                    print("Team members count: \(company.teamMembers.count)")
+                }
                 
                 // Load company logo if available
                 if let company = company, let logoURL = company.logoURL, !logoURL.isEmpty {
@@ -363,6 +379,7 @@ struct OrganizationSettingsView: View {
                         print("Address: \(org.address ?? "nil")")
                         print("Email: \(org.email ?? "nil")")
                         print("Logo URL: \(org.logoURL ?? "nil")")
+                        print("Team members count: \(org.teamMembers.count)")
                     } else {
                         print("Organization is nil after loading!")
                     }

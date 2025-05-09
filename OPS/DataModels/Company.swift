@@ -28,10 +28,16 @@ final class Company {
     var openHour: String?
     var closeHour: String?
     
-    
     // Array storage
     var projectIdsString: String = ""
     var teamIdsString: String = ""
+    
+    // Relationship to team members
+    @Relationship(deleteRule: .cascade)
+    var teamMembers: [TeamMember] = []
+    
+    // Flag to track if team members have been synced
+    var teamMembersSynced: Bool = false
     
     // Offline/sync tracking
     var lastSyncedAt: Date?
@@ -42,6 +48,7 @@ final class Company {
         self.name = name
         self.projectIdsString = ""
         self.teamIdsString = ""
+        self.teamMembers = []
     }
     
     // Array accessor methods

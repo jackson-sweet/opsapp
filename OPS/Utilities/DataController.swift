@@ -605,16 +605,32 @@ class DataController: ObservableObject {
                 let companyDTO = try await apiService.fetchCompany(id: companyId)
                 
                 await MainActor.run {
+                    // Variable to track the company we're working with
+                    var company: Company
+                    
                     if let existingCompany = companies.first {
                         // Update existing
                         updateCompany(existingCompany, from: companyDTO)
+                        company = existingCompany
                     } else {
                         // Create new
                         let newCompany = companyDTO.toModel()
                         context.insert(newCompany)
+                        company = newCompany
                     }
                     
                     try? context.save()
+                    
+                    // If team members haven't been synced, or it's been more than a day, sync team members
+                    if !company.teamMembersSynced || 
+                       company.lastSyncedAt == nil || 
+                       Date().timeIntervalSince(company.lastSyncedAt!) > 86400 {
+                        
+                        // Launch a task to fetch team members
+                        Task {
+                            await syncManager?.syncCompanyTeamMembers(company)
+                        }
+                    }
                 }
             }
         } catch {
@@ -930,7 +946,7 @@ class DataController: ObservableObject {
         }
     }
     
-    /// Gets team members for a company
+    /// Gets team members for a company (User model - legacy version)
     func getTeamMembers(companyId: String) -> [User] {
         guard let context = modelContext else { return [] }
         
@@ -954,6 +970,39 @@ class DataController: ObservableObject {
             }
         } catch {
             print("Error fetching team members: \(error.localizedDescription)")
+            return []
+        }
+    }
+    
+    /// Gets lightweight team members for a company using the TeamMember model
+    func getCompanyTeamMembers(companyId: String) -> [TeamMember] {
+        guard let context = modelContext else { return [] }
+        
+        do {
+            // First try to get the company
+            let companyDescriptor = FetchDescriptor<Company>(
+                predicate: #Predicate<Company> { $0.id == companyId }
+            )
+            let companies = try context.fetch(companyDescriptor)
+            
+            if let company = companies.first {
+                // Return team members from the company relationship
+                if !company.teamMembers.isEmpty {
+                    return company.teamMembers
+                }
+                
+                // If company exists but no team members, trigger a sync if we're connected
+                if isConnected && syncManager != nil {
+                    Task {
+                        await syncManager?.syncCompanyTeamMembers(company)
+                    }
+                }
+            }
+            
+            // If we got here, either company doesn't exist or has no team members yet
+            return []
+        } catch {
+            print("Error fetching company team members: \(error.localizedDescription)")
             return []
         }
     }
@@ -1064,6 +1113,22 @@ class DataController: ObservableObject {
         } catch {
             print("Error updating user profile: \(error.localizedDescription)")
             return false
+        }
+    }
+    
+    /// Request a password reset email
+    /// - Parameter email: The user's email address
+    /// - Returns: Tuple with success flag and optional error message
+    func requestPasswordReset(email: String) async -> (Bool, String?) {
+        do {
+            let success = try await authManager.requestPasswordReset(email: email)
+            return (success, nil)
+        } catch let error as AuthError {
+            // Return user-friendly error message
+            return (false, error.localizedDescription)
+        } catch {
+            // Return generic error message
+            return (false, "Failed to request password reset. Please try again.")
         }
     }
     

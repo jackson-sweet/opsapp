@@ -106,21 +106,44 @@ class APIService {
             request.httpBody = body
         }
         
-        // Log request for debugging
-        print("API Request: \(method) \(url.absoluteString)")
+        // Enhanced request logging
+        print("🔷 API REQUEST: \(method) \(url.absoluteString)")
         
-        // Execute request with logging
+        // Log query parameters and request body for better debugging
+        if let queryItems = queryItems, !queryItems.isEmpty {
+            print("🔷 Query Parameters:")
+            for item in queryItems {
+                print("  - \(item.name): \(item.value ?? "nil")")
+            }
+        }
+        
+        if let body = body, method != "GET" {
+            if let bodyString = String(data: body, encoding: .utf8) {
+                print("🔷 Request Body: \(bodyString)")
+            } else {
+                print("🔷 Request Body: [Binary data of \(body.count) bytes]")
+            }
+        }
+        
+        // Execute request with enhanced logging
         do {
-            let (data, _) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("🔶 API RESPONSE: Status \(httpResponse.statusCode) (\(httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 ? "Success" : "Error"))")
+            }
             
             // Print debug info to see exactly what's coming back
             printResponseDebugInfo(data, from: request.url!)
             
             // Now try to decode and handle specific errors
             do {
-                return try decodeResponse(data: data)
+                // Explicitly specify the generic type to help Swift with type inference
+                let result: T = try decodeResponse(data: data)
+                print("🔶 Decoding successful")
+                return result
             } catch {
-                print("Decoding failed: \(error)")
+                print("🔴 Decoding failed: \(error)")
                 
                 // For DecodingError, print more detailed debugging info
                 if let decodingError = error as? DecodingError {
@@ -176,12 +199,51 @@ class APIService {
         // Add constraints if provided
         if let constraints = constraints {
             do {
-                let jsonData = try JSONSerialization.data(withJSONObject: constraints)
+                // Determine if this is a direct constraint or a nested one
+                var constraintsObject: Any
+                
+                // Check if we need to convert to Bubble's expected array format
+                if let key = constraints["key"] as? String,
+                   let constraintType = constraints["constraint_type"] as? String,
+                   constraints["value"] != nil {
+                    // This is a single constraint object that needs to be wrapped in an array
+                    constraintsObject = [constraints]
+                    print("🔍 Single constraint detected, wrapping in array for Bubble API format")
+                } else if constraints["and"] != nil || constraints["or"] != nil {
+                    // This is already a complex constraint, use as is
+                    constraintsObject = constraints
+                    print("🔍 Complex AND/OR constraint detected")
+                } else {
+                    // Use as provided
+                    constraintsObject = constraints
+                    print("🔍 Using custom constraint format as provided")
+                }
+                
+                // Convert to JSON
+                let jsonData = try JSONSerialization.data(withJSONObject: constraintsObject)
                 if let jsonString = String(data: jsonData, encoding: .utf8) {
                     queryItems.append(URLQueryItem(name: "constraints", value: jsonString))
                     
-                    // Debug logging
-                    print("🔍 Fetching \(objectType) with constraints: \(jsonString)")
+                    // Enhanced debug logging
+                    print("🔍 Final Bubble API constraints: \(jsonString)")
+                    
+                    // Try to pretty print the constraints for better debugging
+                    if let prettyData = try? JSONSerialization.data(withJSONObject: constraintsObject, options: [.prettyPrinted]),
+                       let prettyString = String(data: prettyData, encoding: .utf8) {
+                        print("🔍 Constraints (formatted):")
+                        print(prettyString)
+                    }
+                    
+                    // Log specific constraint types for debugging
+                    if let andConstraints = constraints["and"] as? [[String: Any]] {
+                        print("🔍 Using AND condition with \(andConstraints.count) constraints")
+                    } else if let orConstraints = constraints["or"] as? [[String: Any]] {
+                        print("🔍 Using OR condition with \(orConstraints.count) constraints")
+                    } else if let key = constraints["key"] as? String, 
+                              let constraintType = constraints["constraint_type"] as? String,
+                              let value = constraints["value"] {
+                        print("🔍 Direct constraint: \(key) \(constraintType) \(value)")
+                    }
                 }
             } catch {
                 print("❌ Error serializing constraints: \(error)")
@@ -349,7 +411,8 @@ class APIService {
             case 200..<300:
                 // Success, attempt to decode
                 do {
-                    return try decodeResponse(data: data)
+                    // Explicitly specify the generic type to help Swift with type inference
+                    return try decodeResponse(data: data) as T
                 } catch {
                     print("Decoding failed: \(error)")
                     throw APIError.decodingFailed
@@ -423,9 +486,37 @@ class APIService {
     
     private func printResponseDebugInfo(_ data: Data, from url: URL) {
         if let responseString = String(data: data, encoding: .utf8) {
-            print("API Response from \(url.absoluteString):")
-            print(responseString) // Print first 500 chars to avoid console flooding
-            print("...")
+            let endpoint = url.lastPathComponent
+            
+            print("🔶 API Response from \(endpoint):")
+            
+            // Try to pretty print JSON for better readability
+            if let jsonObject = try? JSONSerialization.jsonObject(with: data),
+               let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
+               let prettyString = String(data: prettyData, encoding: .utf8) {
+                
+                // Print a preview with truncation for very large responses
+                let maxPreviewLength = 1000
+                if prettyString.count > maxPreviewLength {
+                    let preview = prettyString.prefix(maxPreviewLength)
+                    print("\(preview)...")
+                    print("🔶 [Response truncated - full length: \(prettyString.count) chars]")
+                } else {
+                    print(prettyString)
+                }
+            } else {
+                // Fallback if pretty printing fails
+                let maxPreviewLength = 500
+                if responseString.count > maxPreviewLength {
+                    let preview = responseString.prefix(maxPreviewLength)
+                    print("\(preview)...")
+                    print("🔶 [Response truncated - full length: \(responseString.count) chars]")
+                } else {
+                    print(responseString)
+                }
+            }
+        } else {
+            print("🔶 Response contains non-text data of \(data.count) bytes")
         }
     }
 }

@@ -64,12 +64,18 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of user DTOs
     func fetchCompanyUsers(companyId: String) async throws -> [UserDTO] {
+        // For the Bubble API, constraints should be in an array format when sent to the server
+        // Create a single constraint object for company ID
         let companyUserConstraint: [String: Any] = [
             "key": BubbleFields.User.company,
             "constraint_type": "equals",
             "value": companyId
         ]
         
+        print("🔍 Fetching users with company ID: \(companyId)")
+        print("🔍 API URL format should be: ?constraints=[{\"key\":\"Company\",\"constraint_type\":\"equals\",\"value\":\"\(companyId)\"}]")
+        
+        // Our API service will handle wrapping the constraint in the proper format
         return try await fetchBubbleObjects(
             objectType: BubbleFields.Types.user,
             constraints: companyUserConstraint
@@ -99,6 +105,37 @@ extension APIService {
         return try await fetchBubbleObjects(
             objectType: BubbleFields.Types.user,
             constraints: combined
+        )
+    }
+    
+    /// Fetch users by their IDs
+    /// - Parameter userIds: Array of user IDs to fetch
+    /// - Returns: Array of user DTOs
+    func fetchUsersByIds(userIds: [String]) async throws -> [UserDTO] {
+        guard !userIds.isEmpty else {
+            return []
+        }
+        
+        // Create a constraint for each ID using OR logic
+        var idConstraints: [[String: Any]] = []
+        
+        for userId in userIds {
+            let constraint: [String: Any] = [
+                "key": "_id",
+                "constraint_type": "equals",
+                "value": userId
+            ]
+            idConstraints.append(constraint)
+        }
+        
+        // Use OR constraint
+        let orConstraint = ["or": idConstraints]
+        
+        // Execute the query
+        return try await fetchBubbleObjects(
+            objectType: BubbleFields.Types.user,
+            constraints: orConstraint,
+            limit: userIds.count > 100 ? 100 : userIds.count
         )
     }
 }

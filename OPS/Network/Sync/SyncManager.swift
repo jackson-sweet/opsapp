@@ -871,6 +871,78 @@ class SyncManager {
             localProject.companyId = companyRef.stringValue
         }
     }
+    
+    /// Sync team members for a company
+    /// - Parameter company: The company to fetch team members for
+    @MainActor
+    func syncCompanyTeamMembers(_ company: Company) async {
+        print("🔄 SyncManager: Starting team member sync for company \(company.name) (ID: \(company.id))")
+        
+        // Determine which approach to use: company-based or ID-based
+        let useCompanyBasedApproach = true // This gives us all users in the company
+        
+        do {
+            var userDTOs: [UserDTO] = []
+            
+            if useCompanyBasedApproach {
+                // Approach 1: Fetch users by company ID (more efficient)
+                print("🔄 SyncManager: Using company-based approach to fetch team members")
+                print("🔄 SyncManager: Company ID being used: \(company.id)")
+                print("🔄 SyncManager: Expected API call format:")
+                print("   https://opsapp.co/version-test/api/1.1/obj/user?constraints=[{\"key\":\"Company\",\"constraint_type\":\"equals\",\"value\":\"\(company.id)\"}]")
+                
+                // Execute the API call with the correct constraint format
+                userDTOs = try await apiService.fetchCompanyUsers(companyId: company.id)
+                
+                print("🔄 SyncManager: Received \(userDTOs.count) team members from API")
+                if !userDTOs.isEmpty {
+                    print("🔄 SyncManager: First team member: \(userDTOs[0].nameFirst ?? "Unknown") \(userDTOs[0].nameLast ?? "Unknown")")
+                }
+            } else {
+                // Approach 2: Fetch users by their IDs (more targeted but requires multiple IDs)
+                let teamIds = company.getTeamIds()
+                
+                guard !teamIds.isEmpty else {
+                    print("⚠️ SyncManager: No team IDs found for company \(company.name)")
+                    return
+                }
+                
+                print("🔄 SyncManager: Using ID-based approach to fetch \(teamIds.count) team members")
+                userDTOs = try await apiService.fetchUsersByIds(userIds: teamIds)
+            }
+            
+            print("✅ SyncManager: Successfully fetched \(userDTOs.count) team members from API")
+            
+            // Clear existing team members to avoid duplicates
+            company.teamMembers = []
+            
+            // Create TeamMember objects from the DTOs
+            for userDTO in userDTOs {
+                let teamMember = TeamMember.fromUserDTO(userDTO)
+                teamMember.company = company
+                company.teamMembers.append(teamMember)
+                
+                print("👤 Team member added: \(teamMember.fullName) (\(teamMember.role))")
+                if let email = teamMember.email {
+                    print("   - Email: \(email)")
+                }
+                if let phone = teamMember.phone {
+                    print("   - Phone: \(phone)")
+                }
+            }
+            
+            // Mark team members as synced
+            company.teamMembersSynced = true
+            company.lastSyncedAt = Date()
+            
+            // Save changes to the database
+            try modelContext.save()
+            
+            print("✅ SyncManager: Successfully saved \(company.teamMembers.count) team members")
+        } catch {
+            print("❌ SyncManager: Failed to sync team members: \(error.localizedDescription)")
+        }
+    }
 }
 
 // MARK: - Extensions

@@ -8,6 +8,7 @@
 import SwiftUI
 import UIKit
 import MapKit
+// Import team member components
 
 struct ProjectDetailsView: View {
     let project: Project
@@ -240,10 +241,10 @@ struct ProjectDetailsView: View {
         }
     }
     
-    // Team members section
+    // Team members section - using the more compact and navigable view
     private var teamSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            TeamMemberListView(teamMembers: project.teamMembers)
+            ProjectTeamView(project: project)
                 .padding(.horizontal)
         }
     }

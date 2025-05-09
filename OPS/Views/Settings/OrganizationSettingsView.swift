@@ -8,8 +8,7 @@
 import Foundation
 import SwiftData
 import SwiftUI
-
-// We're explicitly using the CompanyTeamListView from the Common folder
+// Import team member components
 
 struct OrganizationSettingsView: View {
     @EnvironmentObject private var dataController: DataController
@@ -192,7 +191,8 @@ struct OrganizationSettingsView: View {
     private var teamSection: some View {
         VStack(spacing: 12) {
             if let company = organization {
-                CompanyTeamListView(company: company)
+                // Use the new compact team view with sheets for details
+                OrganizationTeamView(company: company)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                     .cornerRadius(12)
             } else if teamMembers.isEmpty {

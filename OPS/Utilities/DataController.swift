@@ -711,6 +711,126 @@ class DataController: ObservableObject {
         company.needsSync = false
     }
     
+    /// Ensures project team members are properly synchronized between IDs and User objects
+    @MainActor
+    func syncProjectTeamMembers(_ project: Project) async {
+        guard let context = modelContext else { return }
+        
+        // Skip if there are no team member IDs stored
+        let teamMemberIds = project.getTeamMemberIds()
+        if teamMemberIds.isEmpty {
+            return
+        }
+        
+        print("DataController: Synchronizing team members for project \(project.id) - \(project.title)")
+        print("DataController: Project has \(teamMemberIds.count) team member IDs and \(project.teamMembers.count) team member objects")
+        
+        // Create a set of existing member IDs for quick lookup
+        let existingMemberIds = Set(project.teamMembers.map { $0.id })
+        
+        // Find members that need to be added to project.teamMembers
+        let missingMemberIds = teamMemberIds.filter { !existingMemberIds.contains($0) }
+        
+        if missingMemberIds.isEmpty {
+            print("DataController: All team members are already linked to the project")
+            return
+        }
+        
+        print("DataController: Found \(missingMemberIds.count) team member IDs that need linking")
+        
+        // For each missing ID, find or create the User
+        for memberId in missingMemberIds {
+            // Try to find existing user
+            let descriptor = FetchDescriptor<User>(predicate: #Predicate<User> { $0.id == memberId })
+            
+            do {
+                let existingUsers = try context.fetch(descriptor)
+                
+                if let existingUser = existingUsers.first {
+                    // User exists - link to project
+                    print("DataController: Linking existing user \(existingUser.fullName) to project")
+                    
+                    // Add to project's team members if not already there
+                    if !project.teamMembers.contains(where: { $0.id == existingUser.id }) {
+                        project.teamMembers.append(existingUser)
+                    }
+                    
+                    // Add project to user's assigned projects if not already there
+                    if !existingUser.assignedProjects.contains(where: { $0.id == project.id }) {
+                        existingUser.assignedProjects.append(project)
+                    }
+                } else if isConnected {
+                    // User doesn't exist locally but we're online - fetch from API
+                    print("DataController: Fetching user \(memberId) from API")
+                    do {
+                        let userDTO = try await apiService.fetchUser(id: memberId)
+                        
+                        // Create new user
+                        let newUser = userDTO.toModel()
+                        
+                        // Create bidirectional relationship
+                        newUser.assignedProjects.append(project)
+                        project.teamMembers.append(newUser)
+                        
+                        // Insert into database
+                        context.insert(newUser)
+                        print("DataController: Created and linked new user \(newUser.fullName) from API")
+                    } catch {
+                        print("DataController: Failed to fetch user \(memberId) from API: \(error.localizedDescription)")
+                        
+                        // Create placeholder user until we can fetch real data
+                        let placeholderUser = User(
+                            id: memberId,
+                            firstName: "Team Member",
+                            lastName: "#\(memberId.suffix(4))",
+                            role: .fieldCrew,
+                            companyId: project.companyId
+                        )
+                        
+                        // Create bidirectional relationship
+                        placeholderUser.assignedProjects.append(project)
+                        project.teamMembers.append(placeholderUser)
+                        
+                        // Insert into database
+                        context.insert(placeholderUser)
+                        print("DataController: Created placeholder user for ID \(memberId)")
+                    }
+                } else {
+                    // Offline and user doesn't exist - create placeholder
+                    print("DataController: Creating offline placeholder for user \(memberId)")
+                    
+                    // Create placeholder user until we can fetch real data when online
+                    let placeholderUser = User(
+                        id: memberId,
+                        firstName: "Team Member",
+                        lastName: "#\(memberId.suffix(4))",
+                        role: .fieldCrew,
+                        companyId: project.companyId
+                    )
+                    
+                    // Create bidirectional relationship
+                    placeholderUser.assignedProjects.append(project)
+                    project.teamMembers.append(placeholderUser)
+                    
+                    // Insert into database
+                    context.insert(placeholderUser)
+                    print("DataController: Created offline placeholder for ID \(memberId)")
+                }
+            } catch {
+                print("DataController: Error syncing team member \(memberId): \(error.localizedDescription)")
+            }
+        }
+        
+        // Save changes
+        do {
+            try context.save()
+            print("DataController: Successfully saved team member relationships")
+            print("DataController: Project now has \(project.teamMembers.count) team member objects")
+        } catch {
+            print("DataController: Error saving team member relationships: \(error.localizedDescription)")
+        }
+    }
+    
     // MARK: - Project Fetching
     
     /// Gets projects with flexible filtering options
@@ -795,6 +915,9 @@ class DataController: ObservableObject {
             // If we have a local copy and recent sync, use it
             if localProject.lastSyncedAt != nil &&
                Date().timeIntervalSince(localProject.lastSyncedAt!) < AppConfiguration.Sync.minimumSyncInterval {
+                
+                // Ensure team members are properly linked
+                await syncProjectTeamMembers(localProject)
                 return localProject
             }
         }
@@ -802,6 +925,8 @@ class DataController: ObservableObject {
         // If offline, use local version even if outdated
         if !isConnected {
             if let localProject = try context.fetch(descriptor).first {
+                // Still ensure team members are properly linked
+                await syncProjectTeamMembers(localProject)
                 return localProject
             }
             throw NSError(domain: "DataController", code: 4,
@@ -822,16 +947,24 @@ class DataController: ObservableObject {
                     // Only update if no pending local changes
                     // Full implementation would merge changes
                 }
+                
+                // Ensure team members are properly linked
+                await syncProjectTeamMembers(existingProject)
                 return existingProject
             } else {
                 // Insert new
                 context.insert(project)
                 try context.save()
+                
+                // Ensure team members are properly linked
+                await syncProjectTeamMembers(project)
                 return project
             }
         } catch {
             // On API error, fall back to local if available
             if let localProject = try context.fetch(descriptor).first {
+                // Still ensure team members are properly linked
+                await syncProjectTeamMembers(localProject)
                 return localProject
             }
             throw error
@@ -858,6 +991,12 @@ class DataController: ObservableObject {
         // If we're offline or have recent data, use local data
         if !isConnected || (lastSyncTime != nil &&
             Date().timeIntervalSince(lastSyncTime!) < AppConfiguration.Sync.minimumSyncInterval) {
+            
+            // Ensure team member relationships are synchronized for each project
+            for project in localProjects {
+                await syncProjectTeamMembers(project)
+            }
+            
             return localProjects
         }
         
@@ -870,11 +1009,22 @@ class DataController: ObservableObject {
                 date: today
             )
             
+            // Sync team member relationships for each project
+            for project in localProjects {
+                await syncProjectTeamMembers(project)
+            }
+            
             // Return local projects for now until full sync is implemented
             return localProjects
         } catch {
             // On error, fall back to local data
             print("Error fetching remote projects: \(error)")
+            
+            // Still ensure team member relationships are synchronized for projects
+            for project in localProjects {
+                await syncProjectTeamMembers(project)
+            }
+            
             return localProjects
         }
     }
@@ -1200,7 +1350,15 @@ class DataController: ObservableObject {
                 predicate: #Predicate<Project> { $0.id == id }
             )
             let projects = try context.fetch(descriptor)
-            return projects.first
+            
+            if let project = projects.first {
+                // Trigger team member sync in background
+                Task {
+                    await syncProjectTeamMembers(project)
+                }
+                return project
+            }
+            return nil
         } catch {
             print("Error fetching project: \(error.localizedDescription)")
             return nil

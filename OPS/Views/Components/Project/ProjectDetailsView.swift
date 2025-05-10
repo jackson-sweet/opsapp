@@ -31,6 +31,48 @@ struct ProjectDetailsView: View {
         
         // Debug output to help troubleshoot issues
         print("ProjectDetailsView: Initialized with project ID: \(project.id), title: \(project.title)")
+        
+        // Debug project team member information
+        print("PROJECT DEBUG INFO:")
+        print("- Project ID: \(project.id)")
+        print("- Project Title: \(project.title)")
+        print("- Team Member IDs String: \"\(project.teamMemberIdsString)\"")
+        print("- Team Member IDs Array: \(project.getTeamMemberIds())")
+        print("- Team Members Relationship Count: \(project.teamMembers.count)")
+        
+        if !project.teamMembers.isEmpty {
+            print("- Team Members in relationship:")
+            for (index, member) in project.teamMembers.enumerated() {
+                print("  \(index+1). \(member.id) - \(member.firstName) \(member.lastName) (\(member.role.rawValue))")
+            }
+        } else {
+            print("- No team members in relationship array")
+        }
+        
+        // Convert project to JSON for complete debugging
+        do {
+            let projectDict: [String: Any] = [
+                "id": project.id,
+                "title": project.title,
+                "clientName": project.clientName,
+                "address": project.address,
+                "status": project.status.rawValue,
+                "teamMemberIdsString": project.teamMemberIdsString,
+                "teamMemberIds": project.getTeamMemberIds(),
+                "teamMembersCount": project.teamMembers.count,
+                "projectImagesCount": project.getProjectImages().count,
+                "needsSync": project.needsSync,
+                "startDate": project.startDate?.description ?? "nil",
+                "endDate": project.endDate?.description ?? "nil"
+            ]
+            
+            let jsonData = try JSONSerialization.data(withJSONObject: projectDict, options: .prettyPrinted)
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                print("- Project JSON:\n\(jsonString)")
+            }
+        } catch {
+            print("Error converting project to JSON: \(error.localizedDescription)")
+        }
     }
     
     var body: some View {

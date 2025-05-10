@@ -828,6 +828,9 @@ class SyncManager {
         // Clear existing team members to avoid duplicates
         project.teamMembers = []
         
+        // Always set the team member IDs string
+        project.setTeamMemberIds(teamMemberIds)
+        
         // Add only existing users (avoid fetching again)
         for memberId in teamMemberIds {
             if let user = usersMap[memberId] {
@@ -839,6 +842,8 @@ class SyncManager {
                 }
             }
         }
+        
+        print("SyncManager: Updated project \(project.id) with \(teamMemberIds.count) team member IDs and \(project.teamMembers.count) team member objects")
     }
     
     /// Update a local project with remote data

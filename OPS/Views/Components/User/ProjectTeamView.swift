@@ -13,9 +13,15 @@ struct ProjectTeamView: View {
     @State private var selectedTeamMember: User? = nil
     @State private var showingTeamMemberDetails = false
     @EnvironmentObject private var dataController: DataController
+    @State private var teamsRefreshed = false
+    @State private var refreshKey = UUID() // Force refresh when this changes
+    @State private var refreshedProject: Project? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Use refreshedProject if available, otherwise use original project
+            let activeProject = refreshedProject ?? project
+            
             // Header with see all button
             HStack {
                 Text("TEAM MEMBERS")
@@ -24,7 +30,7 @@ struct ProjectTeamView: View {
                 
                 Spacer()
                 
-                if project.teamMembers.count > 3 {
+                if activeProject.teamMembers.count > 3 {
                     Button(action: {
                         // Show full team member list
                         showingTeamMemberDetails = true
@@ -38,15 +44,28 @@ struct ProjectTeamView: View {
             }
             .padding(.bottom, 4)
             
-            if project.teamMembers.isEmpty {
+            // Show team member info or loading state
+            if !teamsRefreshed && activeProject.getTeamMemberIds().count > 0 && activeProject.teamMembers.isEmpty {
+                // Loading state - team members are loading
+                HStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                    Text("Loading team members...")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.vertical, 8)
+            } else if activeProject.teamMembers.isEmpty {
                 // Empty state
-                Text("No team members assigned")
+                Text(activeProject.getTeamMemberIds().isEmpty ? 
+                   "No team members assigned" : 
+                   "Team member data unavailable")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                     .padding(.vertical, 8)
             } else {
                 // Show only first 3 team members with avatars for compact view
-                let visibleMembers = project.teamMembers.prefix(3)
+                let visibleMembers = activeProject.teamMembers.prefix(3)
                 
                 ForEach(Array(visibleMembers), id: \.id) { member in
                     Button(action: {
@@ -82,8 +101,8 @@ struct ProjectTeamView: View {
                 }
                 
                 // Show the count of additional members if any
-                if project.teamMembers.count > 3 {
-                    Text("+ \(project.teamMembers.count - 3) more team members...")
+                if activeProject.teamMembers.count > 3 {
+                    Text("+ \(activeProject.teamMembers.count - 3) more team members...")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .padding(.top, 4)
@@ -98,10 +117,61 @@ struct ProjectTeamView: View {
                 // Show details for a single member
                 TeamMemberDetailView(user: selectedMember, teamMember: nil)
             } else {
-                // Show full team list
-                FullTeamListView(project: project)
+                // Show full team list using the refreshed project if available
+                if let refreshed = refreshedProject {
+                    FullTeamListView(project: refreshed)
+                } else {
+                    FullTeamListView(project: project)
+                }
             }
         }
+        .onAppear {
+            // Debug log the project team members when this view appears
+            print("ProjectTeamView DEBUG:")
+            print("- Project ID: \(project.id)")
+            print("- Project Title: \(project.title)")
+            print("- Team Member IDs String: \"\(project.teamMemberIdsString)\"")
+            print("- Team Member IDs Array: \(project.getTeamMemberIds().joined(separator: ", "))")
+            print("- Team Members Count: \(project.teamMembers.count)")
+            
+            // Trigger manual team member sync
+            if !teamsRefreshed {
+                Task {
+                    // Sync team members
+                    await dataController.syncProjectTeamMembers(project)
+                    
+                    // Print updated info after sync
+                    await MainActor.run {
+                        print("AFTER SYNC:")
+                        
+                        // Fetch fresh project from DataController (critical step)
+                        if let freshProject = dataController.getProject(id: project.id) {
+                            print("- Retrieved fresh project from DataController")
+                            print("- Team Members Count: \(freshProject.teamMembers.count)")
+                            
+                            if freshProject.teamMembers.isEmpty {
+                                print("- Still no team members after sync")
+                                print("- Team Member IDs: \(freshProject.getTeamMemberIds())")
+                            } else {
+                                for (index, member) in freshProject.teamMembers.enumerated() {
+                                    print("  \(index+1). \(member.id) - \(member.firstName) \(member.lastName)")
+                                }
+                            }
+                            
+                            // Update the refreshed project to trigger UI refresh
+                            refreshedProject = freshProject
+                        } else {
+                            print("⚠️ Failed to retrieve fresh project from DataController")
+                        }
+                        
+                        // Update state to refresh the view
+                        teamsRefreshed = true
+                        refreshKey = UUID() // Force refresh
+                    }
+                }
+            }
+        }
+        .id(refreshKey) // Force view to refresh when key changes
     }
 }
 

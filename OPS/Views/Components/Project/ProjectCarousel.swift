@@ -150,6 +150,11 @@ struct ProjectCardView: View {
                         .fill(Color.clear)
                         .background(Material.thinMaterial.opacity(0.7))
                     
+                    // Subtle background color for completed projects
+                    if project.status.isCompleted {
+                        OPSStyle.Colors.statusColor(for: .completed).opacity(0.1)
+                    }
+                    
                     // Simple highlight for long press
                     if isLongPressing {
                         OPSStyle.Colors.primaryAccent.opacity(0.3)
@@ -193,6 +198,20 @@ struct ProjectCardView: View {
                     .cornerRadius(10)
                     .padding(.top, 6)
                     .padding(.trailing, 10)
+                    
+                    // Completed status badge in bottom right
+                    if project.status.isCompleted {
+                        Text("COMPLETED")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(OPSStyle.Colors.statusColor(for: .completed))
+                            .cornerRadius(3)
+                            .padding([.bottom, .trailing], 8)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    }
                 }
             }
             .frame(width: 362, height: 85)

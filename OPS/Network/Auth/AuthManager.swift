@@ -186,6 +186,60 @@ class AuthManager {
         keychain.deletePassword()
     }
     
+    /// Request a password reset email for the specified email address
+    /// - Parameter email: The user's email address
+    /// - Returns: Boolean indicating if the request was successfully sent
+    func requestPasswordReset(email: String) async throws -> Bool {
+        do {
+            // Create the reset password URL
+            let baseURLString = baseURL.absoluteString.trimmingCharacters(in: ["/"])
+            let fullURLString = baseURLString + "/api/1.1/wf/reset_password"
+            
+            guard let url = URL(string: fullURLString) else {
+                throw AuthError.invalidURL
+            }
+            
+            // Create request
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            // Create reset password payload with just the email
+            let resetPayload: [String: String] = [
+                "user_email": email
+            ]
+            
+            request.httpBody = try JSONSerialization.data(withJSONObject: resetPayload)
+            
+            // Send request
+            let (data, response) = try await session.data(for: request)
+            
+            // Debug: Print response
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("Password reset response: \(responseString)")
+            }
+            
+            // Check HTTP status
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AuthError.invalidResponse
+            }
+            
+            // Handle errors
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw AuthError.invalidCredentials
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw AuthError.serverError(httpResponse.statusCode)
+            }
+            
+            return true
+        } catch {
+            print("Password reset request error: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
     // MARK: - Private Methods
     
     /// Authenticate with the server

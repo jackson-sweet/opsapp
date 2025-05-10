@@ -183,6 +183,8 @@ class DataController: ObservableObject {
         let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
         let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
         
+        print("DataController: Checking auth - is_authenticated=\(isAuthenticated), onboarding_completed=\(onboardingCompleted)")
+        
         // Check for incomplete onboarding - user created account but didn't finish onboarding
         if isAuthenticated && !onboardingCompleted {
             print("DataController: User is authenticated but has not completed onboarding")
@@ -246,11 +248,23 @@ class DataController: ObservableObject {
         // Fall back to traditional authentication check if needed
         // Check for stored credentials
         if let userId = keychainManager.retrieveUserId(),
-           let _ = keychainManager.retrieveToken() {
+           let token = keychainManager.retrieveToken() {
+            
+            print("DataController: Found token in keychain for user ID: \(userId)")
             
             // Validate token expiration
             if let expiration = keychainManager.retrieveTokenExpiration(),
                expiration > Date() {
+                print("DataController: Token is valid until \(expiration)")
+                
+                // Set the authentication flag in UserDefaults to maintain state across app restarts
+                UserDefaults.standard.set(true, forKey: "is_authenticated")
+                UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                
+                // Store user ID in UserDefaults as well for backup
+                UserDefaults.standard.set(userId, forKey: "user_id")
+                UserDefaults.standard.set(userId, forKey: "currentUserId")
+                
                 do {
                     if let context = modelContext {
                         let descriptor = FetchDescriptor<User>(
@@ -265,6 +279,7 @@ class DataController: ObservableObject {
                             
                             if let companyId = user.companyId {
                                 UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+                                UserDefaults.standard.set(companyId, forKey: "company_id")
                             }
                             
                             initializeSyncManager()
@@ -275,16 +290,29 @@ class DataController: ObservableObject {
                     if isConnected {
                         try await fetchUserFromAPI(userId: userId)
                     } else {
-                        clearAuthentication()
+                        // Even without internet, set authenticated if we have a valid token
+                        self.isAuthenticated = true
+                        
+                        // Create a placeholder user
+                        let placeholderUser = User(id: userId, firstName: "User", lastName: "", role: .fieldCrew, companyId: "")
+                        self.currentUser = placeholderUser
+                        
+                        if let context = modelContext {
+                            context.insert(placeholderUser)
+                            try context.save()
+                            initializeSyncManager()
+                        }
                     }
                 } catch {
                     print("Auth check error: \(error.localizedDescription)")
                     clearAuthentication()
                 }
             } else {
+                print("DataController: Token has expired")
                 clearAuthentication()
             }
         } else {
+            print("DataController: No token found in keychain")
             clearAuthentication()
         }
     }
@@ -293,12 +321,29 @@ class DataController: ObservableObject {
     @MainActor
     func login(username: String, password: String) async -> Bool {
         do {
-            _ = try await authManager.signIn(username: username, password: password)
+            // Sign in with the auth manager
+            let token = try await authManager.signIn(username: username, password: password)
+            
+            // Store the username (only for re-authentication, not displayed to user)
+            keychainManager.storeUsername(username)
+            keychainManager.storePassword(password)
+            
+            print("Login successful, token obtained")
             
             if let userId = authManager.getUserId() {
+                // Set the authentication flags immediately
+                UserDefaults.standard.set(true, forKey: "is_authenticated")
+                UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                UserDefaults.standard.set(userId, forKey: "user_id")
+                UserDefaults.standard.set(userId, forKey: "currentUserId")
+                
+                print("Stored authentication flags and user ID in UserDefaults")
+                
+                // Fetch user data
                 try await fetchUserFromAPI(userId: userId)
                 return isAuthenticated
             } else {
+                print("No user ID received from authentication response")
                 return false
             }
         } catch {
@@ -467,8 +512,16 @@ class DataController: ObservableObject {
     }
     
     private func clearAuthentication() {
+        print("DataController: Clearing authentication state")
         isAuthenticated = false
         currentUser = nil
+        
+        // First clear all token data from keychain
+        keychainManager.deleteToken()
+        keychainManager.deleteTokenExpiration()
+        keychainManager.deleteUserId()
+        keychainManager.deleteUsername()
+        keychainManager.deletePassword()
         
         // Clear all authentication-related UserDefaults
         UserDefaults.standard.removeObject(forKey: "currentUserCompanyId")
@@ -489,6 +542,9 @@ class DataController: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "company_id")
         UserDefaults.standard.removeObject(forKey: "Company Name")
         UserDefaults.standard.removeObject(forKey: "has_joined_company")
+        
+        // Ensure UserDefaults changes are saved immediately
+        UserDefaults.standard.synchronize()
         
         // Log the cleanup
         print("DataController: Authentication and all user data cleared")

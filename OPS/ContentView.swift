@@ -49,16 +49,27 @@ struct ContentView: View {
             locationManager.requestPermissionIfNeeded(requestAlways: true)
             print("ContentView: onAppear - requesting location permission")
             
-            // Check if user is already authenticated
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            // Allow more time for auth checking to complete
+            let isAuthAlreadySet = dataController.isAuthenticated
+            print("ContentView: Initial authentication state: \(isAuthAlreadySet)")
+            
+            let isAuthenticatedInDefaults = UserDefaults.standard.bool(forKey: "is_authenticated")
+            let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
+            
+            print("ContentView: UserDefaults auth state - is_authenticated=\(isAuthenticatedInDefaults), onboarding_completed=\(onboardingCompleted)")
+            
+            // Wait longer to ensure auth check completes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                // Check for auth state again
+                let finalAuthState = dataController.isAuthenticated
+                print("ContentView: Final authentication state check: \(finalAuthState)")
+                
                 // Check if the user has an account but is in the middle of onboarding
                 let hasUserId = UserDefaults.standard.string(forKey: "user_id") != nil
                 let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
                 
                 if hasUserId && !onboardingCompleted {
-                    // Set authentication to true if they created an account
-                    // They'll be directed to the login view but will immediately see the onboarding flow
-                    // from the step they left off
+                    // Set authentication to false if they created an account but need to complete onboarding
                     print("ContentView: User has account but needs to complete onboarding")
                     dataController.isAuthenticated = false
                     

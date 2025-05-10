@@ -642,8 +642,18 @@ class SyncManager {
         guard project.needsSync else { return }
         
         do {
-            // Try to update status on server
-            try await apiService.updateProjectStatus(id: project.id, status: project.status.rawValue)
+            // Different approach based on the status
+            if project.status == .completed {
+                // For completed projects, use the workflow endpoint
+                print("🔄 SyncManager: Using workflow endpoint to complete project \(project.id)")
+                let newStatus = try await apiService.completeProject(projectId: project.id, status: project.status.rawValue)
+                print("✅ SyncManager: Project \(project.id) marked as \(newStatus) using workflow")
+            } else {
+                // For other statuses, use the regular update endpoint
+                print("🔄 SyncManager: Using regular API to update project \(project.id) status to \(project.status.rawValue)")
+                try await apiService.updateProjectStatus(id: project.id, status: project.status.rawValue)
+                print("✅ SyncManager: Project \(project.id) status updated to \(project.status.rawValue)")
+            }
             
             // Mark as synced if successful
             project.needsSync = false
@@ -651,7 +661,7 @@ class SyncManager {
             try modelContext.save()
         } catch {
             // Leave as needsSync=true to retry later
-            print("Failed to sync project status: \(error.localizedDescription)")
+            print("❌ SyncManager: Failed to sync project status: \(error.localizedDescription)")
         }
     }
     

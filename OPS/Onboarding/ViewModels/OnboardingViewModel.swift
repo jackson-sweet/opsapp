@@ -445,10 +445,15 @@ class OnboardingViewModel: ObservableObject {
     
     // Request notifications permission
     func requestNotificationsPermission() {
-        // This would integrate with your actual notification manager
-        // For now, we'll simulate granting permission
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.isNotificationsPermissionGranted = true
+        // Use the real NotificationManager to request permissions
+        NotificationManager.shared.requestPermission { granted in
+            DispatchQueue.main.async {
+                self.isNotificationsPermissionGranted = granted
+                print("OnboardingViewModel: Notifications permission \(granted ? "granted" : "denied")")
+                
+                // Store permission status in UserDefaults
+                UserDefaults.standard.set(granted, forKey: "notifications_permission_granted")
+            }
         }
     }
     

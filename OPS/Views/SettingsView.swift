@@ -20,6 +20,7 @@ struct SettingsView: View {
         case profile = "Profile Settings"
         case organization = "Organization Settings"
         case projectHistory = "Project & Expense History"
+        case notifications = "Notification Settings"
         
         var id: String { self.rawValue }
         
@@ -28,6 +29,7 @@ struct SettingsView: View {
             case .profile: return "person.fill"
             case .organization: return "building.2.fill"
             case .projectHistory: return "clock.arrow.circlepath"
+            case .notifications: return "bell.fill"
             }
         }
         
@@ -36,6 +38,7 @@ struct SettingsView: View {
             case .profile: return "Personal information, contact details"
             case .organization: return "Company information, team members"
             case .projectHistory: return "Past projects, expense records"
+            case .notifications: return "Manage notifications and reminders"
             }
         }
     }
@@ -134,6 +137,8 @@ struct SettingsView: View {
                     OrganizationSettingsView()
                 case .projectHistory:
                     ProjectHistorySettingsView()
+                case .notifications:
+                    NotificationSettingsView()
                 }
             }
         }

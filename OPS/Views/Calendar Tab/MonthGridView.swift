@@ -38,8 +38,8 @@ struct MonthGridView: View {
                             // Only select if it's the current month
                             if isSameMonth(date) {
                                 withAnimation(.easeInOut(duration: 0.2)) {
-                                    // Select the date which will trigger the sheet
-                                    viewModel.selectDate(date)
+                                    // Select the date which will trigger the sheet, with userInitiated flag
+                                    viewModel.selectDate(date, userInitiated: true)
                                 }
                             }
                         }

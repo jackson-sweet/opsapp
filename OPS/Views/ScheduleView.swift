@@ -53,15 +53,33 @@ struct ScheduleView: View {
             
             // No more NavigationLink - we'll use the global sheet instead
         }
-        .onChange(of: viewModel.selectedDate) { oldDate, newDate in
-            // Show sheet when day selected in month view
-            if viewModel.viewMode == .month && !DateHelper.isSameDay(oldDate, newDate) {
-                showDaySheet = true
+        // Monitor viewMode changes to handle view transitions
+        .onChange(of: viewModel.viewMode) { _, newMode in
+            print("ScheduleView: View mode changed to \(newMode)")
+            // Reset any project selection when switching view modes
+            selectedProjectID = nil
+        }
+        // Observe the explicit shouldShowDaySheet flag
+        .onChange(of: viewModel.shouldShowDaySheet) { _, shouldShow in
+            if shouldShow {
+                print("ScheduleView: Showing day sheet based on viewModel flag")
+                // Show the sheet
+                DispatchQueue.main.async {
+                    showDaySheet = true
+                    // Reset the flag after showing
+                    viewModel.resetDaySheetState()
+                }
             }
+        }
+        // Initialize on appear
+        .onAppear {
+            // Initialize with proper data controller
+            viewModel.setDataController(dataController)
         }
         // Show day project sheet
         .sheet(isPresented: $showDaySheet, onDismiss: {
             print("ScheduleView: Day sheet dismissed, selectedProjectID = \(selectedProjectID ?? "nil")")
+            print("ScheduleView: userInitiatedDateSelection = \(viewModel.userInitiatedDateSelection), shouldShowDaySheet = \(viewModel.shouldShowDaySheet)")
             // If we have a selected project ID, navigate to project details after day sheet is dismissed
             if selectedProjectID != nil {
                 print("ScheduleView: Will navigate to project details after dismissal")
@@ -116,10 +134,6 @@ struct ScheduleView: View {
             } else {
                 print("ScheduleView: ⚠️ ERROR - Notification did not contain a projectID")
             }
-        }
-        .onAppear {
-            // Initialize with proper data controller
-            viewModel.setDataController(dataController)
         }
     }
 }

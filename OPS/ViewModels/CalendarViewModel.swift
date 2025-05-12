@@ -17,6 +17,8 @@ class CalendarViewModel: ObservableObject {
     @Published var viewMode: CalendarViewMode = .week
     @Published var projectsForSelectedDate: [Project] = []
     @Published var isLoading = false
+    @Published var userInitiatedDateSelection = false
+    @Published var shouldShowDaySheet = false // New published property for explicit control
     
     // MARK: - Private Properties
     var dataController: DataController?
@@ -39,38 +41,68 @@ class CalendarViewModel: ObservableObject {
         loadProjectsForDate(selectedDate)
     }
     
-    func selectDate(_ date: Date) {
-            let calendar = Calendar.current
-            let oldMonth = calendar.component(.month, from: selectedDate)
-            let newMonth = calendar.component(.month, from: date)
-            
-            // If month changed, clear the cache
-            if oldMonth != newMonth {
-                clearProjectCountCache()
-            }
-            
-            selectedDate = date
-            loadProjectsForDate(date)
+    // Used for both programmatic and user-initiated date selection
+    func selectDate(_ date: Date, userInitiated: Bool = false) {
+        let calendar = Calendar.current
+        let oldMonth = calendar.component(.month, from: selectedDate)
+        let newMonth = calendar.component(.month, from: date)
+        
+        // If month changed, clear the cache
+        if oldMonth != newMonth {
+            clearProjectCountCache()
         }
+        
+        // Track if this was a user-initiated selection (tapping a day)
+        // or a programmatic selection (changing months, initializing)
+        // We need to do this on the main thread since it's a @Published property
+        DispatchQueue.main.async {
+            self.userInitiatedDateSelection = userInitiated
+            
+            // Explicitly trigger day sheet for month view user selections
+            if userInitiated && self.viewMode == .month {
+                print("CalendarViewModel: User initiated date selection in month view - showing day sheet")
+                self.shouldShowDaySheet = true
+            }
+        }
+        
+        print("CalendarViewModel: Date selected - \(date), userInitiated: \(userInitiated)")
+        
+        selectedDate = date
+        loadProjectsForDate(date)
+    }
     
     func toggleViewMode() {
+        // Reset flags when changing view mode to prevent unwanted sheets
+        userInitiatedDateSelection = false
+        shouldShowDaySheet = false
         viewMode = viewMode == .week ? .month : .week
+    }
+    
+    // Method to reset day sheet state after it's been shown
+    func resetDaySheetState() {
+        shouldShowDaySheet = false
     }
     
     // Navigation methods for months and weeks
     func navigateNextPeriod() {
         let calendar = Calendar.current
         
+        // Reset any sheet-related flags
+        shouldShowDaySheet = false
+        userInitiatedDateSelection = false
+        
         switch viewMode {
         case .week:
             // Move forward 7 days
             if let newDate = calendar.date(byAdding: .day, value: 7, to: selectedDate) {
-                selectDate(newDate)
+                // Use userInitiated: false for programmatic navigation
+                selectDate(newDate, userInitiated: false)
             }
         case .month:
             // Move forward one month
             if let newDate = calendar.date(byAdding: .month, value: 1, to: selectedDate) {
-                selectDate(newDate)
+                // Use userInitiated: false for programmatic navigation
+                selectDate(newDate, userInitiated: false)
             }
         }
     }
@@ -78,16 +110,22 @@ class CalendarViewModel: ObservableObject {
     func navigatePreviousPeriod() {
         let calendar = Calendar.current
         
+        // Reset any sheet-related flags
+        shouldShowDaySheet = false
+        userInitiatedDateSelection = false
+        
         switch viewMode {
         case .week:
             // Move backward 7 days
             if let newDate = calendar.date(byAdding: .day, value: -7, to: selectedDate) {
-                selectDate(newDate)
+                // Use userInitiated: false for programmatic navigation
+                selectDate(newDate, userInitiated: false)
             }
         case .month:
             // Move backward one month
             if let newDate = calendar.date(byAdding: .month, value: -1, to: selectedDate) {
-                selectDate(newDate)
+                // Use userInitiated: false for programmatic navigation
+                selectDate(newDate, userInitiated: false)
             }
         }
     }

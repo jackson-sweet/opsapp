@@ -33,7 +33,7 @@ struct CalendarDaySelector: View {
                             projectCount: viewModel.projectCount(for: date),
                             onTap: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
-                                    viewModel.selectDate(date)
+                                    viewModel.selectDate(date, userInitiated: true)
                                 }
                             }
                         )

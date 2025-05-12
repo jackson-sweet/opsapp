@@ -18,6 +18,10 @@ struct MainTabView: View {
     private let fetchProjectObserver = NotificationCenter.default
         .publisher(for: Notification.Name("FetchActiveProject"))
     
+    // Observer for showing project details
+    private let showProjectObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("ShowProjectDetailsRequest"))
+    
     var body: some View {
         ZStack {
             // TabView with all the main screens
@@ -75,6 +79,31 @@ struct MainTabView: View {
                     }
                 } else {
                     print("MainTabView: Could not find project with ID: \(projectID)")
+                }
+            }
+        }
+        
+        // Add notification handler for showing project details
+        .onReceive(showProjectObserver) { notification in
+            if let projectID = notification.userInfo?["projectID"] as? String {
+                print("MainTabView: Received notification to show project details: \(projectID)")
+                
+                // Make sure we're on the main thread
+                DispatchQueue.main.async {
+                    if let project = dataController.getProject(id: projectID) {
+                        print("MainTabView: Found project to show: \(project.title)")
+                        
+                        // Set the active project before setting showProjectDetails
+                        appState.isViewingDetailsOnly = true
+                        appState.activeProjectID = project.id
+                        appState.activeProject = project
+                        
+                        // The important part - we set the flag AFTER setting the project
+                        print("MainTabView: Setting showProjectDetails=true")
+                        appState.showProjectDetails = true
+                    } else {
+                        print("MainTabView: Could not find project with ID: \(projectID)")
+                    }
                 }
             }
         }

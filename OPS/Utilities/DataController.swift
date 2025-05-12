@@ -20,9 +20,12 @@ class DataController: ObservableObject {
     @Published var connectionType: ConnectivityMonitor.ConnectionType = .none
     @Published var lastSyncTime: Date?
     
+    // Global app state for external views to access
+    var appState: AppState?
+    
     // MARK: - Dependencies
     private let authManager: AuthManager
-    private let apiService: APIService
+    let apiService: APIService
     private let keychainManager: KeychainManager
     private let connectivityMonitor: ConnectivityMonitor
     var modelContext: ModelContext?

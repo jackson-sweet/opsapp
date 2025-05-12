@@ -15,6 +15,11 @@ struct ContentView: View {
     
     @StateObject private var locationManager = LocationManager()
     
+    init() {
+        // This will run before body is evaluated
+        print("ContentView: Initializing")
+    }
+    
     // Add a state to track initial loading
     @State private var isCheckingAuth = true
     @State private var showLocationPermissionView = false
@@ -40,6 +45,11 @@ struct ContentView: View {
                 MainTabView()
                     .environmentObject(appState)
                     .environmentObject(locationManager)
+                    .onAppear {
+                        // Set the appState reference in DataController for cross-component access
+                        dataController.appState = appState
+                        print("ContentView: Set appState reference in DataController")
+                    }
             }
         }
         .preferredColorScheme(.dark)

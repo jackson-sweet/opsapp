@@ -14,6 +14,7 @@ struct ProjectDetailsView: View {
     let project: Project
     @Environment(\.dismiss) var dismiss
     @State private var noteText: String
+    @State private var originalNoteText: String
     @EnvironmentObject private var dataController: DataController
     @StateObject private var locationManager = LocationManager()
     @State private var showingPhotoViewer = false
@@ -23,14 +24,20 @@ struct ProjectDetailsView: View {
     @State private var processingImages = false
     @State private var showingDeleteConfirmation = false
     @State private var photoToDelete: String? = nil
+    @State private var showingUnsavedChangesAlert = false
     
     // Initialize with project's existing notes
     init(project: Project) {
         self.project = project
-        self._noteText = State(initialValue: project.notes ?? "")
+        let notes = project.notes ?? ""
+        self._noteText = State(initialValue: notes)
+        self._originalNoteText = State(initialValue: notes)
         
         // Debug output to help troubleshoot issues
         print("ProjectDetailsView: Initialized with project ID: \(project.id), title: \(project.title)")
+        
+        // New debug output for navigation
+        print("ProjectDetailsView: This instance is being initialized. Will display through NavigationLink.")
         
         // Debug project team member information
         print("PROJECT DEBUG INFO:")
@@ -81,49 +88,53 @@ struct ProjectDetailsView: View {
             OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
             
-            ScrollView {
-                VStack(spacing: 16) {
-                    // Header section with status and title
-                    headerSection
-                    
-                    // Sections with consistent styling
-                    
-                    // Location map
-                    locationSection
-                    
-                    // Client info
-                    infoSection
-                    
-                    // Team members
-                    teamSection
-                    
-                    // Notes (expandable)
-                    ExpandableNotesView(
-                        notes: project.notes ?? "",
-                        editedNotes: $noteText,
-                        onSave: saveNotes
-                    )
-                    .padding(.horizontal)
-                    
-                    // Photos
-                    photosSection
-                    
-                    // Bottom padding
-                    Spacer()
-                        .frame(height: 20)
-                }
-            }
+            // Main content
+            mainContentView
         }
         .navigationTitle("Project Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Done") {
-                    dismiss()
+                    checkForUnsavedChanges()
                 }
                 .foregroundColor(OPSStyle.Colors.secondaryAccent)
             }
         }
+        // Since we're back to sheet-based presentation, we need to ensure we stay in sheet mode
+        .onAppear {
+            print("ProjectDetailsView: View appeared via sheet")
+            DispatchQueue.main.async {
+                // Make sure appState has our current project set as active
+                if let appState = dataController.appState, appState.activeProject == nil {
+                    print("ProjectDetailsView: Updating appState with current project")
+                    appState.activeProject = project
+                }
+            }
+        }
+        .confirmationDialog(
+            "Unsaved Changes",
+            isPresented: $showingUnsavedChangesAlert,
+            titleVisibility: .visible
+        ) {
+            Button("Save Changes", role: .none) {
+                saveNotes()
+                dismiss()
+            }
+            
+            Button("Discard Changes", role: .destructive) {
+                // Discard changes and dismiss
+                dismiss()
+            }
+            
+            Button("Cancel", role: .cancel) {
+                // Stay on the page
+            }
+        } message: {
+            Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
+        }
+        // Save notification overlay
+        .overlay(saveNotificationOverlay)
         // Full-screen photo viewer
         .fullScreenCover(isPresented: $showingPhotoViewer) {
             FullScreenPhotoViewer(
@@ -161,6 +172,45 @@ struct ProjectDetailsView: View {
         .onAppear {
             // Request location permission when project details are viewed
             locationManager.requestPermissionIfNeeded()
+        }
+        .onDisappear {
+            // Make sure to clean up the timer when view disappears
+            notificationTimer?.invalidate()
+            notificationTimer = nil
+        }
+    }
+    
+    // Main content view
+    private var mainContentView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Header section with status and title
+                headerSection
+                
+                // Location map
+                locationSection
+                
+                // Client info
+                infoSection
+                
+                // Team members
+                teamSection
+                
+                // Notes (expandable)
+                ExpandableNotesView(
+                    notes: project.notes ?? "",
+                    editedNotes: $noteText,
+                    onSave: saveNotes
+                )
+                .padding(.horizontal)
+                
+                // Photos
+                photosSection
+                
+                // Bottom padding
+                Spacer()
+                    .frame(height: 20)
+            }
         }
     }
     
@@ -300,86 +350,156 @@ struct ProjectDetailsView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .padding(.horizontal)
             
-            // Photo grid/carousel
-            VStack(spacing: 12) {
-                let photos = project.getProjectImages()
-                
-                if photos.isEmpty {
-                    // Empty state for no photos
-                    VStack(spacing: 16) {
-                        Image(systemName: "photo.on.rectangle")
-                            .font(.system(size: 32))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        Text("No photos added yet")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                    .frame(height: 160)
-                    .frame(maxWidth: .infinity)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .padding(.horizontal)
-                } else {
-                    // Photo grid
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(Array(photos.enumerated()), id: \.0) { index, url in
-                                PhotoThumbnail(url: url)
-                                    .frame(width: 110, height: 110)
-                                    .cornerRadius(8)
-                                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 2)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        selectedPhotoIndex = index
-                                        showingPhotoViewer = true
-                                    }
-                                    .onLongPressGesture {
-                                        photoToDelete = url
-                                        showingDeleteConfirmation = true
-                                    }
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, 2) // For shadow space
-                    }
-                    .frame(height: 120)
-                }
-                
-                // Add photos button
-                Button(action: {
-                    showingImagePicker = true
-                }) {
-                    HStack {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 16))
-                        
-                        Text("ADD PHOTOS")
-                            .font(OPSStyle.Typography.bodyBold)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(OPSStyle.Colors.primaryAccent)
-                    .foregroundColor(.white)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                }
-                .disabled(processingImages)
-                .padding(.horizontal)
-                
-                // Loading indicator for processing images
-                if processingImages {
-                    HStack {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                        Text("Processing images...")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                    .padding(.top, 4)
-                    .padding(.horizontal)
-                }
+            // Photo content
+            photoContentView
+        }
+    }
+    
+    // Photo content view to break up complexity
+    private var photoContentView: some View {
+        VStack(spacing: 12) {
+            // Photo display (empty state or grid)
+            photoDisplayView
+            
+            // Add photos button
+            addPhotosButton
+            
+            // Loading indicator for processing images
+            if processingImages {
+                processingIndicator
             }
         }
+    }
+    
+    // Photo display - either empty state or grid of photos
+    private var photoDisplayView: some View {
+        let photos = project.getProjectImages()
+        
+        if photos.isEmpty {
+            return AnyView(emptyPhotosView)
+        } else {
+            return AnyView(photoGridView(photos: photos))
+        }
+    }
+    
+    // Empty state when no photos
+    private var emptyPhotosView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "photo.on.rectangle")
+                .font(.system(size: 32))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            
+            Text("No photos added yet")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .frame(height: 160)
+        .frame(maxWidth: .infinity)
+        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .padding(.horizontal)
+    }
+    
+    // Grid view for photos
+    private func photoGridView(photos: [String]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(Array(photos.enumerated()), id: \.0) { index, url in
+                    photoThumbnailView(url: url, index: index)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 2) // For shadow space
+        }
+        .frame(height: 120)
+    }
+    
+    // Individual photo thumbnail
+    private func photoThumbnailView(url: String, index: Int) -> some View {
+        PhotoThumbnail(url: url)
+            .frame(width: 110, height: 110)
+            .cornerRadius(8)
+            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 2)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectedPhotoIndex = index
+                showingPhotoViewer = true
+            }
+            .onLongPressGesture {
+                photoToDelete = url
+                showingDeleteConfirmation = true
+            }
+    }
+    
+    // Add photos button
+    private var addPhotosButton: some View {
+        Button(action: {
+            showingImagePicker = true
+        }) {
+            HStack {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 16))
+                
+                Text("ADD PHOTOS")
+                    .font(OPSStyle.Typography.bodyBold)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(OPSStyle.Colors.primaryAccent)
+            .foregroundColor(.white)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+        }
+        .disabled(processingImages)
+        .padding(.horizontal)
+    }
+    
+    // Processing indicator
+    private var processingIndicator: some View {
+        HStack {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+            Text("Processing images...")
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .padding(.top, 4)
+        .padding(.horizontal)
+    }
+    
+    // Save notification overlay
+    private var saveNotificationOverlay: some View {
+        Group {
+            if showingSaveNotification {
+                saveNotificationContent
+            }
+        }
+    }
+    
+    // Content of the save notification
+    private var saveNotificationContent: some View {
+        VStack {
+            Spacer()
+            
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(OPSStyle.Colors.successStatus)
+                    .font(.system(size: 16))
+                
+                Text("Notes saved")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(OPSStyle.Colors.cardBackground.opacity(0.95))
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2)
+            
+            Spacer().frame(height: 100)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .animation(.easeInOut(duration: 0.3), value: showingSaveNotification)
+        .zIndex(100)
     }
     
     // Helper to format date
@@ -389,12 +509,107 @@ struct ProjectDetailsView: View {
         return formatter.string(from: date)
     }
     
+    @State private var showingSaveNotification = false
+    @State private var notificationTimer: Timer?
+    
     private func saveNotes() {
-        project.notes = noteText
-        project.needsSync = true
+        // Use the SyncManager to handle both local saving and API synchronization
+        if let syncManager = dataController.syncManager {
+            print("💾 Saving project notes with SyncManager...")
+            let success = syncManager.updateProjectNotes(projectId: project.id, notes: noteText)
+            
+            if success {
+                print("✅ Project notes saved and queued for sync")
+                showSaveNotification()
+            } else {
+                print("⚠️ Failed to save project notes using SyncManager, trying fallback")
+                
+                // Fallback approach if SyncManager method fails
+                project.notes = noteText
+                project.needsSync = true
+                
+                if let modelContext = dataController.modelContext {
+                    do {
+                        try modelContext.save()
+                        print("✅ Notes saved locally via fallback method")
+                        showSaveNotification()
+                    } catch {
+                        print("❌ Error saving notes locally: \(error.localizedDescription)")
+                    }
+                }
+            }
+        } else {
+            print("⚠️ SyncManager not available, using direct API call")
+            // Fallback if SyncManager is not available
+            project.notes = noteText
+            project.needsSync = true
+            
+            if let modelContext = dataController.modelContext {
+                do {
+                    try modelContext.save()
+                    print("✅ Notes saved locally")
+                    showSaveNotification()
+                    
+                    // Also post notes to API if we're online
+                    if dataController.isConnected {
+                        Task {
+                            do {
+                                print("🔄 Syncing notes directly to API...")
+                                // Call the API endpoint to update notes
+                                try await dataController.apiService.updateProjectNotes(
+                                    id: project.id,
+                                    notes: noteText
+                                )
+                                
+                                // If successful, mark as synced
+                                await MainActor.run {
+                                    project.needsSync = false
+                                    project.lastSyncedAt = Date()
+                                    try? modelContext.save()
+                                }
+                                
+                                print("✅ Successfully synced project notes to API")
+                            } catch {
+                                print("❌ Error syncing project notes to API: \(error.localizedDescription)")
+                                // Leave needsSync = true so it will be tried again later
+                            }
+                        }
+                    } else {
+                        print("📵 Device offline - notes will sync when connection is restored")
+                    }
+                } catch {
+                    print("❌ Error saving notes locally: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    private func showSaveNotification() {
+        // Cancel any existing timer
+        notificationTimer?.invalidate()
         
-        if let modelContext = dataController.modelContext {
-            try? modelContext.save()
+        // Show the notification
+        showingSaveNotification = true
+        
+        // Set a timer to hide it after 2 seconds
+        notificationTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in
+            DispatchQueue.main.async {
+                showingSaveNotification = false
+            }
+        }
+        
+        // Update the original notes to match current notes after saving
+        originalNoteText = noteText
+    }
+    
+    private func checkForUnsavedChanges() {
+        // Compare current notes with original notes
+        if noteText != originalNoteText {
+            // We have unsaved changes, show the alert
+            showingUnsavedChangesAlert = true
+        } else {
+            // No changes, dismiss immediately
+            dismiss()
         }
     }
     

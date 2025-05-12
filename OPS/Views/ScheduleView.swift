@@ -8,12 +8,19 @@
 
 // ScheduleView.swift
 import SwiftUI
+import SwiftData
 
 struct ScheduleView: View {
+    // This view no longer uses NavigationLink for project details
+    // All project presentations are done via the sheet in ProjectSheetContainer
+    // Notification observer for direct project list selection
+    private let projectSelectionObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("ShowCalendarProjectDetails"))
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel = CalendarViewModel()
     @State private var showDaySheet = false
+    @State private var selectedProjectID: String? = nil
     
     var body: some View {
         ZStack {
@@ -44,8 +51,7 @@ struct ScheduleView: View {
             }
             .padding(.top)
             
-            // Add the ProjectSheetContainer to enable project details display
-            ProjectSheetContainer()
+            // No more NavigationLink - we'll use the global sheet instead
         }
         .onChange(of: viewModel.selectedDate) { oldDate, newDate in
             // Show sheet when day selected in month view
@@ -53,14 +59,63 @@ struct ScheduleView: View {
                 showDaySheet = true
             }
         }
-        .sheet(isPresented: $showDaySheet) {
+        // Show day project sheet
+        .sheet(isPresented: $showDaySheet, onDismiss: {
+            print("ScheduleView: Day sheet dismissed, selectedProjectID = \(selectedProjectID ?? "nil")")
+            // If we have a selected project ID, navigate to project details after day sheet is dismissed
+            if selectedProjectID != nil {
+                print("ScheduleView: Will navigate to project details after dismissal")
+                // Significant delay to ensure complete dismissal BEFORE showing project details
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+                    print("ScheduleView: NOW showing project details")
+                    // First, update the appState to make sure we know we're in details mode
+                    if let project = dataController.getProject(id: selectedProjectID!) {
+                        print("ScheduleView: Found project, showing via sheet")
+                        // Display using the global sheet
+                        appState.viewProjectDetails(project)
+                    } else {
+                        print("ScheduleView: Project not found, cannot show details")
+                    }
+                }
+            }
+        }) {
             // Sheet displayed when selecting a day in month view
             DayProjectSheet(
                 date: viewModel.selectedDate,
-                projects: viewModel.projectsForSelectedDate
+                projects: viewModel.projectsForSelectedDate,
+                onProjectSelected: { project in
+                    // Set the selected project ID and dismiss this sheet
+                    print("ScheduleView: Selected project from day sheet: \(project.title)")
+                    self.selectedProjectID = project.id
+                    self.showDaySheet = false
+                }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        
+        // We're using navigation instead of a sheet
+        // Handle direct project selection from the project list
+        .onReceive(projectSelectionObserver) { notification in
+            if let projectID = notification.userInfo?["projectID"] as? String {
+                print("ScheduleView: Received notification to show project with ID: \(projectID)")
+                
+                // Set the project ID
+                self.selectedProjectID = projectID
+                
+                // Get the project and present it via the sheet
+                if let project = dataController.getProject(id: projectID) {
+                    print("ScheduleView: Found project from notification, showing via sheet")
+                    // Just use viewProjectDetails which handles all the necessary state updates
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        appState.viewProjectDetails(project)
+                    }
+                } else {
+                    print("ScheduleView: Project not found, cannot show details")
+                }
+            } else {
+                print("ScheduleView: ⚠️ ERROR - Notification did not contain a projectID")
+            }
         }
         .onAppear {
             // Initialize with proper data controller

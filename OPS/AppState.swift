@@ -38,16 +38,52 @@ class AppState: ObservableObject {
         )
     }
     
-    // Flag to control whether to show the project details
-    var showProjectDetails: Bool = false
+    // Flag to control whether to show the project details - published so it can be observed
+    @Published var showProjectDetails: Bool = false
     
-    // Function to set a project for viewing details (called on long press)
+    // Function to set a project for viewing details
     func viewProjectDetails(_ project: Project) {
         print("AppState: Setting up project for details view: \(project.id) - DETAILS ONLY MODE")
-        // Set flag to indicate we're just viewing details, not starting project
+        
+        // IMPORTANT: Make sure we're not already showing this project to avoid sheet flicker
+        if self.showProjectDetails && self.activeProject?.id == project.id {
+            print("AppState: Already showing this project, not resetting the sheet")
+            return
+        }
+        
+        // Step 1: Reset sheet state if needed to avoid transition conflicts
+        if self.showProjectDetails {
+            print("AppState: Sheet is already showing, resetting state first")
+            self.showProjectDetails = false
+            self.activeProject = nil
+            
+            // Use a delay before showing the new project to allow animation to complete
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.showProjectDetailsAfterReset(project)
+            }
+            return
+        }
+        
+        // Normal case - no sheet is currently showing
+        self.showProjectDetailsAfterReset(project)
+    }
+    
+    // Helper method to show project details after any needed reset
+    private func showProjectDetailsAfterReset(_ project: Project) {
+        print("AppState: Setting up project after reset: \(project.id)")
+        
+        // First set flags before setting the project to ensure proper order
         self.isViewingDetailsOnly = true
-        self.showProjectDetails = true
-        self.setActiveProject(project)
+        
+        // Set active project ID and project object BEFORE showing the sheet
+        self.activeProjectID = project.id
+        self.activeProject = project
+        
+        // Use a very short delay to ensure UI updates properly
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            print("AppState: Now setting showProjectDetails=true with activeProject=\(String(describing: self.activeProject?.id))")
+            self.showProjectDetails = true
+        }
     }
     
     func setActiveProject(_ project: Project) {
@@ -56,8 +92,8 @@ class AppState: ObservableObject {
         
         // Only set activeProject (which triggers sheet) if showProjectDetails is true
         if showProjectDetails {
+            print("AppState: ProjectDetailsView will be shown - setting activeProject")
             self.activeProject = project
-            print("AppState: ProjectDetailsView will be shown")
         } else {
             // Don't set activeProject, only set ID - prevents sheet from showing
             print("AppState: ProjectDetailsView will NOT be shown (details disabled)")

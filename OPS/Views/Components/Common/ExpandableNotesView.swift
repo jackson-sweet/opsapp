@@ -44,6 +44,10 @@ struct ExpandableNotesView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
+                    .onChange(of: editedNotes) { _, newValue in
+                        // Auto-save draft notes if needed
+                        UserDefaults.standard.set(newValue, forKey: "draft_notes_temp")
+                    }
                 
                 HStack {
                     Spacer()

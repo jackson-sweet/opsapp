@@ -130,7 +130,7 @@ class APIService {
             let (data, response) = try await session.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
-                print("🔶 API RESPONSE: Status \(httpResponse.statusCode) (\(httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 ? "Success" : "Error"))")
+                print("🔶 API RESPONSE: Status \(httpResponse.statusCode) (\(httpResponse.statusCode >= 205 && httpResponse.statusCode < 300 ? "Success" : "Error"))")
             }
             
             // Print debug info to see exactly what's coming back

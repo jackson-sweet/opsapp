@@ -45,6 +45,7 @@ struct ProjectListView: View {
                             let project = viewModel.projectsForSelectedDate[min(index, viewModel.projectsForSelectedDate.count - 1)]
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(project.statusColor.opacity(0.6), lineWidth: 1)
+                                .fill(Color(OPSStyle.Colors.cardBackgroundDark))
                                 .frame(width: 50 + CGFloat(index * 2), height: 50 + CGFloat(index * 2))
                         }
                     }
@@ -111,8 +112,21 @@ struct ProjectListView: View {
                     // Print debug info
                     print("ProjectListView: Tapped project - ID: \(project.id), Title: \(project.title)")
                     
-                    // Show project details (not starting project)
-                    appState.viewProjectDetails(project)
+                    // Use the notification approach to be consistent with how we show projects elsewhere
+                    // This ensures we're only using one mechanism for showing project details
+                    print("ProjectListView: Preparing to post notification for project: \(project.title) with ID: \(project.id)")
+                    
+                    // Send only the projectID in the notification to avoid potential issues with sending objects
+                    let userInfo: [String: String] = ["projectID": project.id]
+                    
+                    // Post the notification with just the project ID
+                    print("ProjectListView: Posting notification with project ID: \(project.id)")
+                    // Post notification with just the ID
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ShowCalendarProjectDetails"),
+                        object: nil,
+                        userInfo: userInfo
+                    )
                 }
             )
         }

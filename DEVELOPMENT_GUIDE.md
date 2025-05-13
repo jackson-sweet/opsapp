@@ -57,6 +57,12 @@ The OPS (Operational Project System) app is a field-optimized project management
 
 ## Code Guidelines
 
+### Debugging
+- Make sure you read through the relevant code before suggesting any changes
+- Fully understand the context of the issue before attempting to solve
+- Determine the root cause of what is causing the issue in question
+- Once the root cause is certain, determine the best solution
+
 ### Code Style
 - Match existing project style conventions
 - Use meaningful variable and function names

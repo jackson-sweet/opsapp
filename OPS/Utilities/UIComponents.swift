@@ -19,11 +19,10 @@ struct SplashLoadingView: View {
                 Spacer()
                 
                 // Logo
-                Image(systemName: "building.2.fill")
+                Image("LogoWhite")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 80, height: 80)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 
                 Text("OPS")
                     .font(OPSStyle.Typography.largeTitle)

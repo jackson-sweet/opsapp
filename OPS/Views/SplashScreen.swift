@@ -17,15 +17,7 @@ struct SplashScreen: View {
     var body: some View {
         ZStack {
             // Background with gradient animation
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color.black,
-                    Color(red: 0.1, green: 0.1, blue: 0.15).opacity(backgroundGradientAmount)
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .edgesIgnoringSafeArea(.all)
+            Color(.black)
             
             // Main content
             VStack {
@@ -40,17 +32,16 @@ struct SplashScreen: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 80, height: 80)
-                            .scaleEffect(logoScale)
                             .opacity(logoOpacity)
                     }
                     
                     // App name with delayed fade in
                     VStack(spacing: 4) {
                         Text("OPS")
-                            .font(.system(size: 32, weight: .bold))
+                            .font(OPSStyle.Typography.largeTitle)
                             .foregroundColor(.white)
                         
-                        Text("Run your job site smarter")
+                        Text("Built by trades, for trades.")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.gray)
                     }
@@ -59,12 +50,6 @@ struct SplashScreen: View {
                 
                 Spacer()
                 
-                // Version info
-                Text("v1.0.0")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(Color.gray.opacity(0.7))
-                    .padding(.bottom, 16)
-                    .opacity(textOpacity)
             }
             .padding(.horizontal, 32)
         }

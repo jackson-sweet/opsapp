@@ -552,6 +552,66 @@ class SyncManager {
         }
     }
     
+    /// Update project notes locally and queue for sync
+    @discardableResult
+    func updateProjectNotes(projectId: String, notes: String) -> Bool {
+        let predicate = #Predicate<Project> { $0.id == projectId }
+        let descriptor = FetchDescriptor<Project>(predicate: predicate)
+        
+        do {
+            let projects = try modelContext.fetch(descriptor)
+            guard let project = projects.first else {
+                print("❌ SyncManager: Project with ID \(projectId) not found for notes update")
+                return false
+            }
+            
+            print("🔄 SyncManager: Updating notes for project: \(project.title) (ID: \(project.id))")
+            
+            // Check if notes are actually different to avoid unnecessary updates
+            if project.notes == notes {
+                print("ℹ️ SyncManager: Notes unchanged, skipping update")
+                return true
+            }
+            
+            // Update notes locally
+            project.notes = notes
+            project.needsSync = true
+            project.syncPriority = 2 // Medium-high priority
+            
+            // Save local changes
+            try modelContext.save()
+            print("✅ SyncManager: Project notes saved locally")
+            
+            // Queue sync if online - do this immediately for notes (user is waiting)
+            if connectivityMonitor.isConnected {
+                Task {
+                    do {
+                        print("🔄 SyncManager: Syncing notes for project \(project.id) to API")
+                        try await apiService.updateProjectNotes(id: project.id, notes: notes)
+                        
+                        await MainActor.run {
+                            project.needsSync = false
+                            project.lastSyncedAt = Date()
+                            try? modelContext.save()
+                        }
+                        
+                        print("✅ SyncManager: Project notes synced successfully to API")
+                    } catch {
+                        print("❌ SyncManager: Failed to sync project notes: \(error.localizedDescription)")
+                        // Leave needsSync=true to retry later in background sync
+                    }
+                }
+            } else {
+                print("⚠️ SyncManager: Device offline - notes will sync when connection is restored")
+            }
+            
+            return true
+        } catch {
+            print("❌ SyncManager: Failed to update project notes locally: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
     /// Update user name locally and queue for sync
     @discardableResult
     func updateUserName(_ user: User, firstName: String, lastName: String) -> Bool {
@@ -636,7 +696,7 @@ class SyncManager {
     
     // MARK: - Private Sync Methods
     
-    /// Sync a specific project's status to the backend
+    /// Sync a specific project's status and notes to the backend
     private func syncProjectStatus(_ project: Project) async {
         // Only sync if project needs sync
         guard project.needsSync else { return }
@@ -655,13 +715,20 @@ class SyncManager {
                 print("✅ SyncManager: Project \(project.id) status updated to \(project.status.rawValue)")
             }
             
+            // Sync notes if they exist
+            if let notes = project.notes, !notes.isEmpty {
+                print("🔄 SyncManager: Syncing notes for project \(project.id)")
+                try await apiService.updateProjectNotes(id: project.id, notes: notes)
+                print("✅ SyncManager: Project \(project.id) notes synced")
+            }
+            
             // Mark as synced if successful
             project.needsSync = false
             project.lastSyncedAt = Date()
             try modelContext.save()
         } catch {
             // Leave as needsSync=true to retry later
-            print("❌ SyncManager: Failed to sync project status: \(error.localizedDescription)")
+            print("❌ SyncManager: Failed to sync project status or notes: \(error.localizedDescription)")
         }
     }
     

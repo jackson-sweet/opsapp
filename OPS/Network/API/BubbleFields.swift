@@ -92,6 +92,8 @@ struct BubbleFields {
         static let userType = "User Type"
         static let avatar = "Avatar"
         static let email = "email" // Bubble's built-in field
+        static let phone = "Phone"
+        static let homeAddress = "Home Address"
     }
     
     /// Company entity fields (match your Bubble field names exactly)

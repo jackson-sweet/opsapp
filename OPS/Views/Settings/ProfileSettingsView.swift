@@ -21,6 +21,12 @@ struct ProfileSettingsView: View {
     @State private var showSaveConfirmation = false
     @State private var showSaveError = false
     @State private var saveErrorMessage = ""
+    // Password reset states
+    @State private var showResetPasswordSheet = false
+    @State private var resetEmail = ""
+    @State private var passwordResetInProgress = false
+    @State private var passwordResetError: String? = nil
+    @State private var passwordResetSuccess = false
     // Private state ID to force view refresh when needed
     @State private var refreshID = UUID()
     
@@ -156,7 +162,7 @@ struct ProfileSettingsView: View {
                         sectionHeader("CREDENTIALS")
                         
                         Button(action: {
-                            // TODO: Implement reset password functionality
+                            showResetPasswordSheet = true
                         }) {
                             HStack {
                                 Text("Reset Password")
@@ -215,6 +221,200 @@ struct ProfileSettingsView: View {
         } message: {
             Text(saveErrorMessage)
         }
+        .sheet(isPresented: $showResetPasswordSheet) {
+            resetPasswordSheet
+        }
+    }
+    
+    // Password reset sheet view
+    private var resetPasswordSheet: some View {
+        ZStack {
+            OPSStyle.Colors.backgroundGradient
+                .edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 24) {
+                // Header
+                Text("Reset Password")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.top, 24)
+                
+                if !passwordResetSuccess {
+                    VStack(spacing: 16) {
+                        // Description
+                        Text("Enter your email address to receive a password reset link.")
+                            .font(.system(size: 16))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 8)
+                        
+                        // Email field
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Email Address")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            TextField("", text: $resetEmail)
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                                .keyboardType(.emailAddress)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                                .padding()
+                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 1)
+                                )
+                        }
+                        .padding(.horizontal, 20)
+                        
+                        // Error message
+                        if let error = passwordResetError {
+                            Text(error)
+                                .font(.system(size: 14))
+                                .foregroundColor(OPSStyle.Colors.errorStatus)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 8)
+                        }
+                        
+                        Spacer()
+                        
+                        // Action buttons
+                        HStack(spacing: 16) {
+                            // Cancel button
+                            Button(action: {
+                                // Clear fields and dismiss
+                                resetPasswordFields()
+                                showResetPasswordSheet = false
+                            }) {
+                                Text("Cancel")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                                    .cornerRadius(12)
+                            }
+                            
+                            // Send reset button
+                            Button(action: {
+                                requestPasswordReset()
+                            }) {
+                                if passwordResetInProgress {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 16)
+                                        .background(OPSStyle.Colors.primaryAccent)
+                                        .cornerRadius(12)
+                                } else {
+                                    Text("Send Reset Link")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 16)
+                                        .background(OPSStyle.Colors.primaryAccent)
+                                        .cornerRadius(12)
+                                }
+                            }
+                            .disabled(passwordResetInProgress || !isEmailValid)
+                            .opacity(isEmailValid ? 1.0 : 0.6)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 30)
+                    }
+                } else {
+                    // Success view
+                    VStack(spacing: 24) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.top, 20)
+                        
+                        Text("Reset Link Sent!")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+                        
+                        Text("We've sent a password reset link to your email. Please check your inbox and follow the instructions to reset your password.")
+                            .font(.system(size: 16))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            resetPasswordFields()
+                            showResetPasswordSheet = false
+                        }) {
+                            Text("Close")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(OPSStyle.Colors.primaryAccent)
+                                .cornerRadius(12)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 30)
+                    }
+                }
+            }
+            .padding(.vertical, 20)
+        }
+    }
+    
+    // Email validation
+    private var isEmailValid: Bool {
+        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+        let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
+        return !resetEmail.isEmpty && emailPredicate.evaluate(with: resetEmail)
+    }
+    
+    // Request password reset function
+    private func requestPasswordReset() {
+        // Clear any previous errors
+        passwordResetError = nil
+        passwordResetInProgress = true
+        
+        // Pre-populate email field with the user's email if available
+        if resetEmail.isEmpty, let userEmail = dataController.currentUser?.email {
+            resetEmail = userEmail
+        }
+        
+        // Validate email format
+        guard isEmailValid else {
+            passwordResetError = "Please enter a valid email address"
+            passwordResetInProgress = false
+            return
+        }
+        
+        // Call the data controller to request a password reset
+        Task {
+            let (success, errorMessage) = await dataController.requestPasswordReset(email: resetEmail)
+            
+            await MainActor.run {
+                passwordResetInProgress = false
+                
+                if success {
+                    passwordResetSuccess = true
+                } else {
+                    passwordResetError = errorMessage ?? "Failed to send reset link. Please try again."
+                }
+            }
+        }
+    }
+    
+    // Reset password fields
+    private func resetPasswordFields() {
+        resetEmail = ""
+        passwordResetError = nil
+        passwordResetSuccess = false
+        passwordResetInProgress = false
     }
     
     private func sectionHeader(_ title: String) -> some View {

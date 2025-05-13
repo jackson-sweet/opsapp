@@ -44,6 +44,48 @@ extension APIService {
         )
     }
     
+    /// Complete a project using the workflow endpoint
+    /// - Parameters:
+    ///   - projectId: The project ID to update
+    ///   - status: The new status (typically "Completed")
+    /// - Returns: The updated status string from the server
+    func completeProject(projectId: String, status: String) async throws -> String {
+        // Define response type for this specific endpoint
+        struct CompleteProjectResponse: Decodable {
+            let response: ResponseData
+            
+            struct ResponseData: Decodable {
+                let new_status: String
+            }
+        }
+        
+        // Create the request body
+        let requestData: [String: String] = [
+            "project_id": projectId,
+            "status": status
+        ]
+        
+        // Convert to JSON
+        let bodyData = try JSONSerialization.data(withJSONObject: requestData)
+        
+        // Log the request
+        print("🔷 Sending update_job_status request for project: \(projectId) with status: \(status)")
+        
+        // Execute the request
+        let response: CompleteProjectResponse = try await executeRequest(
+            endpoint: "api/1.1/wf/update_job_status",
+            method: "POST",
+            body: bodyData,
+            requiresAuth: false
+        )
+        
+        // Log the response
+        print("✅ Project status updated successfully. New status: \(response.response.new_status)")
+        
+        // Return the new status from the response
+        return response.response.new_status
+    }
+    
     /// Fetch projects assigned to a specific user
     /// - Parameter userId: The user ID to filter for
     /// - Returns: Array of project DTOs where user is a team member

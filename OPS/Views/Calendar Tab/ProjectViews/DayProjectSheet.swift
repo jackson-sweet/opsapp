@@ -10,11 +10,13 @@ import SwiftUI
 struct DayProjectSheet: View {
     let date: Date
     let projects: [Project]
+    let onProjectSelected: (Project) -> Void
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        VStack(spacing: 16) {
+        NavigationView {
+            VStack(spacing: 16) {
             // Header with day info and dismiss button
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
@@ -62,14 +64,10 @@ struct DayProjectSheet: View {
                                 project: project,
                                 isFirst: index == 0,
                                 onTap: {
-                                    // First dismiss this sheet
-                                    dismiss()
-                                    
-                                    // Then show project details after a brief delay
-                                    // This ensures the dismissal animation completes first
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        appState.viewProjectDetails(project)
-                                    }
+                                    print("DayProjectSheet: Selected project \(project.title)")
+                                    // Simply call the selection callback
+                                    // This will trigger the sequence in ScheduleView
+                                    onProjectSelected(project)
                                 }
                             )
                         }
@@ -77,9 +75,11 @@ struct DayProjectSheet: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 20)
                 }
+                }
             }
+            .background(OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all))
+            .navigationBarHidden(true) // Hide the default navigation bar
         }
-        .background(OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all))
     }
     
     private var dayOfWeek: String {

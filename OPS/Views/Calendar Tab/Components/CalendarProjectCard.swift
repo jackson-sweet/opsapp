@@ -14,8 +14,8 @@ struct CalendarProjectCard: View {
     let onTap: () -> Void
     
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 0) {
+        // When used with NavigationLink, the onTap action is optional
+        HStack(spacing: 0) {
                 // Left status bar based on reference design - wider and more visible
                 Rectangle()
                     .fill(project.statusColor)
@@ -51,7 +51,9 @@ struct CalendarProjectCard: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .contentShape(Rectangle()) // Make entire card tappable
             .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
-        }
+            .onTapGesture {
+                onTap()
+            }
         .padding(.vertical, 4)
         .padding(.horizontal)
     }

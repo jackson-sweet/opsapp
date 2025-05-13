@@ -108,7 +108,7 @@ struct OnboardingView: View {
             // Create or update user in database
             Task {
                 // Create a user object with the collected onboarding data
-                let userIdValue = UserDefaults.standard.string(forKey: "user_id") ?? viewModel.userId ?? ""
+                let userIdValue = UserDefaults.standard.string(forKey: "user_id") ?? viewModel.userId
                 let companyId = UserDefaults.standard.string(forKey: "company_id")
                 
                 if !userIdValue.isEmpty, let modelContext = dataController.modelContext {

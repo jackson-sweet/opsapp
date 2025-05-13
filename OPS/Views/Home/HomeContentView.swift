@@ -195,35 +195,32 @@ struct HomeContentView: View {
     }
     
     private var emptyProjectsView: some View {
-        VStack(spacing: 16) {
-            Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects scheduled for today")
-                .font(OPSStyle.Typography.body)
+        
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            // Project title
+            Text("NO PROJECTS SCHEDULED FOR TODAY.")
+                .font(OPSStyle.Typography.cardTitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-                .multilineTextAlignment(.center)
+                .lineLimit(1)
             
-            // Debug button for testing
-            #if DEBUG
-            Button("Test Location Prompt") {
-                print("HomeView: Manual test of location permission view")
-                showLocationPermissionView = true
-            }
-            .padding(8)
-            .background(OPSStyle.Colors.primaryAccent)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            #endif
+                // Client name
+                Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects found")
+                    .font(OPSStyle.Typography.cardBody)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            
         }
         .padding()
-        .frame(height: 120)
         .background(
-            ZStack {
-                Color(.green)
-                    .opacity(0.5)
-                Rectangle()
-                    .fill(Color.clear)
-                    .background(Material.ultraThinMaterial)
-            }
+            // Custom background with blur effect
+            BlurView(style: .dark)
+                .cornerRadius(5)
+                .opacity(0.5)
+                .frame(height: 85)
         )
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .padding(.horizontal)
+        .contentShape(Rectangle()) // Make entire card tappable
+        // REMOVE ALL GESTURE HANDLERS HERE - Let ProjectCardView handle gestures
     }
     
     private var loadingOverlay: some View {

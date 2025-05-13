@@ -66,30 +66,32 @@ enum OPSStyle {
     // MARK: - Typography
     enum Typography {
         // Title styles
-        static let largeTitle = Font.custom("BebaseNeue-Regular", size: 32)
-        static let title = Font.custom("BebaseNeue-Regular", size: 28)
-        static let subtitle = Font.system(size: 22)
+        static let largeTitle = Font.largeTitle
+        static let title = Font.title
+        static let subtitle = Font.subtitle
         
         // Body text
-        static let body = Font.system(size: 14, weight: .regular, design: .default)
-        static let bodyBold = Font.system(size: 14, weight: .bold, design: .default)
+        static let body = Font.body
+        static let bodyBold = Font.bodyBold
+        static let bodyEmphasis = Font.bodyEmphasis
         
         // Supporting text
-        static let caption = Font.system(size: 15, weight: .regular, design: .default)
-        static let captionBold = Font.system(size: 15, weight: .bold, design: .default)
-        static let smallCaption = Font.system(size: 12, weight: .regular, design: .default)
-        static let smallBody = Font.system(size: 12, weight: .regular, design: .default)
+        static let caption = Font.caption
+        static let captionBold = Font.captionBold
+        static let smallCaption = Font.smallCaption
+        static let smallBody = Font.smallBody
         
         // Cards
-        static let cardTitle = Font.system(size: 14, weight: .bold, design: .default)
-        static let cardSubtitle = Font.system(size: 12, weight: .bold, design: .default)
-        static let cardBody = Font.system(size: 12, weight: .regular, design: .default)
+        static let cardTitle = Font.cardTitle
+        static let cardSubtitle = Font.cardSubtitle
+        static let cardBody = Font.cardBody
         
         // Status text
-        static let status = Font.system(size: 13, weight: .bold, design: .default)
+        static let status = Font.status
         
         // Button text
-        static let smallButton = Font.system(size: 12, weight: .bold, design: .default)
+        static let button = Font.button
+        static let smallButton = Font.smallButton
     }
     
     // MARK: - Layout
@@ -133,7 +135,7 @@ import SwiftUI
 struct PrimaryButton: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .font(OPSStyle.Typography.bodyBold)
+            .font(OPSStyle.Typography.button)
             .foregroundColor(.white)
             .padding()
             .frame(height: OPSStyle.Layout.touchTargetStandard)
@@ -146,7 +148,7 @@ struct PrimaryButton: ViewModifier {
 struct SecondaryButton: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .font(OPSStyle.Typography.bodyBold)
+            .font(OPSStyle.Typography.button)
             .foregroundColor(OPSStyle.Colors.primaryAccent)
             .padding()
             .frame(height: OPSStyle.Layout.touchTargetStandard)

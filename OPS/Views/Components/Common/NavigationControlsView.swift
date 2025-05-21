@@ -7,6 +7,65 @@
 
 import SwiftUI
 
+/// A loading banner that displays while navigation is being calculated
+struct NavigationLoadingBanner: View {
+    @State private var isAnimating = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                // Loading spinner
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(0.8)
+                    .frame(width: 30, height: 30)
+                
+                // Loading text
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Calculating route...")
+                        .font(OPSStyle.Typography.subtitle)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    
+                    Text("Finding the best path to your destination")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                // Cancel button
+                Button(action: {
+                    // Post notification to stop routing
+                    NotificationCenter.default.post(
+                        name: Notification.Name("StopRouting"), 
+                        object: nil
+                    )
+                }) {
+                    Text("Cancel")
+                        .font(OPSStyle.Typography.caption)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(OPSStyle.Colors.errorStatus)
+                        .foregroundColor(.white)
+                        .cornerRadius(5)
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OPSStyle.Colors.cardBackground)
+        }
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .shadow(color: Color.black, radius: 4, x: 0, y: 2)
+        .onAppear {
+            isAnimating = true
+        }
+    }
+}
+
 /// A container view for navigation controls to reduce complexity in HomeView
 struct NavigationControlsView: View {
     // Routing state
@@ -30,7 +89,7 @@ struct NavigationControlsView: View {
             }
             
             // Navigation view at top - position by hand
-            if isRouting, let currentStep = currentNavStep {
+            if isRouting {
                 VStack {
                     // Top position with safe area spacing
                     navigationView
@@ -41,46 +100,62 @@ struct NavigationControlsView: View {
                 }
             }
         }
+        .onAppear {
+            print("NavigationControlsView onAppear: isRouting=\(isRouting), currentNavStep=\(currentNavStep?.instruction ?? "nil")")
+        }
+        .onChange(of: isRouting) { _, newValue in
+            print("NavigationControlsView: isRouting changed to \(newValue)")
+        }
+        .onChange(of: currentNavStep) { _, newStep in
+            print("NavigationControlsView: currentNavStep changed to \(newStep?.instruction ?? "nil")")
+        }
     }
     
     // Extract the navigation view into a computed property
     private var navigationView: some View {
         Group {
-            if isRouting, let currentStep = currentNavStep {
-                if showFullDirectionsView {
-                    // Full directions view with dismiss handler
-                    RouteDirectionsView(
-                        directions: routeDirections,
-                        estimatedArrival: estimatedArrival,
-                        distance: routeDistance,
-                        onDismiss: {
-                            // Hide the full directions view
+            if isRouting {
+                if let currentStep = currentNavStep {
+                    // Navigation data is ready
+                    if showFullDirectionsView {
+                        // Full directions view with dismiss handler
+                        RouteDirectionsView(
+                            directions: routeDirections,
+                            estimatedArrival: estimatedArrival,
+                            distance: routeDistance,
+                            onDismiss: {
+                                // Hide the full directions view
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showFullDirectionsView = false
+                                }
+                            }
+                        )
+                    } else {
+                        // Compact navigation banner at top
+                        NavigationBanner(
+                            instruction: currentStep.instruction,
+                            distance: currentStep.distance,
+                            isLastStep: currentStep.isLastStep,
+                            onEndNavigation: {
+                                // Post notification to stop routing but not end project
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("StopRouting"), 
+                                    object: nil
+                                )
+                            }
+                        )
+                        .transition(.move(edge: .top))
+                        .onTapGesture {
+                            // Toggle to show full directions when tapped - use a faster animation
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                showFullDirectionsView = false
+                                showFullDirectionsView = true
                             }
                         }
-                    )
-                } else {
-                    // Compact navigation banner at top
-                    NavigationBanner(
-                        instruction: currentStep.instruction,
-                        distance: currentStep.distance,
-                        isLastStep: currentStep.isLastStep,
-                        onEndNavigation: {
-                            // Post notification to stop routing but not end project
-                            NotificationCenter.default.post(
-                                name: Notification.Name("StopRouting"), 
-                                object: nil
-                            )
-                        }
-                    )
-                    .transition(.move(edge: .top))
-                    .onTapGesture {
-                        // Toggle to show full directions when tapped - use a faster animation
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showFullDirectionsView = true
-                        }
                     }
+                } else {
+                    // Show loading state while route is being calculated
+                    NavigationLoadingBanner()
+                        .transition(.move(edge: .top))
                 }
             } else {
                 // Empty view when not routing

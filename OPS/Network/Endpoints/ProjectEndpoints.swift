@@ -55,7 +55,17 @@ extension APIService {
             let response: ResponseData
             
             struct ResponseData: Decodable {
-                let new_status: String
+                // Define all possible response fields
+                let result: String?
+                let message: String?
+                let status: String?
+                
+                // Use coding keys to handle snake_case conversion
+                enum CodingKeys: String, CodingKey {
+                    case result
+                    case message
+                    case status = "status" // Using fallback as the API might return just "status" instead of "new_status"
+                }
             }
         }
         
@@ -79,11 +89,20 @@ extension APIService {
             requiresAuth: false
         )
         
-        // Log the response
-        print("✅ Project status updated successfully. New status: \(response.response.new_status)")
+        // Log detailed response for debugging
+        print("✅ Project status update response received:")
+        if let result = response.response.result {
+            print("  - result: \(result)")
+        }
+        if let message = response.response.message {
+            print("  - message: \(message)")
+        }
+        if let responseStatus = response.response.status {
+            print("  - status: \(responseStatus)")
+        }
         
-        // Return the new status from the response
-        return response.response.new_status
+        // Return the status or fallback to the requested status if not available
+        return response.response.status ?? status
     }
     
     /// Fetch projects assigned to a specific user
@@ -196,7 +215,15 @@ extension APIService {
     }
     
     // MARK: Update Data
-
+    
+    /// Start a project by updating its status to 'In Progress'
+    /// - Parameter id: The project ID to start
+    /// - Returns: The updated status string from the server
+    func startProject(id: String) async throws -> String {
+        // Set the status to 'In Progress'
+        return try await completeProject(projectId: id, status: BubbleFields.JobStatus.inProgress)
+    }
+    
     /// Update project notes
     /// - Parameters:
     ///   - id: The project ID

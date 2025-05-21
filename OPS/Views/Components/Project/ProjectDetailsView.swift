@@ -22,8 +22,9 @@ struct ProjectDetailsView: View {
     @State private var showingImagePicker = false
     @State private var selectedImages: [UIImage] = []
     @State private var processingImages = false
-    @State private var showingDeleteConfirmation = false
-    @State private var photoToDelete: String? = nil
+    @State private var showingNetworkError = false
+    @State private var networkErrorMessage = ""
+    // REMOVED: No longer tracking photo deletion state
     @State private var showingUnsavedChangesAlert = false
     
     // Initialize with project's existing notes
@@ -85,55 +86,103 @@ struct ProjectDetailsView: View {
     var body: some View {
         ZStack {
             // Background gradient
-            OPSStyle.Colors.backgroundGradient
+            Color.black
                 .edgesIgnoringSafeArea(.all)
             
             // Main content
-            mainContentView
-        }
-        .navigationTitle("Project Details")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Done") {
-                    checkForUnsavedChanges()
+            VStack(spacing: 0) {
+                // Modern header with frosted glass effect
+                ZStack {
+                    // Blurred background
+                    BlurView(style: .dark)
+                        .edgesIgnoringSafeArea(.top)
+                    
+                    // Header content
+                    VStack(spacing: 8) {
+                        // Top row with status and buttons
+                        HStack {
+                            // Status badge
+                            StatusBadge.forJobStatus(project.status)
+                            
+                            Spacer()
+                            
+                            // Done button
+                            Button("Done") {
+                                checkForUnsavedChanges()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.white)
+                            .foregroundColor(Color.black)
+                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                            .font(OPSStyle.Typography.bodyBold)
+                        }
+                        
+                        // Title row
+                        HStack {
+                            // Title with subtle separator line below
+                            Text(project.title.uppercased())
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(.white)
+                            
+                            Spacer()
+                        }
+                    }
+                    .padding(.horizontal, 16)
                 }
-                .foregroundColor(OPSStyle.Colors.secondaryAccent)
-            }
-        }
-        // Since we're back to sheet-based presentation, we need to ensure we stay in sheet mode
-        .onAppear {
-            print("ProjectDetailsView: View appeared via sheet")
-            DispatchQueue.main.async {
-                // Make sure appState has our current project set as active
-                if let appState = dataController.appState, appState.activeProject == nil {
-                    print("ProjectDetailsView: Updating appState with current project")
-                    appState.activeProject = project
+                .frame(height: 90)
+                .background(Color.black)
+                
+                // Main scrollable content
+                ScrollView {
+                    VStack(spacing: 24) {
+                        
+                        // Location map - more visual prominence
+                        locationSection
+                        
+                        // Project info - streamlined cards
+                        infoSection
+                        
+                        // Team members - kept similar
+                        teamSection
+                        
+                        // Photos - improved grid layout
+                        photosSection
+                        
+                        // Notes section with heading
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Notes heading with icon
+                            HStack {
+                                Image(systemName: "note.text")
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                
+                                Text("PROJECT NOTES")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                
+                                Spacer()
+                            }
+                            .padding(.horizontal)
+                            
+                            // Expandable notes view
+                            ExpandableNotesView(
+                                notes: project.notes ?? "",
+                                editedNotes: $noteText,
+                                onSave: saveNotes
+                            )
+                            .padding(.horizontal)
+                        }
+                        
+                        // Bottom padding
+                        Spacer()
+                            .frame(height: 80)
+                    }
+                    .padding(.top, 16)
                 }
             }
         }
-        .confirmationDialog(
-            "Unsaved Changes",
-            isPresented: $showingUnsavedChangesAlert,
-            titleVisibility: .visible
-        ) {
-            Button("Save Changes", role: .none) {
-                saveNotes()
-                dismiss()
-            }
-            
-            Button("Discard Changes", role: .destructive) {
-                // Discard changes and dismiss
-                dismiss()
-            }
-            
-            Button("Cancel", role: .cancel) {
-                // Stay on the page
-            }
-        } message: {
-            Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
-        }
-        // Save notification overlay
+        .navigationBarHidden(true)
+        // Save notification overlay 
         .overlay(saveNotificationOverlay)
         // Full-screen photo viewer
         .fullScreenCover(isPresented: $showingPhotoViewer) {
@@ -147,29 +196,49 @@ struct ProjectDetailsView: View {
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(
                 images: $selectedImages, 
-                allowsEditing: false, 
+                allowsEditing: false,
+                selectionLimit: 10,
                 onSelectionComplete: {
-                    // Process images immediately when selection is complete
+                    // Close the picker immediately
+                    showingImagePicker = false
+                    
+                    // Process images when selection is complete
                     if !selectedImages.isEmpty {
-                        addPhotosToProject()
+                        // Use slight delay to ensure UI dismissal completes first
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            addPhotosToProject()
+                        }
                     }
                 }
             )
         }
-        // Delete confirmation alert
-        .alert("Delete Photo?", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {
-                photoToDelete = nil
+        .confirmationDialog(
+            "Unsaved Changes",
+            isPresented: $showingUnsavedChangesAlert,
+            titleVisibility: .visible
+        ) {
+            Button("Save Changes", role: .none) {
+                saveNotes()
+                dismiss()
             }
-            Button("Delete", role: .destructive) {
-                if let urlToDelete = photoToDelete {
-                    deletePhoto(urlToDelete)
-                }
+            
+            Button("Discard Changes", role: .destructive) {
+                dismiss()
             }
+            
+            Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Are you sure you want to delete this photo? This action cannot be undone.")
+            Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
         }
         .onAppear {
+            print("ProjectDetailsView: View appeared")
+            DispatchQueue.main.async {
+                // Make sure appState has our current project set as active
+                if let appState = dataController.appState, appState.activeProject == nil {
+                    appState.activeProject = project
+                }
+            }
+            
             // Request location permission when project details are viewed
             locationManager.requestPermissionIfNeeded()
         }
@@ -178,84 +247,121 @@ struct ProjectDetailsView: View {
             notificationTimer?.invalidate()
             notificationTimer = nil
         }
-    }
-    
-    // Main content view
-    private var mainContentView: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // Header section with status and title
-                headerSection
-                
-                // Location map
-                locationSection
-                
-                // Client info
-                infoSection
-                
-                // Team members
-                teamSection
-                
-                // Notes (expandable)
-                ExpandableNotesView(
-                    notes: project.notes ?? "",
-                    editedNotes: $noteText,
-                    onSave: saveNotes
-                )
-                .padding(.horizontal)
-                
-                // Photos
-                photosSection
-                
-                // Bottom padding
-                Spacer()
-                    .frame(height: 20)
-            }
+        .alert("Network Error", isPresented: $showingNetworkError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(networkErrorMessage)
         }
     }
     
-    // Header with status and title
-    private var headerSection: some View {
+    // Project header section with title and date
+    private var projectHeaderSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                StatusBadge(status: project.status)
-                
-                Spacer()
-                
-                // Date pill
-                if let startDate = project.startDate {
-                    HStack(spacing: 4) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 12))
-                        
-                        Text(formatDate(startDate))
-                            .font(OPSStyle.Typography.smallCaption)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.7))
-                    .cornerRadius(12)
-                }
-            }
-            
-            // Project title
+            // Project title in large, prominent type
             Text(project.title)
                 .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .padding(.top, 4)
+                .foregroundColor(.white)
+            
+            // Date and client info in horizontal layout
+            HStack(spacing: 24) {
+                // Start date with icon
+                if let startDate = project.startDate {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("STARTS")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 14))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                            
+                            Text(formatDate(startDate))
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+                
+                // Client name
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("CLIENT")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    Text(project.clientName)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.white)
+                }
+            }
         }
-        .padding(.horizontal)
-        .padding(.top, 8)
     }
     
     // Location map
     private var locationSection: some View {
-        VStack(spacing: 0) {
-            MiniMapView(
-                coordinate: project.coordinate,
-                address: project.address
-            ) {
-                openInMaps(coordinate: project.coordinate, address: project.address)
+        VStack(alignment: .leading, spacing: 16) {
+            // Location section label
+            HStack {
+                Image(systemName: "location.fill")
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("LOCATION")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Spacer()
+                
+                Button(action: {
+                    openInMaps(coordinate: project.coordinate, address: project.address)
+                }) {
+                    Text("Get Directions")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black)
+                        .cornerRadius(OPSStyle.Layout.buttonRadius)
+                }
+            }
+            .padding(.horizontal)
+            
+            // Address text
+            Text(project.address)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(.white)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            
+            // Map view - larger and more prominent
+            ZStack(alignment: .bottomTrailing) {
+                MiniMapView(
+                    coordinate: project.coordinate, 
+                    address: project.address
+                ) {
+                    openInMaps(coordinate: project.coordinate, address: project.address)
+                }
+                .frame(height: 180)
+                .cornerRadius(16)
+                
+                
+                // Directions button on map
+                Button(action: {
+                    openInMaps(coordinate: project.coordinate, address: project.address)
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                            .font(.system(size: 14))
+                        
+                        Text("Directions")
+                            .font(OPSStyle.Typography.smallCaption)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(OPSStyle.Colors.cardBackground)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .cornerRadius(16)
+                }
+                .padding(12)
             }
             .padding(.horizontal)
         }
@@ -263,92 +369,113 @@ struct ProjectDetailsView: View {
     
     // Project info
     private var infoSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Section title
-            Text("PROJECT INFO")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal)
+        VStack(alignment: .leading, spacing: 12) {
             
-            // Info cards
-            VStack(spacing: 2) {
+            // Card-based info items
+            VStack(spacing: 1) {
                 // Client card
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("CLIENT")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        Text(project.clientName)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 12)
-                    
-                    Spacer()
-                }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.3))
+                infoRow(
+                    icon: "person",
+                    title: "CLIENT",
+                    value: project.clientName.uppercased(),
+                    valueColor: OPSStyle.Colors.primaryText
+                )
                 
-                // Address card
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("ADDRESS")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        Text(project.address)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 12)
-                    
-                    Spacer()
+                // End date if available
+                if let endDate = project.endDate {
+                    infoRow(
+                        icon: "calendar.badge.clock", 
+                        title: "COMPLETION DATE", 
+                        value: formatDate(endDate)
+                    )
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
                 
                 // Description card
                 if let description = project.projectDescription, !description.isEmpty {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "text.alignleft")
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .frame(width: 24)
+                            
                             Text("DESCRIPTION")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            Text(description)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        .padding(.horizontal)
-                        .padding(.vertical, 12)
                         
-                        Spacer()
+                        Text(description)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(OPSStyle.Colors.cardBackground)
                 }
             }
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBackground, lineWidth: 1)
+            )
             .padding(.horizontal)
         }
     }
     
-    // Team members section - using the more compact and navigable view
+    // Helper to get color for status - using the OPSStyle's official status colors
+    private func getStatusColor(_ status: Status) -> Color {
+        return OPSStyle.Colors.statusColor(for: status)
+    }
+    
+    // Helper to create consistent info rows
+    private func infoRow(icon: String, title: String, value: String, valueColor: Color = .white) -> some View {
+        HStack(spacing: 12) {
+            // Icon
+            Image(systemName: icon)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .frame(width: 24)
+            
+            // Title and value
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Text(value)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(valueColor)
+            }
+            
+            Spacer()
+        }
+        .padding()
+        .background(OPSStyle.Colors.cardBackgroundDark)
+    }
+    
+    // Team members section with modern styling
     private var teamSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 12) {
+            // Team members content
             ProjectTeamView(project: project)
                 .padding(.horizontal)
         }
     }
     
-    // Photos section
+    // Photos section with improved styling
     private var photosSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Section title
-            Text("PHOTOS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal)
+            // Section heading with icon
+            HStack {
+                Image(systemName: "photo")
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("PROJECT PHOTOS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Spacer()
+            }
+            .padding(.horizontal)
             
             // Photo content
             photoContentView
@@ -378,73 +505,107 @@ struct ProjectDetailsView: View {
         if photos.isEmpty {
             return AnyView(emptyPhotosView)
         } else {
-            return AnyView(photoGridView(photos: photos))
+            return AnyView(
+                VStack(spacing: 0) {
+                    photoGridView(photos: photos)
+                }
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .padding(.horizontal)
+            )
         }
     }
     
     // Empty state when no photos
     private var emptyPhotosView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "photo.on.rectangle")
-                .font(.system(size: 32))
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 36))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             
             Text("No photos added yet")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
+            
+            Text("Tap the button below to add photos to this project")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
         }
-        .frame(height: 160)
+        .frame(height: 180)
         .frame(maxWidth: .infinity)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBackground, lineWidth: 1)
+        )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal)
     }
     
     // Grid view for photos
     private func photoGridView(photos: [String]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(Array(photos.enumerated()), id: \.0) { index, url in
-                    photoThumbnailView(url: url, index: index)
+        VStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Array(photos.enumerated()), id: \.0) { index, url in
+                        photoThumbnailView(url: url, index: index)
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 2) // For shadow space
+            .frame(height: 142) // 110 image + 32 padding
+            
+            // Photo count indicator
+            HStack {
+                Image(systemName: "photo.stack")
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(.system(size: 14))
+                
+                Text("\(photos.count) \(photos.count == 1 ? "photo" : "photos")")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
         }
-        .frame(height: 120)
     }
     
     // Individual photo thumbnail
     private func photoThumbnailView(url: String, index: Int) -> some View {
-        PhotoThumbnail(url: url)
+        PhotoThumbnail(url: url, project: project)
             .frame(width: 110, height: 110)
             .cornerRadius(8)
-            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 2)
+            .shadow(color: Color.black, radius: 4, x: 0, y: 2)
             .contentShape(Rectangle())
             .onTapGesture {
                 selectedPhotoIndex = index
                 showingPhotoViewer = true
             }
-            .onLongPressGesture {
-                photoToDelete = url
-                showingDeleteConfirmation = true
-            }
+            // Simple scale animation on tap
+            .hoverEffect(.lift)
     }
+    
+    // REMOVED: No longer need to track long press for deletion
     
     // Add photos button
     private var addPhotosButton: some View {
         Button(action: {
             showingImagePicker = true
         }) {
-            HStack {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 16))
+            HStack(spacing: 8) {
+                Image(systemName: "plus.viewfinder")
+                    .font(.system(size: 16, weight: .medium))
                 
                 Text("ADD PHOTOS")
                     .font(OPSStyle.Typography.bodyBold)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
             .background(OPSStyle.Colors.primaryAccent)
             .foregroundColor(.white)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -491,9 +652,9 @@ struct ProjectDetailsView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(OPSStyle.Colors.cardBackground.opacity(0.95))
+            .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2)
+            .shadow(color: Color.black, radius: 5, x: 0, y: 2)
             
             Spacer().frame(height: 100)
         }
@@ -663,6 +824,8 @@ struct ProjectDetailsView: View {
                         print("⚠️ No valid image URLs were returned from ImageSyncManager")
                         await MainActor.run {
                             processingImages = false
+                            showingNetworkError = true
+                            networkErrorMessage = "Failed to upload images to the server. Please check your network connection and try again."
                         }
                     }
                 } else {
@@ -729,54 +892,25 @@ struct ProjectDetailsView: View {
         }
     }
     
-    /// Delete a single photo from the project
-    private func deletePhoto(_ url: String) {
-        // Start a background task for deletion
-        Task {
-            do {
-                print("ProjectDetailsView: Deleting photo: \(url)")
-                
-                // Get current project images
-                var currentImages = project.getProjectImages()
-                
-                // Remove the specified image
-                if let index = currentImages.firstIndex(of: url) {
-                    currentImages.remove(at: index)
-                    print("ProjectDetailsView: Photo removed from project images array")
-                    
-                    // Update project in database
-                    await MainActor.run {
-                        // Update project
-                        project.setProjectImageURLs(currentImages)
-                        project.needsSync = true
-                        project.syncPriority = 2 // Higher priority for image changes
-                        
-                        // Save changes to the database
-                        if let modelContext = dataController.modelContext {
-                            do {
-                                try modelContext.save()
-                                print("ProjectDetailsView: ✅ Successfully deleted photo")
-                            } catch {
-                                print("ProjectDetailsView: ⚠️ Error saving changes after deletion: \(error.localizedDescription)")
-                            }
-                        } else {
-                            print("ProjectDetailsView: ⚠️ ModelContext is nil, can't save changes")
-                        }
-                    }
-                    
-                    // Cleanup file storage (optional but good practice)
-                    if url.hasPrefix("local://") {
-                        let deleted = ImageFileManager.shared.deleteImage(localID: url)
-                        print("ProjectDetailsView: Removed image data from local storage: \(deleted ? "success" : "failed")")
-                    }
-                    
-                    // Reset state
-                    photoToDelete = nil
-                } else {
-                    print("ProjectDetailsView: ⚠️ Could not find photo in project images")
-                }
-            } 
-        }
+    /// REMOVED: Photo deletion functionality as requested
+    // We're now only allowing users to add photos without deleting them
+}
+
+struct ProjectDetailsView_Previews: PreviewProvider {
+    static var previews: some View {
+        // Create a sample project for preview
+        let sampleProject = Project(id: "preview-123", title: "Sample Construction Project", status: .inProgress)
+        
+        // Set additional properties
+        sampleProject.clientName = "ABC Construction"
+        sampleProject.address = "123 Main Street, Springfield, IL"
+        sampleProject.startDate = Date()
+        sampleProject.endDate = Date().addingTimeInterval(60*60*24*30) // 30 days later
+        sampleProject.notes = "This is a sample project for preview purposes."
+        
+        return ProjectDetailsView(project: sampleProject)
+            .environmentObject(DataController())
+            .preferredColorScheme(.dark)
     }
 }
 
@@ -819,7 +953,7 @@ struct FullScreenPhotoViewer: View {
                             .font(.system(size: 22, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(12)
-                            .background(Color.black.opacity(0.6))
+                            .background(Color.black)
                             .clipShape(Circle())
                     }
                     
@@ -829,7 +963,7 @@ struct FullScreenPhotoViewer: View {
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white)
                         .padding(8)
-                        .background(Color.black.opacity(0.6))
+                        .background(Color.black)
                         .cornerRadius(20)
                 }
                 .padding(.horizontal, 16)
@@ -958,47 +1092,56 @@ struct ZoomablePhotoView: View {
         
         isLoading = true
         
-        // Handle local URL format for our simulated server
-        if url.hasPrefix("local://") {
-            print("ZoomablePhotoView: Loading local image: \(url)")
-            
-            // Try to load from file system
-            if let loadedImage = ImageFileManager.shared.loadImage(localID: url) {
-                DispatchQueue.main.async {
-                    isLoading = false
-                    self.image = loadedImage
-                    print("ZoomablePhotoView: Successfully loaded image from file system")
-                }
-            } else {
-                print("ZoomablePhotoView: Failed to load image for: \(url)")
-                DispatchQueue.main.async {
-                    isLoading = false
-                }
+        // First check in-memory cache for quick loading
+        if let cachedImage = ImageCache.shared.get(forKey: url) {
+            DispatchQueue.main.async {
+                self.isLoading = false
+                self.image = cachedImage
+                print("ZoomablePhotoView: Using cached image from memory")
             }
             return
         }
         
-        // Handle Bubble URL format (https://opsapp.co/version-test/img/...)
+        // Then try to load from file system using ImageFileManager
+        if let loadedImage = ImageFileManager.shared.loadImage(localID: url) {
+            DispatchQueue.main.async {
+                self.isLoading = false
+                self.image = loadedImage
+                print("ZoomablePhotoView: Successfully loaded image from file system")
+                
+                // Cache in memory for faster access next time
+                ImageCache.shared.set(loadedImage, forKey: url)
+            }
+            return
+        }
+        
+        // For legacy support: try UserDefaults if not found in file system
+        if url.hasPrefix("local://") || url.contains("opsapp.co/version-test/img/") {
+            if let base64String = UserDefaults.standard.string(forKey: url),
+               let imageData = Data(base64Encoded: base64String),
+               let loadedImage = UIImage(data: imageData) {
+                
+                // Migrate to file system for future use
+                _ = ImageFileManager.shared.saveImage(data: imageData, localID: url)
+                
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.image = loadedImage
+                    print("ZoomablePhotoView: Loaded image from UserDefaults and migrated to file system")
+                    
+                    // Cache in memory
+                    ImageCache.shared.set(loadedImage, forKey: url)
+                }
+                return
+            }
+        }
+        
+        // Handle remote URLs
         var normalizedURL = url
         
         // Handle // prefix by adding https:
         if url.hasPrefix("//") {
             normalizedURL = "https:" + url
-        }
-        
-        // Check if it's a Bubble URL but stored locally (for offline access)
-        if normalizedURL.contains("opsapp.co/version-test/img/") {
-            if let base64String = UserDefaults.standard.string(forKey: normalizedURL),
-               let imageData = Data(base64Encoded: base64String),
-               let loadedImage = UIImage(data: imageData) {
-                
-                DispatchQueue.main.async {
-                    isLoading = false
-                    self.image = loadedImage
-                    print("ZoomablePhotoView: Successfully loaded Bubble image from local cache")
-                }
-                return
-            }
         }
         
         // If not found locally, try to load from network
@@ -1029,10 +1172,11 @@ struct ZoomablePhotoView: View {
                     self.image = loadedImage
                     print("ZoomablePhotoView: Successfully loaded remote image")
                     
-                    // Cache the remote image locally
-                    // For remote URLs, we'll still use UserDefaults as these are temporary caches
-                    UserDefaults.standard.set(data, forKey: normalizedURL)
-                    print("ZoomablePhotoView: Cached remote image locally")
+                    // Cache the remote image in file system
+                    _ = ImageFileManager.shared.saveImage(data: data, localID: normalizedURL)
+                    
+                    // Also cache in memory
+                    ImageCache.shared.set(loadedImage, forKey: normalizedURL)
                 } else {
                     print("ZoomablePhotoView: Failed to create image from data")
                 }
@@ -1053,3 +1197,4 @@ struct DarkLabeledContentStyle: LabeledContentStyle {
         }
     }
 }
+ 

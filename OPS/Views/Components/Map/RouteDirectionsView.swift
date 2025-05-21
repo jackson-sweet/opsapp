@@ -8,6 +8,28 @@
 
 import SwiftUI
 
+// Extension to add rounded corners to specific sides
+extension View {
+    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
+        clipShape(RoundedCorner(radius: radius, corners: corners))
+    }
+}
+
+// Custom shape for specific corner rounding
+struct RoundedCorner: Shape {
+    var radius: CGFloat = .infinity
+    var corners: UIRectCorner = .allCorners
+    
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(
+            roundedRect: rect,
+            byRoundingCorners: corners,
+            cornerRadii: CGSize(width: radius, height: radius)
+        )
+        return Path(path.cgPath)
+    }
+}
+
 struct RouteDirectionsView: View {
     let directions: [String]
     let estimatedArrival: String?
@@ -16,8 +38,9 @@ struct RouteDirectionsView: View {
     var onDismiss: (() -> Void)? // Added dismissal handler
     
     var body: some View {
+        // Simplify the layout to remove blank card issue
         VStack(spacing: 0) {
-            // Header with ETA and distance - styled to match reference design
+            // Header with ETA and distance
             HStack {
                 VStack(alignment: .leading) {
                     Text("ESTIMATED ARRIVAL")
@@ -42,7 +65,8 @@ struct RouteDirectionsView: View {
                 }
             }
             .padding()
-            .background(Color.black.opacity(0.7))
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+            .cornerRadius(OPSStyle.Layout.cornerRadius, corners: [.topLeft, .topRight])
             
             // Always show next direction first
             if let firstDirection = directions.first {
@@ -76,20 +100,24 @@ struct RouteDirectionsView: View {
                                 Text(directions[index])
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(.white)
+                                    .fixedSize(horizontal: false, vertical: true) // Allow text to wrap
                             }
                             .padding(.horizontal)
                             
-                            Divider()
-                                .background(Color.white.opacity(0.3))
+                            if index < directions.count - 2 {
+                                Divider()
+                                    .background(Color.white.opacity(0.2))
+                                    .padding(.horizontal)
+                            }
                         }
                     }
                     .padding(.vertical)
                 }
                 .frame(maxHeight: 200)
-                .background(Color.black.opacity(0.8))
+                .background(OPSStyle.Colors.cardBackground)
             }
             
-            // Toggle button with improved styling
+            // Toggle button
             Button(action: {
                 withAnimation {
                     showFullDirections.toggle()
@@ -104,14 +132,13 @@ struct RouteDirectionsView: View {
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
                 .foregroundColor(.white)
-                .background(Color.black.opacity(0.6))
+                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
             }
             
-            // Single clean action button row
-            VStack(spacing: 0) {
-                // First button: Hide directions
+            // Action buttons
+            VStack(spacing: 1) { // Small spacing for a divider effect
+                // Hide directions button
                 Button(action: {
-                    // Dismiss this view
                     if let dismiss = onDismiss {
                         dismiss()
                     }
@@ -120,20 +147,15 @@ struct RouteDirectionsView: View {
                         Image(systemName: "chevron.up")
                         Text("Hide Directions")
                     }
-                    .fontWeight(.semibold)
+                    .font(OPSStyle.Typography.cardSubtitle)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(OPSStyle.Colors.cardBackground)
                     .foregroundColor(.white)
                 }
                 
-                // Divider
-                Divider()
-                    .background(Color.white.opacity(0.2))
-                
-                // Second button: Stop navigation
+                // Stop navigation button
                 Button(action: {
-                    // Post notification to stop routing
                     NotificationCenter.default.post(
                         name: Notification.Name("StopRouting"),
                         object: nil
@@ -143,15 +165,19 @@ struct RouteDirectionsView: View {
                         Image(systemName: "xmark")
                         Text("Stop Navigation")
                     }
-                    .fontWeight(.semibold)
+                    .font(OPSStyle.Typography.cardSubtitle)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.red)
+                    .background(Color(OPSStyle.Colors.errorStatus))
                     .foregroundColor(.white)
                 }
             }
         }
         .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .shadow(radius: 4, x: 0, y: 2)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .fill(OPSStyle.Colors.cardBackground.opacity(0.95))
+                .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
+        )
     }
 }

@@ -6,6 +6,10 @@
 //
 
 import SwiftUI
+import Combine
+import UIKit
+
+// Use standardized components directly (internal modules don't need import)
 
 struct ProjectHistorySettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -13,14 +17,16 @@ struct ProjectHistorySettingsView: View {
     
     @State private var selectedTab = 0
     @State private var projectHistory: [Project] = []
+    @State private var filteredProjects: [Project] = []
     @State private var expenses: [Expense] = []
     @State private var isLoading = true
     @State private var dateFilter: DateFilter = .all
     @State private var statusFilter: StatusFilter = .all
+    @State private var searchText: String = ""
     // State for modal presentation - using optional Project as the item
     @State private var selectedProject: Project? = nil
     
-    // Placeholder model
+    // Placeholder model - part of shelved expense functionality, kept for future reference
     struct Expense: Identifiable {
         let id: String
         let projectId: String?
@@ -69,35 +75,52 @@ struct ProjectHistorySettingsView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Button(action: {
+                // Header using standardized component
+                SettingsHeader(
+                    title: "Project History",
+                    onBackTapped: {
                         dismiss()
-                    }) {
-                        Image(systemName: "arrow.left")
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
-                    
-                    Text("Projects & Expenses")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    
-                    Spacer()
-                }
-                .padding()
+                )
                 
-                // Tab selector
-                HStack(spacing: 0) {
-                    tabButton(title: "Projects", index: 0)
-                    tabButton(title: "Expenses", index: 1)
+                // Search bar using standardized component
+                HStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        
+                        TextField("Search projects...", text: $searchText)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(.white)
+                            // onEditingChanged for iOS 14 compatibility
+                            .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidChangeNotification)) { _ in
+                                applyFilters()
+                            }
+                        
+                        if !searchText.isEmpty {
+                            Button(action: {
+                                searchText = ""
+                                applyFilters()
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 12)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(10)
                 }
-                .background(OPSStyle.Colors.cardBackground.opacity(0.3))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                // SearchBar parameters removed - they were accidentally left in despite direct implementation
+                
                 .padding(.horizontal)
+                .padding(.vertical, 8)
                 
                 // Filter row
                 HStack {
@@ -118,12 +141,12 @@ struct ProjectHistorySettingsView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                             
                             Image(systemName: "chevron.down")
-                                .font(.system(size: 12))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         .padding(.vertical, 8)
                         .padding(.horizontal, 12)
-                        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
+                        .background(OPSStyle.Colors.cardBackground)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     
@@ -144,12 +167,12 @@ struct ProjectHistorySettingsView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                             
                             Image(systemName: "chevron.down")
-                                .font(.system(size: 12))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         .padding(.vertical, 8)
                         .padding(.horizontal, 12)
-                        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
+                        .background(OPSStyle.Colors.cardBackground)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     
@@ -160,12 +183,9 @@ struct ProjectHistorySettingsView: View {
                 if isLoading {
                     loadingView
                 } else {
-                    // Content based on selected tab
-                    TabView(selection: $selectedTab) {
-                        projectsTab.tag(0)
-                        expensesTab.tag(1)
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    // Content based on selected tab - only showing projects tab
+                    // We're keeping just the projects tab and not using TabView since expenses are disabled
+                    projectsTab
                 }
             }
         }
@@ -203,7 +223,7 @@ struct ProjectHistorySettingsView: View {
                 .frame(maxWidth: .infinity)
                 .background(
                     selectedTab == index ?
-                        OPSStyle.Colors.primaryAccent.opacity(0.2) :
+                        OPSStyle.Colors.cardBackground :
                         Color.clear
                 )
         }
@@ -227,7 +247,7 @@ struct ProjectHistorySettingsView: View {
     private var projectsTab: some View {
         ScrollView {
             VStack(spacing: OPSStyle.Layout.spacing3) {
-                if projectHistory.isEmpty {
+                if filteredProjects.isEmpty {
                     // Empty state with context about the filters
                     let (title, message) = emptyStateMessageForFilters()
                     emptyStateView(
@@ -237,15 +257,15 @@ struct ProjectHistorySettingsView: View {
                     )
                 } else {
                     // Project history cards
-                    ForEach(projectHistory) { project in
+                    ForEach(filteredProjects) { project in
                         projectHistoryCard(project: project)
                     }
                     
                     // Total count
-                    Text("\(projectHistory.count) projects match your filters")
+                    Text("\(filteredProjects.count) projects match your criteria")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 8)
                         .padding(.bottom, 16)
                 }
@@ -254,6 +274,9 @@ struct ProjectHistorySettingsView: View {
         }
     }
     
+    // Expenses tab - commented out as part of shelving expense functionality
+    // We're keeping this code for future reference when the feature is implemented
+    /*
     private var expensesTab: some View {
         ScrollView {
             VStack(spacing: OPSStyle.Layout.spacing3) {
@@ -280,7 +303,7 @@ struct ProjectHistorySettingsView: View {
                             featureRow(icon: "icloud.and.arrow.up", text: "Automatic syncing with office accounting")
                         }
                         .padding()
-                        .background(OPSStyle.Colors.cardBackground.opacity(0.3))
+                        .background(OPSStyle.Colors.cardBackground)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 } else {
@@ -295,7 +318,7 @@ struct ProjectHistorySettingsView: View {
                     }) {
                         HStack {
                             Image(systemName: "plus")
-                                .font(.system(size: 16))
+                                .font(OPSStyle.Typography.body)
                             
                             Text("Add New Expense")
                                 .font(OPSStyle.Typography.bodyBold)
@@ -314,11 +337,12 @@ struct ProjectHistorySettingsView: View {
             .padding()
         }
     }
+    */
     
     private func featureRow(icon: String, text: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 16))
+                .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(width: 24, height: 24)
             
@@ -332,24 +356,28 @@ struct ProjectHistorySettingsView: View {
     }
     
     private func emptyStateView(icon: String, title: String, message: String) -> some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: icon)
-                .font(.system(size: 48))
-                .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                .padding(.bottom, 8)
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack {
+                Spacer()
+                Image(systemName: icon)
+                    .font(OPSStyle.Typography.largeTitle)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .padding(.bottom, 8)
+                Spacer()
+            }
             
             Text(title)
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
             
             Text(message)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
+        .padding(24)
         .background(OPSStyle.Colors.cardBackground.opacity(0.3))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
@@ -368,8 +396,15 @@ struct ProjectHistorySettingsView: View {
                     
                     Spacer()
                     
-                    // Status badge - use the centralized StatusBadge component
-                    StatusBadge(status: project.status)
+                    // Status badge - implement directly instead of using component
+                    Text(project.status.rawValue.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .background(OPSStyle.Colors.statusColor(for: project.status))
+                        .cornerRadius(OPSStyle.Layout.cornerRadius / 2)
                 }
                 
                 // Client and address
@@ -382,7 +417,7 @@ struct ProjectHistorySettingsView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
                 Divider()
-                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                 
                 // Dates
                 HStack {
@@ -422,7 +457,7 @@ struct ProjectHistorySettingsView: View {
                             .font(OPSStyle.Typography.captionBold)
                         
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 12))
+                            .font(OPSStyle.Typography.smallCaption)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .padding(.top, 6)
@@ -435,6 +470,9 @@ struct ProjectHistorySettingsView: View {
         .buttonStyle(PlainButtonStyle()) // Prevent default button styling
     }
     
+    // Expense card - commented out as part of shelving expense functionality
+    // We're keeping this code for future reference when the feature is implemented
+    /*
     private func expenseCard(expense: Expense) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Header with amount and status
@@ -512,6 +550,7 @@ struct ProjectHistorySettingsView: View {
         .background(OPSStyle.Colors.cardBackground.opacity(0.3))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
+    */
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -530,42 +569,64 @@ struct ProjectHistorySettingsView: View {
             )
             
             // Apply initial filters
-            let filteredProjects = allProjects.filter { project in
+            let filtered = allProjects.filter { project in
                 let matchesStatus = filterProjectByStatus(project, filter: statusFilter)
                 let matchesDate = filterProjectByDate(project, filter: dateFilter)
-                return matchesStatus && matchesDate
+                let matchesSearch = searchText.isEmpty || matchesSearchCriteria(project)
+                return matchesStatus && matchesDate && matchesSearch
             }
             
             // Sort projects by date (most recent first)
-            let sortedProjects = filteredProjects.sorted { 
+            let sortedProjects = filtered.sorted { 
                 guard let date1 = $0.startDate, let date2 = $1.startDate else {
                     return false
                 }
                 return date1 > date2
             }
             
-            print("ProjectHistorySettingsView: Loaded \(allProjects.count) total projects, \(filteredProjects.count) after filtering")
+            print("ProjectHistorySettingsView: Loaded \(allProjects.count) total projects, \(filtered.count) after filtering")
             
             // In a real app, you would load expenses from the data controller
             // For now, using sample data
             
             await MainActor.run {
-                self.projectHistory = sortedProjects
+                self.projectHistory = allProjects  // Store all projects for filtering
+                self.filteredProjects = sortedProjects  // Store filtered projects for display
                 
                 // Uncomment to enable expenses feature
                 self.expenses = []  // Empty for now to show empty state
                 
+                // Expense feature shelved
                 // Create sample expense data if needed (only for UI testing)
+                /*
                 if !sortedProjects.isEmpty && AppConfiguration.Debug.useSampleData {
                     self.expenses = generateSampleExpenses(for: sortedProjects.first!)
                 }
+                */
                 
                 self.isLoading = false
             }
         }
     }
     
-    // Generate sample expenses for UI testing
+    // Search project based on search criteria
+    private func matchesSearchCriteria(_ project: Project) -> Bool {
+        let searchLower = searchText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If search text is empty, return true
+        if searchLower.isEmpty {
+            return true
+        }
+        
+        // Search in multiple fields
+        return project.title.lowercased().contains(searchLower) ||
+               project.clientName.lowercased().contains(searchLower) ||
+               project.address.lowercased().contains(searchLower) ||
+               project.status.rawValue.lowercased().contains(searchLower)
+    }
+    
+    // Generate sample expenses for UI testing - commented out as part of shelving expense functionality
+    /*
     private func generateSampleExpenses(for project: Project) -> [Expense] {
         return [
             Expense(
@@ -592,15 +653,29 @@ struct ProjectHistorySettingsView: View {
             )
         ]
     }
+    */
     
     // Generate appropriate empty state messages based on applied filters
     private func emptyStateMessageForFilters() -> (String, String) {
         // Check if we have restrictive filters applied
         let hasDateFilter = dateFilter != .all
         let hasStatusFilter = statusFilter != .all
+        let hasSearchText = !searchText.isEmpty
         
         // Generate appropriate empty state message
-        if hasDateFilter && hasStatusFilter {
+        if hasSearchText {
+            if hasDateFilter || hasStatusFilter {
+                return (
+                    "No projects match your search",
+                    "Try adjusting your search terms or filters to see more projects"
+                )
+            } else {
+                return (
+                    "No projects match '\(searchText)'",
+                    "Try a different search term or clear the search"
+                )
+            }
+        } else if hasDateFilter && hasStatusFilter {
             // Both date and status filters are applied
             return (
                 "No projects match your filters",
@@ -632,21 +707,26 @@ struct ProjectHistorySettingsView: View {
         isLoading = true
         
         Task {
-            // First get all projects for the user
-            let allProjects = dataController.getProjectHistory(
-                for: dataController.currentUser?.id ?? ""
-            )
-            
-            // Then apply filters
-            let filteredProjects = allProjects.filter { project in
+            // Use the existing projectHistory array (all projects)
+            // and apply filters without reloading from data controller
+            let filtered = projectHistory.filter { project in
                 let matchesStatus = filterProjectByStatus(project, filter: statusFilter)
                 let matchesDate = filterProjectByDate(project, filter: dateFilter)
-                return matchesStatus && matchesDate
+                let matchesSearch = searchText.isEmpty || matchesSearchCriteria(project)
+                return matchesStatus && matchesDate && matchesSearch
+            }
+            
+            // Sort projects by date (most recent first)
+            let sortedProjects = filtered.sorted { 
+                guard let date1 = $0.startDate, let date2 = $1.startDate else {
+                    return false
+                }
+                return date1 > date2
             }
             
             // Update UI on main thread
             await MainActor.run {
-                self.projectHistory = filteredProjects
+                self.filteredProjects = sortedProjects
                 self.isLoading = false
             }
         }

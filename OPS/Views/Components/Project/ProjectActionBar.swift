@@ -17,16 +17,17 @@ struct ProjectActionBar: View {
     
     // State variables for various sheets and actions
     @State private var showCompleteConfirmation = false
-    @State private var showReceiptScanner = false
+    // @State private var showReceiptScanner = false - Removed as part of shelving expense functionality
     @State private var showProjectDetails = false
     @State private var showImagePicker = false
     @State private var selectedImages: [UIImage] = []
     @State private var processingImage = false
     
-    // Receipt scanner state
-    @State private var receiptAmount: String = ""
-    @State private var receiptDescription: String = ""
-    @State private var receiptImage: UIImage?
+    // Receipt scanner state - Keeping but not using (for future reference)
+    // These properties are kept but commented out as they may be needed when expense functionality is added back
+    // @State private var receiptAmount: String = ""
+    // @State private var receiptDescription: String = ""
+    // @State private var receiptImage: UIImage?
     
     var body: some View {
         // Semi-transparent background with blur
@@ -66,10 +67,10 @@ struct ProjectActionBar: View {
                 secondaryButton: .cancel()
             )
         }
-        // Receipt Scanner Sheet
-        .sheet(isPresented: $showReceiptScanner) {
-            ReceiptScannerView(project: project)
-        }
+        // Receipt Scanner Sheet - Removed as part of shelving expense functionality
+        // .sheet(isPresented: $showReceiptScanner) {
+        //     ReceiptScannerView(project: project)
+        // }
         // Project Details Sheet
         .sheet(isPresented: $showProjectDetails) {
             NavigationView {
@@ -117,9 +118,8 @@ struct ProjectActionBar: View {
         case .complete:
             // Directly mark the project as completed
             markProjectComplete()
-        case .receipt:
-            // Show receipt scanner
-            showReceiptScanner = true
+        // case .receipt: - Removed as part of shelving expense functionality
+        //    showReceiptScanner = true
         case .details:
             // Show project details
             showProjectDetails = true
@@ -138,9 +138,11 @@ struct ProjectActionBar: View {
     private func updateProjectStatus(_ status: Status) {
         Task {
             // Update project status and exit project mode when completed
+            // Always force sync for user-initiated status changes in the UI
             dataController.syncManager.updateProjectStatus(
                 projectId: project.id,
-                status: status
+                status: status,
+                forceSync: true // Always force sync for manual status changes
             )
             
             // If marking as complete, exit project mode after a short delay
@@ -275,14 +277,14 @@ struct ProjectActionBar: View {
 // MARK: - Project Actions Enum
 enum ProjectAction: CaseIterable {
     case complete
-    case receipt
+    // case receipt - removed as part of shelving expense functionality
     case details
     case photo
     
     var iconName: String {
         switch self {
         case .complete: return "checkmark.circle"
-        case .receipt: return "doc.text.viewfinder" // Receipt scanner icon
+        // case .receipt: return "doc.text.viewfinder" - removed
         case .details: return "info.circle" // Project details icon
         case .photo: return "camera"
         }
@@ -291,25 +293,17 @@ enum ProjectAction: CaseIterable {
     var label: String {
         switch self {
         case .complete: return "Complete"
-        case .receipt: return "Receipt"
+        // case .receipt: return "Receipt" - removed
         case .details: return "Details"
         case .photo: return "Photo"
         }
     }
 }
 
-// MARK: - Receipt Scanner View
+// MARK: - Receipt Scanner View - Coming Soon
 struct ReceiptScannerView: View {
     let project: Project
-    @EnvironmentObject private var dataController: DataController
     @Environment(\.presentationMode) var presentationMode
-    
-    @State private var receiptAmount: String = ""
-    @State private var receiptDescription: String = ""
-    @State private var receiptDate: Date = Date()
-    @State private var receiptImage: UIImage?
-    @State private var showImagePicker = false
-    @State private var processingReceipt = false
     
     var body: some View {
         NavigationView {
@@ -317,224 +311,75 @@ struct ReceiptScannerView: View {
                 OPSStyle.Colors.backgroundGradient
                     .edgesIgnoringSafeArea(.all)
                 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Receipt Image Section
-                        VStack(alignment: .center) {
-                            if let image = receiptImage {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(height: 200)
-                                    .cornerRadius(8)
-                                    .padding()
-                                    .overlay(
-                                        Button(action: {
-                                            showImagePicker = true
-                                        }) {
-                                            Text("Change Photo")
-                                                .font(.caption)
-                                                .padding(8)
-                                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-                                                .cornerRadius(8)
-                                        }
-                                        .padding(8),
-                                        alignment: .bottomTrailing
-                                    )
-                            } else {
-                                Button(action: {
-                                    showImagePicker = true
-                                }) {
-                                    VStack(spacing: 16) {
-                                        Image(systemName: "camera.fill")
-                                            .font(.system(size: 40))
-                                            .padding()
-                                        
-                                        Text("Take Receipt Photo")
-                                            .font(.headline)
-                                        
-                                        Text("or choose from library")
-                                            .font(.caption)
-                                            .foregroundColor(Color.gray)
-                                    }
-                                    .frame(height: 200)
-                                    .frame(maxWidth: .infinity)
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                    .cornerRadius(8)
-                                    .padding(.horizontal)
-                                }
-                                .foregroundColor(OPSStyle.Colors.secondaryAccent)
-                            }
-                        }
+                // Coming soon content
+                VStack(spacing: 32) {
+                    Spacer()
+                    
+                    Image(systemName: "dollarsign.circle")
+                        .font(.system(size: 80))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
+                    
+                    Text("COMING SOON")
+                        .font(OPSStyle.Typography.title)
+                        .foregroundColor(.white)
+                        .padding(.top, 24)
+                    
+                    Text("Expense tracking will be available in the next update")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                    
+                    // Feature preview section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("PLANNED FEATURES")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                         
-                        // Receipt Details Form
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("EXPENSE DETAILS")
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.horizontal)
-                            
-                            // Amount
-                            VStack(alignment: .leading) {
-                                Text("Amount")
-                                    .font(.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                TextField("$0.00", text: $receiptAmount)
-                                    .keyboardType(.decimalPad)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                    .cornerRadius(8)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(.horizontal)
-                            
-                            // Description
-                            VStack(alignment: .leading) {
-                                Text("Description")
-                                    .font(.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                TextField("Enter expense description", text: $receiptDescription)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                    .cornerRadius(8)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(.horizontal)
-                            
-                            // Date
-                            VStack(alignment: .leading) {
-                                Text("Date")
-                                    .font(.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                DatePicker("", selection: $receiptDate, displayedComponents: .date)
-                                    .datePickerStyle(CompactDatePickerStyle())
-                                    .labelsHidden()
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                    .cornerRadius(8)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(.horizontal)
-                            
-                            // Project - just show the current project
-                            VStack(alignment: .leading) {
-                                Text("Project")
-                                    .font(.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                HStack {
-                                    Text(project.title)
-                                        .foregroundColor(.white)
-                                    Spacer()
-                                    
-                                    // Status indicator
-                                    Text(project.status.displayName)
-                                        .font(.caption)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(project.statusColor)
-                                        .cornerRadius(4)
-                                }
-                                .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                .cornerRadius(8)
-                            }
-                            .padding(.horizontal)
-                        }
-                        
-                        // Submit Button
-                        Button(action: {
-                            saveReceipt()
-                        }) {
-                            if processingReceipt {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
-                                Text("Save Expense")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                            }
-                        }
-                        .padding()
-                        .background(receiptImage != nil && !receiptAmount.isEmpty ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inactiveStatus)
-                        .cornerRadius(12)
-                        .padding(.horizontal)
-                        .disabled(receiptImage == nil || receiptAmount.isEmpty || processingReceipt)
-                        .padding(.top, 20)
+                        ReceiptFeatureItem(icon: "camera.fill", title: "Receipt scanning")
+                        ReceiptFeatureItem(icon: "tag.fill", title: "Expense categorization")
+                        ReceiptFeatureItem(icon: "chart.bar.fill", title: "Project expense reports")
+                        ReceiptFeatureItem(icon: "arrow.up.arrow.down", title: "Sync with accounting software")
                     }
-                    .padding(.bottom, 40)
+                    .padding(24)
+                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+                    
+                    Spacer()
                 }
             }
-            .navigationTitle("Add Expense")
+            .navigationTitle("Expense Tracking")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button("Close") {
                         presentationMode.wrappedValue.dismiss()
                     }
                 }
             }
-            .sheet(isPresented: $showImagePicker) {
-                // For receipt scanner, use both camera and library with preference for camera
-                ImagePicker(
-                    images: Binding<[UIImage]>(
-                        get: { receiptImage != nil ? [receiptImage!] : [] },
-                        set: { images in
-                            if let first = images.first {
-                                receiptImage = first
-                            }
-                        }
-                    ), 
-                    allowsEditing: true,
-                    sourceType: .both, // Allow both camera and photo library
-                    selectionLimit: 1, // Only one receipt image at a time
-                    onSelectionComplete: {
-                        // Nothing extra needed, binding handles updating receiptImage
-                    }
-                )
-            }
         }
     }
+}
+
+// Helper view for feature items in the coming soon screen
+private struct ReceiptFeatureItem: View {
+    let icon: String
+    let title: String
     
-    private func saveReceipt() {
-        guard let image = receiptImage, let _ = Double(receiptAmount.replacingOccurrences(of: "$", with: "")) else {
-            return
-        }
-        
-        processingReceipt = true
-        
-        // Simulate saving the receipt
-        Task {
-            do {
-                // Verify image can be compressed
-                guard let _ = image.jpegData(compressionQuality: 0.7) else {
-                    return
-                }
-                
-                // Simulate delay for processing the receipt
-                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                
-                // Generate a unique filename
-                let _ = "receipt_\(project.id)_\(Date().timeIntervalSince1970).jpg"
-                
-                // In a real app, this would save to the database and sync
-                // For this demo, we'll just simulate success
-                
-                await MainActor.run {
-                    processingReceipt = false
-                    presentationMode.wrappedValue.dismiss()
-                }
-            } catch {
-                await MainActor.run {
-                    processingReceipt = false
-                }
-            }
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .frame(width: 24, height: 24)
+            
+            Text(title)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(.white)
+            
+            Spacer()
         }
     }
 }

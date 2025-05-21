@@ -79,17 +79,17 @@ struct CompanyTeamMemberRow: View {
                         .clipShape(Circle())
                 } else {
                     Circle()
-                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
+                        .fill(OPSStyle.Colors.background.opacity(0))
                         .frame(width: 48, height: 48)
                     
                     Text(teamMember.initials)
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
             .overlay(
                 Circle()
-                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.primaryText, lineWidth: 1)
             )
             
             // Contact info

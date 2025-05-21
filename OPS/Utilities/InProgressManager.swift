@@ -12,23 +12,30 @@ import MapKit
 
 /// Manages the in-progress state of projects, including routing
 class InProgressManager: ObservableObject {
+    // Shared instance for app-wide access
+    static let shared = InProgressManager()
+    
     @Published var isRouting = false
     @Published var routeDirections: [String] = []
     @Published var estimatedArrival: String?
     @Published var routeDistance: String?
     @Published var currentNavStep: NavigationStep?
-    private var activeRoute: MKRoute?
+    @Published var activeRoute: MKRoute?
     
     // Current step index in the route
     private var currentStepIndex: Int = 0
     
     func startRouting(to destination: CLLocationCoordinate2D, from userLocation: CLLocationCoordinate2D? = nil) {
         print("InProgressManager: Starting routing to: \(destination.latitude), \(destination.longitude)")
+        print("InProgressManager: Before setting - isRouting = \(self.isRouting)")
         
         // Make sure routing is initially set to true to show loading state
-        DispatchQueue.main.async {
-            self.isRouting = true
-        }
+        self.isRouting = true
+        print("InProgressManager: After setting - isRouting = \(self.isRouting)")
+            
+        // Publish explicit notification that routing has started
+        NotificationCenter.default.post(name: Notification.Name("RoutingStateChanged"), object: nil, userInfo: ["isRouting": true])
+        print("InProgressManager: Posted RoutingStateChanged notification")
         
         let request = MKDirections.Request()
         
@@ -86,25 +93,46 @@ class InProgressManager: ObservableObject {
                     self.activeRoute = fastestRoute
                     self.processRouteDetails(fastestRoute)
                     self.isRouting = true
+                    
+                    // Post notification again to confirm route found
+                    NotificationCenter.default.post(
+                        name: Notification.Name("RoutingStateChanged"),
+                        object: nil,
+                        userInfo: ["isRouting": true]
+                    )
                 } else if let firstRoute = response.routes.first {
                     // Fallback to first route if we can't determine fastest
                     print("InProgressManager: Using first available route")
                     self.activeRoute = firstRoute
                     self.processRouteDetails(firstRoute)
                     self.isRouting = true
+                    
+                    // Post notification again to confirm route found
+                    NotificationCenter.default.post(
+                        name: Notification.Name("RoutingStateChanged"),
+                        object: nil,
+                        userInfo: ["isRouting": true]
+                    )
                 }
             }
         }
     }
     
     func stopRouting() {
-        isRouting = false
-        activeRoute = nil
-        routeDirections = []
-        estimatedArrival = nil
-        routeDistance = nil
-        currentNavStep = nil
-        currentStepIndex = 0
+        // Ensure routing state is fully cleared
+        print("InProgressManager: Stopping all routing operations")
+        
+        // Clear all navigation data
+        self.isRouting = false
+        self.activeRoute = nil
+        self.routeDirections = []
+        self.estimatedArrival = nil
+        self.routeDistance = nil
+        self.currentNavStep = nil
+        self.currentStepIndex = 0
+        
+        // Publish explicit notification that routing has stopped
+        NotificationCenter.default.post(name: Notification.Name("RoutingStateChanged"), object: nil, userInfo: ["isRouting": false])
     }
     
     private func processRouteDetails(_ route: MKRoute) {
@@ -266,7 +294,7 @@ fileprivate extension String {
 }
 
 // Struct to represent a navigation step for the UI
-struct NavigationStep {
+struct NavigationStep: Equatable {
     let instruction: String
     let distance: String
     let distanceValue: CLLocationDistance
@@ -280,8 +308,8 @@ struct NavigationStep {
     }
 }
 
-// Extension to get a destination coordinate from a polyline (for refreshing routes)
-fileprivate extension MKPolyline {
+// Extension to get coordinates from a polyline (for refreshing routes and map centering)
+extension MKPolyline {
     // Using a different name to avoid conflict with MKAnnotation.coordinate
     func getDestinationCoordinate() -> CLLocationCoordinate2D? {
         guard pointCount > 0 else { return nil }
@@ -296,5 +324,20 @@ fileprivate extension MKPolyline {
         let coordinate = lastPoint.coordinate
         
         return coordinate
+    }
+    
+    // Get all coordinates from the polyline
+    func coordinates() -> [CLLocationCoordinate2D] {
+        guard pointCount > 0 else { return [] }
+        
+        let points = self.points()
+        var coordinates: [CLLocationCoordinate2D] = []
+        
+        for i in 0..<pointCount {
+            let point = points[i]
+            coordinates.append(point.coordinate)
+        }
+        
+        return coordinates
     }
 }

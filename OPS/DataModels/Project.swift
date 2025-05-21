@@ -32,6 +32,9 @@ final class Project: Identifiable {
     // Store project images as comma-separated string
     var projectImagesString: String = ""
     
+    // Store unsynced images (those captured while offline) as comma-separated string
+    var unsyncedImagesString: String = ""
+    
     // Store relationships to team members with proper inverse
     @Relationship(deleteRule: .noAction)
     var teamMembers: [User]
@@ -40,6 +43,10 @@ final class Project: Identifiable {
     var lastSyncedAt: Date?
     var needsSync: Bool = false
     var syncPriority: Int = 1 // Higher numbers = higher priority
+    
+    // Transient properties (not persisted to database)
+    @Transient var lastTapped: Date?
+    @Transient var coordinatorData: [String: Any]?
     
     init(id: String, title: String, status: Status) {
         self.id = id
@@ -50,6 +57,7 @@ final class Project: Identifiable {
         self.companyId = ""
         self.teamMemberIdsString = ""
         self.projectImagesString = ""
+        self.unsyncedImagesString = ""
         self.teamMembers = []
         self.allDay = false
     }
@@ -79,6 +87,39 @@ final class Project: Identifiable {
         return images
     }
     
+    // Get unsynced images
+    func getUnsyncedImages() -> [String] {
+        return unsyncedImagesString.isEmpty ? [] : unsyncedImagesString.components(separatedBy: ",")
+    }
+    
+    // Add an image to unsynced list
+    func addUnsyncedImage(_ imageURL: String) {
+        var unsynced = getUnsyncedImages()
+        if !unsynced.contains(imageURL) {
+            unsynced.append(imageURL)
+            unsyncedImagesString = unsynced.joined(separator: ",")
+        }
+    }
+    
+    // Mark an image as synced by removing from unsynced list
+    func markImageAsSynced(_ imageURL: String) {
+        var unsynced = getUnsyncedImages()
+        if let index = unsynced.firstIndex(of: imageURL) {
+            unsynced.remove(at: index)
+            unsyncedImagesString = unsynced.joined(separator: ",")
+        }
+    }
+    
+    // Check if an image is synced
+    func isImageSynced(_ imageURL: String) -> Bool {
+        return !getUnsyncedImages().contains(imageURL)
+    }
+    
+    // Clear all unsynced images
+    func clearUnsyncedImages() {
+        unsyncedImagesString = ""
+    }
+    
     // Debug method to show project state
     func debugProjectState() {
         print("Project Debug Info:")
@@ -90,13 +131,36 @@ final class Project: Identifiable {
         print("  - Needs Sync: \(needsSync)")
     }
     
-    // Computed property for location
+    // Computed property for location with validation
     var coordinate: CLLocationCoordinate2D? {
         guard let latitude = latitude,
               let longitude = longitude else {
             return nil
         }
-        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        
+        // Validate coordinate ranges
+        let validLatitude = max(-90.0, min(90.0, latitude))
+        let validLongitude = max(-180.0, min(180.0, longitude))
+        
+        // Check if coordinates are meaningful (not 0,0 which often indicates missing data)
+        if abs(validLatitude) < 0.0001 && abs(validLongitude) < 0.0001 {
+            print("⚠️ Project \(id): Invalid coordinates (0,0), likely missing geocoding data")
+            return nil
+        }
+        
+        return CLLocationCoordinate2D(latitude: validLatitude, longitude: validLongitude)
+    }
+    
+    // Method to set coordinates with validation
+    func setCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        // Validate and round to 6 decimal places (approximately 0.1 meter precision)
+        let validLatitude = max(-90.0, min(90.0, coordinate.latitude))
+        let validLongitude = max(-180.0, min(180.0, coordinate.longitude))
+        
+        self.latitude = round(validLatitude * 1_000_000) / 1_000_000
+        self.longitude = round(validLongitude * 1_000_000) / 1_000_000
+        
+        print("📍 Project \(id): Set coordinates to (\(self.latitude!), \(self.longitude!))")
     }
     
     // Computed property for display status - matches your Bubble status colors

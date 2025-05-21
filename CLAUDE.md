@@ -87,6 +87,67 @@ OPS speaks with the confident, straightforward voice of an experienced field sup
 - **Screen Organization**: Critical actions at bottom of screen for thumb accessibility
 - **Clear Hierarchy**: Primary actions prominently displayed and visually distinguished
 
+## UI Design Guidelines
+
+### Background Colors
+- **Primary Background**: Always use solid `OPSStyle.Colors.background` (near black) for main screens.
+- **Card Background**: Use `OPSStyle.Colors.cardBackground` or `OPSStyle.Colors.cardBackgroundDark` for cards and content containers.
+- **IMPORTANT**: Never use opacity modifiers (e.g., `.opacity(0.5)`) on background colors. Instead, use the appropriate solid color for the context.
+
+### Accent Colors
+- **Primary Accent** (`OPSStyle.Colors.primaryAccent`): Use for:
+  - Primary interactive elements (buttons, clickable icons)
+  - Main call-to-action elements
+  - Navigation elements
+  - Must be less than 10% of visible UI colors
+
+- **Secondary Accent** (`OPSStyle.Colors.secondaryAccent`): 
+  - **ONLY** use to indicate active projects or active state
+  - Never use for general UI elements, decoration, or non-active items
+
+### Text Colors
+- **Primary Text** (`OPSStyle.Colors.primaryText`): Use for:
+  - Main text content
+  - Non-clickable icons
+  - Headers and titles
+
+- **Secondary Text** (`OPSStyle.Colors.secondaryText`): Use for:
+  - Supporting text
+  - Labels
+  - Subtitles and captions
+
+- **Tertiary Text** (`OPSStyle.Colors.tertiaryText`): Use for:
+  - Hints and less important information
+  - Disabled text
+
+### Component Styling Guidelines
+
+#### Buttons
+1. **Primary Button**: 
+   - Background: `OPSStyle.Colors.primaryAccent`
+   - Text: White
+   - Used for main actions on a screen
+
+2. **Secondary Button**:
+   - Background: Black
+   - Text/Border: `OPSStyle.Colors.primaryAccent`
+   - Used for alternative actions
+
+3. **Text Button**:
+   - No background
+   - Text: `OPSStyle.Colors.primaryAccent`
+   - Used for tertiary actions
+
+#### Cards
+- **Always use solid backgrounds** without opacity modifiers
+- Corner radius should be consistent: `OPSStyle.Layout.cornerRadius`
+- Shadow (if used) should be solid black without opacity: `.shadow(color: Color.black, radius: 4, x: 0, y: 2)`
+
+#### Icons
+- **Clickable Icons**: Use `OPSStyle.Colors.primaryAccent`
+- **Non-clickable/Informational Icons**: Use `OPSStyle.Colors.primaryText`
+- **Status Icons**: Use appropriate status color
+
 ## Best Practices
 
 - **Offline-First Architecture** - All critical operations work locally first with intelligent sync

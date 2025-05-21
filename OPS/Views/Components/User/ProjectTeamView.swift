@@ -110,7 +110,7 @@ struct ProjectTeamView: View {
             }
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .sheet(isPresented: $showingTeamMemberDetails) {
             if let selectedMember = selectedTeamMember {
@@ -198,13 +198,14 @@ struct TeamMemberAvatar: View {
                     .clipShape(Circle())
             } else {
                 Circle()
-                    .fill(OPSStyle.Colors.primaryAccent)
+                    .stroke(Color(.white))
                     .frame(width: size, height: size)
                     .overlay(
                         Text(user.firstName.prefix(1) + user.lastName.prefix(1))
-                            .font(.system(size: size * 0.4, weight: .bold))
+                            .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(.white)
                     )
+                    
             }
         }
         .onAppear {

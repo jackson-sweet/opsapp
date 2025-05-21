@@ -13,6 +13,7 @@ struct ProjectMarkerPopup: View {
     
     // Animation states
     @State private var isAnimating = false
+    // No button tap functionality
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -26,7 +27,7 @@ struct ProjectMarkerPopup: View {
             HStack(spacing: 4) {
                 Image(systemName: "building.2")
                     .font(.system(size: 12))
-                    .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 
                 Text(project.clientName)
                     .font(OPSStyle.Typography.cardBody)
@@ -38,7 +39,7 @@ struct ProjectMarkerPopup: View {
             HStack(spacing: 4) {
                 Image(systemName: "mappin")
                     .font(.system(size: 12))
-                    .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 
                 Text(formatAddress(project.address))
                     .font(OPSStyle.Typography.smallBody)
@@ -47,26 +48,9 @@ struct ProjectMarkerPopup: View {
             }
             
             // Status badge
-            StatusBadge(status: project.status)
+            StatusBadge.forJobStatus(project.status)
                 .padding(.top, 2)
                 .frame(height: 24)
-            
-            // View details button
-            Button(action: onTap) {
-                HStack {
-                    Text("View Details")
-                        .font(OPSStyle.Typography.smallButton)
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(OPSStyle.Colors.secondaryAccent)
-                .foregroundColor(.white)
-                .cornerRadius(OPSStyle.Layout.buttonRadius)
-            }
-            .padding(.top, 4)
         }
         .padding(12)
         .frame(width: 220)
@@ -75,24 +59,12 @@ struct ProjectMarkerPopup: View {
                 // Background
                 OPSStyle.Colors.cardBackground
                     .opacity(0.95)
-                
-                // Subtle gradient overlay
-                LinearGradient(
-                    gradient: Gradient(
-                        colors: [
-                            Color.white.opacity(0.1),
-                            Color.clear
-                        ]
-                    ),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
             }
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
         .overlay(
-            // Top arrow indicator
+            // Top arrow indicator (pointing up from top of card to the pin)
             Triangle()
                 .fill(OPSStyle.Colors.cardBackground.opacity(0.95))
                 .frame(width: 16, height: 8)
@@ -121,17 +93,35 @@ struct ProjectMarkerPopup: View {
     }
 }
 
-// Triangle shape for the popup arrow
+// Triangle shape for the popup arrow pointing up (for top of card)
 struct Triangle: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
+        // Start at top center point
         path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        // Line to bottom left
         path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        // Line to bottom right
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        // Close path back to top center
         path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
         return path
     }
 }
+
+// Triangle shape for the popup arrow pointing down (for bottom of card)
+struct BottomTriangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))  // Point at bottom
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY)) // Line to top left
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY)) // Line to top right
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY)) // Back to bottom point
+        return path
+    }
+}
+
+// Button functionality removed
 
 // For representation in previews
 struct ProjectMarkerPopupPreviews: PreviewProvider {

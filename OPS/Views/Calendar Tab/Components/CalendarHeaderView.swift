@@ -51,7 +51,8 @@ struct CalendarHeaderView: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
                     Text("\(todaysProjectCount)")
-                        .font(.system(size: 48, weight: .bold))
+                        .font(OPSStyle.Typography.largeTitle)
+                        .fontWeight(.bold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 .padding(.vertical, 16)

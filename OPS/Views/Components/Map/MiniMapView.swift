@@ -8,27 +8,40 @@
 import SwiftUI
 import MapKit
 
+// Anchor preference key for markers
+struct AnchorPreferenceKey: PreferenceKey {
+    static var defaultValue: [String: Anchor<CGPoint>] = [:]
+    static func reduce(value: inout [String: Anchor<CGPoint>], nextValue: () -> [String: Anchor<CGPoint>]) {
+        value.merge(nextValue()) { (current, _) in current }
+    }
+}
+
 struct MiniMapView: View {
     let coordinate: CLLocationCoordinate2D?
     let address: String
     var onTap: () -> Void
     
+    // Map settings from user preferences
+    @AppStorage("map3DBuildings") private var map3DBuildings = false
+    @AppStorage("mapDefaultType") private var mapDefaultType = "standard"
+    
     var body: some View {
         Button(action: onTap) {
             ZStack {
                 if let coordinate = coordinate {
-                    // Map with location
+                    // Map with location using user's preferred settings
                     Map(initialPosition: .region(region(for: coordinate))) {
                         Annotation("Project Location", coordinate: coordinate) {
-                            ZStack {
-                                Circle()
-                                    .fill(OPSStyle.Colors.primaryAccent)
-                                    .frame(width: 24, height: 24)
-                                Image(systemName: "mappin")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
+                            // Use SF Symbols marker - clean version without background, with white color
+                            Image(systemName: "mappin.circle.fill")
+                                .font(.system(size: 28, weight: .semibold))
+                                .foregroundColor(Color.white)
+                                .shadow(color: Color.black.opacity(0.5), radius: 3, x: 0, y: 2)
                         }
+                    }
+                    .mapStyle(mapStyle())
+                    .mapControls {
+                        // Compass removed per user request
                     }
                     .allowsHitTesting(false) // Map interactions will be handled by the parent button
                     .disabled(true)
@@ -37,17 +50,17 @@ struct MiniMapView: View {
                     OPSStyle.Colors.cardBackgroundDark
                         .overlay(
                             VStack(spacing: 8) {
-                                Image(systemName: "map")
+                                Image(systemName: "map.slash")
                                     .font(.system(size: 32))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
-                                Text(address)
+                                Text("NO ADDRESS")
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal)
                                 
-                                Text("Tap to open in Maps")
+                                Text("No location available")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                             }
@@ -80,8 +93,20 @@ struct MiniMapView: View {
     private func region(for coordinate: CLLocationCoordinate2D) -> MKCoordinateRegion {
         MKCoordinateRegion(
             center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.008) // Slightly closer zoom for better focus
         )
+    }
+    
+    // Helper to apply user's map style preferences
+    @MainActor private func mapStyle() -> MapStyle {
+        switch mapDefaultType {
+        case "satellite":
+            return .imagery(elevation: map3DBuildings ? .realistic : .flat)
+        case "hybrid":
+            return .hybrid(elevation: map3DBuildings ? .realistic : .flat)
+        default: // "standard"
+            return .standard(elevation: map3DBuildings ? .realistic : .flat)
+        }
     }
 }
 

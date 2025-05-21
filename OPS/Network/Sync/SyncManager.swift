@@ -23,6 +23,9 @@ class SyncManager {
     private let connectivityMonitor: ConnectivityMonitor
     private let backgroundTaskManager: BackgroundTaskManager
     
+    // Flag to prevent automatic status updates
+    private var preventAutoStatusUpdates: Bool = false
+    
     private(set) var syncInProgress = false {
         didSet {
             // Publish state changes
@@ -39,6 +42,11 @@ class SyncManager {
         connectivityMonitor.isConnected
     }
     
+    // Status updates control
+    var areAutoStatusUpdatesEnabled: Bool {
+        return !preventAutoStatusUpdates
+    }
+    
     // MARK: - Initialization
     init(modelContext: ModelContext,
          apiService: APIService,
@@ -51,6 +59,12 @@ class SyncManager {
         self.connectivityMonitor = connectivityMonitor
         self.backgroundTaskManager = backgroundTaskManager
         self.userIdProvider = userIdProvider
+        
+        // Load auto status updates setting from UserDefaults
+        let userDefaults = UserDefaults.standard
+        self.preventAutoStatusUpdates = !userDefaults.bool(forKey: "autoStatusUpdates", defaultValue: true)
+        
+        print("SyncManager: Initialized with auto status updates \(self.preventAutoStatusUpdates ? "DISABLED" : "ENABLED")")
     }
     
     // MARK: - Public Methods
@@ -460,13 +474,18 @@ class SyncManager {
         
         Task {
             do {
-                // First sync users that need sync
+                // First sync users that need sync (always allowed)
                 let userSyncCount = await syncPendingUserChanges()
                 print("SyncManager: Synced \(userSyncCount) user changes")
                 
-                // Then sync high-priority project items (status changes)
-                let highPriorityCount = await syncPendingProjectStatusChanges()
-                print("SyncManager: Synced \(highPriorityCount) high-priority project changes")
+                // Then sync high-priority project items (status changes) if auto-updates are enabled
+                var highPriorityCount = 0
+                if !preventAutoStatusUpdates {
+                    highPriorityCount = await syncPendingProjectStatusChanges()
+                    print("SyncManager: Synced \(highPriorityCount) high-priority project changes")
+                } else {
+                    print("SyncManager: Skipping project status sync (auto updates disabled)")
+                }
                 
                 // Finally, fetch remote data if we didn't exhaust our sync budget
                 if (userSyncCount + highPriorityCount) < 10 {
@@ -512,7 +531,7 @@ class SyncManager {
     
     /// Update project status locally and queue for sync
     @discardableResult
-    func updateProjectStatus(projectId: String, status: Status) -> Bool {
+    func updateProjectStatus(projectId: String, status: Status, forceSync: Bool = false) -> Bool {
         let predicate = #Predicate<Project> { $0.id == projectId }
         let descriptor = FetchDescriptor<Project>(predicate: predicate)
         
@@ -537,12 +556,18 @@ class SyncManager {
             // Save local changes
             try modelContext.save()
             
-            // Queue sync if online
-            if connectivityMonitor.isConnected {
+            // Queue sync if online and either auto-updates are enabled or forceSync is true
+            if connectivityMonitor.isConnected && (!preventAutoStatusUpdates || forceSync) {
+                print("SyncManager: Syncing project status - auto updates \(preventAutoStatusUpdates ? "disabled" : "enabled"), force sync: \(forceSync)")
+                
                 // Don't await - allow to happen in background
                 Task {
                     await syncProjectStatus(project)
                 }
+            } else if preventAutoStatusUpdates && !forceSync {
+                print("SyncManager: Project status updated locally but not synced (auto updates disabled)")
+            } else if !connectivityMonitor.isConnected {
+                print("SyncManager: Project status updated locally but not synced (offline)")
             }
             
             return true
@@ -734,6 +759,12 @@ class SyncManager {
     
     /// Sync any pending project status changes
     private func syncPendingProjectStatusChanges() async -> Int {
+        // Skip status synchronization if auto-updates are disabled
+        if preventAutoStatusUpdates {
+            print("SyncManager: Skipping auto sync of pending project status changes (disabled)")
+            return 0
+        }
+        
         // Find projects that need sync, ordered by priority
         let predicate = #Predicate<Project> { $0.needsSync == true }
         var descriptor = FetchDescriptor<Project>(predicate: predicate)
@@ -742,6 +773,8 @@ class SyncManager {
         do {
             let pendingProjects = try modelContext.fetch(descriptor)
             var successCount = 0
+            
+            print("SyncManager: Found \(pendingProjects.count) projects that need syncing")
             
             // Process in batches of 10 to avoid large transaction costs
             for batch in pendingProjects.chunked(into: 10) {
@@ -764,6 +797,7 @@ class SyncManager {
                 try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
             }
             
+            print("SyncManager: Successfully synced \(successCount) of \(pendingProjects.count) projects")
             return successCount
         } catch {
             print("Failed to fetch pending projects: \(error.localizedDescription)")
@@ -790,6 +824,34 @@ class SyncManager {
             // Small delay between batches to prevent UI stutter
             try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
         }
+    }
+    
+    // MARK: - Auto Status Updates Control
+    
+    /// Disable automatic status updates to backend
+    func disableAutoStatusUpdates() {
+        preventAutoStatusUpdates = true
+        print("SyncManager: Automatic status updates DISABLED")
+    }
+    
+    /// Enable automatic status updates to backend
+    func enableAutoStatusUpdates() {
+        preventAutoStatusUpdates = false
+        print("SyncManager: Automatic status updates ENABLED")
+    }
+    
+    /// Toggle automatic status updates
+    @discardableResult
+    func toggleAutoStatusUpdates() -> Bool {
+        preventAutoStatusUpdates.toggle()
+        print("SyncManager: Automatic status updates \(preventAutoStatusUpdates ? "DISABLED" : "ENABLED")")
+        return !preventAutoStatusUpdates // Return true if enabled, false if disabled
+    }
+    
+    /// Force sync all pending project status changes
+    func forceSyncPendingStatusChanges() async -> Int {
+        print("SyncManager: Forcing sync of all pending status changes regardless of auto-update setting")
+        return await syncPendingProjectStatusChanges()
     }
     
     /// Process remote projects and update local database
@@ -942,8 +1004,7 @@ class SyncManager {
             localProject.endDate = DateFormatter.dateFromBubble(completionString)
         }
         
-        // Update status and other fields
-        localProject.status = BubbleFields.JobStatus.toSwiftEnum(remoteDTO.status)
+        // Update notes and description fields
         localProject.notes = remoteDTO.teamNotes ?? remoteDTO.description
         localProject.projectDescription = remoteDTO.description
         localProject.lastSyncedAt = Date()
@@ -951,6 +1012,14 @@ class SyncManager {
         // Update company ID from company reference
         if let companyRef = remoteDTO.company {
             localProject.companyId = companyRef.stringValue
+        }
+        
+        // IMPORTANT: Only update status if project is not already being modified locally
+        // This prevents automatic status updates when app is opened
+        if !localProject.needsSync || !preventAutoStatusUpdates {
+            localProject.status = BubbleFields.JobStatus.toSwiftEnum(remoteDTO.status)
+        } else {
+            print("⚠️ SyncManager: Skipping status update for project \(localProject.id) to preserve local changes")
         }
     }
     
@@ -1035,5 +1104,15 @@ extension Array {
         return stride(from: 0, to: count, by: size).map {
             Array(self[$0 ..< Swift.min($0 + size, count)])
         }
+    }
+}
+
+extension UserDefaults {
+    /// Get a boolean value with a default value if the key doesn't exist
+    func bool(forKey key: String, defaultValue: Bool) -> Bool {
+        if object(forKey: key) == nil {
+            return defaultValue
+        }
+        return bool(forKey: key)
     }
 }

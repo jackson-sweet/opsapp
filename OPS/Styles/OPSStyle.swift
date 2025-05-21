@@ -9,6 +9,23 @@
 // OPSStyle.swift
 import SwiftUI
 
+/// The main styling system for the OPS app
+///
+/// This file contains the core design system values for the app such as colors,
+/// typography, and layout constants. For reusable UI components, see the
+/// Styles/Components directory:
+///
+/// - ButtonStyles.swift - Button styling and components
+/// - CardStyles.swift - Card styling and components
+/// - CategoryCard.swift - Settings menu category cards
+/// - FormInputs.swift - Text inputs and form controls
+/// - IconBadge.swift - Icon badge styling
+/// - ListItems.swift - List item row styling
+/// - OPSComponents.swift - Component documentation and legacy components
+/// - ProfileCard.swift - User profile card styling
+/// - SettingsHeader.swift - Settings screen headers
+/// - StatusBadge.swift - Status indicator badges
+///
 enum OPSStyle {
     // MARK: - Colors
     enum Colors {
@@ -59,6 +76,8 @@ enum OPSStyle {
                 return Color("StatusClosed")
             case .pending:
                 return Color("StatusWarning") // Using warning color for pending
+            case .archived:
+                return Color("StatusInactive") // Using inactive color for archived
             }
         }
     }
@@ -92,6 +111,7 @@ enum OPSStyle {
         // Button text
         static let button = Font.button
         static let smallButton = Font.smallButton
+        static let smallButtonBold = Font.smallButton.weight(.bold)
     }
     
     // MARK: - Layout
@@ -172,8 +192,8 @@ struct IconActionButton: ViewModifier {
     }
 }
 
-// MARK: - Status Badge
-struct StatusBadge: View {
+// Legacy status badge - use the new StatusBadge component for new code
+struct LegacyStatusBadge: View {
     let status: Status
     
     var body: some View {
@@ -188,18 +208,28 @@ struct StatusBadge: View {
     }
 }
 
-// MARK: - Extension for easy usage
+// MARK: - Extension for easy usage (Legacy)
 extension View {
+    // Deprecated - use opsPrimaryButtonStyle() from ButtonStyles.swift
     func primaryButtonStyle() -> some View {
         self.modifier(PrimaryButton())
     }
     
+    // Deprecated - use opsSecondaryButtonStyle() from ButtonStyles.swift 
     func secondaryButtonStyle() -> some View {
         self.modifier(SecondaryButton())
     }
     
+    // Deprecated - use opsIconButtonStyle() from ButtonStyles.swift
     func iconButtonStyle() -> some View {
         self.modifier(IconActionButton())
+    }
+    
+    // Deprecated - use opsCardStyle() from CardStyles.swift
+    func cardStyle() -> some View {
+        self.padding()
+            .background(OPSStyle.Colors.cardBackground)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 }
 

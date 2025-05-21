@@ -25,21 +25,21 @@ struct CalendarProjectCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     // Project title in all caps
                     Text(project.title)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
                         .textCase(.uppercase)
                     
                     // Client name
                     Text(project.clientName)
-                        .font(.system(size: 14))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(1)
                     
                     // Address
                     Text(project.address)
-                        .font(.system(size: 14))
-                        .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.8))
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .lineLimit(1)
                 }
                 .padding(.horizontal, 16)
@@ -50,7 +50,7 @@ struct CalendarProjectCard: View {
             .background(cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .contentShape(Rectangle()) // Make entire card tappable
-            .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
+            .shadow(color: Color.black, radius: 2, x: 0, y: 1)
             .onTapGesture {
                 onTap()
             }
@@ -60,6 +60,6 @@ struct CalendarProjectCard: View {
     
     // Use darker background color for card
     private var cardBackground: some View {
-        Color.black.opacity(0.7)
+        OPSStyle.Colors.cardBackgroundDark
     }
 }

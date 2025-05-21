@@ -40,9 +40,9 @@ struct NavigationBanner: View {
                                     .fontWeight(.bold)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
-                                    .background(Color.red)
+                                    .background(OPSStyle.Colors.errorStatus)
                                     .foregroundColor(.white)
-                                    .cornerRadius(16)
+                                    .cornerRadius(5)
                             }
                         }
                     }
@@ -56,10 +56,10 @@ struct NavigationBanner: View {
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.primaryAccent)
+            .background(OPSStyle.Colors.cardBackground)
         }
         .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+        .shadow(color: Color.black, radius: 4, x: 0, y: 2)
     }
     
     /// Determines which arrow icon to show based on the instruction

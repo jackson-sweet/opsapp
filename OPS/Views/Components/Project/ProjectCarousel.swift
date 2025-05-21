@@ -19,6 +19,8 @@ struct ProjectCarousel: View {
     let onStop: (Project) -> Void
     let onLongPress: (Project) -> Void
     
+    // onProjectSwipe callback removed - ProjectMapView handles zoom automatically based on selectedIndex
+    
     var body: some View {
             ZStack(alignment: .top){
             TabView(selection: $selectedIndex) {
@@ -33,10 +35,14 @@ struct ProjectCarousel: View {
             
             
         }
-        .onChange(of: selectedIndex) { _, _ in
+        .onChange(of: selectedIndex) { oldIndex, newIndex in
+            // Hide confirmation when swiping
             if showStartConfirmation {
                 showStartConfirmation = false
             }
+            
+            // No manual zoom needed - ProjectMapView automatically tracks selectedIndex
+            print("ProjectCarousel: Swiped to project at index \(newIndex)")
         }
 
     
@@ -277,6 +283,11 @@ struct ProjectCardView: View {
     
     // Format address components
     private func extractAddressComponents(_ address: String) -> String {
+        // Check if address is empty or just whitespace
+        if address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "NO ADDRESS" // Display "NO ADDRESS" when there's no address
+        }
+        
         // Split the address if possible to extract components
         let components = address.components(separatedBy: ",")
         

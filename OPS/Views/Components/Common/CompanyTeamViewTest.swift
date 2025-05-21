@@ -99,9 +99,9 @@ struct CompanyTeamViewTest: View {
                                     loadCompanyData()
                                 }
                                 .padding()
-                                .background(OPSStyle.Colors.primaryAccent)
-                                .foregroundColor(.white)
-                                .cornerRadius(8)
+                                .background(OPSStyle.Colors.primaryText)
+                                .foregroundColor(.black)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                             .padding(.top, 50)
                         }

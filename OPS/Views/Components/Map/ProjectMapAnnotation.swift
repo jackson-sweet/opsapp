@@ -8,6 +8,8 @@
 import SwiftUI
 import MapKit
 
+// Using SF Symbols instead of custom shape markers
+
 // Custom annotation view for SwiftUI MapKit integration
 struct ProjectMapAnnotation: View {
     let project: Project
@@ -17,77 +19,174 @@ struct ProjectMapAnnotation: View {
     
     @State private var showPopup = false
     
-    // Size configuration
-    private var circleSize: CGFloat {
-        if isActiveProject {
-            return 36
-        } else if isSelected {
-            return 30
-        } else {
-            return 24
+    // Helper function to get color for status indicator
+    private func getStatusColor(_ status: Status) -> Color {
+        switch status {
+        case .rfq:
+            return Color(red: 0.95, green: 0.8, blue: 0.2)     // Brighter yellow
+        case .estimated:
+            return Color(red: 0.2, green: 0.6, blue: 0.9)      // Brighter blue
+        case .accepted:
+            return Color(red: 0.2, green: 0.8, blue: 0.4)      // Brighter green
+        case .inProgress:
+            return Color(red: 0.95, green: 0.5, blue: 0.2)     // Brighter orange
+        case .completed:
+            return Color(red: 0.3, green: 0.9, blue: 0.5)      // Brighter green
+        case .closed:
+            return Color(red: 0.6, green: 0.6, blue: 0.6)      // Brighter gray
+        default:
+            return Color(red: 0.6, green: 0.6, blue: 0.6)      // Default gray
         }
     }
     
+    // Size configuration
+    private var circleSize: CGFloat {
+        if isActiveProject {
+            return 48  // Active project has largest marker
+        } else if isSelected {
+            return 42  // Selected project marker is medium sized
+        } else {
+            return 36  // Default marker size
+        }
+    }
+    
+    // Font size for the marker symbol
+    private var markerSize: CGFloat {
+        if isActiveProject {
+            return circleSize * 0.9
+        } else if isSelected {
+            return circleSize * 0.85
+        } else {
+            return circleSize * 0.8
+        }
+    }
+    
+    // Color based on selection state
+    private var markerColor: Color {
+        if isActiveProject {
+            return OPSStyle.Colors.secondaryAccent  // Active projects use secondaryAccent
+        } else if isSelected {
+            return OPSStyle.Colors.primaryAccent     // Selected projects use primaryAccent
+        } else {
+            return Color.white                      // Default is white as requested
+        }
+    }
+    
+    // SF Symbol to use based on selection state
+    private var markerSymbol: String {
+        if isActiveProject {
+            return "mappin.circle"             // Active project uses filled circle marker
+        } else if isSelected {
+            return "mappin.circle"             // Selected project uses filled circle marker
+        } else {
+            return "mappin"                        // Default projects use simple pin
+        }
+    }
+    
+    // Status icon function removed as we no longer show status icons
+    
     var body: some View {
         ZStack {
-            // The marker
-            ZStack {
-                // Active marker with pulse
-                if isActiveProject {
-                    // Pulse animation
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
-                        .frame(width: circleSize * 1.3, height: circleSize * 1.3)
-                        .scaleEffect(showPopup ? 1.3 : 1.0)
-                        .animation(
-                            Animation.easeInOut(duration: 1.5)
-                                .repeatForever(autoreverses: true),
-                            value: showPopup
-                        )
+            // SF Symbols marker design
+            MarkerView()
+                .onTapGesture {
+                    handleTap()
                 }
-                
-                // Circle background
-                Circle()
-                    .fill(isActiveProject || isSelected ? OPSStyle.Colors.primaryAccent : Color.white)
-                    .frame(width: circleSize, height: circleSize)
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                Color.white,
-                                lineWidth: isActiveProject ? 3 : (isSelected ? 2 : 0)
-                            )
-                    )
-                    .shadow(
-                        color: Color.black.opacity(isActiveProject ? 0.4 : 0.2),
-                        radius: isActiveProject ? 4 : 2,
-                        x: 0,
-                        y: isActiveProject ? 2 : 1
-                    )
-                
-                // Icon
-                Image(systemName: "location.fill")
-                    .font(.system(size: isActiveProject ? 16 : (isSelected ? 14 : 12)))
-                    .foregroundColor(isActiveProject || isSelected ? .white : OPSStyle.Colors.secondaryAccent)
-            }
-            .onTapGesture {
-                // Toggle popup state
-                showPopup.toggle()
-                
-                // Call the parent handler
-                onTap()
-                
-                // Haptic feedback
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
-            }
+                .onLongPressGesture(minimumDuration: 0.3) {
+                    handleLongPress()
+                }
             
-            // Popup only shown when selected and popup state is true
-            if isSelected && showPopup {
+            // Show popup when showPopup is true, regardless of selection state
+            if showPopup {
+                // Pass the onTap directly without wrapping
                 ProjectMarkerPopup(project: project, onTap: onTap)
-                    .offset(y: -160) // Offset above the marker
-                    .zIndex(100)
+                    .offset(y: circleSize * 2.5) // Significantly increased offset to position popup much lower
+                    .allowsHitTesting(true) // CRITICAL: Make sure hit testing is allowed!
+                    .zIndex(9999) // Super high zIndex to make sure it's on top
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+                    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: showPopup)
             }
         }
+    }
+    
+    // Extracted marker view for better organization and proper gesture handling
+    private func MarkerView() -> some View {
+        return ZStack {
+            // Active marker with subtle pulse animation
+            if isActiveProject {
+                // Pulse effect for active project
+                Circle()
+                    .fill(OPSStyle.Colors.secondaryAccent.opacity(0.15))
+                    .frame(width: circleSize * 1.8, height: circleSize * 1.8)
+                    .scaleEffect(showPopup ? 1.2 : 1.0)
+                    .animation(
+                        Animation.easeInOut(duration: 1.8)
+                            .repeatForever(autoreverses: true),
+                        value: showPopup
+                    )
+                    .blur(radius: 2)
+            }
+            
+            // Main marker with different symbol based on state
+            Image(systemName: markerSymbol)
+                .font(.system(size: markerSize, weight: .semibold))
+                .foregroundColor(markerColor)
+                .shadow(color: Color.black.opacity(0.5), radius: 2, x: 0, y: 2)
+        }
+        // Use an extremely large hit area for better touch recognition
+        .contentShape(Rectangle())
+        // Make sure the entire area is tappable with a large transparent background
+        .background(
+            Color.clear
+                .frame(width: circleSize * 5, height: circleSize * 5)
+                .contentShape(Rectangle())
+        )
+        // Debug visual for tap area
+        #if DEBUG
+        //.border(Color.red.opacity(0.2), width: 1) // Uncomment to see tap area during development
+        #endif
+    }
+    
+    // Helper function to handle tap gesture
+    private func handleTap() {
+        // Always show the popup when tapping a marker
+        withAnimation(.easeInOut(duration: 0.3)) {
+            // If already showing, toggle off. If not showing, turn on.
+            // This ensures we can hide our own popup but won't interfere with others
+            showPopup = !showPopup
+        }
+        
+        // Strong haptic feedback to confirm tap
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare() // Prepare for better responsiveness
+        generator.impactOccurred(intensity: 1.0) // Use full intensity for clear feedback
+        
+        // Call the parent handler after a very slight delay to ensure animation starts
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            onTap()
+        }
+        
+        // Print detailed debug message to console
+        print("ProjectMapAnnotation: Marker tapped for project: \(project.title) (ID: \(project.id))")
+        print("ProjectMapAnnotation: Popup state is now: \(showPopup ? "showing" : "hidden")")
+    }
+    
+    // Helper function to handle long press gesture
+    private func handleLongPress() {
+        // Always show popup on long press
+        withAnimation {
+            showPopup = true
+        }
+        
+        // Call the parent handler
+        onTap()
+        
+        // Stronger haptic feedback for long press
+        let generator = UIImpactFeedbackGenerator(style: .heavy)
+        generator.impactOccurred()
+        
+        // Print debug message to console
+        print("ProjectMapAnnotation: Marker long-pressed, project: \(project.title)")
     }
 }
 

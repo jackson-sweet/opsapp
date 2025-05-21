@@ -20,18 +20,19 @@ struct DayCell: View {
             VStack(spacing: 6) {
                 // Day number
                 Text(DateHelper.dayString(from: date))
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(textColor)
                 
                 // Day name (e.g., "We")
                 Text(DateHelper.twoLetterWeekdayString(from: date))
-                    .font(.system(size: 14))
-                    .foregroundColor(textColor.opacity(0.9))
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                 
                 // Project count indicator
                 if projectCount > 0 {
                     Text("\(projectCount)")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(OPSStyle.Typography.smallCaption)
+                        .fontWeight(.bold)
                         .foregroundColor(.white)
                         .frame(width: 20, height: 20)
                         .background(OPSStyle.Colors.primaryAccent)
@@ -66,9 +67,9 @@ struct DayCell: View {
         if isSelected {
             return OPSStyle.Colors.primaryText
         } else if isToday {
-            return OPSStyle.Colors.secondaryAccent
+            return OPSStyle.Colors.primaryAccent
         } else {
-            return OPSStyle.Colors.primaryText.opacity(0.7)
+            return OPSStyle.Colors.secondaryText
         }
     }
     

@@ -24,8 +24,15 @@ struct ProjectImagesSection: View {
                 // Empty state - shown immediately if no images
                 emptyState
             } else {
-                // Image grid - images load independently
-                imageGrid(urls: imageUrls)
+                VStack(spacing: 8) {
+                    // Image grid - images load independently
+                    imageGrid(urls: imageUrls)
+                    
+                    // Show message if there are unsynced images
+                    if !project.getUnsyncedImages().isEmpty {
+                        unsyncedImagesMessage
+                    }
+                }
             }
         }
         .fullScreenCover(item: $selectedImageURL) { url in
@@ -33,7 +40,7 @@ struct ProjectImagesSection: View {
             ZStack(alignment: .topTrailing) {
                 Color.black.edgesIgnoringSafeArea(.all)
                 
-                ProjectImageView(urlString: url, size: CGSize(width: UIScreen.main.bounds.width - 40, height: 400))
+                ProjectImageView(urlString: url, project: project, size: CGSize(width: UIScreen.main.bounds.width - 40, height: 400))
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding()
@@ -65,6 +72,25 @@ struct ProjectImagesSection: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
     
+    // Message about unsynced images
+    private var unsyncedImagesMessage: some View {
+        HStack {
+            Image(systemName: "icloud.slash")
+                .foregroundColor(.red)
+            
+            Text("Some images are not synced. They will be uploaded when network is available.")
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            
+            Spacer()
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .background(Color.yellow.opacity(0.1))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .padding(.horizontal)
+    }
+    
     // Image grid
     private func imageGrid(urls: [String]) -> some View {
         LazyVGrid(columns: [
@@ -72,7 +98,7 @@ struct ProjectImagesSection: View {
             GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2)
         ], spacing: OPSStyle.Layout.spacing2) {
             ForEach(urls, id: \.self) { url in
-                ProjectImageView(urlString: url)
+                ProjectImageView(urlString: url, project: project)
                     .onTapGesture {
                         selectedImageURL = url
                     }

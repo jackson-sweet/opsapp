@@ -30,7 +30,7 @@ struct ExpandableNotesView: View {
                     }
                 }) {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 24, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
@@ -40,7 +40,7 @@ struct ExpandableNotesView: View {
                 TextEditor(text: $editedNotes)
                     .frame(minHeight: 120)
                     .padding(8)
-                    .background(OPSStyle.Colors.cardBackground)
+                    //.background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -74,7 +74,7 @@ struct ExpandableNotesView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(OPSStyle.Colors.secondaryAccent)
+                            .background(OPSStyle.Colors.primaryAccent)
                             .foregroundColor(.white)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
@@ -97,7 +97,7 @@ struct ExpandableNotesView: View {
                         }) {
                             Image(systemName: "square.and.pencil")
                                 .font(.system(size: 16))
-                                .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
                 } else {
@@ -122,7 +122,7 @@ struct ExpandableNotesView: View {
                                         .font(OPSStyle.Typography.smallCaption)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 6)
-                                        .background(OPSStyle.Colors.secondaryAccent)
+                                        .background(OPSStyle.Colors.primaryAccent)
                                         .foregroundColor(.white)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 }
@@ -133,7 +133,7 @@ struct ExpandableNotesView: View {
                                 Text(notes)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .lineLimit(1)
+                                    .lineLimit(3)
                                     .truncationMode(.tail)
                                 
                                 Spacer()
@@ -143,8 +143,8 @@ struct ExpandableNotesView: View {
                                     isExpanded = true
                                 }) {
                                     Image(systemName: "square.and.pencil")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                                        .font(.system(size: 24))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
                             }
                         }
@@ -153,7 +153,11 @@ struct ExpandableNotesView: View {
             }
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBackground, lineWidth: 1)
+        )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 }

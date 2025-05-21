@@ -12,8 +12,7 @@ import Combine
 /// A container for the main content of the HomeView
 /// Used to reduce expression complexity in HomeView
 struct HomeContentView: View {
-    // Bindings
-    @Binding var mapRegion: MKCoordinateRegion
+    // Bindings - mapRegion removed, now handled internally by ProjectMapView
     let todaysProjects: [Project]
     @Binding var selectedProjectIndex: Int
     @Binding var showStartConfirmation: Bool
@@ -25,6 +24,7 @@ struct HomeContentView: View {
     // Environment objects
     @ObservedObject var appState: AppState
     @ObservedObject var inProgressManager: InProgressManager
+    
     
     // Callbacks
     let startProject: (Project) -> Void
@@ -54,51 +54,65 @@ struct HomeContentView: View {
     private var mapLayer: some View {
         ZStack {
             ProjectMapView(
-                region: $mapRegion,
                 projects: todaysProjects,
                 selectedIndex: $selectedProjectIndex,
                 onTapMarker: { index in
-                    selectedProjectIndex = index
-                    showStartConfirmation = false
+                    // Get the project that was tapped
+                    guard let project = todaysProjects[safe: index] else { return }
                     
-                    // Auto-zoom to the selected project with enhanced animation
-                    if let project = todaysProjects[safe: index], let coordinate = project.coordinate {
-                        // First get current region
-                        let currentRegion = mapRegion
+                    // Update the selected project index to navigate carousel
+                    if selectedProjectIndex != index {
+                        print("HomeContentView: Map marker tapped, updating carousel to index \(index)")
+                        selectedProjectIndex = index
+                        showStartConfirmation = false
+                    } else {
+                        // Already selected project was tapped again - show details for 'View Details' button
+                        print("HomeContentView: Map marker for already selected project tapped")
                         
-                        // Define target region
-                        let targetRegion = ProjectMapView.calculateVisibleRegion(
-                            for: [project],
-                            zoomLevel: 0.01 // Closer zoom for single project
-                        )
-                        
-                        // Create intermediate region
-                        let intermediateRegion = MKCoordinateRegion(
-                            center: coordinate,
-                            span: MKCoordinateSpan(
-                                latitudeDelta: (currentRegion.span.latitudeDelta + targetRegion.span.latitudeDelta) / 2,
-                                longitudeDelta: (currentRegion.span.longitudeDelta + targetRegion.span.longitudeDelta) / 2
-                            )
-                        )
-                        
-                        // Two-stage animation for smoother feel
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            mapRegion = intermediateRegion
-                        }
-                        
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            withAnimation(.easeOut(duration: 0.4)) {
-                                mapRegion = targetRegion
+                        // Only toggle if not in project mode
+                        if !appState.isInProjectMode {
+                            // Check if this is from the View Details button in the popup
+                            // If the timestamp is very recent (within 0.8 seconds), treat as View Details button tap
+                            print("🟩🟩🟩 HOME CONTENT VIEW: CHECKING IF VIEW DETAILS WAS TAPPED 🟩🟩🟩")
+                            print("🟩 Project ID: \(project.id)")
+                            print("🟩 Project Title: \(project.title)")
+                            
+                            if let lastTapped = project.lastTapped {
+                                let timeDiff = abs(lastTapped.timeIntervalSinceNow)
+                                print("🟩 Last tapped time exists: \(lastTapped)")
+                                print("🟩 Time difference: \(timeDiff) seconds")
+                                
+                                // Increased time window to 0.8 seconds to catch more cases
+                                if timeDiff < 0.8 {
+                                    print("🟩🟩🟩 DETECTED VIEW DETAILS BUTTON TAP! Showing project details 🟩🟩🟩")
+                                    // This is a tap on View Details - show project details
+                                    showProjectDetails(project)
+                                    return
+                                } else {
+                                    print("🟩 Time difference too large (\(timeDiff) > 0.8), not a View Details tap")
+                                }
+                            } else {
+                                print("🟩 No lastTapped timestamp found on project")
                             }
+                            
+                            // Normal tap - toggle confirmation
+                            print("🟩 Treating as regular pin tap, toggling confirmation")
+                            showStartConfirmation.toggle()
                         }
                     }
+                    
+                    // Update last tapped time to track View Details button taps
+                    project.lastTapped = Date()
+                    
+                    // No manual zoom needed - ProjectMapView handles map marker taps automatically
                 },
-                routeOverlay: inProgressManager.getRouteOverlay(),
+                routeOverlay: inProgressManager.activeRoute?.polyline,
                 isInProjectMode: appState.isInProjectMode
             )
+            // No manual zoom handling needed - ProjectMapView handles all map state automatically
             
-            // Semi-transparent dark overlay
-            Color.black.opacity(0.2)
+            // Semi-transparent dark overlay - using clear since we have gradient overlay
+            Color.clear
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
         }
@@ -109,20 +123,9 @@ struct HomeContentView: View {
         VStack(spacing: 0) {
             // Top gradient overlay
             LinearGradient(
-                gradient: Gradient(
-                    stops: [
-                        .init(color: Color.black.opacity(1), location: 0),
-                        .init(color: Color.black.opacity(0.9), location: 0.15),
-                        .init(color: Color.black.opacity(0.8), location: 0.25),
-                        .init(color: Color.black.opacity(0.7), location: 0.4),
-                        .init(color: Color.black.opacity(0.5), location: 0.6),
-                        .init(color: OPSStyle.Colors.cardBackground.opacity(0.3), location: 0.8),
-                        .init(color: OPSStyle.Colors.cardBackground.opacity(0), location: 1)
-                    ]
-                ),
-                startPoint: .top,
-                endPoint: .bottom
-            )
+                colors: [Color.black.opacity(1), Color.black.opacity(0)]
+                , startPoint: .top
+                , endPoint: .bottom)
             .frame(height: 300)
             
             Spacer()
@@ -184,7 +187,7 @@ struct HomeContentView: View {
                             showStartConfirmation = false
                             
                             // Show project details (sheet)
-                            appState.viewProjectDetails(project)
+                            showProjectDetails(project)
                         }
                     )
                 } else if !isLoading {
@@ -192,6 +195,24 @@ struct HomeContentView: View {
                 }
             }
         }
+    }
+    
+    // Helper method to show project details
+    private func showProjectDetails(_ project: Project) {
+        print("🟨🟨🟨 HOME CONTENT VIEW: SHOWING PROJECT DETAILS 🟨🟨🟨")
+        print("🟨 Project ID: \(project.id)")
+        print("🟨 Project Title: \(project.title)")
+        print("🟨 Timestamp: \(Date())")
+        
+        // Make sure confirmation is turned off to avoid state conflicts
+        showStartConfirmation = false
+        
+        // Call AppState's viewProjectDetails method
+        print("🟨 Calling appState.viewProjectDetails...")
+        appState.viewProjectDetails(project)
+        
+        // Log completion
+        print("🟨 Project details view should now be shown")
     }
     
     private var emptyProjectsView: some View {
@@ -214,7 +235,6 @@ struct HomeContentView: View {
             // Custom background with blur effect
             BlurView(style: .dark)
                 .cornerRadius(5)
-                .opacity(0.5)
                 .frame(height: 85)
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -225,7 +245,7 @@ struct HomeContentView: View {
     
     private var loadingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            Color.black
                 .ignoresSafeArea()
             
             VStack {
@@ -250,4 +270,7 @@ struct HomeContentView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
+    
+    // MARK: - Helper Methods
+    // All map zoom/region logic has been moved to ProjectMapView for centralized state management
 }

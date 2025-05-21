@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Foundation
 
 // MARK: - Header Components
 
@@ -23,18 +24,18 @@ struct SettingsHeader: View {
                 onBackTapped()
             }) {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
             }
             .frame(width: 44, height: 44)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
             
             Spacer()
             
             // Title with consistent styling
-            Text(title)
-                .font(.system(size: 24, weight: .bold))
+            Text(title.uppercased())
+                .font(OPSStyle.Typography.title)
                 .foregroundColor(.white)
             
             Spacer()
@@ -45,12 +46,12 @@ struct SettingsHeader: View {
                     onEditTapped?()
                 }) {
                     Text(isEditing ? "Cancel" : "Edit")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .frame(width: 80, height: 44)
                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                .cornerRadius(12)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
             } else {
                 // Empty spacer to balance the header
                 Spacer()
@@ -59,6 +60,56 @@ struct SettingsHeader: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
+    }
+}
+
+// MARK: - Tab Components
+
+struct SettingsTabSelector: View {
+    enum Tab: String, CaseIterable {
+        case settings = "Settings"
+        case data = "Data"
+    }
+    
+    @Binding var selectedTab: Tab
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Tab.allCases, id: \.self) { tab in
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedTab = tab
+                    }
+                }) {
+                    if selectedTab == tab {
+                        ZStack{
+                            Rectangle()
+                                .foregroundColor(.white)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            Text(tab.rawValue)
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(.black)
+                                
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .padding(.vertical, 4)
+                    } else {
+                        Text(tab.rawValue)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                    }
+                    
+                }
+            }
+        }
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
     }
 }
 
@@ -79,7 +130,7 @@ struct SettingsCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 16) {
             if showTitle {
                 Text(title)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             
@@ -87,7 +138,7 @@ struct SettingsCard<Content: View>: View {
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal, 20)
     }
 }
@@ -96,12 +147,15 @@ struct SettingsSectionHeader: View {
     var title: String
     
     var body: some View {
-        Text(title)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundColor(OPSStyle.Colors.secondaryText)
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
-            .padding(.bottom, 8)
+        HStack {
+            Text(title)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                .padding(.bottom, 8)
+            Spacer()
+        }
     }
 }
 
@@ -117,11 +171,11 @@ struct SettingsToggle: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(OPSStyle.Typography.body)
                     .foregroundColor(.white)
                 
                 Text(description)
-                    .font(.system(size: 13))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             
@@ -139,7 +193,7 @@ struct SettingsToggle: View {
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 }
 
@@ -182,18 +236,18 @@ struct SettingsButton: View {
             HStack {
                 if !icon.isEmpty {
                     Image(systemName: icon)
-                        .font(.system(size: 16))
+                        .font(OPSStyle.Typography.body)
                         .foregroundColor(style.textColor)
                 }
                 
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(OPSStyle.Typography.button)
                     .foregroundColor(style.textColor)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(style.backgroundColor)
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
         }
     }
 }
@@ -205,39 +259,13 @@ struct SettingsCategoryButton: View {
     var action: () -> Void
     
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 16) {
-                // Icon in colored circle
-                ZStack {
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
-                        .frame(width: 40, height: 40)
-                    
-                    Image(systemName: icon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                    
-                    Text(description)
-                        .font(.system(size: 12))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-            .padding(16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(12)
-        }
+        ListItem(
+            title: title,
+            description: description,
+            iconName: icon,
+            showChevron: true,
+            action: action
+        )
     }
 }
 
@@ -251,42 +279,89 @@ struct SettingsField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 14, weight: .medium))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             
             if isEditable {
                 if isSecure {
                     SecureField(placeholder, text: $text)
-                        .font(.system(size: 16))
+                        .font(OPSStyle.Typography.body)
                         .foregroundColor(.white)
                         .padding()
                         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                        .cornerRadius(12)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                         )
                 } else {
                     TextField(placeholder, text: $text)
-                        .font(.system(size: 16))
+                        .font(OPSStyle.Typography.body)
                         .foregroundColor(.white)
                         .padding()
                         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                        .cornerRadius(12)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                         )
                 }
             } else {
                 Text(text.isEmpty ? "Not set" : text)
-                    .font(.system(size: 16))
+                    .font(OPSStyle.Typography.body)
                     .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(12)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
+        }
+    }
+}
+
+// MARK: - Security Components
+
+struct SecurityPINOption: View {
+    var title: String
+    var description: String
+    var isSelected: Bool
+    var action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(.white)
+                    
+                    Text(description)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(2)
+                }
+                
+                Spacer()
+                
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? 
+                                OPSStyle.Colors.primaryAccent : 
+                                OPSStyle.Colors.secondaryText.opacity(0.5),
+                                lineWidth: 2)
+                        .frame(width: 24, height: 24)
+                    
+                    if isSelected {
+                        Circle()
+                            .fill(OPSStyle.Colors.primaryAccent)
+                            .frame(width: 16, height: 16)
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(16)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
 }

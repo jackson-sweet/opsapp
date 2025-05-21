@@ -129,16 +129,47 @@ class APIService {
         do {
             let (data, response) = try await session.data(for: request)
             
-            if let httpResponse = response as? HTTPURLResponse {
-                print("🔶 API RESPONSE: Status \(httpResponse.statusCode) (\(httpResponse.statusCode >= 205 && httpResponse.statusCode < 300 ? "Success" : "Error"))")
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
             }
             
-            // Print debug info to see exactly what's coming back
+            print("🔶 API RESPONSE: Status \(httpResponse.statusCode) (\((200...299).contains(httpResponse.statusCode) ? "Success" : "Error"))")
+            
+            // Check for success status codes
+            guard (200...299).contains(httpResponse.statusCode) else {
+                print("🔴 HTTP Error: \(httpResponse.statusCode)")
+                throw APIError.httpError(statusCode: httpResponse.statusCode)
+            }
+            
+            // Handle HTTP 204 No Content responses (empty body)
+            if httpResponse.statusCode == 204 {
+                print("🔶 HTTP 204 No Content - returning EmptyResponse")
+                // For 204 responses, return EmptyResponse without trying to decode
+                if T.self == EmptyResponse.self {
+                    return EmptyResponse() as! T
+                } else {
+                    // If expecting a different type but got 204, this might be an API issue
+                    print("⚠️ Warning: Expected \(T.self) but got HTTP 204 No Content")
+                    throw APIError.decodingFailed
+                }
+            }
+            
+            // Handle empty response bodies (can happen with HTTP 200 for some update operations)
+            if data.isEmpty {
+                print("🔶 Empty response body detected")
+                if T.self == EmptyResponse.self {
+                    return EmptyResponse() as! T
+                } else {
+                    print("⚠️ Warning: Expected \(T.self) but got empty response body")
+                    throw APIError.decodingFailed
+                }
+            }
+            
+            // Print debug info for non-empty responses
             printResponseDebugInfo(data, from: request.url!)
             
-            // Now try to decode and handle specific errors
+            // Try to decode the response for other success status codes
             do {
-                // Explicitly specify the generic type to help Swift with type inference
                 let result: T = try decodeResponse(data: data)
                 print("🔶 Decoding successful")
                 return result
@@ -152,6 +183,15 @@ class APIService {
                         print("Missing key: \(key)")
                     case .typeMismatch(let type, _):
                         print("Type mismatch for type: \(type)")
+                    case .dataCorrupted(let context):
+                        print("Data corrupted at path: \(context.codingPath), description: \(context.debugDescription)")
+                        // Also check if this is due to an empty response that should be handled
+                        if context.debugDescription.contains("Unexpected end of file") {
+                            print("🔍 This appears to be an empty response that should return EmptyResponse")
+                            if T.self == EmptyResponse.self {
+                                return EmptyResponse() as! T
+                            }
+                        }
                     default:
                         print("Other decoding error: \(decodingError)")
                     }
@@ -159,9 +199,11 @@ class APIService {
                 
                 throw APIError.decodingFailed
             }
+        } catch let apiError as APIError {
+            throw apiError
         } catch {
-            print("API request failed: \(error)")
-            throw error
+            print("🔴 API request failed: \(error)")
+            throw APIError.networkError
         }
     }
     

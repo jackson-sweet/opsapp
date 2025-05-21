@@ -44,7 +44,7 @@ struct DatePickerPopover: View {
         }
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
+        .shadow(color: Color.black, radius: 10, x: 0, y: 5)
         .frame(width: 320, height: mode == .week ? 440 : 360)
     }
     
@@ -57,7 +57,7 @@ struct DatePickerPopover: View {
                     moveToPreviousMonth()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(8)
                 }
@@ -65,7 +65,7 @@ struct DatePickerPopover: View {
                 Spacer()
                 
                 Text(monthString)
-                    .font(.headline)
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Spacer()
@@ -74,7 +74,7 @@ struct DatePickerPopover: View {
                     moveToNextMonth()
                 } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(8)
                 }
@@ -84,7 +84,7 @@ struct DatePickerPopover: View {
             HStack(spacing: 0) {
                 ForEach(["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"], id: \.self) { day in
                     Text(day)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(maxWidth: .infinity)
                 }
@@ -104,7 +104,7 @@ struct DatePickerPopover: View {
                         }
                     } label: {
                         Text(dayString(from: date))
-                            .font(.system(size: 16))
+                            .font(OPSStyle.Typography.body)
                             .fontWeight(isCurrentMonth ? .medium : .regular)
                             .foregroundColor(textColor(isCurrentMonth: isCurrentMonth, isSelected: isSelected))
                             .frame(width: 36, height: 36)
@@ -122,7 +122,7 @@ struct DatePickerPopover: View {
                 selectWeek(Date())
             } label: {
                 Text("Today")
-                    .font(.headline)
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
                     .padding(.vertical, 10)
                     .padding(.horizontal, 30)
@@ -142,7 +142,7 @@ struct DatePickerPopover: View {
                     moveToPreviousYear()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(8)
                 }
@@ -152,7 +152,7 @@ struct DatePickerPopover: View {
                 let calendar = Calendar.current
                 let year = calendar.component(.year, from: displayDate)
                 Text("\(year)")
-                    .font(.headline)
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Spacer()
@@ -161,7 +161,7 @@ struct DatePickerPopover: View {
                     moveToNextYear()
                 } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(8)
                 }
@@ -177,7 +177,8 @@ struct DatePickerPopover: View {
                         selectMonth(month)
                     } label: {
                         Text(monthString(from: date))
-                            .font(.system(size: 16, weight: .medium))
+                            .font(OPSStyle.Typography.body)
+                            .fontWeight(.medium)
                             .foregroundColor(isSelected ? .white : OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
@@ -187,7 +188,7 @@ struct DatePickerPopover: View {
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: isSelected ? 0 : 1)
+                                    .stroke(OPSStyle.Colors.secondaryText, lineWidth: isSelected ? 0 : 1)
                             )
                     }
                 }
@@ -200,7 +201,7 @@ struct DatePickerPopover: View {
                 dismiss()
             } label: {
                 Text("Today")
-                    .font(.headline)
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
                     .padding(.vertical, 10)
                     .padding(.horizontal, 30)
@@ -217,7 +218,7 @@ struct DatePickerPopover: View {
         if isSelected {
             return .white
         } else if !isCurrentMonth {
-            return Color.gray.opacity(0.5)
+            return OPSStyle.Colors.tertiaryText
         } else {
             return OPSStyle.Colors.primaryText
         }

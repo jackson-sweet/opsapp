@@ -8,7 +8,6 @@
 import Foundation
 import SwiftData
 import SwiftUI
-// Import team member components
 
 struct OrganizationSettingsView: View {
     @EnvironmentObject private var dataController: DataController
@@ -24,87 +23,28 @@ struct OrganizationSettingsView: View {
             OPSStyle.Colors.backgroundGradient
             .edgesIgnoringSafeArea(.all)
             
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Header area with back button and title
-                    HStack {
-                        Button(action: {
-                            dismiss()
-                        }) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 22, weight: .semibold))
-                                .foregroundColor(.white)
-                        }
-                        .frame(width: 44, height: 44)
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                        .cornerRadius(12)
-                        
-                        Spacer()
-                        
-                        Text("Organization")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(.white)
-                        
-                        Spacer()
-                        
-                        // Empty spacer to balance the header
-                        Spacer()
-                            .frame(width: 44)
+            VStack(spacing: 0) {
+                // Header area - fixed, not part of scroll view
+                SettingsHeader(
+                    title: "Organization",
+                    onBackTapped: {
+                        dismiss()
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                )
+                .padding(.bottom, 8)
+                
+                // Scrollable content
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
                     
                     if isLoading {
                         loadingView
                     } else {
-                        // Company logo and name
-                        VStack(spacing: 16) {
-                            // Company logo/icon
-                            ZStack {
-                                Circle()
-                                    .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
-                                    .frame(width: 80, height: 80)
-                                
-                                if let organization = organization, 
-                                   let logoURL = organization.logoURL, 
-                                   !logoURL.isEmpty {
-                                    if let cachedImage = ImageCache.shared.get(forKey: logoURL) {
-                                        // Show cached company logo
-                                        Image(uiImage: cachedImage)
-                                            .resizable()
-                                            .scaledToFill()
-                                            .frame(width: 80, height: 80)
-                                            .clipShape(Circle())
-                                    } else {
-                                        // Logo URL exists but image not loaded yet
-                                        // Show loading placeholder
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                                            .scaleEffect(1.2)
-                                            .onAppear {
-                                                // Trigger image loading
-                                                Task {
-                                                    _ = await loadImage(from: logoURL)
-                                                }
-                                            }
-                                    }
-                                } else {
-                                    // Default icon
-                                    Image(systemName: "building.2.fill")
-                                        .font(.system(size: 30))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            
-                            // Company name
-                            Text(organization?.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? organization!.name : "Company Name")
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundColor(.white)
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: .infinity, alignment: .center)
+                        // Company profile card
+                        if let company = organization {
+                            OrganizationProfileCard(company: company)
+                                .padding(.horizontal, 20)
                         }
-                        .padding(.vertical, 16)
                         
                         // Organization info section
                         sectionHeader("ORGANIZATION DETAILS")
@@ -114,8 +54,9 @@ struct OrganizationSettingsView: View {
                         sectionHeader("TEAM MEMBERS")
                         teamSection
                     }
+                    }
+                    .padding(.bottom, 40)
                 }
-                .padding(.bottom, 40)
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -125,12 +66,7 @@ struct OrganizationSettingsView: View {
     }
     
     private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundColor(OPSStyle.Colors.secondaryText)
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
+        SettingsSectionHeader(title: title)
     }
     
     private var loadingView: some View {
@@ -140,7 +76,7 @@ struct OrganizationSettingsView: View {
                 .scaleEffect(1.8)
             
             Text("Loading organization data...")
-                .font(.system(size: 16))
+                .font(OPSStyle.Typography.body)
                 .foregroundColor(.white)
         }
         .frame(maxWidth: .infinity, maxHeight: 200)
@@ -193,8 +129,8 @@ struct OrganizationSettingsView: View {
             if let company = organization {
                 // Use the new compact team view with sheets for details
                 OrganizationTeamView(company: company)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(12)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
             } else if teamMembers.isEmpty {
                 emptyTeamView
             } else {
@@ -211,23 +147,23 @@ struct OrganizationSettingsView: View {
     private var emptyTeamView: some View {
         VStack(spacing: 16) {
             Image(systemName: "person.3")
-                .font(.system(size: 36))
-                .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.6))
+                .font(OPSStyle.Typography.largeTitle)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
             
             Text("No team members found")
-                .font(.system(size: 16, weight: .medium))
+                .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(.white)
             
             Text("Team members will appear here when added to your organization")
-                .font(.system(size: 14))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
     
     private func infoCard(items: [InfoItem]) -> some View {
@@ -241,17 +177,17 @@ struct OrganizationSettingsView: View {
                             .frame(width: 36, height: 36)
                         
                         Image(systemName: item.icon)
-                            .font(.system(size: 16))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text(item.title)
-                            .font(.system(size: 14))
+                            .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         
                         Text(item.value)
-                            .font(.system(size: 16))
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(.white)
                     }
                     
@@ -260,8 +196,8 @@ struct OrganizationSettingsView: View {
             }
         }
         .padding(20)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
     
     private func memberRow(member: User) -> some View {
@@ -273,17 +209,17 @@ struct OrganizationSettingsView: View {
                     .frame(width: 48, height: 48)
                 
                 Text(String(member.fullName.prefix(1)))
-                    .font(.system(size: 20, weight: .bold))
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
             }
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(member.fullName)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
                 
                 Text(member.role.displayName)
-                    .font(.system(size: 14))
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             
@@ -292,7 +228,7 @@ struct OrganizationSettingsView: View {
             // Status badge - active/inactive
             if member.isActive != false { // Show as active unless explicitly set to false
                 Text("Active")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -300,7 +236,7 @@ struct OrganizationSettingsView: View {
                     .cornerRadius(12)
             } else {
                 Text("Inactive")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -309,8 +245,8 @@ struct OrganizationSettingsView: View {
             }
         }
         .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
     
     private func loadOrganizationData() {

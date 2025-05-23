@@ -144,7 +144,7 @@ struct HomeContentView: View {
             
             Spacer()
             
-            // Navigation controls as a ZStack component - no bottom padding needed since it handles vertical positioning
+            // Navigation controls with tab bar padding
             NavigationControlsView(
                 isRouting: inProgressManager.isRouting,
                 currentNavStep: inProgressManager.currentNavStep,
@@ -155,6 +155,7 @@ struct HomeContentView: View {
                 isInProjectMode: appState.isInProjectMode,
                 activeProject: getActiveProject()
             )
+            .padding(.bottom, 90) // Add padding for tab bar
         }
     }
     

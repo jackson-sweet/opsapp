@@ -50,6 +50,7 @@ struct ScheduleView: View {
                 Spacer()
             }
             .padding(.top)
+            .padding(.bottom, 90) // Add padding for tab bar
             
             // No more NavigationLink - we'll use the global sheet instead
         }

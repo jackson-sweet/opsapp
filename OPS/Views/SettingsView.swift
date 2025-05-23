@@ -102,6 +102,7 @@ struct SettingsView: View {
                     
                     // App version and actions at bottom
                     versionAndActions
+                        .padding(.bottom, 90) // Add padding for tab bar
                 }
             }
         }
@@ -121,7 +122,7 @@ struct SettingsView: View {
     private var settingsContent: some View {
         // Use GeometryReader to determine if content needs scrolling
         GeometryReader { geometry in
-            ScrollView {
+
                 VStack(spacing: 20) {
                     // Settings categories
                     ForEach(SettingsCategory.allCases) { category in
@@ -134,7 +135,7 @@ struct SettingsView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
                 .frame(minHeight: geometry.size.height) // Ensure content fills scroll view
-            }
+
         }
     }
     
@@ -142,7 +143,7 @@ struct SettingsView: View {
     private var dataContent: some View {
         // Use GeometryReader to determine if content needs scrolling
         GeometryReader { geometry in
-            ScrollView {
+
                 VStack(spacing: 20) {
                     // Team Members - active
                     NavigationLink(destination: destinationFor(.teamMembers)) {
@@ -154,18 +155,17 @@ struct SettingsView: View {
                         categoryCard(for: .projectHistory)
                     }
                     
-                    // Expenses - coming soon, grayed out
+                    // Expenses - coming soon
                     NavigationLink(destination: destinationFor(.expenseHistory)) {
                         categoryCard(for: .expenseHistory)
                     }
-                    .disabled(true) // Disable navigation
                     
                     Spacer(minLength: 20)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
                 .frame(minHeight: geometry.size.height) // Ensure content fills scroll view
-            }
+            
         }
     }
     

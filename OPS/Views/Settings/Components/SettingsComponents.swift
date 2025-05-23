@@ -14,6 +14,7 @@ struct SettingsHeader: View {
     var title: String
     var showEditButton: Bool = false
     var isEditing: Bool = false
+    var editButtonText: String? = nil
     var onBackTapped: () -> Void
     var onEditTapped: (() -> Void)? = nil
     
@@ -45,7 +46,7 @@ struct SettingsHeader: View {
                 Button(action: {
                     onEditTapped?()
                 }) {
-                    Text(isEditing ? "Cancel" : "Edit")
+                    Text(editButtonText ?? (isEditing ? "Cancel" : "Edit"))
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }

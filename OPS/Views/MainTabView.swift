@@ -14,6 +14,8 @@ struct MainTabView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var locationManager: LocationManager
     
+    @State private var selectedTab = 0
+    
     // Observer for fetch active project notifications
     private let fetchProjectObserver = NotificationCenter.default
         .publisher(for: Notification.Name("FetchActiveProject"))
@@ -22,44 +24,36 @@ struct MainTabView: View {
     private let showProjectObserver = NotificationCenter.default
         .publisher(for: Notification.Name("ShowProjectDetailsRequest"))
     
+    private let tabs = [
+        TabItem(iconName: "house.fill"),
+        TabItem(iconName: "calendar"),
+        TabItem(iconName: "gearshape.fill")
+    ]
+    
     var body: some View {
         ZStack {
-            // TabView with all the main screens
-            TabView {
-                HomeView()
-                    .tabItem {
-                        Image(systemName: "house.fill")
-                    }
-                
-                ScheduleView()
-                    .tabItem {
-                        Image(systemName: "calendar")
-                    }
-                
-                SettingsView()
-                    .tabItem {
-                        Image(systemName: "gearshape.fill")
-                    }
-            }
-            .accentColor(OPSStyle.Colors.primaryAccent)
-            .preferredColorScheme(.dark)
-            .onAppear {
-                let tabBarAppearance = UITabBarAppearance()
-                tabBarAppearance.configureWithOpaqueBackground()
-                tabBarAppearance.backgroundColor = UIColor(OPSStyle.Colors.cardBackgroundDark).withAlphaComponent(0.7)
-                
-                // Apply blur effect
-                let blurEffect = UIBlurEffect(style: .systemThinMaterialDark)
-                tabBarAppearance.backgroundEffect = blurEffect
-                
-                // Remove the separator line
-                tabBarAppearance.shadowColor = .clear
-                
-                UITabBar.appearance().standardAppearance = tabBarAppearance
-                if #available(iOS 15.0, *) {
-                    UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+            // Main content views - fill entire screen
+            Group {
+                switch selectedTab {
+                case 0:
+                    HomeView()
+                case 1:
+                    ScheduleView()
+                case 2:
+                    SettingsView()
+                default:
+                    HomeView()
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea(.all, edges: .bottom)
+            
+            // Custom tab bar overlaid at bottom
+            VStack {
+                Spacer()
+                CustomTabBar(selectedTab: $selectedTab, tabs: tabs)
+            }
+            .preferredColorScheme(.dark)
             
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()

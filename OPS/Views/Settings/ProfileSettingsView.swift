@@ -8,8 +8,6 @@
 import SwiftUI
 import UIKit
 
-// Use standardized components directly (internal modules don't need import)
-
 struct ProfileSettingsView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
@@ -19,37 +17,47 @@ struct ProfileSettingsView: View {
     @State private var email: String = ""
     @State private var phone: String = ""
     @State private var homeAddress: String = ""
-    @State private var isEditing = false
     @State private var showSaveConfirmation = false
     @State private var showSaveError = false
     @State private var saveErrorMessage = ""
-    // Password reset states
     @State private var showResetPasswordSheet = false
     @State private var resetEmail = ""
     @State private var passwordResetInProgress = false
     @State private var passwordResetError: String? = nil
     @State private var passwordResetSuccess = false
-    // Private state ID to force view refresh when needed
     @State private var refreshID = UUID()
     
+    // Track changes for save button
+    @State private var originalFirstName: String = ""
+    @State private var originalLastName: String = ""
+    @State private var originalPhone: String = ""
+    @State private var originalHomeAddress: String = ""
+    
+    private var hasChanges: Bool {
+        firstName != originalFirstName ||
+        lastName != originalLastName ||
+        phone != originalPhone ||
+        homeAddress != originalHomeAddress
+    }
+    
     var body: some View {
-        // View content, refreshes when necessary based on state changes
         ZStack {
             // Background gradient
             OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
-                // Header area with back button and title - fixed, not part of scroll view
+                // Header area with back button and title
                 SettingsHeader(
                     title: "Profile Settings",
-                    showEditButton: true,
-                    isEditing: isEditing,
+                    showEditButton: hasChanges,
+                    isEditing: hasChanges,
+                    editButtonText: "SAVE",
                     onBackTapped: {
                         dismiss()
                     },
                     onEditTapped: {
-                        toggleEditing()
+                        saveChanges()
                     }
                 )
                 .padding(.bottom, 8)
@@ -58,11 +66,11 @@ struct ProfileSettingsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         
-                        // Profile card - implemented directly to avoid ambiguity
+                        // Profile header - no card background
                         if let user = dataController.currentUser {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack(alignment: .top, spacing: 16) {
-                                    // User avatar
+                                    // User avatar - updated to match app style
                                     ZStack {
                                         if let profileURL = user.profileImageURL, 
                                             !profileURL.isEmpty,
@@ -73,10 +81,12 @@ struct ProfileSettingsView: View {
                                                 .frame(width: 60, height: 60)
                                                 .clipShape(Circle())
                                         } else {
-                                            // Default profile circle with initial
+                                            // Simple circle outline with text - black and white
                                             Circle()
-                                                .fill(OPSStyle.Colors.primaryAccent)
+                                                .stroke(Color.white, lineWidth: 2)
                                                 .frame(width: 60, height: 60)
+                                                .background(Color.black)
+                                                .clipShape(Circle())
                                             
                                             Text(getInitials())
                                                 .font(OPSStyle.Typography.bodyBold)
@@ -96,16 +106,16 @@ struct ProfileSettingsView: View {
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                         }
                                         
-                                        // Email
-                                        if let email = user.email, !email.isEmpty {
-                                            Text(email)
+                                        // Email - moved out of input fields
+                                        if let userEmail = user.email, !userEmail.isEmpty {
+                                            Text(userEmail)
                                                 .font(OPSStyle.Typography.smallCaption)
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                         }
                                         
                                         // Phone
-                                        if let phone = user.phone, !phone.isEmpty {
-                                            Text(phone)
+                                        if let userPhone = user.phone, !userPhone.isEmpty {
+                                            Text(userPhone)
                                                 .font(OPSStyle.Typography.smallCaption)
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                         }
@@ -114,127 +124,92 @@ struct ProfileSettingsView: View {
                                     Spacer()
                                 }
                             }
-                            .padding(16)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(12)
                             .padding(.horizontal, 20)
                         }
                         
-                        // Form fields
+                        // Form fields - all directly editable
                         VStack(spacing: 24) {
                             // PERSONAL INFORMATION section
                             SettingsSectionHeader(title: "PERSONAL INFORMATION")
                             
                             // Name fields in HStack
                             HStack(spacing: 16) {
-                                // First name
+                                // First name - directly editable
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("First Name")
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                     
-                                    if isEditing {
-                                        TextField("", text: $firstName)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
-                                            .padding()
-                                            .background(OPSStyle.Colors.cardBackgroundDark)
-                                            .cornerRadius(12)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                            )
-                                    } else {
-                                        Text(firstName.isEmpty ? "Not set" : firstName)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(firstName.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
-                                            .padding()
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .background(OPSStyle.Colors.cardBackgroundDark)
-                                            .cornerRadius(12)
-                                    }
+                                    TextField("First Name", text: $firstName)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(.white)
+                                        .padding()
+                                        .background(OPSStyle.Colors.cardBackgroundDark)
+                                        .cornerRadius(12)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                        )
                                 }
                                 
-                                // Last name
+                                // Last name - directly editable
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Last Name")
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                     
-                                    if isEditing {
-                                        TextField("", text: $lastName)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
-                                            .padding()
-                                            .background(OPSStyle.Colors.cardBackgroundDark)
-                                            .cornerRadius(12)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                            )
-                                    } else {
-                                        Text(lastName.isEmpty ? "Not set" : lastName)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(lastName.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
-                                            .padding()
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .background(OPSStyle.Colors.cardBackgroundDark)
-                                            .cornerRadius(12)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            
-                            // Contact fields
-                            HStack(spacing: 16) {
-                                // Email - not editable
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Email Address")
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    
-                                    Text(email.isEmpty ? "Not set" : email)
+                                    TextField("Last Name", text: $lastName)
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(email.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
+                                        .foregroundColor(.white)
                                         .padding()
-                                        .frame(maxWidth: .infinity, alignment: .leading)
                                         .background(OPSStyle.Colors.cardBackgroundDark)
                                         .cornerRadius(12)
-                                }
-                                
-                                // Phone
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Phone Number")
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    
-                                    if isEditing {
-                                        TextField("", text: $phone)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
-                                            .padding()
-                                            .background(OPSStyle.Colors.cardBackgroundDark)
-                                            .cornerRadius(12)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                            )
-                                            .keyboardType(.phonePad)
-                                    } else {
-                                        Text(phone.isEmpty ? "Not set" : phone)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(phone.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
-                                            .padding()
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .background(OPSStyle.Colors.cardBackgroundDark)
-                                            .cornerRadius(12)
-                                    }
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                        )
                                 }
                             }
                             .padding(.horizontal, 20)
                             
-                            // Home address
-                            formField(title: "Home Address", text: $homeAddress, isEditable: isEditing)
+                            // Phone - directly editable
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Phone Number")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                
+                                TextField("Phone Number", text: $phone)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                    )
+                                    .keyboardType(.phonePad)
+                            }
+                            .padding(.horizontal, 20)
+                            
+                            // Home address - directly editable
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Home Address")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                
+                                TextField("Home Address", text: $homeAddress)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                    )
+                            }
+                            .padding(.horizontal, 20)
                             
                             // CREDENTIALS section
                             SettingsSectionHeader(title: "CREDENTIALS")
@@ -248,20 +223,6 @@ struct ProfileSettingsView: View {
                                 }
                             )
                             .padding(.horizontal, 20)
-                            .disabled(!isEditing)
-                            .opacity(isEditing ? 1.0 : 0.6)
-                            
-                            // Save button (visible only in edit mode)
-                            if isEditing {
-                                SettingsButton(
-                                    title: "Save Changes",
-                                    icon: "checkmark.circle",
-                                    style: .primary,
-                                    action: saveChanges
-                                )
-                                .padding(.horizontal, 20)
-                                .padding(.top, 16)
-                            }
                         }
                         .padding(.bottom, 40)
                     }
@@ -287,7 +248,6 @@ struct ProfileSettingsView: View {
             }) {
                 resetPasswordSheet
                     .onAppear {
-                        // Pre-populate with current user's email when sheet appears
                         if resetEmail.isEmpty, let userEmail = dataController.currentUser?.email {
                             resetEmail = userEmail
                         }
@@ -295,14 +255,14 @@ struct ProfileSettingsView: View {
             }
         }
     }
-    // Password reset sheet view
+    
+    // Password reset sheet view (unchanged)
     private var resetPasswordSheet: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 24) {
-                // Header
                 Text("Reset Password")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(.white)
@@ -310,7 +270,6 @@ struct ProfileSettingsView: View {
                 
                 if !passwordResetSuccess {
                     VStack(spacing: 16) {
-                        // Description
                         Text("Enter your email address to receive a password reset link.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -318,7 +277,6 @@ struct ProfileSettingsView: View {
                             .padding(.horizontal, 20)
                             .padding(.bottom, 8)
                         
-                        // Email field with OPSStyle
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Email Address")
                                 .font(OPSStyle.Typography.caption)
@@ -340,7 +298,6 @@ struct ProfileSettingsView: View {
                         }
                         .padding(.horizontal, 20)
                         
-                        // Error message
                         if let error = passwordResetError {
                             Text(error)
                                 .font(OPSStyle.Typography.smallCaption)
@@ -352,11 +309,8 @@ struct ProfileSettingsView: View {
                         
                         Spacer()
                         
-                        // Action buttons with consistent styling
                         HStack(spacing: 16) {
-                            // Cancel button
                             Button(action: {
-                                // Clear fields and dismiss
                                 resetPasswordFields()
                                 showResetPasswordSheet = false
                             }) {
@@ -369,7 +323,6 @@ struct ProfileSettingsView: View {
                                     .cornerRadius(12)
                             }
                             
-                            // Send reset button
                             Button(action: {
                                 requestPasswordReset()
                             }) {
@@ -397,7 +350,6 @@ struct ProfileSettingsView: View {
                         .padding(.bottom, 30)
                     }
                 } else {
-                    // Success view with consistent styling
                     VStack(spacing: 24) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(OPSStyle.Typography.largeTitle)
@@ -444,18 +396,15 @@ struct ProfileSettingsView: View {
         return !resetEmail.isEmpty && emailPredicate.evaluate(with: resetEmail)
     }
     
-    // Request password reset function
+    // Request password reset function (unchanged)
     private func requestPasswordReset() {
-        // Clear any previous errors
         passwordResetError = nil
         passwordResetInProgress = true
         
-        // Pre-populate email field with the user's email if available
         if resetEmail.isEmpty, let userEmail = dataController.currentUser?.email {
             resetEmail = userEmail
         }
         
-        // Validate email format
         guard isEmailValid else {
             passwordResetError = "Please enter a valid email address"
             passwordResetInProgress = false
@@ -464,7 +413,6 @@ struct ProfileSettingsView: View {
         
         print("ProfileSettingsView: Requesting password reset for email: \(resetEmail)")
         
-        // Call the data controller to request a password reset
         Task {
             let (success, errorMessage) = await dataController.requestPasswordReset(email: resetEmail)
             
@@ -482,45 +430,12 @@ struct ProfileSettingsView: View {
         }
     }
     
-    // Reset password fields
+    // Reset password fields (unchanged)
     private func resetPasswordFields() {
         resetEmail = ""
         passwordResetError = nil
         passwordResetSuccess = false
         passwordResetInProgress = false
-    }
-    
-    // sectionHeader function removed in favor of standardized OPSSectionHeader component
-    
-    private func formField(title: String, text: Binding<String>, isEditable: Bool) -> some View {
-        // Use a direct implementation instead of a component reference
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            
-            if isEditable {
-                TextField("", text: text)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                    )
-            } else {
-                Text(text.wrappedValue.isEmpty ? "Not set" : text.wrappedValue)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(text.wrappedValue.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(12)
-            }
-        }
-        .padding(.horizontal, 20)
     }
     
     private func getInitials() -> String {
@@ -535,33 +450,31 @@ struct ProfileSettingsView: View {
     }
     
     private func loadUserData() {
-        // Load user data from data controller
-        
         if let user = dataController.currentUser {
-            // Load first and last name directly from user model
             firstName = user.firstName
             lastName = user.lastName
-            
             email = user.email ?? ""
             phone = user.phone ?? ""
             homeAddress = user.homeAddress ?? ""
             
-            // Load profile image if available from URL
+            // Store original values to track changes
+            originalFirstName = firstName
+            originalLastName = lastName
+            originalPhone = phone
+            originalHomeAddress = homeAddress
+            
+            // Load profile image if available
             if let profileImageURL = user.profileImageURL {
-                // Load image asynchronously
                 Task {
                     print("ProfileSettingsView: Attempting to load image from URL: \(profileImageURL)")
                     
-                    // First check if it's already in the image cache
                     if let _ = ImageCache.shared.get(forKey: profileImageURL) {
                         print("ProfileSettingsView: Image already in cache")
                         return
                     }
                     
-                    // Otherwise load from URL
                     if await loadImage(from: profileImageURL) != nil {
                         print("ProfileSettingsView: Successfully loaded image from URL")
-                        // The image is now cached in the ImageCache
                     } else {
                         print("ProfileSettingsView: Failed to load image from URL")
                     }
@@ -573,22 +486,17 @@ struct ProfileSettingsView: View {
     }
     
     private func loadImage(from urlString: String) async -> UIImage? {
-        // Check if it's a local URL
         if urlString.starts(with: "local://") {
             if let imageBase64 = UserDefaults.standard.string(forKey: urlString),
                let imageData = Data(base64Encoded: imageBase64),
                let image = UIImage(data: imageData) {
-                // Cache the loaded image
                 ImageCache.shared.set(image, forKey: urlString)
                 return image
             }
             return nil
         }
         
-        // Handle remote URL
         var imageURL = urlString
-        
-        // Fix for URLs starting with //
         if imageURL.starts(with: "//") {
             imageURL = "https:" + imageURL
         }
@@ -598,7 +506,6 @@ struct ProfileSettingsView: View {
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             if let image = UIImage(data: data) {
-                // Cache the loaded image
                 ImageCache.shared.set(image, forKey: urlString)
                 return image
             }
@@ -609,39 +516,31 @@ struct ProfileSettingsView: View {
         return nil
     }
     
-    private func toggleEditing() {
-        if isEditing {
-            // Cancel editing - restore original values
-            loadUserData()
-        }
-        isEditing.toggle()
-    }
-    
     private func saveChanges() {
         showSaveConfirmation = true
     }
     
     private func performSave() {
         Task {
-            // Print debug info about the profile update
             print("ProfileSettingsView: Saving profile information")
             
-            // Update profile information (no try/catch needed since method returns Bool)
             let success = await dataController.updateUserProfile(
                 firstName: firstName,
                 lastName: lastName,
-                email: email, // Email won't actually change as the field is not editable
+                email: email,
                 phone: phone,
                 homeAddress: homeAddress
             )
             
-            // Update UI based on result
             await MainActor.run {
                 if success {
-                    isEditing = false
+                    // Update original values to reflect successful save
+                    originalFirstName = firstName
+                    originalLastName = lastName
+                    originalPhone = phone
+                    originalHomeAddress = homeAddress
                     print("ProfileSettingsView: Successfully saved profile changes")
                 } else {
-                    // Show error alert
                     saveErrorMessage = "Failed to save profile changes. Please try again."
                     showSaveError = true
                     print("ProfileSettingsView: Failed to save profile changes")
@@ -650,7 +549,6 @@ struct ProfileSettingsView: View {
         }
     }
 }
-
 
 #Preview {
     ProfileSettingsView()

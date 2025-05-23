@@ -11,14 +11,13 @@ struct OrganizationTeamView: View {
     let company: Company
     @EnvironmentObject private var dataController: DataController
     @State private var selectedTeamMember: TeamMember? = nil
-    @State private var showingTeamMemberDetails = false
     @State private var showingFullTeamList = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header with see all button
             HStack {
-                Text("TEAM MEMBERS")
+                Text("\(company.name.uppercased()) | \(company.teamMembers.count) TEAM MEMBERS")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
@@ -66,7 +65,6 @@ struct OrganizationTeamView: View {
                 ForEach(Array(visibleMembers), id: \.id) { member in
                     Button(action: {
                         selectedTeamMember = member
-                        showingTeamMemberDetails = true
                     }) {
                         HStack(spacing: 12) {
                             // Avatar
@@ -105,10 +103,9 @@ struct OrganizationTeamView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingTeamMemberDetails) {
-            if let member = selectedTeamMember {
-                TeamMemberDetailView(user: nil, teamMember: member)
-            }
+        .padding(12)
+        .sheet(item: $selectedTeamMember) { member in
+            TeamMemberDetailView(user: nil, teamMember: member)
         }
         .sheet(isPresented: $showingFullTeamList) {
             OrganizationFullTeamView(company: company)
@@ -132,13 +129,16 @@ struct CompanyTeamMemberAvatar: View {
                     .clipShape(Circle())
             } else {
                 Circle()
-                    .fill(OPSStyle.Colors.primaryAccent)
                     .frame(width: size, height: size)
-                    .overlay(
+                    .overlay(content: {
                         Text(teamMember.initials)
-                            .font(.system(size: size * 0.4, weight: .bold))
+                            .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(.white)
-                    )
+                        Circle()
+                            .stroke(Color(.white), lineWidth: 1)
+                    })
+                    .foregroundColor(.black)
+                    
             }
         }
         .onAppear {
@@ -188,7 +188,6 @@ struct OrganizationFullTeamView: View {
     let company: Company
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTeamMember: TeamMember? = nil
-    @State private var showingMemberDetails = false
     @State private var searchText = ""
     
     var filteredMembers: [TeamMember] {
@@ -269,7 +268,6 @@ struct OrganizationFullTeamView: View {
                                 ForEach(filteredMembers, id: \.id) { member in
                                     Button(action: {
                                         selectedTeamMember = member
-                                        showingMemberDetails = true
                                     }) {
                                         TeamMemberCard(teamMember: member)
                                     }
@@ -290,10 +288,8 @@ struct OrganizationFullTeamView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingMemberDetails) {
-                if let member = selectedTeamMember {
-                    TeamMemberDetailView(user: nil, teamMember: member)
-                }
+            .sheet(item: $selectedTeamMember) { member in
+                TeamMemberDetailView(user: nil, teamMember: member)
             }
         }
     }

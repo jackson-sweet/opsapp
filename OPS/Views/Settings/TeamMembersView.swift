@@ -96,26 +96,6 @@ struct TeamMembersView: View {
                                     memberCard(member)
                                 }
                             }
-                            
-                            // V2 Functionality notes
-                            SettingsSectionHeader(title: "COMING SOON")
-                                .padding(.top, 16)
-                            
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Future functionality:")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(.white)
-                                
-                                featureRow(icon: "person.badge.plus", text: "Invite new team members")
-                                featureRow(icon: "lock.shield", text: "Edit team member permissions")
-                                featureRow(icon: "message", text: "Direct messaging between team members")
-                                featureRow(icon: "person.badge.minus", text: "Remove team members")
-                            }
-                            .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(12)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 32)
                         }
                         .padding(.vertical, 8)
                     }
@@ -149,14 +129,6 @@ struct TeamMembersView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            
-            // Note about future functionality
-            Text("Team member management functionality will be available in a future update.")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-                .padding(.top, 16)
             
             Spacer()
         }
@@ -212,20 +184,6 @@ struct TeamMembersView: View {
         }
     }
     
-    private func featureRow(icon: String, text: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .frame(width: 24)
-            
-            Text(text)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(.white)
-            
-            Spacer()
-        }
-    }
     
     private func memberDetailSheet(_ member: User) -> some View {
         ZStack {

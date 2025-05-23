@@ -37,23 +37,128 @@ struct OrganizationSettingsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                     
-                    if isLoading {
-                        loadingView
-                    } else {
-                        // Company profile card
-                        if let company = organization {
-                            OrganizationProfileCard(company: company)
+                        if isLoading {
+                            loadingView
+                        } else {
+                            // Company header - no card background, matches ProfileSettingsView style
+                            if let company = organization {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    HStack(alignment: .top, spacing: 16) {
+                                        // Company logo
+                                        ZStack {
+                                            if let logoURL = company.logoURL, 
+                                                !logoURL.isEmpty,
+                                               let cachedImage = ImageCache.shared.get(forKey: logoURL) {
+                                                Image(uiImage: cachedImage)
+                                                    .resizable()
+                                                    .scaledToFill()
+                                                    .frame(width: 60, height: 60)
+                                                    .clipShape(Circle())
+                                            } else {
+                                                // Simple circle outline with icon - black and white
+                                                Circle()
+                                                    .stroke(Color.white, lineWidth: 2)
+                                                    .frame(width: 60, height: 60)
+                                                    .background(Color.black)
+                                                    .clipShape(Circle())
+                                                
+                                                Image(systemName: "building.2")
+                                                    .font(OPSStyle.Typography.bodyBold)
+                                                    .foregroundColor(.white)
+                                            }
+                                        }
+                                        
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            // Company name
+                                            Text(company.name)
+                                                .font(OPSStyle.Typography.bodyBold)
+                                                .foregroundColor(.white)
+                                            
+                                            // Company description - always show
+                                            Text((company.companyDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                                 company.companyDescription! : "NO DESCRIPTION")
+                                                .font(OPSStyle.Typography.smallCaption)
+                                                .foregroundColor((company.companyDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                                                OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
+                                                .lineLimit(2)
+                                            
+                                            // Company address - always show
+                                            Text((company.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                                 company.address! : "NO ADDRESS")
+                                                .font(OPSStyle.Typography.smallCaption)
+                                                .foregroundColor((company.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                                                OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
+                                        }
+                                        
+                                        Spacer()
+                                    }
+                                }
                                 .padding(.horizontal, 20)
+                            }
+                            
+                            // Organization details section
+                            VStack(spacing: 24) {
+                                SettingsSectionHeader(title: "CONTACT INFORMATION")
+                                
+                                // Business hours - always show
+                                infoField(
+                                    title: "Business Hours",
+                                    value: (organization?.openHour != nil && organization?.closeHour != nil) ? 
+                                           organization!.hoursDisplay : "NO BUSINESS HOURS",
+                                    icon: "clock",
+                                    isMissing: organization?.openHour == nil || organization?.closeHour == nil
+                                )
+                                
+                                // Phone - always show
+                                infoField(
+                                    title: "Phone",
+                                    value: (organization?.phone?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                           organization!.phone! : "NO PHONE NUMBER",
+                                    icon: "phone",
+                                    isMissing: organization?.phone?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+                                )
+                                
+                                // Email - always show
+                                infoField(
+                                    title: "Email",
+                                    value: (organization?.email?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                           organization!.email! : "NO EMAIL ADDRESS",
+                                    icon: "envelope",
+                                    isMissing: organization?.email?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+                                )
+                                
+                                // Website - always show
+                                infoField(
+                                    title: "Website",
+                                    value: (organization?.website?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                           organization!.website! : "NO WEBSITE",
+                                    icon: "globe",
+                                    isMissing: organization?.website?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+                                )
+                            }
+                            
+                            // Team section
+                            VStack(spacing: 16) {
+                                SettingsSectionHeader(title: "TEAM MEMBERS")
+                                
+                                if let company = organization {
+                                    // Use the new compact team view with sheets for details
+                                    OrganizationTeamView(company: company)
+                                        .background(OPSStyle.Colors.cardBackgroundDark)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .padding(.horizontal, 20)
+                                } else if teamMembers.isEmpty {
+                                    emptyTeamView
+                                        .padding(.horizontal, 20)
+                                } else {
+                                    // Fallback to old view if we have teamMembers but no company
+                                    ForEach(Array(zip(teamMembers.indices, teamMembers)), id: \.0) { index, member in
+                                        memberRow(member: member)
+                                    }
+                                    .padding(.horizontal, 20)
+                                }
+                            }
                         }
-                        
-                        // Organization info section
-                        sectionHeader("ORGANIZATION DETAILS")
-                        organizationSection
-                        
-                        // Team section
-                        sectionHeader("TEAM MEMBERS")
-                        teamSection
-                    }
                     }
                     .padding(.bottom, 40)
                 }
@@ -63,10 +168,6 @@ struct OrganizationSettingsView: View {
         .onAppear {
             loadOrganizationData()
         }
-    }
-    
-    private func sectionHeader(_ title: String) -> some View {
-        SettingsSectionHeader(title: title)
     }
     
     private var loadingView: some View {
@@ -83,63 +184,28 @@ struct OrganizationSettingsView: View {
         .padding()
     }
     
-    private var organizationSection: some View {
-        VStack(spacing: 16) {
-            // Company info card
-            infoCard(items: [
-                InfoItem(title: "Company Name", 
-                         value: organization?.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
-                                organization!.name : "Not available", 
-                         icon: "building.2"),
-                InfoItem(title: "Description", 
-                         value: organization?.companyDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
-                                organization!.companyDescription! : "Not available", 
-                         icon: "doc.text"),
-                InfoItem(title: "Address", 
-                         value: organization?.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
-                                organization!.address! : "Not available", 
-                         icon: "location")
-            ])
+    // Individual info field - matches ProfileSettingsView style
+    private func infoField(title: String, value: String, icon: String, isMissing: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
             
-            // Contact info card
-            infoCard(items: [
-                InfoItem(title: "Business Hours", 
-                         value: (organization?.openHour != nil && organization?.closeHour != nil) ? 
-                                organization!.hoursDisplay : "Not available", 
-                         icon: "clock"),
-                InfoItem(title: "Phone", 
-                         value: organization?.phone?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
-                                organization!.phone! : "Not available", 
-                         icon: "phone"),
-                InfoItem(title: "Email", 
-                         value: organization?.email?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
-                                organization!.email! : "Not available", 
-                         icon: "envelope"),
-                InfoItem(title: "Website", 
-                         value: organization?.website?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? 
-                                organization!.website! : "Not available", 
-                         icon: "globe")
-            ])
-        }
-        .padding(.horizontal, 20)
-    }
-    
-    private var teamSection: some View {
-        VStack(spacing: 12) {
-            if let company = organization {
-                // Use the new compact team view with sheets for details
-                OrganizationTeamView(company: company)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-            } else if teamMembers.isEmpty {
-                emptyTeamView
-            } else {
-                // Fallback to old view if we have teamMembers but no company
-                // Use an enumerated array to ensure uniqueness even if duplicate IDs exist
-                ForEach(Array(zip(teamMembers.indices, teamMembers)), id: \.0) { index, member in
-                    memberRow(member: member)
-                }
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(isMissing ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
+                    .frame(width: 24)
+                
+                Text(value)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(isMissing ? OPSStyle.Colors.tertiaryText : .white)
+                
+                Spacer()
             }
+            .padding()
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(12)
         }
         .padding(.horizontal, 20)
     }
@@ -162,40 +228,6 @@ struct OrganizationSettingsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-    }
-    
-    private func infoCard(items: [InfoItem]) -> some View {
-        VStack(spacing: 20) {
-            ForEach(items, id: \.title) { item in
-                HStack(spacing: 16) {
-                    // Icon
-                    ZStack {
-                        Circle()
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
-                            .frame(width: 36, height: 36)
-                        
-                        Image(systemName: item.icon)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        Text(item.value)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(.white)
-                    }
-                    
-                    Spacer()
-                }
-            }
-        }
-        .padding(20)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }

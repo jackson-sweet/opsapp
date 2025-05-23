@@ -118,7 +118,7 @@ struct AppSettingsView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
                 // Copyright info
-                Text("© 2025 OPS Construction Software")
+                Text("© 2025 OPS Job Management")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

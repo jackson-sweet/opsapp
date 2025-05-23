@@ -18,14 +18,14 @@ struct CategoryCard: View {
     var comingSoon: Bool = false
     
     var body: some View {
-        HStack(spacing: 24) {
+        HStack(alignment: .center, spacing: 12) {
             // Icon in colored circle
             ZStack {
-                
+                /*
                 RoundedRectangle(cornerRadius: 5)
                     .stroke(isDisabled ? OPSStyle.Colors.tertiaryText.opacity(0.3) : OPSStyle.Colors.primaryText)
                     .frame(width: 40, height: 40)
-                
+                */
                 Image(systemName: iconName)
                     .font(.system(size: 24, weight: .light))
                     .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)

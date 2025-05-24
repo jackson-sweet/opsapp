@@ -103,7 +103,7 @@ New screens combine related steps for a more efficient flow:
 ## UI Enhancements
 
 ### Design Guidelines
-- **Typography**: Bebas Neue for headers, system font for body (improved readability)
+- **Typography**: Mohave for headers and body text, Kosugi for supporting text (improved readability)
 - **Colors**: Dark background with high contrast for field visibility
 - **Touch Targets**: Minimum 56pt height for all interactive elements
 - **Field Layout**: Clear labels, input validation, helper text

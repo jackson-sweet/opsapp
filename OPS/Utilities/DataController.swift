@@ -24,7 +24,7 @@ class DataController: ObservableObject {
     var appState: AppState?
     
     // MARK: - Dependencies
-    private let authManager: AuthManager
+    let authManager: AuthManager
     let apiService: APIService
     private let keychainManager: KeychainManager
     private let connectivityMonitor: ConnectivityMonitor
@@ -34,6 +34,7 @@ class DataController: ObservableObject {
     // MARK: - Public Access
     var syncManager: SyncManager!
     var imageSyncManager: ImageSyncManager!
+    @Published var simplePINManager = SimplePINManager()
     
     // MARK: - Initialization
     init() {
@@ -509,6 +510,7 @@ class DataController: ObservableObject {
                 print("DataController: Error cleaning up user database: \(error.localizedDescription)")
             }
         }
+        
         
         // Clear all auth state and user defaults
         clearAuthentication()

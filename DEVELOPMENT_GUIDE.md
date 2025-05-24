@@ -10,6 +10,7 @@ The OPS (Operational Project System) app is a field-optimized project management
 - **Local Storage**: SwiftData
 - **Backend**: Bubble.io API
 - **UI Design**: Dark theme optimized for outdoor visibility
+- **Typography**: Custom fonts (Mohave, Kosugi, Bebas Neue)
 - **Network Strategy**: Offline-first with background synchronization
 
 ## Component Structure
@@ -27,9 +28,16 @@ The OPS (Operational Project System) app is a field-optimized project management
 
 ### UI Components
 - **Common UI**: Headers, cards, navigation elements
+  - `TabBarPadding`: Consistent padding above tab bar
+  - `SegmentedControl`: Reusable picker component
+  - `AddressAutocompleteField`: MapKit-based address search
+  - `ContactDetailSheet`: Unified contact display
 - **Project Components**: Project details, actions, image management
-- **Map Components**: Location visualization
+- **Map Components**: Location visualization with stable pin positioning
 - **Team Components**: Team member listings and details
+- **Calendar Components**: Month/week views with project indicators
+  - Snapping week view, project count badges
+  - Today's date highlighting
 
 ## Key Features
 
@@ -69,6 +77,10 @@ The OPS (Operational Project System) app is a field-optimized project management
 - Follow Swift naming conventions
 - Structure files consistently with MARK comments
 - Create clear boundaries between app layers
+- Use custom font extensions from `Fonts.swift` for all text styling
+- **NEVER use system fonts** - all text must use OPS fonts (Mohave, Kosugi)
+- When creating new components, use existing patterns from the codebase
+- Always use `.tabBarPadding()` for scrollable content
 
 ### SwiftUI Patterns
 - Use environment objects for dependency injection

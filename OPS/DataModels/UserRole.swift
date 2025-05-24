@@ -16,11 +16,16 @@ enum UserRole: String, Codable {
     }
 }
 
-enum UserType: String, Codable {
-    case company = "Company"
+enum UserType: String, CaseIterable, Codable {
     case employee = "Employee"
-    case client = "Client"
-    case admin = "Admin"
-    case contractor = "Contractor"
-    case other = "Other"
+    case company = "Company"
+    
+    var displayName: String {
+        switch self {
+        case .employee:
+            return "Employee"
+        case .company:
+            return "Business Owner"
+        }
+    }
 }

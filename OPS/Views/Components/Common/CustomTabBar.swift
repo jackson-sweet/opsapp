@@ -17,10 +17,13 @@ struct CustomTabBar: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Tab bar background with ultra thin blur
-            BlurView(style: .systemUltraThinMaterialDark)
-                .frame(height: 80)
-                .ignoresSafeArea(.all, edges: .bottom)
+            // Tab bar background with dark blur and overlay
+            ZStack {
+                BlurView(style: .systemUltraThinMaterialDark)
+                OPSStyle.Colors.cardBackground.opacity(0.8)
+            }
+            .frame(height: 80)
+            .ignoresSafeArea(.all, edges: .bottom)
             
             VStack(spacing: 0) {
                 // Sliding indicator bar - sized to match icon width

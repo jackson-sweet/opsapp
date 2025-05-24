@@ -55,6 +55,7 @@ struct TeamMemberDetailView: View {
                         Spacer(minLength: 40)
                     }
                 }
+                .tabBarPadding()
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)

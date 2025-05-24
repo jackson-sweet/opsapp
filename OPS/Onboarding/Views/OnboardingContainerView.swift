@@ -61,6 +61,9 @@ struct OnboardingView: View {
                 switch viewModel.currentStep {
                 case .welcome:
                     WelcomeView(viewModel: viewModel)
+                case .userTypeSelection:
+                    UserTypeSelectionView()
+                        .environmentObject(viewModel)
                 case .accountSetup:
                     // Use existing EmailView but configured for consolidated flow
                     EmailView(viewModel: viewModel, isInConsolidatedFlow: true)
@@ -72,6 +75,24 @@ struct OnboardingView: View {
                     UserInfoView(viewModel: viewModel, isInConsolidatedFlow: true)
                 case .companyCode:
                     CompanyCodeView(viewModel: viewModel)
+                case .companyBasicInfo:
+                    CompanyBasicInfoView()
+                        .environmentObject(viewModel)
+                case .companyAddress:
+                    CompanyAddressView()
+                        .environmentObject(viewModel)
+                case .companyContact:
+                    CompanyContactView()
+                        .environmentObject(viewModel)
+                case .companyDetails:
+                    CompanyDetailsView()
+                        .environmentObject(viewModel)
+                case .teamInvites:
+                    TeamInvitesView()
+                        .environmentObject(viewModel)
+                case .welcomeGuide:
+                    WelcomeGuideView()
+                        .environmentObject(viewModel)
                 case .permissions:
                     // Use existing PermissionsView but configured for consolidated flow
                     PermissionsView(viewModel: viewModel, isInConsolidatedFlow: true)

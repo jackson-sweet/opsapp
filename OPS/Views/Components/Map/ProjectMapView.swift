@@ -735,18 +735,19 @@ struct MapViewRepresentable: UIViewRepresentable {
             let hostingController = UIHostingController(rootView: projectAnnotation)
             hostingController.view.backgroundColor = .clear
             
+            // Let the hosting controller size itself naturally
             let size = hostingController.sizeThatFits(in: UIView.layoutFittingExpandedSize)
-            let touchableSize = CGSize(width: max(size.width, 80), height: max(size.height, 80))
-            
             hostingController.view.frame = CGRect(origin: .zero, size: size)
             hostingController.view.isUserInteractionEnabled = true
             hostingController.view.tag = 1000 + (customAnnotation.index % 1000)
             
+            // Set the annotation view frame to match the content
+            annotationView.frame = CGRect(origin: .zero, size: size)
             annotationView.addSubview(hostingController.view)
-            annotationView.centerOffset = CGPoint(x: 0, y: -size.height * 0.4)
-            annotationView.frame = CGRect(origin: .zero, size: touchableSize)
             
-            hostingController.view.center = CGPoint(x: touchableSize.width / 2, y: touchableSize.height / 2)
+            // Set the anchor point to the bottom center of the pin
+            // This ensures the pin tip stays at the coordinate during zoom/rotation
+            annotationView.centerOffset = CGPoint(x: 0, y: -size.height / 2)
             
             annotationView.isEnabled = true
             annotationView.isUserInteractionEnabled = true

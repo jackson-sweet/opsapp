@@ -130,6 +130,7 @@ struct SettingsView: View {
                             categoryCard(for: category)
                         }
                     }
+                    
                     Spacer(minLength: 20)
                 }
                 .padding(.horizontal, 20)
@@ -176,6 +177,23 @@ struct SettingsView: View {
                 .background(OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, 20)
             
+            // What we're working on - compact card
+            NavigationLink(destination: WhatsNewView()) {
+                HStack {
+                    Text("What We're Working On")
+                        .font(.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+            }
+            
             // Feature request and logout buttons in HStack
             HStack(spacing: 16) {
                 // Feature request button (1/3 width)
@@ -191,7 +209,11 @@ struct SettingsView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                    )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .frame(height: 44)
@@ -211,7 +233,11 @@ struct SettingsView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1)
+                    )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -250,10 +276,13 @@ struct SettingsView: View {
         switch category {
         case .profile:
             ProfileSettingsView()
+                .environmentObject(dataController)
         case .organization:
             OrganizationSettingsView()
+                .environmentObject(dataController)
         case .appSettings:
             AppSettingsView()
+                .environmentObject(dataController)
         }
     }
     
@@ -263,10 +292,13 @@ struct SettingsView: View {
         switch category {
         case .teamMembers:
             TeamMembersView()
+                .environmentObject(dataController)
         case .projectHistory:
             ProjectHistorySettingsView()
+                .environmentObject(dataController)
         case .expenseHistory:
             ExpenseHistoryView()
+                .environmentObject(dataController)
         }
     }
     

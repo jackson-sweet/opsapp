@@ -26,6 +26,7 @@ struct ProjectDetailsView: View {
     @State private var networkErrorMessage = ""
     // REMOVED: No longer tracking photo deletion state
     @State private var showingUnsavedChangesAlert = false
+    @State private var showingClientContact = false
     
     // Initialize with project's existing notes
     init(project: Project) {
@@ -252,6 +253,18 @@ struct ProjectDetailsView: View {
         } message: {
             Text(networkErrorMessage)
         }
+        // Client contact sheet
+        .sheet(isPresented: $showingClientContact) {
+            ContactDetailSheet(
+                name: project.clientName,
+                role: "Client",
+                email: nil, // TODO: Add client email when available in API
+                phone: nil, // TODO: Add client phone when available in API
+                isClient: true
+            )
+            .presentationDragIndicator(.visible)
+            .presentationDetents([.medium])
+        }
     }
     
     // Project header section with title and date
@@ -373,13 +386,19 @@ struct ProjectDetailsView: View {
             
             // Card-based info items
             VStack(spacing: 1) {
-                // Client card
-                infoRow(
-                    icon: "person",
-                    title: "CLIENT",
-                    value: project.clientName.uppercased(),
-                    valueColor: OPSStyle.Colors.primaryText
-                )
+                // Client card with tap interaction
+                Button(action: {
+                    showingClientContact = true
+                }) {
+                    infoRow(
+                        icon: "person",
+                        title: "CLIENT",
+                        value: project.clientName.uppercased(),
+                        valueColor: OPSStyle.Colors.primaryText,
+                        showChevron: true
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
                 
                 // End date if available
                 if let endDate = project.endDate {
@@ -428,7 +447,7 @@ struct ProjectDetailsView: View {
     }
     
     // Helper to create consistent info rows
-    private func infoRow(icon: String, title: String, value: String, valueColor: Color = .white) -> some View {
+    private func infoRow(icon: String, title: String, value: String, valueColor: Color = .white, showChevron: Bool = false) -> some View {
         HStack(spacing: 12) {
             // Icon
             Image(systemName: icon)
@@ -447,6 +466,12 @@ struct ProjectDetailsView: View {
             }
             
             Spacer()
+            
+            if showChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
         }
         .padding()
         .background(OPSStyle.Colors.cardBackgroundDark)

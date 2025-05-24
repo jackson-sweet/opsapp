@@ -193,6 +193,7 @@ struct NotificationSettingsView: View {
                     }
                     .padding(.vertical, 20)
                 }
+                .tabBarPadding()
             }
         }
         .navigationBarBackButtonHidden(true)

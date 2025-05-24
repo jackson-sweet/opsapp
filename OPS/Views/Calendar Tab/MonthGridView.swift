@@ -68,26 +68,31 @@ struct MonthDayCell: View {
     
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 4) {
+            ZStack {
+                // Day number centered
                 Text(DateHelper.dayString(from: date))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(textColor)
                 
+                // Project count in top-right corner
                 if projectCount > 0 {
-                    ZStack {
-                        Circle()
-                            .fill(OPSStyle.Colors.primaryAccent)
-                            .frame(width: 20, height: 20)
-                        
-                        Text("\(projectCount)")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(.white)
+                    VStack {
+                        HStack {
+                            Spacer()
+                            ZStack {
+                                Circle()
+                                    .fill(OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 16, height: 16)
+                                
+                                Text("\(projectCount)")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.top, 2)
+                            .padding(.trailing, 2)
+                        }
+                        Spacer()
                     }
-                    .padding(.top, 2)
-                } else {
-                    // Empty space to maintain consistent height
-                    Spacer()
-                        .frame(height: 20)
                 }
             }
             .frame(height: 44)

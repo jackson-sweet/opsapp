@@ -134,80 +134,42 @@ struct ProfileSettingsView: View {
                             
                             // Name fields in HStack
                             HStack(spacing: 16) {
-                                // First name - directly editable
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("First Name")
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    
-                                    TextField("First Name", text: $firstName)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
-                                        .padding()
-                                        .background(OPSStyle.Colors.cardBackgroundDark)
-                                        .cornerRadius(12)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                        )
-                                }
+                                FormTextField(
+                                    title: "First Name",
+                                    text: $firstName
+                                )
                                 
-                                // Last name - directly editable
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Last Name")
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    
-                                    TextField("Last Name", text: $lastName)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
-                                        .padding()
-                                        .background(OPSStyle.Colors.cardBackgroundDark)
-                                        .cornerRadius(12)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                        )
-                                }
+                                FormTextField(
+                                    title: "Last Name",
+                                    text: $lastName
+                                )
                             }
                             .padding(.horizontal, 20)
                             
                             // Phone - directly editable
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Phone Number")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                TextField("Phone Number", text: $phone)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                    )
-                                    .keyboardType(.phonePad)
-                            }
+                            FormTextField(
+                                title: "Phone Number",
+                                text: $phone,
+                                keyboardType: .phonePad
+                            )
                             .padding(.horizontal, 20)
                             
-                            // Home address - directly editable
+                            // Home address - with autocomplete
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Home Address")
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
-                                TextField("Home Address", text: $homeAddress)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                    )
+                                AddressAutocompleteField(
+                                    address: $homeAddress,
+                                    placeholder: "Enter your home address"
+                                ) { address, coordinate in
+                                    // Optional: Could store coordinates if needed
+                                    print("Selected address: \(address)")
+                                    if let coord = coordinate {
+                                        print("Coordinates: \(coord.latitude), \(coord.longitude)")
+                                    }
+                                }
                             }
                             .padding(.horizontal, 20)
                             
@@ -227,8 +189,10 @@ struct ProfileSettingsView: View {
                         .padding(.bottom, 40)
                     }
                 }
+                .tabBarPadding() // Add padding for tab bar
             }
             .navigationBarBackButtonHidden(true)
+            .swipeBackGesture() // Add swipe-back gesture
             .onAppear(perform: loadUserData)
             .alert("Save Changes", isPresented: $showSaveConfirmation) {
                 Button("Cancel", role: .cancel) { }

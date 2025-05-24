@@ -96,6 +96,9 @@ struct OnboardingFlowPreview: View {
                     switch selectedScreen {
                     case .welcome:
                         WelcomeView(viewModel: viewModel)
+                    case .userTypeSelection:
+                        UserTypeSelectionView()
+                            .environmentObject(viewModel)
                     case .accountSetup:
                         EmailView(viewModel: viewModel, isInConsolidatedFlow: true)
                     case .organizationJoin:
@@ -104,6 +107,24 @@ struct OnboardingFlowPreview: View {
                         UserInfoView(viewModel: viewModel, isInConsolidatedFlow: true)
                     case .companyCode:
                         CompanyCodeView(viewModel: viewModel)
+                    case .companyBasicInfo:
+                        CompanyBasicInfoView()
+                            .environmentObject(viewModel)
+                    case .companyAddress:
+                        CompanyAddressView()
+                            .environmentObject(viewModel)
+                    case .companyContact:
+                        CompanyContactView()
+                            .environmentObject(viewModel)
+                    case .companyDetails:
+                        CompanyDetailsView()
+                            .environmentObject(viewModel)
+                    case .teamInvites:
+                        TeamInvitesView()
+                            .environmentObject(viewModel)
+                    case .welcomeGuide:
+                        WelcomeGuideView()
+                            .environmentObject(viewModel)
                     case .permissions:
                         PermissionsView(viewModel: viewModel, isInConsolidatedFlow: true)
                     case .fieldSetup:

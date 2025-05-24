@@ -272,6 +272,7 @@ struct ProjectHistorySettingsView: View {
             }
             .padding()
         }
+        .tabBarPadding()
     }
     
     // Expenses tab - commented out as part of shelving expense functionality

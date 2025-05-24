@@ -12,8 +12,8 @@ import Combine
 struct ContentView: View {
     @EnvironmentObject private var dataController: DataController
     @StateObject private var appState = AppState()
-    
     @StateObject private var locationManager = LocationManager()
+    
     
     init() {
         // This will run before body is evaluated
@@ -41,15 +41,10 @@ struct ContentView: View {
                     LoginView()
                 }
             } else {
-                // Only show main app if authenticated
-                MainTabView()
-                    .environmentObject(appState)
-                    .environmentObject(locationManager)
-                    .onAppear {
-                        // Set the appState reference in DataController for cross-component access
-                        dataController.appState = appState
-                        print("ContentView: Set appState reference in DataController")
-                    }
+                // Check if PIN authentication is required
+                // Access the PIN manager directly as @ObservedObject to ensure proper state updates
+                let _ = print("ContentView: Creating PINGatedView")
+                PINGatedView(dataController: dataController, appState: appState, locationManager: locationManager)
             }
         }
         .preferredColorScheme(.dark)
@@ -87,6 +82,7 @@ struct ContentView: View {
                     UserDefaults.standard.set(true, forKey: "resume_onboarding")
                 }
                 
+                
                 // Finish the loading phase to show the appropriate screen
                 isCheckingAuth = false
             }
@@ -113,6 +109,55 @@ struct ContentView: View {
 
 // We won't redefine OnboardingPresenter here since it's already defined elsewhere
 // Let's focus on making sure imports work properly
+
+// Separate view to properly observe PIN manager state
+struct PINGatedView: View {
+    @ObservedObject var pinManager: SimplePINManager
+    let dataController: DataController
+    let appState: AppState
+    let locationManager: LocationManager
+    
+    init(dataController: DataController, appState: AppState, locationManager: LocationManager) {
+        self.dataController = dataController
+        self.pinManager = dataController.simplePINManager
+        self.appState = appState
+        self.locationManager = locationManager
+        print("PINGatedView: Initialized")
+        print("PINGatedView: requiresPIN=\(dataController.simplePINManager.requiresPIN)")
+        print("PINGatedView: isAuthenticated=\(dataController.simplePINManager.isAuthenticated)")
+    }
+    
+    var body: some View {
+        let _ = print("PINGatedView: body called - requiresPIN=\(pinManager.requiresPIN), isAuthenticated=\(pinManager.isAuthenticated)")
+        
+        ZStack {
+            // Main app content (always rendered but hidden when PIN required)
+            MainTabView()
+                .environmentObject(appState)
+                .environmentObject(locationManager)
+                .onAppear {
+                    // Set the appState reference in DataController for cross-component access
+                    dataController.appState = appState
+                    print("ContentView: Set appState reference in DataController")
+                }
+                .opacity(pinManager.requiresPIN && !pinManager.isAuthenticated ? 0 : 1)
+                .animation(.easeInOut(duration: 0.3), value: pinManager.isAuthenticated)
+            
+            // PIN overlay
+            if pinManager.requiresPIN && !pinManager.isAuthenticated {
+                SimplePINEntryView(pinManager: pinManager)
+                    .transition(.opacity)
+                    .zIndex(1)
+                    .onReceive(pinManager.$isAuthenticated) { newValue in
+                        print("PINGatedView: Received isAuthenticated change: \(newValue)")
+                    }
+                    .onReceive(pinManager.objectWillChange) { _ in
+                        print("PINGatedView: PIN manager objectWillChange fired")
+                    }
+            }
+        }
+    }
+}
 
 #Preview {
     ContentView()

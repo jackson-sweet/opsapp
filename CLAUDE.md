@@ -1,6 +1,10 @@
-# OPS Brand Identity Guide
+# OPS Brand & Design Guide for Development
 
-## Brand Essence: Dependable Field Partner
+This guide serves as the primary reference for maintaining OPS brand consistency and design philosophy throughout development. All code changes should align with these principles.
+
+## Quick Reference
+
+### Brand Essence: Dependable Field Partner
 
 OPS (Operational Project System) exists to make trade workers' lives easier through technology that "just works" in any environment. We serve as the invisible, reliable companion that helps field crews accomplish their work without adding complexity or demanding attention.
 
@@ -61,23 +65,28 @@ OPS speaks with the confident, straightforward voice of an experienced field sup
 
 ### Typography
 
-- **Primary Font**: System font (San Francisco on iOS)
-  - Optimized for device screens and OS accessibility features
-  - Consistent with platform experience for intuitive use
-  - Available in multiple weights for clear hierarchy
+- **Primary Font**: Mohave
+  - Main font family for titles, body text, and UI elements
+  - Available in multiple weights (Light, Regular, Medium, SemiBold, Bold)
+  - Clean, modern appearance optimized for field readability
+  - Used for headers, body text, buttons, and status indicators
 
-- **Heading Font**: Bebas Neue for titles only
-  - Used sparingly for main titles to create brand distinction
-  - Condensed to maximize screen real estate
-  - Strong vertical rhythm for scan-ability
+- **Supporting Font**: Kosugi
+  - Used for subtitles, captions, and supporting text
+  - Provides clear contrast to Mohave for improved hierarchy
+  - Excellent legibility at smaller sizes
+
+- **Display Font**: Bebas Neue (available but rarely used)
+  - Reserved for special branding moments only
+  - Not part of regular UI typography
 
 - **Font Sizes**:
-  - Large Title: 32pt
-  - Title: 28pt
-  - Subtitle: 22pt
-  - Body: 17pt
-  - Caption: 15pt
-  - Small Caption: 13pt
+  - Large Title: 32pt (Mohave Bold)
+  - Title: 28pt (Mohave SemiBold)
+  - Subtitle: 22pt (Kosugi Regular)
+  - Body: 16pt (Mohave Regular)
+  - Caption: 14pt (Kosugi Regular)
+  - Small Caption: 12pt (Kosugi Regular)
 
 ### Layout & Spacing
 
@@ -148,9 +157,45 @@ OPS speaks with the confident, straightforward voice of an experienced field sup
 - **Non-clickable/Informational Icons**: Use `OPSStyle.Colors.primaryText`
 - **Status Icons**: Use appropriate status color
 
-## Best Practices
+## Development Best Practices
 
-- **Offline-First Architecture** - All critical operations work locally first with intelligent sync
-- **Field-Optimized Interface** - Dark mode default for sunlight readability, large touch targets for gloved operation
-- **Simplified Workflows** - One-tap status updates, minimal steps to complete common tasks
-- **Reliable Performance** - Battery-efficient operation, quick loading even on older devices
+### Code Quality Standards
+- **Simplicity First** - Write code that's easy to understand and maintain
+- **Field-Tested Logic** - Consider offline scenarios, poor connectivity, and error states
+- **Performance Matters** - Every millisecond counts on older devices in the field
+- **Defensive Programming** - Assume things will go wrong and handle gracefully
+
+### Git Commit Guidelines
+- **Never include Claude as co-author** - Do not add Claude or any AI attribution to git commits
+- **Clear commit messages** - Write concise, descriptive commit messages that explain the changes
+- **Atomic commits** - Each commit should represent a single logical change
+
+### AI Model Guidelines
+- **Use Sonnet 4 instead of Opus 4** - For development assistance, prefer Claude Sonnet 4 over Opus 4 for better performance and cost efficiency
+
+### Testing Requirements
+- **Test with gloves** - Ensure all touch targets work with reduced precision
+- **Test in sunlight** - Verify contrast and readability outdoors
+- **Test offline** - Confirm all critical features work without connectivity
+- **Test on older devices** - Support 3-year-old hardware minimum
+
+### Key Implementation Details
+- **Touch targets**: Minimum 44×44pt, prefer 60×60pt for primary actions
+- **Text sizes**: Minimum 16pt, prefer 18-20pt for important information
+- **Contrast ratios**: Minimum 7:1 for normal text, 4.5:1 for large text
+- **Offline storage**: Cache all data needed for current day's work
+- **Sync strategy**: Queue changes locally, sync opportunistically
+- **Error handling**: Always provide actionable next steps
+
+### Quick Decisions
+When in doubt:
+1. Choose reliability over features
+2. Choose simplicity over flexibility
+3. Choose clarity over cleverness
+4. Choose field needs over office preferences
+5. Choose proven patterns over innovation
+
+## Remember
+"You've got to start with the customer experience and work backwards to the technology." - Steve Jobs
+
+Our customers swing hammers, not keyboards. Build accordingly.

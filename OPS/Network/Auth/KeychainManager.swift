@@ -8,6 +8,7 @@
 
 import Foundation
 import Security
+import CommonCrypto
 
 /// Secure storage for credentials and tokens using iOS Keychain
 class KeychainManager {
@@ -132,6 +133,7 @@ class KeychainManager {
         let account = "userId"
         delete(account: account)
     }
+    
     
     // MARK: - Private Keychain Methods
     

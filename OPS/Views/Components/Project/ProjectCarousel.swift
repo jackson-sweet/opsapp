@@ -22,19 +22,15 @@ struct ProjectCarousel: View {
     // onProjectSwipe callback removed - ProjectMapView handles zoom automatically based on selectedIndex
     
     var body: some View {
-            ZStack(alignment: .top){
-            TabView(selection: $selectedIndex) {
-                // Create card views for each project
-                ForEach(projects.indices, id: \.self) { index in
-                    makeProjectCard(for: index)
-                        .tag(index)
-                }
+        TabView(selection: $selectedIndex) {
+            // Create card views for each project
+            ForEach(projects.indices, id: \.self) { index in
+                makeProjectCard(for: index)
+                    .tag(index)
             }
-            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Hide default dots
-            .frame(height: 140)
-            
-            
         }
+        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Hide default dots
+        .frame(height: 140)
         .onChange(of: selectedIndex) { oldIndex, newIndex in
             // Hide confirmation when swiping
             if showStartConfirmation {

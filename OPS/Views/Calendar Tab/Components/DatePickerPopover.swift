@@ -106,11 +106,15 @@ struct DatePickerPopover: View {
                         Text(dayString(from: date))
                             .font(OPSStyle.Typography.body)
                             .fontWeight(isCurrentMonth ? .medium : .regular)
-                            .foregroundColor(textColor(isCurrentMonth: isCurrentMonth, isSelected: isSelected))
+                            .foregroundColor(isSelected ? .black : textColor(isCurrentMonth: isCurrentMonth, isSelected: false))
                             .frame(width: 36, height: 36)
                             .background(
                                 Circle()
-                                    .fill(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear)
+                                    .fill(isSelected ? .white : Color.clear)
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(isSelected ? .white : Color.clear, lineWidth: 1)
                             )
                     }
                     .disabled(!isCurrentMonth)
@@ -123,10 +127,14 @@ struct DatePickerPopover: View {
             } label: {
                 Text("Today")
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .padding(.vertical, 10)
                     .padding(.horizontal, 30)
-                    .background(OPSStyle.Colors.primaryAccent)
+                    .background(Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                    )
                     .cornerRadius(8)
             }
             .padding(.top, 8)
@@ -179,16 +187,16 @@ struct DatePickerPopover: View {
                         Text(monthString(from: date))
                             .font(OPSStyle.Typography.body)
                             .fontWeight(.medium)
-                            .foregroundColor(isSelected ? .white : OPSStyle.Colors.primaryText)
+                            .foregroundColor(isSelected ? .black : OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear)
+                                    .fill(isSelected ? .white : Color.clear)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(OPSStyle.Colors.secondaryText, lineWidth: isSelected ? 0 : 1)
+                                    .stroke(isSelected ? .white : OPSStyle.Colors.secondaryText, lineWidth: 1)
                             )
                     }
                 }
@@ -202,10 +210,14 @@ struct DatePickerPopover: View {
             } label: {
                 Text("Today")
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .padding(.vertical, 10)
                     .padding(.horizontal, 30)
-                    .background(OPSStyle.Colors.primaryAccent)
+                    .background(Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                    )
                     .cornerRadius(8)
             }
             .padding(.top, 8)

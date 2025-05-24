@@ -13,19 +13,13 @@ struct FieldSetupView: View {
     @EnvironmentObject private var dataController: DataController
     
     @State private var syncSetting: SyncSetting = .auto
-    @State private var offlineData: OfflineSetting = .standardCache
+    @State private var selectedStorageIndex: Int = 3 // Default to 500MB
     @State private var isLoading = false
     
     enum SyncSetting: String, CaseIterable {
         case auto = "Automatic"
         case manual = "Manual"
         case never = "Never"
-    }
-    
-    enum OfflineSetting: String, CaseIterable {
-        case standardCache = "Standard"
-        case extendedCache = "Extended"
-        case minimal = "Minimal"
     }
     
     var body: some View {
@@ -71,21 +65,12 @@ struct FieldSetupView: View {
                                     }
                                 }
                                 
-                                // Offline data settings
+                                // Offline data settings with storage slider
                                 SettingsSection(
-                                    title: "Offline Data",
+                                    title: "Offline Storage",
                                     description: "Choose how much data to store for offline use"
                                 ) {
-                                    ForEach(OfflineSetting.allCases, id: \.self) { setting in
-                                        SettingOptionCard(
-                                            isSelected: offlineData == setting,
-                                            title: setting.rawValue,
-                                            description: getOfflineDescription(setting),
-                                            onTap: {
-                                                offlineData = setting
-                                            }
-                                        )
-                                    }
+                                    StorageOptionSlider(selectedStorageIndex: $selectedStorageIndex)
                                 }
                             }
                             .padding(.horizontal, 16)
@@ -142,18 +127,26 @@ struct FieldSetupView: View {
             UserDefaults.standard.set(false, forKey: "autoSync")
         }
         
-        // Save offline data settings
-        switch offlineData {
-        case .standardCache:
-            UserDefaults.standard.set(30, forKey: "offlineDaysToCache")
-            UserDefaults.standard.set(true, forKey: "cacheImages")
-        case .extendedCache:
-            UserDefaults.standard.set(90, forKey: "offlineDaysToCache")
-            UserDefaults.standard.set(true, forKey: "cacheImages")
-            UserDefaults.standard.set(true, forKey: "cacheAllProjects")
-        case .minimal:
-            UserDefaults.standard.set(7, forKey: "offlineDaysToCache")
+        // Save offline storage settings based on slider selection
+        let storageValues = [0, 100, 250, 500, 1000, 5000, -1] // -1 for unlimited
+        let storageMB = storageValues[selectedStorageIndex]
+        
+        UserDefaults.standard.set(storageMB, forKey: "offlineStorageLimitMB")
+        
+        // Set cache behavior based on storage selection
+        if selectedStorageIndex == 0 {
+            // No storage
             UserDefaults.standard.set(false, forKey: "cacheImages")
+            UserDefaults.standard.set(false, forKey: "cacheProjectData")
+        } else if selectedStorageIndex == 6 {
+            // Unlimited
+            UserDefaults.standard.set(true, forKey: "cacheImages")
+            UserDefaults.standard.set(true, forKey: "cacheProjectData")
+            UserDefaults.standard.set(-1, forKey: "offlineStorageLimitMB")
+        } else {
+            // Limited storage
+            UserDefaults.standard.set(true, forKey: "cacheImages")
+            UserDefaults.standard.set(true, forKey: "cacheProjectData")
         }
         
         // Simulate a brief loading period
@@ -175,17 +168,6 @@ struct FieldSetupView: View {
         }
     }
     
-    // Get description for offline data settings
-    private func getOfflineDescription(_ setting: OfflineSetting) -> String {
-        switch setting {
-        case .standardCache:
-            return "Cache 30 days of project data and images (recommended)"
-        case .extendedCache:
-            return "Cache 90 days of project data and all images (uses more storage)"
-        case .minimal:
-            return "Cache only 7 days of data without images (saves storage)"
-        }
-    }
 }
 
 // MARK: - Helper Components

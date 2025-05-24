@@ -141,6 +141,7 @@ struct HomeContentView: View {
             
             // Project carousel or empty state
             projectCarouselView
+                .padding(.top, -8) // Bring carousel closer to header
             
             Spacer()
             
@@ -217,31 +218,31 @@ struct HomeContentView: View {
     }
     
     private var emptyProjectsView: some View {
-        
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            // Project title
-            Text("NO PROJECTS SCHEDULED FOR TODAY.")
-                .font(OPSStyle.Typography.cardTitle)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .lineLimit(1)
-            
-                // Client name
-                Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects found")
-                    .font(OPSStyle.Typography.cardBody)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            
+        GeometryReader { geometry in
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                // Project title
+                Text("NO PROJECTS SCHEDULED FOR TODAY.")
+                    .font(OPSStyle.Typography.cardTitle)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                    // Client name
+                    Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects found")
+                        .font(OPSStyle.Typography.cardBody)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+            }
+            .padding()
+            .frame(width: geometry.size.width - 40) // Remove fixed height
+            .background(
+                // Custom background with blur effect
+                BlurView(style: .dark)
+                    .cornerRadius(5)
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .position(x: geometry.size.width / 2, y: geometry.size.height / 2) // Center the card
+            .contentShape(Rectangle()) // Make entire card tappable
         }
-        .padding()
-        .background(
-            // Custom background with blur effect
-            BlurView(style: .dark)
-                .cornerRadius(5)
-                .frame(height: 85)
-        )
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .padding(.horizontal)
-        .contentShape(Rectangle()) // Make entire card tappable
-        // REMOVE ALL GESTURE HANDLERS HERE - Let ProjectCardView handle gestures
+        .frame(minHeight: 85) // Set minimum height for the container
     }
     
     private var loadingOverlay: some View {

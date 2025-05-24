@@ -283,13 +283,16 @@ struct PermissionsView: View {
 
 // MARK: - Preview
 #Preview("Permissions Screen") {
-    let viewModel = OnboardingViewModel()
-    viewModel.email = "user@example.com"
-    viewModel.password = "password123"
-    viewModel.firstName = "John" 
-    viewModel.lastName = "Doe"
-    viewModel.phoneNumber = "5551234567"
-    viewModel.companyName = "Demo Company, Inc."
+    let viewModel: OnboardingViewModel = {
+        let vm = OnboardingViewModel()
+        vm.email = "user@example.com"
+        vm.password = "password123"
+        vm.firstName = "John"
+        vm.lastName = "Doe"
+        vm.phoneNumber = "5551234567"
+        vm.companyName = "Demo Company, Inc."
+        return vm
+    }()
     
     return PermissionsView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())

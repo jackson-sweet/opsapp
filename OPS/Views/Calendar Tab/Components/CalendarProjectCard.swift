@@ -18,7 +18,7 @@ struct CalendarProjectCard: View {
         HStack(spacing: 0) {
                 // Left status bar based on reference design - wider and more visible
                 Rectangle()
-                    .fill(project.statusColor)
+                .fill(project.status == .closed ? .white : project.statusColor)
                     .frame(width: 4)
                 
                 // Content area

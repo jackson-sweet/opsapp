@@ -26,11 +26,14 @@ This directory contains standardized UI components for the OPS app. These compon
 
 ### Form Components
 - `FormField` - Text input with label
+- `FormTextField` - Standardized form input with floating label and error states
 - `FormTextEditor` - Multi-line text input
 - `FormToggle` - Toggle switch with label
 - `RadioOption` - Radio button style option
 - `SearchBar` - Search input field
 - `EmptyStateView` - Empty state messaging
+- `AddressAutocompleteField` - MapKit-based address search with 500ms debouncing
+- `StorageOptionSlider` - Interactive storage selection (No Storage to Unlimited)
 
 ### Layout Components
 - `CategoryCard` - Card component for settings categories
@@ -38,6 +41,9 @@ This directory contains standardized UI components for the OPS app. These compon
 - `UserProfileCard` - User profile display
 - `SettingsHeader` - Header for settings views
 - `SettingsSectionHeader` - Section headers in settings views
+- `SegmentedControl` - Reusable segmented picker with OPS styling (black/white theme)
+- `TabBarPadding` - View modifier for consistent 90pt padding above tab bar
+- `ContactDetailSheet` - Unified contact information display sheet
 
 ### Status & Utility Components
 - `StatusBadge` - Standardized status badge with multiple styles
@@ -45,13 +51,12 @@ This directory contains standardized UI components for the OPS app. These compon
 - `ListItem` - Standardized list item row
 
 ### Typography
-- Font extensions - Standardized typography system
-  - Title styles: `largeTitle`, `title`, `subtitle`
-  - Heading styles: `heading1`, `heading2`, `heading3`
-  - Body text: `body`, `bodyBold`, `bodyEmphasis`, `smallBody`
-  - Supporting text: `caption`, `captionBold`, `smallCaption`
-  - Card components: `cardTitle`, `cardSubtitle`, `cardBody`
-  - Specialized text: `status`, `button`, `smallButton`
+- Custom font extensions - Standardized typography system using Mohave, Kosugi, and Bebas Neue fonts
+  - Title styles: `largeTitle` (Mohave Bold, 32pt), `title` (Mohave SemiBold, 28pt), `subtitle` (Kosugi Regular, 22pt)
+  - Body text: `body` (Mohave Regular, 16pt), `bodyBold` (Mohave Medium, 16pt), `bodyEmphasis` (Mohave SemiBold, 16pt), `smallBody` (Mohave Light, 14pt)
+  - Supporting text: `caption` (Kosugi Regular, 14pt), `captionBold` (Kosugi Regular, 14pt), `smallCaption` (Kosugi Regular, 12pt)
+  - Card components: `cardTitle` (Mohave Medium, 18pt), `cardSubtitle` (Kosugi Regular, 15pt), `cardBody` (Mohave Regular, 14pt)
+  - Specialized text: `status` (Mohave Medium, 12pt), `button` (Mohave SemiBold, 16pt), `smallButton` (Mohave Medium, 14pt)
 
 ## Usage Guidelines
 
@@ -99,10 +104,41 @@ This directory contains standardized UI components for the OPS app. These compon
 5. **For typography:**
    ```swift
    Text("Heading")
-       .font(OPSStyle.Typography.title)
+       .font(.title)  // Uses Mohave SemiBold, 28pt
    
    Text("Body text")
-       .font(OPSStyle.Typography.body)
+       .font(.body)  // Uses Mohave Regular, 16pt
+       
+   Text("Caption")
+       .font(.caption)  // Uses Kosugi Regular, 14pt
+   ```
+
+6. **For segmented controls:**
+   ```swift
+   SegmentedControl(
+       selection: $selectedTab,
+       options: ["Month", "Week"],
+       labels: { option in Text(option) }
+   )
+   ```
+
+7. **For tab bar padding:**
+   ```swift
+   ScrollView {
+       // Content
+   }
+   .tabBarPadding()  // Adds 90pt padding
+   // or
+   .tabBarPadding(additional: 20)  // Adds 110pt total
+   ```
+
+8. **For address autocomplete:**
+   ```swift
+   AddressAutocompleteField(
+       text: $searchText,
+       placemark: $selectedPlacemark,
+       placeholder: "Enter address"
+   )
    ```
 
 ## Best Practices

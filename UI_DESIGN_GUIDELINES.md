@@ -2,17 +2,99 @@
 
 This document outlines the core UI design principles and guidelines for the OPS application. All UI development should adhere to these standards to maintain visual consistency and follow the brand identity.
 
-## Core Design Principles
+## Design Philosophy
 
-1. **Field-First Design** - Every aspect of OPS is designed for jobsite conditions, prioritizing legibility in sunlight, ease of use with gloves, and operation in dusty/dirty environments.
+### Core Brand Values
+1. **Built By Trades, For Trades** - Created by actual trade workers who understand the real challenges of managing projects and crews in the field, not tech people who've "never swung a hammer."
 
-2. **Reliability Over Visual Flair** - Functional reliability trumps visual embellishments. The UI should feel dependable and predictable.
+2. **No Unnecessary Complexity** - We don't burden users with features they'll never use or processes that take more time than they save. Every function serves a clear purpose.
 
-3. **Contrast and Legibility** - Dark backgrounds with high-contrast elements ensure readability in bright outdoor conditions.
+3. **Reliability Above All** - In the field, reliability isn't a feature—it's a requirement. OPS works when other technologies fail.
 
-4. **Touch-Optimized** - All interactive elements must be large enough for gloved finger operation (minimum 44×44pt).
+4. **Field-First Design** - Every aspect of OPS is designed for the realities of job sites, not office environments. We embrace dirt, gloves, sunlight, and noise.
 
-5. **Reduced Visual Noise** - Minimal use of colors, animations, and decorative elements to prevent distraction.
+5. **Time Is Money** - We respect that every minute spent managing software is a minute not spent on billable work.
+
+### Design Principles (Inspired by Steve Jobs)
+
+1. **Simplicity as Ultimate Sophistication** - "Simple can be harder than complex." We deeply understand user needs to eliminate unnecessary elements.
+
+2. **Human-Centered, Not Technology-Driven** - "Start with the customer experience and work backwards to the technology." The interface adapts to natural human behavior in field conditions.
+
+3. **Progressive Disclosure** - Reveal complex functionality gradually, showing only what's relevant to the current task.
+
+4. **Contextual Intelligence** - Make smart assumptions based on location, time, and task patterns while allowing user override.
+
+5. **Obsessive Attention to Detail** - Perfect every aspect, anticipating edge cases and potential friction points in field use.
+
+### Practical Implementation
+
+1. **Offline-First Architecture** - All critical operations work locally first with intelligent sync when connected.
+
+2. **Field-Optimized Interface** - Dark mode default, large touch targets (60×60px preferred), minimal text entry, high contrast.
+
+3. **Simplified Workflows** - One-tap status updates, photo documentation without app switching, minimal steps for common tasks.
+
+4. **Reliable Performance** - Battery-efficient operation, quick loading on older devices, graceful degradation.
+
+5. **Clear Visual Hierarchy** - Three levels: Primary (current task), Secondary (supporting info), Tertiary (background info).
+
+## Typography
+
+The OPS app uses custom fonts to create a distinctive brand identity while maintaining excellent readability in field conditions:
+
+### Font Families
+
+- **Mohave** (Primary Font)
+  - Used for: Titles, body text, buttons, and most UI elements
+  - Weights: Light, Regular, Medium, SemiBold, Bold
+  - Characteristics: Modern, clean, highly legible at all sizes
+
+- **Kosugi** (Supporting Font)
+  - Used for: Subtitles, captions, labels, and supporting text
+  - Weight: Regular
+  - Characteristics: Excellent small-size legibility, provides visual contrast
+
+- **Bebas Neue** (Display Font)
+  - Used for: Special branding moments only (not part of regular UI)
+  - Weight: Regular
+  - Characteristics: Condensed display font
+
+### Font Usage Guidelines
+
+1. **Headers and Titles**
+   - Large Title: `Font.largeTitle` (Mohave Bold, 32pt)
+   - Title: `Font.title` (Mohave SemiBold, 28pt)
+   - Subtitle: `Font.subtitle` (Kosugi Regular, 22pt)
+
+2. **Body Text**
+   - Body: `Font.body` (Mohave Regular, 16pt)
+   - Body Bold: `Font.bodyBold` (Mohave Medium, 16pt)
+   - Body Emphasis: `Font.bodyEmphasis` (Mohave SemiBold, 16pt)
+   - Small Body: `Font.smallBody` (Mohave Light, 14pt)
+
+3. **Supporting Text**
+   - Caption: `Font.caption` (Kosugi Regular, 14pt)
+   - Small Caption: `Font.smallCaption` (Kosugi Regular, 12pt)
+
+4. **UI Elements**
+   - Button: `Font.button` (Mohave SemiBold, 16pt)
+   - Small Button: `Font.smallButton` (Mohave Medium, 14pt)
+   - Status: `Font.status` (Mohave Medium, 12pt)
+
+5. **Cards**
+   - Card Title: `Font.cardTitle` (Mohave Medium, 18pt)
+   - Card Subtitle: `Font.cardSubtitle` (Kosugi Regular, 15pt)
+   - Card Body: `Font.cardBody` (Mohave Regular, 14pt)
+
+### Typography Best Practices
+
+- Always use the custom Font extensions defined in `Fonts.swift`
+- Never use system fonts unless specifically required for platform integration
+- Maintain consistent font usage across similar UI elements
+- Ensure sufficient line spacing for field readability
+- Test all text at maximum dynamic type sizes
+- **IMPORTANT**: All UI text must use OPS fonts (Mohave, Kosugi) - no `.system()` fonts allowed
 
 ## Color Usage Guidelines
 
@@ -115,6 +197,66 @@ This document outlines the core UI design principles and guidelines for the OPS 
 - Maintain text hierarchy for screen readers
 - Use sufficient color contrast (minimum 4.5:1 ratio)
 
+## Voice & Tone in UI
+
+### Brand Voice Principles
+- **Direct** - Get to the point without unnecessary words
+- **Practical** - Focus on solutions, not theory
+- **Dependable** - Communicate consistently and reliably
+- **Genuine** - Avoid corporate speak and marketing hype
+- **Field-Appropriate** - Simple language without being condescending
+
+### UI Copy Examples
+**DO SAY:**
+- "No signal? No problem. Your changes will sync when you're back online."
+- "Tap once to update status. Done."
+- "Can't connect right now. We'll save your changes and try again."
+
+**DON'T SAY:**
+- "Network synchronization failure. Retry or check system settings."
+- "Please ensure optimal connectivity for best performance."
+
+## Component Patterns
+
+### Layout Modifiers
+1. **Tab Bar Padding**
+   - Always use `.tabBarPadding()` for content that might scroll behind tab bar
+   - Standard padding: 90pt
+   - Additional padding when needed: `.tabBarPadding(additional: 20)`
+
+### Navigation Components
+1. **Segmented Controls**
+   - Use `SegmentedControl` for switching between views (e.g., Month/Week in calendar)
+   - Maintains OPS black/white styling with accent highlights
+   - Supports generic types for flexible data binding
+
+### Form Components
+1. **Address Fields**
+   - Use `AddressAutocompleteField` for any address input
+   - Includes 500ms debouncing to prevent keyboard lag
+   - Returns full `MKPlacemark` data for location services
+
+2. **Standard Text Fields**
+   - Use `FormTextField` for consistent styling across all forms
+   - Includes floating labels and error state handling
+
+### Contact Display
+1. **Contact Sheets**
+   - Use `ContactDetailSheet` for any contact information display
+   - Handles phone, email, and address actions consistently
+   - Follows OPS styling patterns
+
+### Calendar Patterns
+1. **Week View**
+   - Starts with Monday, shows 5 weekdays by default
+   - Snaps to days for precise selection
+   - Project counts appear as corner badges (matching month view)
+
+2. **Date Styling**
+   - Today: Blue text (`secondaryAccent`) with light background (`cardBackground.opacity(0.3)`)
+   - Selected: White background with primary text
+   - Project counts: Small blue circles in top-right corner
+
 ## Common Anti-Patterns to Avoid
 
 1. **Never use opacity modifiers on backgrounds** - Use the appropriate solid color
@@ -123,5 +265,19 @@ This document outlines the core UI design principles and guidelines for the OPS 
 4. **Avoid complex shadows or blur effects** that may impact performance
 5. **Don't center large blocks of text** - Use left alignment for readability
 6. **Don't use decorative elements** that don't serve a functional purpose
+7. **Never sacrifice functionality for aesthetics** - Field usability always comes first
+8. **Avoid tiny touch targets** - Remember users wear gloves
+9. **Don't use low contrast** - Must be readable in direct sunlight
+10. **Avoid complex gestures** - Simple taps and swipes only
 
-By following these guidelines, we ensure that the OPS app maintains its field-focused design that emphasizes reliability, usability, and performance in challenging environments.
+## Measuring Success
+
+A successful OPS interface:
+- Can be operated with work gloves on
+- Remains readable in direct sunlight
+- Loads quickly even on 3-year-old devices
+- Works fully offline and syncs seamlessly
+- Reduces time-to-task completion
+- Feels "invisible" - users focus on their work, not the app
+
+By following these guidelines, we ensure that the OPS app maintains its promise of being a dependable field partner that "just works" in any environment.

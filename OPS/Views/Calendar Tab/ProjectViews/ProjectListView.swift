@@ -21,11 +21,11 @@ struct ProjectListView: View {
                 // Day of week and month/day in vertical layout
                 VStack(alignment: .leading, spacing: 4) {
                     Text(dayOfWeek)
-                        .font(.system(size: 24, weight: .bold))
+                        .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     Text(monthDayText)
-                        .font(.system(size: 18))
+                        .font(OPSStyle.Typography.cardSubtitle)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 
@@ -52,7 +52,7 @@ struct ProjectListView: View {
                     
                     // Project count number
                     Text("\(viewModel.projectsForSelectedDate.count)")
-                        .font(.system(size: 32, weight: .bold))
+                        .font(OPSStyle.Typography.largeTitle)
                         .foregroundColor(.white)
                 }
             }
@@ -69,6 +69,11 @@ struct ProjectListView: View {
                 }
             }
         }
+        .overlay(
+            // White border for first/selected project card
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(Color.white, lineWidth: 1)
+        )
     }
     
     // Split the date into components for better styling
@@ -86,18 +91,9 @@ struct ProjectListView: View {
     
     private var emptyStateView: some View {
         VStack(spacing: 20) {
-            Text("No projects scheduled")
+            Text("[ No projects scheduled ]".uppercased())
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-            
-            // Random motivational quote
-            if let quote = AppConfiguration.UX.noProjectQuotes.randomElement() {
-                Text(quote)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                    .padding()
-            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 40)

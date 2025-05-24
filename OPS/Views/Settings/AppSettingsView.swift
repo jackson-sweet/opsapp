@@ -13,12 +13,13 @@ struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     
+    
     // App settings sections
     enum AppSettingSection: String, Identifiable, CaseIterable {
         case mapSettings = "Map Settings"
         case notifications = "Notification Settings"
         case dataStorage = "Data & Storage"
-        case security = "Security & PIN"
+        case security = "Security"
         
         var id: String { self.rawValue }
         
@@ -50,12 +51,11 @@ struct AppSettingsView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            ZStack {
-                // Background
-                OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
-                
-                VStack(spacing: 0) {
+        ZStack {
+            // Background
+            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 0) {
                     // Header - fixed, not part of scroll view
                     SettingsHeader(
                         title: "App Settings",
@@ -74,6 +74,9 @@ struct AppSettingsView: View {
                                     NavigationLink(destination: destinationFor(section)) {
                                         settingRow(for: section)
                                     }
+                                    .onTapGesture {
+                                        print("Navigating to: \(section.rawValue)")
+                                    }
                                 }
                             }
                             .padding(.horizontal, 20)
@@ -88,9 +91,9 @@ struct AppSettingsView: View {
                         .padding(.vertical, 24)
                     
                 }
-            }
-            .navigationBarBackButtonHidden(true)
         }
+        .navigationBarBackButtonHidden(true)
+        // Removed PIN entry overlay - let SecuritySettingsView handle its own PIN logic
     }
     
     // App info card with logo and version
@@ -139,12 +142,17 @@ struct AppSettingsView: View {
         switch section {
         case .mapSettings:
             MapSettingsView()
+                .environmentObject(dataController)
         case .notifications:
             NotificationSettingsView()
+                .environmentObject(dataController)
+                .environmentObject(NotificationManager.shared)
         case .dataStorage:
             DataStorageSettingsView()
+                .environmentObject(dataController)
         case .security:
             SecuritySettingsView()
+                .environmentObject(dataController)
         }
     }
 }

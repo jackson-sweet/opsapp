@@ -17,30 +17,41 @@ struct DayCell: View {
     
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 6) {
-                // Day number
-                Text(DateHelper.dayString(from: date))
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(textColor)
-                
-                // Day name (e.g., "We")
-                Text(DateHelper.twoLetterWeekdayString(from: date))
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                // Project count indicator
-                if projectCount > 0 {
-                    Text("\(projectCount)")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                        .frame(width: 20, height: 20)
-                        .background(OPSStyle.Colors.primaryAccent)
-                        .clipShape(Circle())
-                        .padding(.vertical, 2)
-                } else {
+            ZStack {
+                VStack(spacing: 6) {
+                    // Day number
+                    Text(DateHelper.dayString(from: date))
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(textColor)
+                    
+                    // Day name (e.g., "We")
+                    Text(DateHelper.twoLetterWeekdayString(from: date))
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
                     Spacer()
                         .frame(height: 20)
+                }
+                
+                // Project count in top-right corner
+                if projectCount > 0 {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            ZStack {
+                                Circle()
+                                    .fill(OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 16, height: 16)
+                                
+                                Text("\(projectCount)")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.top, 4)
+                            .padding(.trailing, 4)
+                        }
+                        Spacer()
+                    }
                 }
             }
             .frame(width: 56, height: 76)
@@ -67,22 +78,19 @@ struct DayCell: View {
         if isSelected {
             return OPSStyle.Colors.primaryText
         } else if isToday {
-            return OPSStyle.Colors.primaryAccent
+            return OPSStyle.Colors.secondaryAccent
         } else {
-            return OPSStyle.Colors.secondaryText
+            return OPSStyle.Colors.primaryText.opacity(0.8)
         }
     }
     
     private var background: some View {
         Group {
             if isSelected {
-                // Darker background for selected day
-                OPSStyle.Colors.cardBackgroundDark
-            } else if isToday {
-                // Slightly lighter background for today
                 OPSStyle.Colors.cardBackground
+            } else if isToday {
+                OPSStyle.Colors.cardBackground.opacity(0.3)
             } else {
-                // Clear background for other days
                 Color.clear
             }
         }

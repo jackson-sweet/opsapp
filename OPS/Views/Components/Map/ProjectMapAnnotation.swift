@@ -118,12 +118,7 @@ struct ProjectMapAnnotation: View {
                 Circle()
                     .fill(OPSStyle.Colors.secondaryAccent.opacity(0.15))
                     .frame(width: circleSize * 1.8, height: circleSize * 1.8)
-                    .scaleEffect(showPopup ? 1.2 : 1.0)
-                    .animation(
-                        Animation.easeInOut(duration: 1.8)
-                            .repeatForever(autoreverses: true),
-                        value: showPopup
-                    )
+                    .scaleEffect(1.0) // Removed animation that could interfere with positioning
                     .blur(radius: 2)
             }
             

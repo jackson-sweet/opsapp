@@ -64,6 +64,10 @@ struct OPSApp: App {
                         ImageFileManager.shared.migrateAllImages()
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                    // App going to background - reset PIN authentication for next launch
+                    dataController.simplePINManager.resetAuthentication()
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didRegisterForRemoteNotificationsWithDeviceTokenNotification)) { notification in
                     // Handle the device token when registered
                     if let deviceToken = notification.userInfo?["deviceToken"] as? Data {

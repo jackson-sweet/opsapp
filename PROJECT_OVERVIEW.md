@@ -33,9 +33,17 @@ OPS (Operational Project System) is a specialized project management app built s
 ### UI Components
 - Organized by functionality:
   - **Common UI**: Shared components like headers, navigation elements
+    - `TabBarPadding`: Consistent 90pt padding above tab bar
+    - `SegmentedControl`: Reusable picker with OPS styling
+    - `AddressAutocompleteField`: MapKit-based address search with debouncing
+    - `ContactDetailSheet`: Unified contact information display
   - **Project Components**: Cards, details views, action bars
-  - **Map Components**: Location visualization for projects
+  - **Map Components**: Location visualization for projects with stable pin positioning
   - **Image Components**: Photo handling for project documentation
+  - **Calendar Components**: Month and week views with project indicators
+    - Snapping week view starting with Monday
+    - Project count badges in day cells
+    - Today's date highlighting with blue text
 
 ### Features
 1. **Authentication & Onboarding**
@@ -62,7 +70,10 @@ OPS (Operational Project System) is a specialized project management app built s
 - Dark theme optimized for outdoor visibility
 - Custom styling system in `OPSStyle.swift` with:
   - Color palette with status-specific colors
-  - Typography definitions (using system fonts and Bebas Neue)
+  - Typography definitions using custom fonts:
+    - Mohave (primary font for titles, body text, and UI elements)
+    - Kosugi (supporting font for captions and labels)
+    - Bebas Neue (available but rarely used)
   - Layout constants (including larger touch targets for field use)
 
 ### Sync Strategy
@@ -82,7 +93,17 @@ The codebase reflects the OPS brand values:
 - **Built By Trades, For Trades**: Field-optimized UX decisions throughout
 
 ## Current Development
-- Ongoing reorganization of view components
-- Migration of images from UserDefaults to FileManager
-- Enhancement of field-specific features
-- New onboarding flow implementation
+- Enhanced calendar with week view and improved navigation
+- Refined settings UI with "What we're working on" section
+- Improved form components with standardized styling
+- Tab bar keyboard handling for better UX
+- Native swipe-back gesture support
+
+## Recent Improvements
+- Added reusable `SegmentedControl` component for consistent UI
+- Implemented `TabBarPadding` modifier for content layout
+- Created `AddressAutocompleteField` with MapKit integration
+- Fixed map pin drift issues with proper anchor points
+- Enhanced calendar with snapping week view and project counts
+- Updated all UI components to use OPS fonts (no system fonts)
+- Refined button styling to use borders instead of filled backgrounds

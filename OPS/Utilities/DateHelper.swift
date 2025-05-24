@@ -73,4 +73,8 @@ struct DateHelper {
     static func fullDateString(from date: Date) -> String {
         return fullDateFormatter.string(from: date)
     }
+    
+    static func dayAbbreviation(from date: Date) -> String {
+        return twoLetterWeekdayFormatter.string(from: date)
+    }
 }

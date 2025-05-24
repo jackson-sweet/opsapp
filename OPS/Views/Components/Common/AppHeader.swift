@@ -154,35 +154,14 @@ struct AppHeader: View {
         @Binding var selectedTab: SettingsTab
         
         var body: some View {
-            HStack(spacing: 0) {
-                tabButton("Settings", tab: .settings)
-                tabButton("Data", tab: .data)
-            }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(10)
-            .padding(.horizontal, 20)
-        }
-        
-        private func tabButton(_ title: String, tab: SettingsTab) -> some View {
-            Button(action: {
-                withAnimation {
-                    selectedTab = tab
-                }
-            }) {
-                Text(title.uppercased())
-                    .font(OPSStyle.Typography.button)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity)
-            }
-            .foregroundColor(selectedTab == tab ? .white : OPSStyle.Colors.secondaryText)
-            .background(
-                selectedTab == tab ? 
-                OPSStyle.Colors.primaryAccent : 
-                OPSStyle.Colors.cardBackgroundDark
+            SegmentedControl(
+                selection: $selectedTab,
+                options: [
+                    (SettingsTab.settings, "Settings"),
+                    (SettingsTab.data, "Data")
+                ]
             )
-            .cornerRadius(8)
-            .padding(2)
+            .padding(.horizontal, 20)
         }
     }
     

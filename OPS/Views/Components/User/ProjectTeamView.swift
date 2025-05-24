@@ -68,36 +68,39 @@ struct ProjectTeamView: View {
                 let visibleMembers = activeProject.teamMembers.prefix(3)
                 
                 ForEach(Array(visibleMembers), id: \.id) { member in
-                    Button(action: {
-                        selectedTeamMember = member
-                        showingTeamMemberDetails = true
-                    }) {
-                        HStack(spacing: 12) {
-                            // Avatar
-                            TeamMemberAvatar(user: member, size: 40)
+                    HStack(spacing: 12) {
+                        // Avatar
+                        TeamMemberAvatar(user: member, size: 40)
+                        
+                        // Name & role
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(member.firstName) \(member.lastName)")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                             
-                            // Name & role
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(member.firstName) \(member.lastName)")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                
-                                Text(member.role.rawValue)
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            
-                            Spacer()
-                            
-                            // Indicator
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 14))
+                            Text(member.role.rawValue)
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
-                        .contentShape(Rectangle())
-                        .padding(.vertical, 6)
+                        
+                        Spacer()
+                        
+                        // Indicator
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .contentShape(Rectangle())
+                    .padding(.vertical, 6)
+                    .onTapGesture {
+                        selectedTeamMember = member
+                        showingTeamMemberDetails = true
+                    }
+                    .onLongPressGesture {
+                        // Same action as tap for now, can be customized later
+                        selectedTeamMember = member
+                        showingTeamMemberDetails = true
+                    }
                 }
                 
                 // Show the count of additional members if any
@@ -114,8 +117,16 @@ struct ProjectTeamView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .sheet(isPresented: $showingTeamMemberDetails) {
             if let selectedMember = selectedTeamMember {
-                // Show details for a single member
-                TeamMemberDetailView(user: selectedMember, teamMember: nil)
+                // Show contact details for a single member
+                ContactDetailSheet(
+                    name: "\(selectedMember.firstName) \(selectedMember.lastName)",
+                    role: selectedMember.role.displayName,
+                    email: selectedMember.email,
+                    phone: selectedMember.phone,
+                    isClient: false
+                )
+                .presentationDragIndicator(.visible)
+                .presentationDetents([.medium])
             } else {
                 // Show full team list using the refreshed project if available
                 if let refreshed = refreshedProject {
@@ -267,44 +278,47 @@ struct FullTeamListView: View {
                 ScrollView {
                     VStack(spacing: 12) {
                         ForEach(project.teamMembers) { member in
-                            Button(action: {
+                            HStack(spacing: 16) {
+                                // Avatar
+                                TeamMemberAvatar(user: member, size: 50)
+                                
+                                // Details
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("\(member.firstName) \(member.lastName)")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(.white)
+                                    
+                                    Text(member.role.displayName)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    
+                                    if let email = member.email, !email.isEmpty {
+                                        Text(email)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .font(.system(size: 14))
+                            }
+                            .padding()
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(12)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
                                 selectedTeamMember = member
                                 showingMemberDetails = true
-                            }) {
-                                HStack(spacing: 16) {
-                                    // Avatar
-                                    TeamMemberAvatar(user: member, size: 50)
-                                    
-                                    // Details
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("\(member.firstName) \(member.lastName)")
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(.white)
-                                        
-                                        Text(member.role.displayName)
-                                            .font(.system(size: 14))
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        
-                                        if let email = member.email, !email.isEmpty {
-                                            Text(email)
-                                                .font(.system(size: 12))
-                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                                .lineLimit(1)
-                                        }
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        .font(.system(size: 14))
-                                }
-                                .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(12)
-                                .contentShape(Rectangle())
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .onLongPressGesture {
+                                // Same action as tap for now, can be customized later
+                                selectedTeamMember = member
+                                showingMemberDetails = true
+                            }
                         }
                     }
                     .padding()
@@ -321,7 +335,15 @@ struct FullTeamListView: View {
             }
             .sheet(isPresented: $showingMemberDetails) {
                 if let member = selectedTeamMember {
-                    TeamMemberDetailView(user: member, teamMember: nil)
+                    ContactDetailSheet(
+                        name: "\(member.firstName) \(member.lastName)",
+                        role: member.role.displayName,
+                        email: member.email,
+                        phone: member.phone,
+                        isClient: false
+                    )
+                    .presentationDragIndicator(.visible)
+                    .presentationDetents([.medium])
                 }
             }
         }

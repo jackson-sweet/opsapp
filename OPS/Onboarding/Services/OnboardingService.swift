@@ -16,12 +16,13 @@ class OnboardingService {
         self.baseURL = baseURL
     }
     
-    /// Sign up a new user with Bubble API (email and password only)
+    /// Sign up a new user with Bubble API (email, password, and user type)
     /// - Parameters:
     ///   - email: User's email address
     ///   - password: User's password
+    ///   - userType: User type (employee or company)
     /// - Returns: Sign up response with success status
-    func signUpUser(email: String, password: String) async throws -> SignUpResponse {
+    func signUpUser(email: String, password: String, userType: UserType) async throws -> SignUpResponse {
         print("OnboardingService: Making API call to sign_user_up")
         
         // Configure API request
@@ -32,10 +33,11 @@ class OnboardingService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
         
-        // Create request body with just email and password
+        // Create request body with email, password, and user type
         let parameters: [String: String] = [
             "user_email": email,
-            "user_password": password
+            "user_password": password,
+            "user_type": userType.rawValue
         ]
         
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
@@ -230,5 +232,149 @@ class OnboardingService {
         }
     }
     
-    // Phone verification methods have been removed
+    /// Update company information for business owners
+    /// - Parameters:
+    ///   - name: Company name
+    ///   - email: Company email
+    ///   - phone: Company phone (optional)
+    ///   - industry: Company industry
+    ///   - size: Company size
+    ///   - age: Company age
+    ///   - address: Company address
+    ///   - userId: User ID to associate with company
+    /// - Returns: Company update response
+    func updateCompany(name: String, email: String, phone: String?, industry: String, size: String, age: String, address: String, userId: String) async throws -> CompanyUpdateResponse {
+        print("OnboardingService: Making API call to update_company")
+        
+        let url = baseURL.appendingPathComponent("api/1.1/wf/update_company")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
+        
+        var parameters: [String: Any] = [
+            "name": name,
+            "email": email,
+            "industry": industry,
+            "size": size,
+            "age": age,
+            "address": address,
+            "user": userId
+        ]
+        
+        if let phone = phone, !phone.isEmpty {
+            parameters["phone"] = phone
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SignUpError.invalidResponse
+            }
+            
+            print("Update company HTTP status: \(httpResponse.statusCode)")
+            
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("Update company response: \(responseString)")
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw SignUpError.serverError("Company update failed with status \(httpResponse.statusCode)")
+            }
+            
+            let updateResponse = try JSONDecoder().decode(CompanyUpdateResponse.self, from: data)
+            return updateResponse
+            
+        } catch let error as SignUpError {
+            throw error
+        } catch {
+            throw SignUpError.networkError(error)
+        }
+    }
+    
+    /// Send team member invitations
+    /// - Parameters:
+    ///   - emails: List of email addresses to invite
+    ///   - companyId: Company ID to invite them to
+    /// - Returns: Invitation response
+    func sendInvites(emails: [String], companyId: String) async throws -> InviteResponse {
+        print("OnboardingService: Making API call to send_invite")
+        
+        let url = baseURL.appendingPathComponent("api/1.1/wf/send_invite")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
+        
+        let parameters: [String: Any] = [
+            "emails": emails,
+            "company": companyId
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SignUpError.invalidResponse
+            }
+            
+            print("Send invites HTTP status: \(httpResponse.statusCode)")
+            
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("Send invites response: \(responseString)")
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw SignUpError.serverError("Invite sending failed with status \(httpResponse.statusCode)")
+            }
+            
+            let inviteResponse = try JSONDecoder().decode(InviteResponse.self, from: data)
+            return inviteResponse
+            
+        } catch let error as SignUpError {
+            throw error
+        } catch {
+            throw SignUpError.networkError(error)
+        }
+    }
+}
+
+// MARK: - New Response Models
+
+struct CompanyUpdateResponse: Codable {
+    let success: String?
+    let company: CompanyResponseData?
+    let error_message: String?
+    
+    var wasSuccessful: Bool {
+        return success?.lowercased() == "yes" || company != nil
+    }
+}
+
+struct CompanyResponseData: Codable {
+    let id: String?
+    let name: String?
+    let email: String?
+    let phone: String?
+    let industry: String?
+    let size: String?
+    let age: String?
+    let address: String?
+}
+
+struct InviteResponse: Codable {
+    let success: String?
+    let invites_sent: Int?
+    let error_message: String?
+    
+    var wasSuccessful: Bool {
+        return success?.lowercased() == "yes" || (invites_sent ?? 0) > 0
+    }
 }

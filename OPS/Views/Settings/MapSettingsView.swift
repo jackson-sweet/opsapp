@@ -91,13 +91,10 @@ struct MapSettingsView: View {
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
                                     
-                                    Picker("Auto Re-center Time", selection: $mapAutoCenterTime) {
-                                        ForEach(0..<autoCenterTimes.count, id: \.self) { index in
-                                            Text(autoCenterLabels[index])
-                                                .tag(autoCenterTimes[index])
-                                        }
-                                    }
-                                    .pickerStyle(SegmentedPickerStyle())
+                                    SegmentedControl(
+                                        selection: $mapAutoCenterTime,
+                                        options: Array(zip(autoCenterTimes, autoCenterLabels))
+                                    )
                                     .disabled(!mapAutoCenter) // Disable when auto-center is off
                                     .opacity(mapAutoCenter ? 1.0 : 0.6)
                                 }
@@ -120,13 +117,10 @@ struct MapSettingsView: View {
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
                                     
-                                    Picker("Auto Zoom Level", selection: $mapZoomLevel) {
-                                        ForEach(0..<zoomLevels.count, id: \.self) { index in
-                                            Text(zoomLevelLabels[index])
-                                                .tag(zoomLevels[index])
-                                        }
-                                    }
-                                    .pickerStyle(SegmentedPickerStyle())
+                                    SegmentedControl(
+                                        selection: $mapZoomLevel,
+                                        options: Array(zip(zoomLevels, zoomLevelLabels))
+                                    )
                                     .disabled(!mapAutoZoom) // Disable when auto-zoom is off
                                     .opacity(mapAutoZoom ? 1.0 : 0.6)
                                 }
@@ -153,13 +147,10 @@ struct MapSettingsView: View {
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
                                     
-                                    Picker("Map Type", selection: $mapDefaultType) {
-                                        ForEach(0..<mapTypes.count, id: \.self) { index in
-                                            Text(mapTypeLabels[index])
-                                                .tag(mapTypes[index])
-                                        }
-                                    }
-                                    .pickerStyle(SegmentedPickerStyle())
+                                    SegmentedControl(
+                                        selection: $mapDefaultType,
+                                        options: Array(zip(mapTypes, mapTypeLabels))
+                                    )
                                 }
                                 .padding(.vertical, 4)
                                 .padding(.horizontal, 16)

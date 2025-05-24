@@ -21,11 +21,11 @@ struct DayProjectSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(dayOfWeek)
-                        .font(.system(size: 24, weight: .bold))
+                        .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     Text(monthDayText)
-                        .font(.system(size: 18))
+                        .font(OPSStyle.Typography.subtitle)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 
@@ -38,13 +38,13 @@ struct DayProjectSheet: View {
                         .frame(width: 44, height: 44)
                     
                     Text("\(projects.count)")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(.white)
                 }
                 
                 Button(action: { dismiss() }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 24))
+                        .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .padding(.leading, 16)

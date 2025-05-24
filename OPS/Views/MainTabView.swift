@@ -8,6 +8,7 @@
 
 // MainTabView.swift
 import SwiftUI
+import Combine
 
 struct MainTabView: View {
     @EnvironmentObject private var dataController: DataController
@@ -15,6 +16,7 @@ struct MainTabView: View {
     @EnvironmentObject private var locationManager: LocationManager
     
     @State private var selectedTab = 0
+    @State private var keyboardIsShowing = false
     
     // Observer for fetch active project notifications
     private let fetchProjectObserver = NotificationCenter.default
@@ -23,6 +25,13 @@ struct MainTabView: View {
     // Observer for showing project details
     private let showProjectObserver = NotificationCenter.default
         .publisher(for: Notification.Name("ShowProjectDetailsRequest"))
+    
+    // Keyboard observers
+    private let keyboardWillShow = NotificationCenter.default
+        .publisher(for: UIResponder.keyboardWillShowNotification)
+    
+    private let keyboardWillHide = NotificationCenter.default
+        .publisher(for: UIResponder.keyboardWillHideNotification)
     
     private let tabs = [
         TabItem(iconName: "house.fill"),
@@ -54,6 +63,8 @@ struct MainTabView: View {
                 CustomTabBar(selectedTab: $selectedTab, tabs: tabs)
             }
             .preferredColorScheme(.dark)
+            .opacity(keyboardIsShowing ? 0 : 1)
+            .animation(.easeInOut(duration: 0.25), value: keyboardIsShowing)
             
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()
@@ -99,6 +110,18 @@ struct MainTabView: View {
                         print("MainTabView: Could not find project with ID: \(projectID)")
                     }
                 }
+            }
+        }
+        
+        // Handle keyboard appearance
+        .onReceive(keyboardWillShow) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                keyboardIsShowing = true
+            }
+        }
+        .onReceive(keyboardWillHide) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                keyboardIsShowing = false
             }
         }
     }

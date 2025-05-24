@@ -75,8 +75,19 @@ struct SettingsTabSelector: View {
     @Binding var selectedTab: Tab
     
     var body: some View {
+        SegmentedControl(selection: $selectedTab)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+    }
+}
+
+// Legacy implementation kept for reference but simplified
+private struct LegacySettingsTabSelector: View {
+    @Binding var selectedTab: SettingsTabSelector.Tab
+    
+    var body: some View {
         HStack(spacing: 0) {
-            ForEach(Tab.allCases, id: \.self) { tab in
+            ForEach(SettingsTabSelector.Tab.allCases, id: \.self) { tab in
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         selectedTab = tab

@@ -162,6 +162,7 @@ struct OrganizationSettingsView: View {
                     }
                     .padding(.bottom, 40)
                 }
+                .tabBarPadding()
             }
         }
         .navigationBarBackButtonHidden(true)

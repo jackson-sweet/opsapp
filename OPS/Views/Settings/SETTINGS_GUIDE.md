@@ -10,14 +10,21 @@ This directory contains the settings views and components for the OPS app, focus
 Settings/
 ├── Components/                 # Reusable UI components for settings
 │   ├── SettingsComponents.swift      # Core UI components (header, card, etc.)
-│   └── NotificationSettingsControls.swift  # Notification-specific controls
-├── EnhancedNotificationSettingsView.swift  # Notification settings with time windows
+│   ├── NotificationSettingsControls.swift  # Notification-specific controls
+│   ├── FeatureRequestView.swift     # Feature request submission form
+│   └── ProjectNotificationPreferences.swift # Project-specific notification settings
+├── AppSettingsView.swift       # App-level settings and preferences
+├── ComingSoonView.swift        # Placeholder for upcoming features
+├── DataStorageSettingsView.swift    # Data storage and sync settings
+├── ExpenseHistoryView.swift    # Expense tracking history
 ├── MapSettingsView.swift       # Map customization settings
-├── NotificationSettingsView.swift    # Original notification settings
+├── NotificationSettingsView.swift    # Notification settings
 ├── OrganizationSettingsView.swift    # Organization settings
 ├── ProfileSettingsView.swift         # User profile settings
 ├── ProjectHistorySettingsView.swift  # Project history settings
-└── README.md                   # This file
+├── SecuritySettingsView.swift  # Security and privacy settings
+├── TeamMembersView.swift       # Team member management
+└── SETTINGS_GUIDE.md           # This file
 ```
 
 ## Key Components
@@ -49,6 +56,17 @@ Settings/
 4. **Keep Functionality Together**: Related settings should be grouped together in the same file or section.
 
 5. **Update README**: When adding new components, update this file to document them.
+
+6. **Button Styling**: Use bordered buttons (not filled) for actions in settings views
+
+7. **Layout**: Always include `.tabBarPadding()` on scrollable content
+
+## Recent Updates
+
+- **"What we're working on" Section**: Now appears below the divider in main settings
+- **Button Styling**: Changed from filled backgrounds to bordered style
+- **WhatsNewView**: Added as a subview for feature announcements
+- **Edit Button**: Hidden in settings header as per design requirements
 
 ## Map Settings Features
 

@@ -18,6 +18,7 @@ class OnboardingViewModel: ObservableObject {
     @Published var currentStep: OnboardingStep = .welcome
     
     // User input data
+    @Published var selectedUserType: UserType? = nil
     @Published var email: String = ""
     @Published var password: String = ""
     @Published var confirmPassword: String = ""
@@ -25,6 +26,16 @@ class OnboardingViewModel: ObservableObject {
     @Published var lastName: String = ""
     @Published var phoneNumber: String = ""
     @Published var companyCode: String = ""
+    
+    // Company data for business owners
+    @Published var companyName: String = ""
+    @Published var companyAddress: String = ""
+    @Published var companyEmail: String = ""
+    @Published var companyPhone: String = ""
+    @Published var companyIndustry: Industry? = nil
+    @Published var companySize: CompanySize? = nil
+    @Published var companyAge: CompanyAge? = nil
+    @Published var teamInviteEmails: [String] = []
     
     // State management
     @Published var isLoading: Bool = false
@@ -35,7 +46,6 @@ class OnboardingViewModel: ObservableObject {
     // API response data
     @Published var isSignedUp: Bool = false
     @Published var isCompanyJoined: Bool = false
-    @Published var companyName: String = ""
     @Published var userId: String = "" // Track user ID from sign-up response
     
     // Validation states
@@ -43,6 +53,10 @@ class OnboardingViewModel: ObservableObject {
     @Published var isPasswordValid: Bool = false
     @Published var isPasswordMatching: Bool = false
     @Published var isPhoneValid: Bool = false
+    @Published var isCompanyEmailValid: Bool = false
+    @Published var isCompanyNameValid: Bool = false
+    @Published var isCompanyAddressValid: Bool = false
+    @Published var isCompanyPhoneValid: Bool = false
     
     // Services
     private let onboardingService = OnboardingService()
@@ -149,6 +163,46 @@ class OnboardingViewModel: ObservableObject {
             }
             .receive(on: RunLoop.main) // Ensure updates happen on main thread
             .assign(to: &$isPhoneValid)
+        
+        // Company email validation
+        $companyEmail
+            .dropFirst()
+            .debounce(for: 0.5, scheduler: RunLoop.main)
+            .map { email in
+                let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+                let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
+                return emailPredicate.evaluate(with: email)
+            }
+            .receive(on: RunLoop.main)
+            .assign(to: &$isCompanyEmailValid)
+        
+        // Company name validation
+        $companyName
+            .dropFirst()
+            .map { name in
+                return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            .receive(on: RunLoop.main)
+            .assign(to: &$isCompanyNameValid)
+        
+        // Company address validation
+        $companyAddress
+            .dropFirst()
+            .map { address in
+                return !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            .receive(on: RunLoop.main)
+            .assign(to: &$isCompanyAddressValid)
+        
+        // Company phone validation
+        $companyPhone
+            .dropFirst()
+            .map { phoneNumber in
+                let digitsOnly = phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+                return digitsOnly.count >= 10
+            }
+            .receive(on: RunLoop.main)
+            .assign(to: &$isCompanyPhoneValid)
     }
     
     // Move to the next step in the onboarding flow
@@ -203,7 +257,8 @@ class OnboardingViewModel: ObservableObject {
         do {
             let response = try await onboardingService.signUpUser(
                 email: email,
-                password: password
+                password: password,
+                userType: selectedUserType ?? .employee
             )
             
             // Store data and update state
@@ -523,7 +578,7 @@ class OnboardingViewModel: ObservableObject {
         }
         
         // Normal flow - get the next step
-        if let nextStep = currentStep.nextStep() {
+        if let nextStep = currentStep.nextStep(userType: selectedUserType) {
             print("OnboardingViewModel: Found next step: \(nextStep.title) (raw: \(nextStep.rawValue))")
             
             // Save the step to UserDefaults for potential resume later
@@ -565,7 +620,7 @@ class OnboardingViewModel: ObservableObject {
             return
         }
         
-        if let prevStep = currentStep.previousStep() {
+        if let prevStep = currentStep.previousStep(userType: selectedUserType) {
             print("OnboardingViewModel: Found previous step: \(prevStep.title) (raw: \(prevStep.rawValue))")
             
             DispatchQueue.main.async {
@@ -574,6 +629,134 @@ class OnboardingViewModel: ObservableObject {
             }
         } else {
             print("OnboardingViewModel: ❌ No previous step available before: \(currentStep.title)")
+        }
+    }
+    
+    // MARK: - New Navigation Methods for Updated Flow
+    
+    func nextStep() {
+        moveToNextStepV2()
+    }
+    
+    func previousStep() {
+        moveToPreviousStepV2()
+    }
+    
+    // MARK: - Company Creation Methods
+    
+    func createCompany() async throws {
+        guard isCompanyNameValid else {
+            throw OnboardingError.invalidCompanyName
+        }
+        
+        guard isCompanyEmailValid else {
+            throw OnboardingError.invalidCompanyEmail
+        }
+        
+        guard isCompanyPhoneValid else {
+            throw OnboardingError.invalidCompanyPhone
+        }
+        
+        guard let industry = companyIndustry else {
+            throw OnboardingError.missingIndustry
+        }
+        
+        guard let size = companySize else {
+            throw OnboardingError.missingCompanySize
+        }
+        
+        guard let age = companyAge else {
+            throw OnboardingError.missingCompanyAge
+        }
+        
+        isLoading = true
+        errorMessage = ""
+        
+        do {
+            try await onboardingService.updateCompany(
+                name: companyName,
+                email: companyEmail,
+                phone: companyPhone,
+                industry: industry.rawValue,
+                size: size.rawValue,
+                age: age.rawValue,
+                address: companyAddress,
+                userId: userId
+            )
+            
+            await MainActor.run {
+                isLoading = false
+                // Store company data
+                UserDefaults.standard.set(companyName, forKey: "Company Name")
+                UserDefaults.standard.set(true, forKey: "company_created")
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
+            }
+            throw error
+        }
+    }
+    
+    func sendTeamInvitations() async throws {
+        guard !teamInviteEmails.isEmpty else { return }
+        
+        isLoading = true
+        errorMessage = ""
+        
+        do {
+            let companyId = UserDefaults.standard.string(forKey: "company_id") ?? ""
+            try await onboardingService.sendInvites(emails: teamInviteEmails, companyId: companyId)
+            
+            await MainActor.run {
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
+            }
+            throw error
+        }
+    }
+    
+    func completeOnboarding() {
+        // Mark onboarding as completed
+        UserDefaults.standard.set(true, forKey: "onboarding_completed")
+        UserDefaults.standard.set(false, forKey: "resume_onboarding")
+        
+        // Store final user type
+        if let userType = selectedUserType {
+            UserDefaults.standard.set(userType.rawValue, forKey: "user_type")
+        }
+        
+        print("OnboardingViewModel: Onboarding completed successfully")
+    }
+}
+
+enum OnboardingError: Error, LocalizedError {
+    case invalidCompanyName
+    case invalidCompanyEmail
+    case invalidCompanyPhone
+    case missingIndustry
+    case missingCompanySize
+    case missingCompanyAge
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidCompanyName:
+            return "Please enter a valid company name"
+        case .invalidCompanyEmail:
+            return "Please enter a valid company email"
+        case .invalidCompanyPhone:
+            return "Please enter a valid company phone number"
+        case .missingIndustry:
+            return "Please select your company's industry"
+        case .missingCompanySize:
+            return "Please select your company size"
+        case .missingCompanyAge:
+            return "Please select how long your company has been in business"
         }
     }
 }

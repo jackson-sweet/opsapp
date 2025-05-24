@@ -16,69 +16,24 @@ struct CalendarToggleView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             // Week/Month toggle with segmented control style
-            ZStack {
-                // Background
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(Color("TextPrimary"))
-                    .frame(height: 36)
-                
-                // Toggle buttons
-                HStack(spacing: 0) {
-                    // Week toggle
-                    Button(action: {
+            SegmentedControl(
+                selection: Binding(
+                    get: { viewModel.viewMode },
+                    set: { newMode in
                         withAnimation {
-                            if viewModel.viewMode != .week {
+                            if newMode != viewModel.viewMode {
                                 viewModel.toggleViewMode()
                             }
                         }
-                    }) {
-                        Text("Week")
-                            .font(OPSStyle.Typography.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(viewModel.viewMode == .week ? .white : .black)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 32)
-                            .background(
-                                Group {
-                                    if viewModel.viewMode == .week {
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius - 2)
-                                            .fill(Color.black)
-                                    } else {
-                                        Color.clear
-                                    }
-                                }
-                            )
                     }
-                    
-                    // Month toggle
-                    Button(action: {
-                        withAnimation {
-                            if viewModel.viewMode != .month {
-                                viewModel.toggleViewMode()
-                            }
-                        }
-                    }) {
-                        Text("Month")
-                            .font(OPSStyle.Typography.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(viewModel.viewMode == .month ? .white : .black)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 32)
-                            .background(
-                                Group {
-                                    if viewModel.viewMode == .month {
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius - 2)
-                                            .fill(Color.black)
-                                    } else {
-                                        Color.clear
-                                    }
-                                }
-                            )
-                    }
-                }
-                .padding(2)
-            }
+                ),
+                options: [
+                    (CalendarViewModel.CalendarViewMode.week, "Week"),
+                    (CalendarViewModel.CalendarViewMode.month, "Month")
+                ]
+            )
             .frame(width: 200)
+            .frame(height: 36)
             
             Spacer()
             

@@ -96,6 +96,6 @@ extension Font {
     
     /// Button text - Mohave SemiBold (16pt)
     public static var button: Font {
-        return Font.custom("Mohave-SemiBold", size: 16)
+        return Font.custom("Mohave-Regular", size: 16)
     }
 }

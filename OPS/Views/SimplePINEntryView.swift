@@ -49,10 +49,16 @@ struct SimplePINEntryView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(height: 60)
+                HStack {
+                    
+                    Text(Image(systemName: "lock"))
+                        .font(.system(size: 24))
+                    Spacer()
+                    Text("ENTER PIN")
+                        .font(OPSStyle.Typography.title)
+                        .foregroundColor(.white)
+                }
                 
-                Text("ENTER PIN")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
                 
                 // PIN input with individual boxes
                 PINDigitBoxes(pin: $enteredPIN, validationState: pinState)
@@ -75,7 +81,7 @@ struct SimplePINEntryView: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                 } else if enteredPIN.isEmpty {
-                    Text("Tap to enter PIN")
+                    Text("ENTER YOUR PIN")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(.white.opacity(0.6))
                 }
@@ -208,14 +214,14 @@ struct PINDigitBox: View {
         }
         // Show active state with brighter border when field is focused
         if isActive {
-            return isFilled ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.6)
+            return isFilled ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.8)
         }
         return isFilled ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.3)
     }
     
     private var borderWidth: CGFloat {
         // Thicker border when active
-        return isActive ? 2.5 : 2
+        return isActive ? 2 : 1
     }
     
     private var fillColor: Color {

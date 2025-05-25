@@ -7,48 +7,13 @@
 
 import SwiftUI
 
-// Use standardized components directly (internal modules don't need import)
-
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
-    
-    
-    // App settings sections
-    enum AppSettingSection: String, Identifiable, CaseIterable {
-        case mapSettings = "Map Settings"
-        case notifications = "Notification Settings"
-        case dataStorage = "Data & Storage"
-        case security = "Security"
-        
-        var id: String { self.rawValue }
-        
-        var iconName: String {
-            switch self {
-            case .mapSettings:
-                return "map"
-            case .notifications:
-                return "bell"
-            case .dataStorage:
-                return "externaldrive"
-            case .security:
-                return "lock"
-            }
-        }
-        
-        var description: String {
-            switch self {
-            case .mapSettings:
-                return "Customize map display and behavior"
-            case .notifications:
-                return "Manage notifications and reminders"
-            case .dataStorage:
-                return "Control synchronization and storage"
-            case .security:
-                return "Manage app security preferences"
-            }
-        }
-    }
+    @State private var showMapSettings = false
+    @State private var showNotificationSettings = false
+    @State private var showDataSettings = false
+    @State private var showSecuritySettings = false
     
     var body: some View {
         ZStack {
@@ -56,57 +21,149 @@ struct AppSettingsView: View {
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
-                    // Header - fixed, not part of scroll view
-                    SettingsHeader(
-                        title: "App Settings",
-                        onBackTapped: {
-                            dismiss()
-                        }
-                    )
-                    .padding(.bottom, 8)
+                // Header
+                SettingsHeader(
+                    title: "App Settings",
+                    onBackTapped: { dismiss() }
+                )
+                .padding(.bottom, 24)
+                
+                // Settings list - using buttons with sheets instead of NavigationLink
+                VStack(spacing: 16) {
+                    // Map Settings
+                    Button {
+                        showMapSettings = true
+                    } label: {
+                        SettingsRowCard(
+                            title: "Map Settings",
+                            description: "Customize map display and behavior",
+                            iconName: "map"
+                        )
+                    }
                     
-                    // App settings categories - scrollable content
-
-                        VStack(spacing: 24) {
-                            // Map, notifications, data, security
-                            VStack(spacing: 24) {
-                                ForEach(AppSettingSection.allCases) { section in
-                                    NavigationLink(destination: destinationFor(section)) {
-                                        settingRow(for: section)
-                                    }
-                                    .onTapGesture {
-                                        print("Navigating to: \(section.rawValue)")
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            
-                            
-                            Spacer()
-                            
-                            // App version and information section
-                            appInfoCard
-                                .padding(.horizontal, 20)
-                        }
-                        .padding(.vertical, 24)
+                    // Notifications
+                    Button {
+                        showNotificationSettings = true
+                    } label: {
+                        SettingsRowCard(
+                            title: "Notification Settings",
+                            description: "Manage notifications and reminders",
+                            iconName: "bell"
+                        )
+                    }
                     
+                    // Data & Storage
+                    Button {
+                        showDataSettings = true
+                    } label: {
+                        SettingsRowCard(
+                            title: "Data & Storage",
+                            description: "Control synchronization and storage",
+                            iconName: "externaldrive"
+                        )
+                    }
+                    
+                    // Security
+                    Button {
+                        showSecuritySettings = true
+                    } label: {
+                        SettingsRowCard(
+                            title: "Security",
+                            description: "Manage app security preferences",
+                            iconName: "lock"
+                        )
+                    }
                 }
+                .padding(.horizontal, 20)
+                
+                Spacer()
+                
+                // App info
+                AppInfoCard()
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
+            }
+            .padding(.bottom, 90) // Tab bar padding
         }
         .navigationBarBackButtonHidden(true)
-        // Removed PIN entry overlay - let SecuritySettingsView handle its own PIN logic
+        .fullScreenCover(isPresented: $showMapSettings) {
+            NavigationStack {
+                MapSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showNotificationSettings) {
+            NavigationStack {
+                NotificationSettingsView()
+                    .environmentObject(dataController)
+                    .environmentObject(NotificationManager.shared)
+            }
+        }
+        .fullScreenCover(isPresented: $showDataSettings) {
+            NavigationStack {
+                DataStorageSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showSecuritySettings) {
+            NavigationStack {
+                SecuritySettingsView()
+                    .environmentObject(dataController)
+            }
+        }
     }
+}
+
+// Simple settings row card
+struct SettingsRowCard: View {
+    let title: String
+    let description: String
+    let iconName: String
     
-    // App info card with logo and version
-    private var appInfoCard: some View {
+    var body: some View {
+        HStack(spacing: 16) {
+            // Icon
+            Image(systemName: iconName)
+                .font(.system(size: 24, weight: .light))
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .frame(width: 30)
+            
+            // Text content
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title.uppercased())
+                    .font(OPSStyle.Typography.cardTitle)
+                    .foregroundColor(.white)
+                
+                Text(description)
+                    .font(OPSStyle.Typography.cardBody)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            // Chevron
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14))
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+        .padding(24)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+}
+
+// App info card
+struct AppInfoCard: View {
+    var body: some View {
         HStack(spacing: 20) {
-            // App logo
-            HStack(alignment: .center) {
+            // Logo and name
+            HStack(spacing: 12) {
                 Image("LogoWhite")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 40, height: 40)
                 
-                // App name
                 Text("OPS APP")
                     .font(OPSStyle.Typography.cardTitle)
                     .foregroundColor(.white)
@@ -114,45 +171,16 @@ struct AppSettingsView: View {
             
             Spacer()
             
-            VStack (alignment: .trailing) {
-                // Version number
+            // Version info
+            VStack(alignment: .trailing, spacing: 2) {
                 Text("Version 1.0.0")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
-                // Copyright info
-                Text("© 2025 OPS Job Management")
+                Text("© 2025 OPS")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            }
-        .frame(maxWidth: .infinity)
-    }
-    
-    private func settingRow(for section: AppSettingSection) -> some View {
-        CategoryCard(
-            title: section.rawValue,
-            description: section.description,
-            iconName: section.iconName
-        )
-    }
-    
-    @ViewBuilder
-    private func destinationFor(_ section: AppSettingSection) -> some View {
-        switch section {
-        case .mapSettings:
-            MapSettingsView()
-                .environmentObject(dataController)
-        case .notifications:
-            NotificationSettingsView()
-                .environmentObject(dataController)
-                .environmentObject(NotificationManager.shared)
-        case .dataStorage:
-            DataStorageSettingsView()
-                .environmentObject(dataController)
-        case .security:
-            SecuritySettingsView()
-                .environmentObject(dataController)
         }
     }
 }

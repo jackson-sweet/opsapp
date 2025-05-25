@@ -99,6 +99,11 @@ struct MonthDayCell: View {
             .frame(maxWidth: .infinity)
             .background(cellBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(content: {
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color(.white),lineWidth: isSelected ? 1 : 0)
+                        
+            })
         }
         .disabled(!isCurrentMonth)
     }
@@ -113,7 +118,7 @@ struct MonthDayCell: View {
         } else if isSelected {
             return OPSStyle.Colors.primaryText
         } else if isToday {
-            return OPSStyle.Colors.secondaryAccent
+            return OPSStyle.Colors.primaryText
         } else {
             return OPSStyle.Colors.primaryText.opacity(0.8)
         }
@@ -122,9 +127,10 @@ struct MonthDayCell: View {
     private var cellBackground: some View {
         Group {
             if isSelected {
-                OPSStyle.Colors.cardBackground
+                //OPSStyle.Colors.cardBackground
+                //Only outline the selected date, do not change background
             } else if isToday {
-                OPSStyle.Colors.cardBackground.opacity(0.3)
+                OPSStyle.Colors.primaryAccent
             } else {
                 Color.clear
             }

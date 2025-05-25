@@ -74,6 +74,7 @@ struct ProjectListView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(Color.white, lineWidth: 1)
         )
+        .padding(.horizontal, 16)
     }
     
     // Split the date into components for better styling
@@ -96,7 +97,7 @@ struct ProjectListView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 40)
+        .padding(.vertical, 40)
     }
     
     private var projectListView: some View {

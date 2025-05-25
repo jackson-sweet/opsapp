@@ -96,23 +96,11 @@ struct DayProjectSheet: View {
     
     private var emptyStateView: some View {
         VStack(spacing: 20) {
-            Spacer()
-            
-            Text("No projects scheduled")
+            Text("[ No projects scheduled ]".uppercased())
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-            
-            // Random motivational quote
-            if let quote = AppConfiguration.UX.noProjectQuotes.randomElement() {
-                Text(quote)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                    .padding()
-            }
-            
-            Spacer()
         }
+        .padding(.vertical, 40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

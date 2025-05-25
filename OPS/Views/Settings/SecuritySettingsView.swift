@@ -37,12 +37,16 @@ struct SecuritySettingsView: View {
                         SettingsSectionHeader(title: "APP ACCESS")
                         
                         VStack(spacing: 16) {
+                            
                             // PIN toggle
                             HStack {
-                                Text("Require PIN on App Launch")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                
+                                VStack(alignment: .leading){
+                                    Text("LOCK IT DOWN")
+                                        .font(OPSStyle.Typography.cardTitle)
+                                    Text("Require PIN on App Launch")
+                                        .font(OPSStyle.Typography.cardBody)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                }
                                 Spacer()
                                 
                                 Toggle("", isOn: Binding(
@@ -57,7 +61,9 @@ struct SecuritySettingsView: View {
                                 ))
                                 .tint(OPSStyle.Colors.primaryAccent)
                             }
-                            .padding(.horizontal, 20)
+                            .padding(20)
+                            .background(Color(OPSStyle.Colors.cardBackground))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             
                             if pinManager.hasPINEnabled {
                                 Button(action: { showPINSetup = true }) {
@@ -70,6 +76,7 @@ struct SecuritySettingsView: View {
                         }
                     }
                     .padding(.vertical, 24)
+                    .padding(.horizontal, 20)
                 }
             }
         }

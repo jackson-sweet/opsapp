@@ -55,7 +55,7 @@ struct OrganizationJoinView: View {
                                 
                                 // Icon
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 36, weight: .bold))
+                                    .font(OPSStyle.Typography.largeTitle)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     .scaleEffect(iconScale)
                             }
@@ -66,11 +66,11 @@ struct OrganizationJoinView: View {
                             VStack(alignment: .leading, spacing: 20) {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Connect with your team")
-                                        .font(.system(size: 20, weight: .bold))
+                                        .font(OPSStyle.Typography.subtitle)
                                         .foregroundColor(.white)
                                     
                                     Text("In the next steps, you'll connect to your organization's projects and team members.")
-                                        .font(.system(size: 16))
+                                        .font(OPSStyle.Typography.body)
                                         .foregroundColor(Color.gray)
                                         .lineSpacing(4)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -145,12 +145,12 @@ struct FeatureItem: View {
         HStack(spacing: 10) {
             // Checkmark indicator
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 16))
+                .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
             
             // Feature text
             Text(text)
-                .font(.system(size: 15))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(.white.opacity(0.9))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -164,7 +164,7 @@ struct OnboardingStepIndicator: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(text)
-                .font(.system(size: 14, weight: .medium))
+                .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .center)

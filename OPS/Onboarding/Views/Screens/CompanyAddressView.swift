@@ -53,7 +53,7 @@ struct CompanyAddressView: View {
                                 MapMarker(coordinate: pin.coordinate, tint: Color("AccentPrimary"))
                             }
                             .frame(height: 200)
-                            .cornerRadius(12)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .disabled(true)
                         }
                     }
@@ -71,7 +71,7 @@ struct CompanyAddressView: View {
                             .font(OPSStyle.Typography.bodyBold)
                         Spacer()
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(OPSStyle.Typography.bodyBold)
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 24)

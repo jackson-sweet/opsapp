@@ -265,10 +265,9 @@ class OnboardingViewModel: ObservableObject {
             await MainActor.run {
                 // We got a successful HTTP response, now check if the API considers it successful
                 if response.wasSuccessful {
-                    isSignedUp = true
-                    
                     // Extract and save user ID from the response, using our helper method
                     if let userIdValue = response.extractedUserId, !userIdValue.isEmpty {
+                        isSignedUp = true
                         userId = userIdValue
                         UserDefaults.standard.set(userIdValue, forKey: "user_id")
                         
@@ -276,30 +275,26 @@ class OnboardingViewModel: ObservableObject {
                         print("API Response - Sign Up: SUCCESS")
                         print("Email: \(email) successfully registered")
                         print("User ID: \(userIdValue) saved")
-                    } else {
-                        print("WARNING: No user_id found in successful signup response")
-                        // We need to proceed even without a user_id since the API said success
                         
-                        // Attempt to set a placeholder user ID so the flow can continue
-                        let placeholderId = "\(Date().timeIntervalSince1970)"
-                        print("Creating placeholder user_id for flow: \(placeholderId)")
-                        userId = placeholderId
-                        UserDefaults.standard.set(placeholderId, forKey: "user_id")
+                        // Store email and password in UserDefaults for later (crucial for API calls)
+                        UserDefaults.standard.set(email, forKey: "user_email")
+                        UserDefaults.standard.set(password, forKey: "user_password")
+                        
+                        // Log that we've saved these important credentials
+                        print("OnboardingViewModel: Saved email and password to UserDefaults for future API calls")
+                        
+                        // Mark the user as authenticated but with onboarding incomplete
+                        UserDefaults.standard.set(true, forKey: "is_authenticated")
+                        UserDefaults.standard.set(false, forKey: "onboarding_completed")
+                        
+                        // Save the current onboarding step - at this point they've completed account setup
+                        UserDefaults.standard.set(OnboardingStep.organizationJoin.rawValue, forKey: "last_onboarding_step_v2")
+                    } else {
+                        // API reported success but didn't provide a user ID - this is a failure
+                        isSignedUp = false
+                        errorMessage = "Account creation failed. Server did not return a user ID."
+                        print("ERROR: API reported success but no user_id was returned")
                     }
-                    
-                    // Store email and password in UserDefaults for later (crucial for API calls)
-                    UserDefaults.standard.set(email, forKey: "user_email")
-                    UserDefaults.standard.set(password, forKey: "user_password")
-                    
-                    // Log that we've saved these important credentials
-                    print("OnboardingViewModel: Saved email and password to UserDefaults for future API calls")
-                    
-                    // Mark the user as authenticated but with onboarding incomplete
-                    UserDefaults.standard.set(true, forKey: "is_authenticated")
-                    UserDefaults.standard.set(false, forKey: "onboarding_completed")
-                    
-                    // Save the current onboarding step - at this point they've completed account setup
-                    UserDefaults.standard.set(OnboardingStep.organizationJoin.rawValue, forKey: "last_onboarding_step_v2")
                 } else {
                     isSignedUp = false
                     if let errMsg = response.error_message, !errMsg.isEmpty {
@@ -732,6 +727,9 @@ class OnboardingViewModel: ObservableObject {
         }
         
         print("OnboardingViewModel: Onboarding completed successfully")
+        
+        // Dismiss the onboarding overlay
+        NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
     }
 }
 

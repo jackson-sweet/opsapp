@@ -41,14 +41,14 @@ struct CompletionView: View {
                 // Header
                 HStack {
                     Text("OPS // ONBOARDING")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(OPSStyle.Typography.captionBold)
                         .tracking(2)
                         .foregroundColor(Color.white.opacity(0.7))
                     
                     Spacer()
                     
                     Text(formattedCurrentTime())
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding(.top, 16)
@@ -62,7 +62,7 @@ struct CompletionView: View {
                     VStack(spacing: 20) {
                         // Logo
                         Text("OPS")
-                            .font(.system(size: 42, weight: .heavy))
+                            .font(OPSStyle.Typography.largeTitle)
                             .tracking(4)
                             .foregroundColor(.white)
                             .scaleEffect(logoScale)
@@ -82,7 +82,7 @@ struct CompletionView: View {
                         ForEach(0..<statusItems.count, id: \.self) { index in
                             HStack {
                                 Text(statusItems[index])
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(OPSStyle.Typography.caption)
                                     .tracking(1)
                                     .foregroundColor(Color.white.opacity(0.9))
                                 
@@ -91,14 +91,14 @@ struct CompletionView: View {
                                 if statusCheckmarks[index] {
                                     Image(systemName: "checkmark")
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                        .font(.system(size: 14, weight: .bold))
+                                        .font(OPSStyle.Typography.captionBold)
                                         .transition(.scale.combined(with: .opacity))
                                 }
                             }
                             .padding(.vertical, 6)
                             .padding(.horizontal, 16)
                             .background(Color.white.opacity(0.05))
-                            .cornerRadius(4)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 4)
                                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
@@ -111,13 +111,13 @@ struct CompletionView: View {
                     // Welcome message
                     VStack(spacing: 8) {
                         Text("SETUP COMPLETE")
-                            .font(.system(size: 22, weight: .heavy))
+                            .font(OPSStyle.Typography.subtitle)
                             .tracking(3)
                             .foregroundColor(.white)
                             .multilineTextAlignment(.center)
                         
                         Text("Your operational control center is ready")
-                            .font(.system(size: 16))
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(Color.gray)
                             .multilineTextAlignment(.center)
                     }
@@ -138,13 +138,13 @@ struct CompletionView: View {
                         onComplete()
                     }) {
                         Text("ENTER OPS")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(OPSStyle.Typography.bodyBold)
                             .tracking(1)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(OPSStyle.Colors.primaryAccent)
                             .foregroundColor(.white)
-                            .cornerRadius(5)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     .opacity(buttonOpacity)
                     .offset(y: buttonOffset)
@@ -257,7 +257,7 @@ struct CompletionView: View {
                     }
                     .padding()
                     .background(Color.gray.opacity(0.2))
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .padding()
                 }
             }

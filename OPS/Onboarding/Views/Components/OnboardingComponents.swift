@@ -20,14 +20,14 @@ struct PrimaryButtonStyle: ButtonStyle {
                 isDisabled ? Color.gray.opacity(0.3) : Color.white
             )
             .foregroundColor(.black)
-            .font(.system(size: 17, weight: .medium))
-            .cornerRadius(26)
+            .font(OPSStyle.Typography.bodyBold)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 !isDisabled && !configuration.isPressed ? 
                 HStack {
                     Spacer()
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(OPSStyle.Typography.bodyEmphasis)
                         .foregroundColor(.black)
                         .padding(.trailing, 20)
                 } : nil
@@ -42,13 +42,13 @@ struct SecondaryButtonStyle: ButtonStyle {
         configuration.label
             .padding(.vertical, 12)
             .foregroundColor(Color.white)
-            .font(.system(size: 16, weight: .medium))
+            .font(OPSStyle.Typography.bodyBold)
             .opacity(configuration.isPressed ? 0.7 : 1)
             .overlay(
                 HStack(spacing: 4) {
                     Spacer()
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 14, weight: .medium)) 
+                        .font(OPSStyle.Typography.captionBold) 
                         .foregroundColor(.white.opacity(0.7))
                         .opacity(configuration.isPressed ? 0.5 : 1)
                 }
@@ -112,11 +112,11 @@ struct ErrorMessageView: View {
         if !message.isEmpty {
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 14))
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(Color("StatusError"))
                 
                 Text(message)
-                    .font(.system(size: 14))
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(Color("StatusError"))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -139,13 +139,13 @@ struct OnboardingHeaderView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
-                .font(.system(size: 26, weight: .bold))
+                .font(OPSStyle.Typography.title)
                 .foregroundColor(.white)
                 .padding(.bottom, subtitle.isEmpty ? 0 : 4)
             
             if !subtitle.isEmpty {
                 Text(subtitle)
-                    .font(.system(size: 16, weight: .regular))
+                    .font(OPSStyle.Typography.body)
                     .foregroundColor(Color.gray)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
@@ -164,7 +164,7 @@ struct InputFieldLabel: View {
     
     var body: some View {
         Text(label)
-            .font(.system(size: 12, weight: .semibold))
+            .font(OPSStyle.Typography.captionBold)
             .foregroundColor(.white.opacity(0.7))
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -188,14 +188,14 @@ struct OnboardingNavigationButtons: View {
                 ZStack {
                     HStack {
                         Text(primaryText)
-                            .font(.system(size: 17, weight: .medium))
+                            .font(OPSStyle.Typography.bodyBold)
                             .opacity(isLoading ? 0 : 1)
                         
                         Spacer()
                         
                         if !isLoading && !isPrimaryDisabled {
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(OPSStyle.Typography.captionBold)
                                 .padding(.trailing, 20)
                         }
                     }
@@ -210,7 +210,7 @@ struct OnboardingNavigationButtons: View {
                 .frame(height: 52)
                 .frame(maxWidth: .infinity)
                 .background(isPrimaryDisabled || isLoading ? Color.white.opacity(0.7) : Color.white)
-                .cornerRadius(26)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .disabled(isPrimaryDisabled || isLoading)
             
@@ -220,16 +220,16 @@ struct OnboardingNavigationButtons: View {
                     HStack(spacing: 4) {
                         if secondaryText.lowercased() == "back" {
                             Image(systemName: "chevron.left")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(OPSStyle.Typography.captionBold)
                         }
                         
                         Text(secondaryText)
-                            .font(.system(size: 16, weight: .medium))
+                            .font(OPSStyle.Typography.bodyBold)
                         
                         if secondaryText.lowercased() != "back" {
                             Spacer()
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(.white.opacity(0.7))
                         }
                     }

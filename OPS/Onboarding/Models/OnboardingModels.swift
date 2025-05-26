@@ -11,14 +11,20 @@ import Foundation
 
 // Response from sign_user_up endpoint
 struct SignUpResponse: Codable {
-    let success: String? // "yes" or "no"
+    let status: String? // "success" or other status
+    let success: String? // "yes" or "no" (legacy format)
     let error_message: String?
     let user_id: String? // User ID returned when signup is successful
     let response: ResponseData? // Additional response data that might contain user_id
     
     // On Bubble, we may get 200 status codes with different response formats
     var wasSuccessful: Bool {
-        // Check primary success flag
+        // Check new status field first
+        if let status = status, status.lowercased() == "success" {
+            return true
+        }
+        
+        // Check legacy success flag
         if let success = success, success.lowercased() == "yes" {
             return true
         }

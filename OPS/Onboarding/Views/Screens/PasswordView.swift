@@ -21,16 +21,16 @@ struct PasswordView: View {
                 // Header
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Create a")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(OPSStyle.Typography.title)
                         .foregroundColor(.white)
                     
                     Text("password.")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(OPSStyle.Typography.title)
                         .foregroundColor(.white)
                         .padding(.bottom, 12)
                     
                     Text("Use at least 8 characters for a strong password.")
-                        .font(.system(size: 16))
+                        .font(OPSStyle.Typography.body)
                         .foregroundColor(Color.gray)
                         .lineSpacing(4)
                 }
@@ -46,12 +46,12 @@ struct PasswordView: View {
                         HStack {
                             if showPassword {
                                 TextField("Password", text: $viewModel.password)
-                                    .font(.system(size: 16))
+                                    .font(OPSStyle.Typography.body)
                                     .disableAutocorrection(true)
                                     .transition(.opacity)
                             } else {
                                 SecureField("Password", text: $viewModel.password)
-                                    .font(.system(size: 16))
+                                    .font(OPSStyle.Typography.body)
                                     .transition(.opacity)
                             }
                             
@@ -61,7 +61,7 @@ struct PasswordView: View {
                                 }
                             }) {
                                 Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                                    .font(.system(size: 14))
+                                    .font(OPSStyle.Typography.caption)
                                     .foregroundColor(.white.opacity(0.6))
                             }
                         }
@@ -75,12 +75,12 @@ struct PasswordView: View {
                         HStack {
                             if showConfirmPassword {
                                 TextField("Confirm password", text: $viewModel.confirmPassword)
-                                    .font(.system(size: 16))
+                                    .font(OPSStyle.Typography.body)
                                     .disableAutocorrection(true)
                                     .transition(.opacity)
                             } else {
                                 SecureField("Confirm password", text: $viewModel.confirmPassword)
-                                    .font(.system(size: 16))
+                                    .font(OPSStyle.Typography.body)
                                     .transition(.opacity)
                             }
                             
@@ -90,7 +90,7 @@ struct PasswordView: View {
                                 }
                             }) {
                                 Image(systemName: showConfirmPassword ? "eye.slash.fill" : "eye.fill")
-                                    .font(.system(size: 14))
+                                    .font(OPSStyle.Typography.caption)
                                     .foregroundColor(.white.opacity(0.6))
                             }
                         }
@@ -164,10 +164,10 @@ struct ValidationIndicator: View {
         HStack(spacing: 8) {
             Image(systemName: isValid ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundColor(isValid ? Color("StatusSuccess") : Color("StatusError"))
-                .font(.system(size: 14))
+                .font(OPSStyle.Typography.caption)
             
             Text(text)
-                .font(.system(size: 14))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(isValid ? Color("StatusSuccess") : Color("StatusError"))
         }
     }

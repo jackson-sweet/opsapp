@@ -146,6 +146,7 @@ struct PINGatedView: View {
             // PIN overlay
             if pinManager.requiresPIN && !pinManager.isAuthenticated {
                 SimplePINEntryView(pinManager: pinManager)
+                    .environmentObject(dataController)
                     .transition(.opacity)
                     .zIndex(1)
                     .onReceive(pinManager.$isAuthenticated) { newValue in

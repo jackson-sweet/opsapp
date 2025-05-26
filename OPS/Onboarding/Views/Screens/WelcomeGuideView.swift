@@ -3,32 +3,40 @@ import SwiftUI
 struct WelcomeGuideView: View {
     @EnvironmentObject var onboardingViewModel: OnboardingViewModel
     @State private var currentPage = 0
-    @State private var dragOffset: CGFloat = 0
     
     private let pages = WelcomeGuidePage.allPages
     
     var body: some View {
-        VStack(spacing: 0) {
-            OnboardingHeader(
-                title: "Welcome to OPS",
-                subtitle: "Step 6 of 6",
-                showBackButton: true,
-                onBack: {
-                    onboardingViewModel.previousStep()
-                }
-            )
+        ZStack {
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
             
-            VStack(spacing: 32) {
-                // Page Indicator
-                HStack(spacing: 8) {
+            VStack(spacing: 0) {
+                // Minimal header with skip
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        onboardingViewModel.completeOnboarding()
+                    }) {
+                        Text("Skip")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+                
+                // Step indicator bars at top
+                HStack(spacing: 4) {
                     ForEach(0..<pages.count, id: \.self) { index in
-                        Circle()
-                            .fill(currentPage == index ? Color("AccentPrimary") : Color("StatusInactive"))
-                            .frame(width: 8, height: 8)
+                        Rectangle()
+                            .fill(index <= currentPage ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.3))
+                            .frame(height: 2)
                             .animation(.easeInOut(duration: 0.3), value: currentPage)
                     }
                 }
-                .padding(.top, 24)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
                 
                 // Page Content
                 TabView(selection: $currentPage) {
@@ -40,141 +48,73 @@ struct WelcomeGuideView: View {
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .animation(.easeInOut(duration: 0.3), value: currentPage)
                 
-                Spacer()
-                
-                // Navigation Buttons
-                VStack(spacing: 16) {
+                // Navigation Button - minimal style
+                VStack(spacing: 24) {
                     if currentPage < pages.count - 1 {
                         Button(action: {
                             withAnimation {
                                 currentPage += 1
                             }
                         }) {
-                            HStack {
-                                Text("Next")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                Spacer()
-                                Image(systemName: "arrow.right")
-                                    .font(.system(size: 16, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 16)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color("AccentPrimary"))
-                            )
+                            Text("NEXT")
+                                .font(OPSStyle.Typography.button)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                                )
                         }
                     } else {
                         Button(action: {
                             onboardingViewModel.completeOnboarding()
                         }) {
-                            HStack {
-                                Text("Get Started")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                Spacer()
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 16, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 16)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color("AccentPrimary"))
-                            )
-                        }
-                    }
-                    
-                    if currentPage > 0 {
-                        Button(action: {
-                            withAnimation {
-                                currentPage -= 1
-                            }
-                        }) {
-                            Text("Previous")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(Color("TextSecondary"))
-                        }
-                    } else {
-                        Button(action: {
-                            onboardingViewModel.completeOnboarding()
-                        }) {
-                            Text("Skip guide")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(Color("TextSecondary"))
+                            Text("GET STARTED")
+                                .font(OPSStyle.Typography.button)
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .fill(Color.white)
+                                )
                         }
                     }
                 }
                 .padding(.horizontal, 24)
-                .padding(.bottom, 34)
+                .padding(.bottom, 40)
+            }
             }
         }
-        .background(Color("Background"))
     }
-}
+
 
 struct WelcomePageView: View {
     let page: WelcomeGuidePage
     
     var body: some View {
-        VStack(spacing: 32) {
-            // Icon/Image Area
-            ZStack {
-                Circle()
-                    .fill(Color("AccentPrimary").opacity(0.1))
-                    .frame(width: 120, height: 120)
-                
-                Image(systemName: page.iconName)
-                    .font(.system(size: 48, weight: .light))
-                    .foregroundColor(Color("AccentPrimary"))
-            }
+        VStack(spacing: 40) {
+            Spacer()
             
-            VStack(spacing: 16) {
-                Text(page.title)
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(Color("TextPrimary"))
-                    .multilineTextAlignment(.center)
-                
-                Text(page.description)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(Color("TextSecondary"))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-            }
+            // Larger title text
+            Text(page.title)
+                .font(OPSStyle.Typography.largeTitle)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
             
-            if !page.features.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(page.features, id: \.self) { feature in
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(Color("AccentPrimary"))
-                                .font(.system(size: 16))
-                                .offset(y: 2)
-                            
-                            Text(feature)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(Color("TextPrimary"))
-                                .multilineTextAlignment(.leading)
-                            
-                            Spacer()
-                        }
-                    }
-                }
-                .padding(20)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color("CardBackground"))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color("StatusInactive").opacity(0.3), lineWidth: 1)
-                        )
-                )
-            }
+            // Larger description text
+            Text(page.description)
+                .font(OPSStyle.Typography.cardTitle)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .lineSpacing(6)
+                .padding(.horizontal, 24)
             
             Spacer()
+            Spacer()
         }
-        .padding(.horizontal, 32)
     }
 }
 
@@ -186,48 +126,22 @@ struct WelcomeGuidePage {
     
     static let allPages: [WelcomeGuidePage] = [
         WelcomeGuidePage(
-            title: "Welcome to Your Company Dashboard",
-            description: "You're all set up! Your company profile is ready and your team can start joining.",
-            iconName: "building.2",
-            features: [
-                "Manage projects and track progress",
-                "Coordinate with your team members",
-                "View real-time project updates",
-                "Access financial summaries"
-            ]
+            title: "Welcome to Ops.",
+            description: "Time to streamline your operations.\n\nMaximize your efficiency.\n\nBurn the scattered notes on your Silverado's dashboard.",
+            iconName: "",
+            features: []
         ),
         WelcomeGuidePage(
-            title: "Project Management Made Simple",
-            description: "Track all your projects in one place with real-time updates and seamless team coordination.",
-            iconName: "list.clipboard",
-            features: [
-                "Create and assign projects",
-                "Track project status and progress",
-                "Share updates with clients",
-                "Manage project timelines"
-            ]
+            title: "Built by trades, for trades.",
+            description: "It's not just another tool.\nIt's THE tool.\n\nBuilt to solve real problems for real tradesmen, so you can focus on building, leading, and succeeding.",
+            iconName: "",
+            features: []
         ),
         WelcomeGuidePage(
-            title: "Team Collaboration",
-            description: "Your team members will receive their invitations soon. Once they join, you'll see them here.",
-            iconName: "person.3",
-            features: [
-                "Invite unlimited team members",
-                "Real-time location tracking",
-                "Instant messaging and updates",
-                "Role-based permissions"
-            ]
-        ),
-        WelcomeGuidePage(
-            title: "Stay Connected on the Go",
-            description: "Access everything you need from anywhere. Your team stays connected whether they're in the office or in the field.",
-            iconName: "location",
-            features: [
-                "GPS tracking for field teams",
-                "Offline capability",
-                "Push notifications",
-                "Mobile-first design"
-            ]
+            title: "You're all set up!",
+            description: "Your company profile is ready and your team can start joining.\n\nLet's get to work.",
+            iconName: "",
+            features: []
         )
     ]
 }

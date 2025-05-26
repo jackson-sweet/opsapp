@@ -10,10 +10,12 @@ import UIKit
 
 struct SimplePINEntryView: View {
     @ObservedObject var pinManager: SimplePINManager
+    @EnvironmentObject private var dataController: DataController
     @State private var enteredPIN = ""
     @State private var showError = false
     @State private var pinState: PINValidationState = .neutral
     @State private var shakeOffset: CGFloat = 0
+    @State private var showForgotPINAlert = false
     
     enum PINValidationState {
         case neutral
@@ -87,9 +89,43 @@ struct SimplePINEntryView: View {
                 }
                 
                 Spacer()
+                
+                // Forgot PIN button
+                Button(action: {
+                    showForgotPINAlert = true
+                }) {
+                    Text("Forgot PIN?")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+                .padding(.bottom, 40)
+                .padding(.horizontal, 24)
             }
             .padding()
         }
+        .alert("Reset PIN", isPresented: $showForgotPINAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reset", role: .destructive) {
+                resetPIN()
+            }
+        } message: {
+            Text("This will remove your PIN and log you out. You'll need to sign in again and set a new PIN.")
+        }
+    }
+    
+    private func resetPIN() {
+        print("SimplePINEntryView: Resetting PIN and logging out user")
+        
+        // Remove the stored PIN
+        pinManager.removePIN()
+        
+        // Use DataController's logout method which properly handles all cleanup
+        // and sets isAuthenticated = false, triggering navigation to login screen
+        Task { @MainActor in
+            dataController.logout()
+        }
+        
+        print("SimplePINEntryView: PIN reset complete, logout initiated")
     }
     
     private func validatePIN() {

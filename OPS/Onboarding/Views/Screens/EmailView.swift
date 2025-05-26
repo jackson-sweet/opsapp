@@ -43,9 +43,9 @@ struct EmailView: View {
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left")
-                                        .font(.system(size: 14, weight: .medium))
+                                        .font(OPSStyle.Typography.captionBold)
                                     Text("Back")
-                                        .font(.system(size: 16, weight: .medium))
+                                        .font(OPSStyle.Typography.bodyBold)
                                 }
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -53,7 +53,7 @@ struct EmailView: View {
                             Spacer()
                             
                             Text("Step 1 of 6")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(Color.gray)
                         }
                         .padding(.top, 8)
@@ -85,18 +85,18 @@ struct EmailView: View {
                                 // Header
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text(isInConsolidatedFlow ? "Create your" : "What's your")
-                                        .font(.system(size: 28, weight: .bold))
+                                        .font(OPSStyle.Typography.title)
                                         .foregroundColor(.white)
                                     
                                     Text(isInConsolidatedFlow ? "account." : "email address?")
-                                        .font(.system(size: 28, weight: .bold))
+                                        .font(OPSStyle.Typography.title)
                                         .foregroundColor(.white)
                                         .padding(.bottom, 12)
                                     
                                     Text(isInConsolidatedFlow ? 
                                         "Enter your email and create a password to get started with OPS." : 
                                         "We'll use this to sign you in and send important updates.")
-                                        .font(.system(size: 16))
+                                        .font(OPSStyle.Typography.body)
                                         .foregroundColor(Color.gray)
                                         .lineSpacing(4)
                                 }
@@ -108,7 +108,7 @@ struct EmailView: View {
                                     InputFieldLabel(label: "EMAIL ADDRESS")
                                     
                                     TextField("Email", text: $viewModel.email)
-                                        .font(.system(size: 16))
+                                        .font(OPSStyle.Typography.body)
                                         .keyboardType(.emailAddress)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
@@ -122,11 +122,11 @@ struct EmailView: View {
                                 if !viewModel.email.isEmpty {
                                     HStack {
                                         Image(systemName: viewModel.isEmailValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                            .font(.system(size: 14))
+                                            .font(OPSStyle.Typography.caption)
                                             .foregroundColor(viewModel.isEmailValid ? Color("StatusSuccess") : Color("StatusError"))
                                         
                                         Text(viewModel.isEmailValid ? "Valid email" : "Invalid email format")
-                                            .font(.system(size: 14))
+                                            .font(OPSStyle.Typography.caption)
                                             .foregroundColor(viewModel.isEmailValid ? Color("StatusSuccess") : Color("StatusError"))
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -140,7 +140,7 @@ struct EmailView: View {
                                         InputFieldLabel(label: "PASSWORD")
                                         
                                         SecureField("Password (8+ characters)", text: $viewModel.password)
-                                            .font(.system(size: 16))
+                                            .font(OPSStyle.Typography.body)
                                             .textContentType(.oneTimeCode) // Prevents autofill
                                             .onboardingTextFieldStyle()
                                             .transition(.opacity)
@@ -152,11 +152,11 @@ struct EmailView: View {
                                     if !viewModel.password.isEmpty {
                                         HStack {
                                             Image(systemName: viewModel.isPasswordValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                                .font(.system(size: 14))
+                                                .font(OPSStyle.Typography.caption)
                                                 .foregroundColor(viewModel.isPasswordValid ? Color("StatusSuccess") : Color("StatusError"))
                                             
                                             Text(viewModel.isPasswordValid ? "Password meets requirements" : "Password must be at least 8 characters")
-                                                .font(.system(size: 14))
+                                                .font(OPSStyle.Typography.caption)
                                                 .foregroundColor(viewModel.isPasswordValid ? Color("StatusSuccess") : Color("StatusError"))
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,7 +168,7 @@ struct EmailView: View {
                                         InputFieldLabel(label: "CONFIRM PASSWORD")
                                         
                                         SecureField("Re-enter password", text: $localConfirmPassword)
-                                            .font(.system(size: 16))
+                                            .font(OPSStyle.Typography.body)
                                             .textContentType(.oneTimeCode) // Prevents autofill
                                             .onboardingTextFieldStyle()
                                             .transition(.opacity)
@@ -180,11 +180,11 @@ struct EmailView: View {
                                     if !localConfirmPassword.isEmpty {
                                         HStack {
                                             Image(systemName: passwordsMatch ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                                .font(.system(size: 14))
+                                                .font(OPSStyle.Typography.caption)
                                                 .foregroundColor(passwordsMatch ? Color("StatusSuccess") : Color("StatusError"))
                                             
                                             Text(passwordsMatch ? "Passwords match" : "Passwords don't match")
-                                                .font(.system(size: 14))
+                                                .font(OPSStyle.Typography.caption)
                                                 .foregroundColor(passwordsMatch ? Color("StatusSuccess") : Color("StatusError"))
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -195,10 +195,10 @@ struct EmailView: View {
                                     HStack(alignment: .top, spacing: 8) {
                                         Image(systemName: "info.circle.fill")
                                             .foregroundColor(.white.opacity(0.7))
-                                            .font(.system(size: 14))
+                                            .font(OPSStyle.Typography.caption)
                                         
                                         Text("Your password should have at least 8 characters and include a mix of letters, numbers and symbols.")
-                                            .font(.system(size: 14))
+                                            .font(OPSStyle.Typography.caption)
                                             .foregroundColor(.white.opacity(0.6))
                                     }
                                     .padding(.top, 8)
@@ -246,7 +246,7 @@ struct EmailView: View {
                             ZStack {
                                 HStack {
                                     Text("Continue")
-                                        .font(.system(size: 17, weight: .medium))
+                                        .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(.black)
                                         .opacity(viewModel.isLoading ? 0 : 1)
                                     
@@ -254,7 +254,7 @@ struct EmailView: View {
                                     
                                     if !viewModel.isLoading && canProceed {
                                         Image(systemName: "arrow.right")
-                                            .font(.system(size: 15, weight: .semibold))
+                                            .font(OPSStyle.Typography.captionBold)
                                             .foregroundColor(.black)
                                             .padding(.trailing, 20)
                                     }
@@ -269,7 +269,7 @@ struct EmailView: View {
                             .frame(height: 52)
                             .frame(maxWidth: .infinity)
                             .background(canProceed && !viewModel.isLoading ? Color.white : Color.white.opacity(0.7))
-                            .cornerRadius(26)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .disabled(!canProceed || viewModel.isLoading)
                     } else {

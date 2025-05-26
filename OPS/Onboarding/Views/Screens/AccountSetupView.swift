@@ -27,9 +27,9 @@ struct AccountSetupView: View {
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(OPSStyle.Typography.caption)
                             Text("Back")
-                                .font(.system(size: 16, weight: .medium))
+                                .font(OPSStyle.Typography.bodyBold)
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -37,7 +37,7 @@ struct AccountSetupView: View {
                     Spacer()
                     
                     Text("Step 1 of 7")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(Color.gray)
                 }
                 .padding(.top, 8)
@@ -60,16 +60,16 @@ struct AccountSetupView: View {
                         // Header
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Create your")
-                                .font(.system(size: 28, weight: .bold))
+                                .font(OPSStyle.Typography.title)
                                 .foregroundColor(.white)
                             
                             Text("account.")
-                                .font(.system(size: 28, weight: .bold))
+                                .font(OPSStyle.Typography.title)
                                 .foregroundColor(.white)
                                 .padding(.bottom, 12)
                             
                             Text(OnboardingStep.accountSetup.subtitle)
-                                .font(.system(size: 16))
+                                .font(OPSStyle.Typography.body)
                                 .foregroundColor(Color.gray)
                                 .lineSpacing(4)
                         }
@@ -81,7 +81,7 @@ struct AccountSetupView: View {
                             InputFieldLabel(label: "EMAIL ADDRESS")
                             
                             TextField("Your email", text: $viewModel.email)
-                                .font(.system(size: 16))
+                                .font(OPSStyle.Typography.body)
                                 .keyboardType(.emailAddress)
                                 .textContentType(.emailAddress)
                                 .autocapitalization(.none)
@@ -96,14 +96,14 @@ struct AccountSetupView: View {
                             ZStack {
                                 if isPasswordVisible {
                                     TextField("Your password", text: $viewModel.password)
-                                        .font(.system(size: 16))
+                                        .font(OPSStyle.Typography.body)
                                         .textContentType(.newPassword)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
                                         .onboardingTextFieldStyle()
                                 } else {
                                     SecureField("Your password", text: $viewModel.password)
-                                        .font(.system(size: 16))
+                                        .font(OPSStyle.Typography.body)
                                         .textContentType(.newPassword)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
@@ -126,7 +126,7 @@ struct AccountSetupView: View {
                             
                             // Password requirements hint
                             Text("Must be at least 8 characters")
-                                .font(.system(size: 12))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(viewModel.isPasswordValid ? Color.green : Color.gray.opacity(0.7))
                                 .padding(.top, 4)
                         }
@@ -138,14 +138,14 @@ struct AccountSetupView: View {
                             ZStack {
                                 if isConfirmPasswordVisible {
                                     TextField("Confirm password", text: $viewModel.confirmPassword)
-                                        .font(.system(size: 16))
+                                        .font(OPSStyle.Typography.body)
                                         .textContentType(.newPassword)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
                                         .onboardingTextFieldStyle()
                                 } else {
                                     SecureField("Confirm password", text: $viewModel.confirmPassword)
-                                        .font(.system(size: 16))
+                                        .font(OPSStyle.Typography.body)
                                         .textContentType(.newPassword)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
@@ -169,7 +169,7 @@ struct AccountSetupView: View {
                             // Password match hint
                             if !viewModel.confirmPassword.isEmpty {
                                 Text(viewModel.isPasswordMatching ? "Passwords match" : "Passwords don't match")
-                                    .font(.system(size: 12))
+                                    .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(viewModel.isPasswordMatching ? Color.green : Color.red)
                                     .padding(.top, 4)
                             }

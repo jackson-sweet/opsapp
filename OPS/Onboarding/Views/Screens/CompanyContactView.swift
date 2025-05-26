@@ -95,7 +95,7 @@ struct CompanyContactView: View {
                             .font(OPSStyle.Typography.bodyBold)
                         Spacer()
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(OPSStyle.Typography.bodyBold)
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 24)

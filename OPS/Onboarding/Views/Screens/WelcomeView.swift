@@ -53,7 +53,7 @@ struct WelcomeView: View {
                         NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
                     }) {
                         Text("Sign In")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .opacity(buttonOpacity)
@@ -70,7 +70,7 @@ struct WelcomeView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         // Bold headline
                         Text("Your jobsite streamlined.")
-                            .font(.system(size: 28, weight: .bold))
+                            .font(OPSStyle.Typography.title)
                             .foregroundColor(.white)
                         
                         // Key benefits
@@ -100,7 +100,7 @@ struct WelcomeView: View {
                     Text("OPS.")
                     // Builder message
                     Text("Built by trades, for trades.")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(Color.gray)
                         .padding(.bottom, 40)
                         .opacity(textOpacity)
@@ -120,17 +120,17 @@ struct WelcomeView: View {
                     }) {
                         HStack {
                             Text("Continue")
-                                .font(.system(size: 17, weight: .medium))
+                                .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(.black)
                                 .frame(maxWidth: .infinity)
                             
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(.black)
                         }
                         .frame(height: 52)
                         .background(Color.white)
-                        .cornerRadius(26)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .padding(.horizontal, 24)
                     }
                     .opacity(buttonOpacity)
@@ -170,12 +170,12 @@ struct BenefitRow: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.system(size: 22))
+                .font(OPSStyle.Typography.subtitle)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(width: 30)
             
             Text(text)
-                .font(.system(size: 16))
+                .font(OPSStyle.Typography.body)
                 .foregroundColor(.white)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -188,7 +188,7 @@ struct InfoText: View {
     
     var body: some View {
         Text(text)
-            .font(.system(size: 16))
+            .font(OPSStyle.Typography.body)
             .foregroundColor(.white)
             .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -60,7 +60,7 @@ struct CompanyDetailsView: View {
                                     Spacer()
                                     
                                     Image(systemName: "chevron.down")
-                                        .font(.system(size: 14, weight: .medium))
+                                        .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(Color("TextSecondary"))
                                 }
                                 .padding(.horizontal, 16)
@@ -96,7 +96,7 @@ struct CompanyDetailsView: View {
                                             
                                             if selectedSize == size {
                                                 Image(systemName: "checkmark.circle.fill")
-                                                    .font(.system(size: 20))
+                                                    .font(OPSStyle.Typography.subtitle)
                                                     .foregroundColor(Color("AccentPrimary"))
                                             } else {
                                                 Circle()
@@ -140,7 +140,7 @@ struct CompanyDetailsView: View {
                                             
                                             if selectedAge == age {
                                                 Image(systemName: "checkmark.circle.fill")
-                                                    .font(.system(size: 20))
+                                                    .font(OPSStyle.Typography.subtitle)
                                                     .foregroundColor(Color("AccentPrimary"))
                                             } else {
                                                 Circle()
@@ -181,7 +181,7 @@ struct CompanyDetailsView: View {
                             .font(OPSStyle.Typography.bodyBold)
                         Spacer()
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(OPSStyle.Typography.bodyBold)
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 24)
@@ -264,7 +264,7 @@ struct IndustryPickerView: View {
                             if selectedIndustry == industry {
                                 Image(systemName: "checkmark")
                                     .foregroundColor(Color("AccentPrimary"))
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(OPSStyle.Typography.bodyBold)
                             }
                         }
                         .padding(.vertical, 4)

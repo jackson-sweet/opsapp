@@ -35,7 +35,7 @@ struct DataStorageSettingsView: View {
                 )
                 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: 0 ) {
                         // Synchronization Settings
                         SettingsSectionHeader(title: "SYNCHRONIZATION")
                         
@@ -43,7 +43,7 @@ struct DataStorageSettingsView: View {
                             VStack(spacing: 0) {
                                 SettingsToggle(
                                     title: "Sync on App Launch",
-                                    description: "Automatically sync data when app starts",
+                                    description: "Get data from online when app starts",
                                     isOn: $syncOnLaunch
                                 )
                                 
@@ -53,7 +53,7 @@ struct DataStorageSettingsView: View {
                                 
                                 SettingsToggle(
                                     title: "Background Sync",
-                                    description: "Sync data when app is in the background",
+                                    description: "Get data from online when app is not open",
                                     isOn: $backgroundSyncEnabled
                                 )
                             }
@@ -67,7 +67,7 @@ struct DataStorageSettingsView: View {
                             VStack(spacing: 0) {
                                 SettingsToggle(
                                     title: "Cache Project Images",
-                                    description: "Store project images on device for offline use",
+                                    description: "Store project images on device, so you can see them even when no internet connection",
                                     isOn: $imageCacheEnabled
                                 )
                                 
@@ -127,13 +127,13 @@ struct DataStorageSettingsView: View {
                                                 .font(OPSStyle.Typography.smallCaption)
                                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                                         } else {
-                                            Text("\(maxStorageSize) MB limit")
+                                            Text("\(formatStorageSize(maxStorageSize)) limit")
                                                 .font(OPSStyle.Typography.smallCaption)
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                         }
                                     }
                                 }
-                                .padding(.vertical, 8)
+                                .padding(16)
                                 
                                 Divider()
                                     .background(OPSStyle.Colors.cardBackgroundDark)
@@ -145,66 +145,72 @@ struct DataStorageSettingsView: View {
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(.white)
                                     
-                                    VStack(spacing: 2) {
-                                        Slider(value: Binding(
-                                            get: { 
-                                                // Infinite storage represented as 5500 for the slider
-                                                if maxStorageSize == -1 {
-                                                    return 5500
-                                                }
-                                                return Double(maxStorageSize)
-                                            },
-                                            set: { newValue in
-                                                // Snap to predefined storage points
-                                                if newValue >= 5250 {
-                                                    // Infinite storage
-                                                    maxStorageSize = -1
-                                                } else {
-                                                    // Convert to one of: 0, 250, 500, 1000, 2000, 5000
-                                                    let snapPoints = [0, 250, 500, 1000, 2000, 5000]
-                                                    
-                                                    // Find the closest snap point
-                                                    let closestPoint = snapPoints.min(by: { 
-                                                        abs(Double($0) - newValue) < abs(Double($1) - newValue) 
-                                                    }) ?? 500
-                                                    
-                                                    maxStorageSize = closestPoint
+                                    VStack(spacing: 8) {
+                                        // Storage options: 0, 250, 500, 1000, 2500, 5000, unlimited (-1)
+                                        let storageOptions = [0, 250, 500, 1000, 2500, 5000, -1]
+                                        let sliderSteps = Double(storageOptions.count - 1)
+                                        
+                                        ZStack(alignment: .center) {
+                                            // Tick marks for each snap point
+                                            GeometryReader { geometry in
+                                                ForEach(0..<storageOptions.count, id: \.self) { index in
+                                                    Rectangle()
+                                                        .fill(OPSStyle.Colors.secondaryText.opacity(0.3))
+                                                        .frame(width: 1, height: 12)
+                                                        .position(
+                                                            x: geometry.size.width * CGFloat(index) / CGFloat(storageOptions.count - 1),
+                                                            y: geometry.size.height / 2
+                                                        )
                                                 }
                                             }
-                                        ), in: 0...5500, step: 1)
-                                        .accentColor(OPSStyle.Colors.primaryAccent)
-                                        
-                                        // Snap point markers
-                                        HStack(spacing: 0) {
-                                            Text("0")
-                                                .font(OPSStyle.Typography.smallCaption)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                            .frame(height: 12)
                                             
-                                            Spacer()
-                                            
-                                            Text("500")
-                                                .font(OPSStyle.Typography.smallCaption)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                            
-                                            Spacer()
-                                            
-                                            Text("1000")
-                                                .font(OPSStyle.Typography.smallCaption)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                            
-                                            Spacer()
-                                            
-                                            Text("∞")
-                                                .font(OPSStyle.Typography.smallCaption)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                            Slider(value: Binding(
+                                                get: {
+                                                    // Convert storage value to slider position (0-6)
+                                                    if let index = storageOptions.firstIndex(of: maxStorageSize) {
+                                                        return Double(index)
+                                                    }
+                                                    // Default to 500 MB (index 2)
+                                                    return 2.0
+                                                },
+                                                set: { newValue in
+                                                    // Convert slider position to storage value
+                                                    let index = Int(round(newValue))
+                                                    if index >= 0 && index < storageOptions.count {
+                                                        maxStorageSize = storageOptions[index]
+                                                    }
+                                                }
+                                            ), in: 0...sliderSteps, step: 1)
+                                            .accentColor(OPSStyle.Colors.primaryAccent)
                                         }
-                                        .padding(.horizontal, 12)
+                                        
+                                        // Snap point markers - evenly spaced
+                                        HStack(alignment: .center, spacing: 0) {
+                                            ForEach(0..<storageOptions.count, id: \.self) { index in
+                                                if index > 0 {
+                                                    Spacer(minLength: 0)
+                                                }
+                                                
+                                                Text(formatStorageLabel(storageOptions[index]))
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                    .frame(width: index == 0 || index == storageOptions.count - 1 ? 20 : 40)
+                                                    .lineLimit(1)
+                                                    .minimumScaleFactor(0.8)
+                                                
+                                                if index == 0 {
+                                                    Spacer(minLength: 0)
+                                                }
+                                            }
+                                        }
+                                        .padding(.horizontal, 8)
                                         .frame(height: 20)
                                     }
                                     
                                     HStack {
                                         Spacer()
-                                        Text(maxStorageSize == -1 ? "∞" : "\(maxStorageSize) MB")
+                                        Text(formatStorageSize(maxStorageSize))
                                             .font(OPSStyle.Typography.smallBody)
                                             .foregroundColor(.white)
                                             .frame(width: 80)
@@ -223,6 +229,7 @@ struct DataStorageSettingsView: View {
                                             .padding(.top, 4)
                                     }
                                 }
+                                .padding(16)
                             }
                             .padding(.horizontal, -16) // Counteract card padding
                         }
@@ -258,6 +265,36 @@ struct DataStorageSettingsView: View {
         .navigationBarBackButtonHidden(true)
         .onAppear {
             calculateStorageUsage()
+        }
+    }
+    
+    private func formatStorageSize(_ size: Int) -> String {
+        if size == -1 {
+            return "∞"
+        } else if size == 0 {
+            return "0 MB"
+        } else if size >= 1000 {
+            let gb = Double(size) / 1000.0
+            return String(format: "%.1f GB", gb)
+        } else {
+            return "\(size) MB"
+        }
+    }
+    
+    private func formatStorageLabel(_ size: Int) -> String {
+        if size == -1 {
+            return "∞"
+        } else if size == 0 {
+            return "0"
+        } else if size >= 1000 {
+            let gb = Double(size) / 1000.0
+            if gb == floor(gb) {
+                return "\(Int(gb))GB"
+            } else {
+                return String(format: "%.1fGB", gb)
+            }
+        } else {
+            return "\(size)"
         }
     }
     

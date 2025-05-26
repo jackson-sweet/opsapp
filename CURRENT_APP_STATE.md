@@ -108,12 +108,29 @@ Comprehensive settings implementation including:
 
 ## Typography & Branding
 
-The app uses custom fonts for distinctive branding:
-- **Mohave**: Primary font for titles, body text, and UI elements
-- **Kosugi**: Supporting font for captions and labels
-- **Bebas Neue**: Available but rarely used (display font)
+### Custom Font System (STRICTLY ENFORCED)
+The app uses **exclusively custom fonts** - no system fonts allowed:
 
-Color scheme:
+- **Mohave** (Primary Font Family)
+  - Used for: Titles, body text, buttons, and most UI elements
+  - Weights: Light, Regular, Medium, SemiBold, Bold
+  - Access via: `OPSStyle.Typography.title`, `OPSStyle.Typography.body`, etc.
+
+- **Kosugi** (Supporting Font)
+  - Used for: Subtitles, captions, labels, and supporting text
+  - Weight: Regular only
+  - Access via: `OPSStyle.Typography.caption`, `OPSStyle.Typography.subtitle`
+
+- **Bebas Neue** (Display Font)
+  - Available but rarely used (special branding moments only)
+
+### Font Usage Requirements ⚠️
+- **CRITICAL**: ALL text must use `OPSStyle.Typography` definitions
+- **FORBIDDEN**: System fonts (`.font(.system())`, `.font(.title)`, `.font(.body)`)
+- **MANDATORY**: Import both `OPSStyle` and access to `Fonts.swift` in all views
+- **BRAND CONSISTENCY**: Maintains professional field-optimized typography
+
+### Color Scheme
 - Dark theme optimized for outdoor visibility
 - Primary accent: #59779F (blue)
 - Status-specific colors for project states

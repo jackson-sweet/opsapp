@@ -180,11 +180,11 @@ struct SettingsSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
-                .font(.system(size: 18, weight: .semibold))
+                .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(.white)
             
             Text(description)
-                .font(.system(size: 14))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(Color.gray)
                 .padding(.bottom, 4)
             
@@ -219,11 +219,11 @@ struct SettingOptionCard: View {
                 // Content
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.system(size: 16, weight: .medium))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(.white)
                     
                     Text(description)
-                        .font(.system(size: 14))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(Color.gray)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)

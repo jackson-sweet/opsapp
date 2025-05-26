@@ -48,9 +48,9 @@ struct UserInfoView: View {
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(OPSStyle.Typography.captionBold)
                                 Text("Back")
-                                    .font(.system(size: 16, weight: .medium))
+                                    .font(OPSStyle.Typography.bodyBold)
                             }
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -58,7 +58,7 @@ struct UserInfoView: View {
                         Spacer()
                         
                         Text("Step 2 of 6")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(Color.gray)
                     }
                     .padding(.top, 8)
@@ -80,18 +80,18 @@ struct UserInfoView: View {
                     // Header
                     VStack(alignment: .leading, spacing: 8) {
                         Text(isInConsolidatedFlow ? "Your" : "Tell us your")
-                            .font(.system(size: 28, weight: .bold))
+                            .font(OPSStyle.Typography.title)
                             .foregroundColor(.white)
                         
                         Text(isInConsolidatedFlow ? "information." : "name.")
-                            .font(.system(size: 28, weight: .bold))
+                            .font(OPSStyle.Typography.title)
                             .foregroundColor(.white)
                             .padding(.bottom, 12)
                         
                         Text(isInConsolidatedFlow ? 
                             "Tell us who you are so your team can recognize you." : 
                             "This will be used for your profile in the OPS app.")
-                            .font(.system(size: 16))
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(Color.gray)
                             .lineSpacing(4)
                     }
@@ -103,7 +103,7 @@ struct UserInfoView: View {
                         InputFieldLabel(label: "FIRST NAME")
                         
                         TextField("First name", text: $viewModel.firstName)
-                            .font(.system(size: 16))
+                            .font(OPSStyle.Typography.body)
                             .keyboardType(.namePhonePad)
                             .autocapitalization(.words)
                             .disableAutocorrection(true)
@@ -118,7 +118,7 @@ struct UserInfoView: View {
                         InputFieldLabel(label: "LAST NAME")
                         
                         TextField("Last name", text: $viewModel.lastName)
-                            .font(.system(size: 16))
+                            .font(OPSStyle.Typography.body)
                             .keyboardType(.namePhonePad)
                             .autocapitalization(.words)
                             .disableAutocorrection(true)
@@ -134,7 +134,7 @@ struct UserInfoView: View {
                             InputFieldLabel(label: "PHONE NUMBER")
                             
                             TextField("(___) ___-____", text: $viewModel.phoneNumber)
-                                .font(.system(size: 16))
+                                .font(OPSStyle.Typography.body)
                                 .keyboardType(.phonePad)
                                 .textContentType(.oneTimeCode) // Prevents autofill
                                 .onChange(of: viewModel.phoneNumber) { oldValue, newValue in
@@ -155,11 +155,11 @@ struct UserInfoView: View {
                         if !viewModel.phoneNumber.isEmpty {
                             HStack {
                                 Image(systemName: viewModel.isPhoneValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                    .font(.system(size: 14))
+                                    .font(OPSStyle.Typography.caption)
                                     .foregroundColor(viewModel.isPhoneValid ? Color("StatusSuccess") : Color("StatusError"))
                                 
                                 Text(viewModel.isPhoneValid ? "Valid phone number" : "Please enter full 10-digit number")
-                                    .font(.system(size: 14))
+                                    .font(OPSStyle.Typography.caption)
                                     .foregroundColor(viewModel.isPhoneValid ? Color("StatusSuccess") : Color("StatusError"))
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -182,14 +182,14 @@ struct UserInfoView: View {
                             ZStack {
                                 HStack {
                                     Text("Continue")
-                                        .font(.system(size: 17, weight: .medium))
+                                        .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(.black)
                                     
                                     Spacer()
                                     
                                     if viewModel.canProceedFromUserDetails {
                                         Image(systemName: "arrow.right")
-                                            .font(.system(size: 15, weight: .semibold))
+                                            .font(OPSStyle.Typography.captionBold)
                                             .foregroundColor(.black)
                                             .padding(.trailing, 20)
                                     }
@@ -199,7 +199,7 @@ struct UserInfoView: View {
                             .frame(height: 52)
                             .frame(maxWidth: .infinity)
                             .background(viewModel.canProceedFromUserDetails ? Color.white : Color.white.opacity(0.7))
-                            .cornerRadius(26)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .disabled(!viewModel.canProceedFromUserDetails)
                     } else {

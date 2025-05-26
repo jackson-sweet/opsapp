@@ -23,9 +23,9 @@ struct ConsolidatedPermissionsView: View {
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(OPSStyle.Typography.captionBold)
                             Text("Back")
-                                .font(.system(size: 16, weight: .medium))
+                                .font(OPSStyle.Typography.bodyBold)
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -33,7 +33,7 @@ struct ConsolidatedPermissionsView: View {
                     Spacer()
                     
                     Text("Step 5 of 7")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(Color.gray)
                 }
                 .padding(.top, 8)
@@ -56,16 +56,16 @@ struct ConsolidatedPermissionsView: View {
                         // Header
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Enable")
-                                .font(.system(size: 28, weight: .bold))
+                                .font(OPSStyle.Typography.title)
                                 .foregroundColor(.white)
                             
                             Text("permissions.")
-                                .font(.system(size: 28, weight: .bold))
+                                .font(OPSStyle.Typography.title)
                                 .foregroundColor(.white)
                                 .padding(.bottom, 12)
                             
                             Text("OPS works best with location and notification permissions enabled. These help you stay updated on projects and navigate to job sites.")
-                                .font(.system(size: 16))
+                                .font(OPSStyle.Typography.body)
                                 .foregroundColor(Color.gray)
                                 .lineSpacing(4)
                         }
@@ -100,10 +100,10 @@ struct ConsolidatedPermissionsView: View {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "info.circle.fill")
                                 .foregroundColor(.white.opacity(0.7))
-                                .font(.system(size: 14))
+                                .font(OPSStyle.Typography.caption)
                             
                             Text("You can enable these permissions later in Settings, but some features will be limited.")
-                                .font(.system(size: 14))
+                                .font(OPSStyle.Typography.caption)
                                 .foregroundColor(.white.opacity(0.6))
                         }
                         .padding(.top, 20)
@@ -160,12 +160,12 @@ struct PermissionCard: View {
             // Icon and title
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 22))
+                    .font(OPSStyle.Typography.subtitle)
                     .foregroundColor(isEnabled ? .green : .white)
                     .frame(width: 32, height: 32)
                 
                 Text(title)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(OPSStyle.Typography.subtitle)
                     .foregroundColor(.white)
                 
                 Spacer()
@@ -174,13 +174,13 @@ struct PermissionCard: View {
                 if isEnabled {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
-                        .font(.system(size: 20))
+                        .font(OPSStyle.Typography.subtitle)
                 }
             }
             
             // Description
             Text(description)
-                .font(.system(size: 15))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(.gray)
                 .lineSpacing(4)
                 .padding(.leading, 44)
@@ -188,7 +188,7 @@ struct PermissionCard: View {
             // Action button
             Button(action: onActionTapped) {
                 Text(actionButtonText)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -205,14 +205,14 @@ struct PermissionCard: View {
                                 endPoint: .trailing
                             )
                     )
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .padding(.top, 8)
             .disabled(isEnabled)
         }
         .padding(20)
         .background(Color.gray.opacity(0.15))
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 }
 

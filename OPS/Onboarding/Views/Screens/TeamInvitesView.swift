@@ -46,7 +46,7 @@ struct TeamInvitesView: View {
                                         }) {
                                             Image(systemName: "minus.circle.fill")
                                                 .foregroundColor(Color("StatusError"))
-                                                .font(.system(size: 20))
+                                                .font(OPSStyle.Typography.subtitle)
                                         }
                                     }
                                 }
@@ -137,7 +137,7 @@ struct TeamInvitesView: View {
                                 .font(OPSStyle.Typography.bodyBold)
                             Spacer()
                             Image(systemName: hasValidEmails ? "paperplane.fill" : "arrow.right")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(OPSStyle.Typography.bodyBold)
                         }
                         .foregroundColor(.white)
                         .padding(.horizontal, 24)

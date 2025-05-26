@@ -89,12 +89,29 @@ The OPS app uses custom fonts to create a distinctive brand identity while maint
 
 ### Typography Best Practices
 
-- Always use the custom Font extensions defined in `Fonts.swift`
-- Never use system fonts unless specifically required for platform integration
+- **CRITICAL**: Always use `OPSStyle.Typography` font definitions - NEVER use system fonts
+- **NEVER use**: `.font(.system())`, `.font(.title)`, `.font(.body)`, or any direct system font calls
+- **ALWAYS use**: `OPSStyle.Typography.title`, `OPSStyle.Typography.body`, etc.
+- **ALWAYS import**: Both `OPSStyle` and `Fonts.swift` in any view with text
 - Maintain consistent font usage across similar UI elements
 - Ensure sufficient line spacing for field readability
 - Test all text at maximum dynamic type sizes
-- **IMPORTANT**: All UI text must use OPS fonts (Mohave, Kosugi) - no `.system()` fonts allowed
+
+### ❌ WRONG Font Usage Examples
+```swift
+Text("Project Title").font(.title)                    // NEVER
+Text("Description").font(.body)                       // NEVER  
+Text("Status").font(.caption)                         // NEVER
+Text("Button").font(.system(size: 16))               // NEVER
+```
+
+### ✅ CORRECT Font Usage Examples  
+```swift
+Text("Project Title").font(OPSStyle.Typography.title)        // ALWAYS
+Text("Description").font(OPSStyle.Typography.body)           // ALWAYS
+Text("Status").font(OPSStyle.Typography.status)              // ALWAYS
+Text("Button").font(OPSStyle.Typography.button)              // ALWAYS
+```
 
 ## Color Usage Guidelines
 

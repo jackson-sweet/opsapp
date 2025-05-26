@@ -19,7 +19,7 @@ struct OnboardingHeader: View {
                 if showBackButton {
                     Button(action: onBack) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(Color("TextPrimary"))
                     }
                 } else {

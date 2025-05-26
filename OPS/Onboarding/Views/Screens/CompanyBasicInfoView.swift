@@ -90,7 +90,7 @@ struct CompanyBasicInfoView: View {
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 12)
                                     .background(OPSStyle.Colors.cardBackground)
-                                    .cornerRadius(8)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8)
                                             .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
@@ -151,7 +151,7 @@ struct CompanyBasicInfoView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(isFormValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
-                                .cornerRadius(12)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .disabled(!isFormValid)
                     }

@@ -77,10 +77,16 @@ The OPS (Operational Project System) app is a field-optimized project management
 - Follow Swift naming conventions
 - Structure files consistently with MARK comments
 - Create clear boundaries between app layers
-- Use custom font extensions from `Fonts.swift` for all text styling
-- **NEVER use system fonts** - all text must use OPS fonts (Mohave, Kosugi)
 - When creating new components, use existing patterns from the codebase
 - Always use `.tabBarPadding()` for scrollable content
+
+### Typography Requirements ⚠️ CRITICAL
+- **MANDATORY**: All text styling must use `OPSStyle.Typography` definitions
+- **FORBIDDEN**: Never use system fonts (`.font(.system())`, `.font(.title)`, `.font(.body)`, etc.)
+- **REQUIRED IMPORTS**: Add `import Foundation` and ensure `Fonts.swift` is available
+- **CORRECT USAGE**: `Text("Title").font(OPSStyle.Typography.title)`
+- **BRAND FONTS ONLY**: Mohave (primary), Kosugi (supporting) - no exceptions
+- **CODE REVIEW**: Any PR with system fonts will be rejected
 
 ### SwiftUI Patterns
 - Use environment objects for dependency injection

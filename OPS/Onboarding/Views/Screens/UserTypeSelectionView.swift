@@ -83,7 +83,7 @@ struct UserTypeSelectionView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .background(viewModel.selectedUserType != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
-                        .cornerRadius(12)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .disabled(viewModel.selectedUserType == nil)
                 .padding(.horizontal, 32)

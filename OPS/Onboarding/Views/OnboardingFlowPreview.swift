@@ -8,191 +8,358 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Preview showing all onboarding steps
+// MARK: - Main Preview Navigator
 struct OnboardingFlowPreview: View {
-    // Step selection
-    @State private var selectedScreen: OnboardingStep = .welcome
+    @State private var selectedFlow: FlowType = .consolidated
+    @State private var selectedScreen = 0
+    @State private var showDeviceFrame = false
+    @State private var deviceScale: CGFloat = 0.8
     
-    // Show device frame
-    @State private var showDeviceFrame = true
-    
-    // Preview scale
-    @State private var scale: CGFloat = 1.0
+    enum FlowType: String, CaseIterable {
+        case consolidated = "Consolidated (7 Steps)"
+        case original = "Original (11 Steps)"
+        case company = "Company Flow"
+    }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Controls section
-            VStack(spacing: 10) {
-                HStack {
-                    Text("Select Step to Preview")
-                    .font(.headline)
-                    .padding(.horizontal)
-                    
-                    // Device frame toggle
-                    Toggle("Show Device Frame", isOn: $showDeviceFrame)
-                        .padding(.horizontal)
+            // Header Controls
+            VStack(spacing: 16) {
+                // Flow selector
+                Picker("Flow Type", selection: $selectedFlow) {
+                    ForEach(FlowType.allCases, id: \.self) { flow in
+                        Text(flow.rawValue).tag(flow)
+                    }
                 }
-                .padding(.top, 10)
-                
-                // Scale slider
-                HStack {
-                    Text("Scale:")
-                    Slider(value: $scale, in: 0.5...1.0)
-                    Text("\(Int(scale * 100))%")
-                        .frame(width: 50, alignment: .trailing)
-                }
+                .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
                 
-                // Step selector
+                // Screen selector
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        // Steps
-                        ForEach(OnboardingStep.allCases, id: \.self) { step in
+                        ForEach(Array(currentScreens.enumerated()), id: \.offset) { index, screen in
                             Button(action: {
-                                selectedScreen = step
+                                selectedScreen = index
                             }) {
-                                Text(step.title)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(selectedScreen == step ? 
-                                        OPSStyle.Colors.primaryAccent : 
-                                        Color.white.opacity(0.1))
-                                    .foregroundColor(.white)
-                                    .cornerRadius(4)
+                                VStack(spacing: 4) {
+                                    Text("\(index + 1)")
+                                        .font(.caption2)
+                                        .foregroundColor(.gray)
+                                    Text(screen.name)
+                                        .font(.caption)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(selectedScreen == index ? 
+                                              Color.blue : Color.gray.opacity(0.2))
+                                )
+                                .foregroundColor(selectedScreen == index ? .white : .primary)
                             }
                         }
                     }
-                    .padding()
+                    .padding(.horizontal)
                 }
-                .background(Color.black.opacity(0.5))
+                
+                // Device controls
+                HStack {
+                    Toggle("Device Frame", isOn: $showDeviceFrame)
+                    
+                    Spacer()
+                    
+                    Text("Scale: \(Int(deviceScale * 100))%")
+                    Slider(value: $deviceScale, in: 0.5...1.0)
+                        .frame(width: 150)
+                }
+                .padding(.horizontal)
+                .font(.caption)
             }
-            .background(Color.gray.opacity(0.2))
-            .foregroundColor(.white)
+            .padding(.vertical, 12)
+            .background(Color(UIColor.systemGray6))
             
-            // Screen preview with device frame
-            ZStack {
-                // Device frame if enabled
-                if showDeviceFrame {
-                    // iPhone mock frame
-                    RoundedRectangle(cornerRadius: 38)
-                        .stroke(Color.gray, lineWidth: 10)
-                        .background(RoundedRectangle(cornerRadius: 38).fill(Color.black))
-                        .overlay(
-                            // Notch
-                            RoundedRectangle(cornerRadius: 10)
-                                .frame(width: 120, height: 32)
-                                .foregroundColor(Color.gray)
-                                .position(x: UIScreen.main.bounds.width / 2, y: 16)
-                        )
-                        .shadow(radius: 30)
-                        .scaleEffect(scale)
-                }
-                
-                // Screen content
-                let viewModel = createViewModel(for: selectedScreen)
-                
-                // Flow screens
-                Group {
-                    switch selectedScreen {
-                    case .welcome:
-                        WelcomeView(viewModel: viewModel)
-                    case .userTypeSelection:
-                        UserTypeSelectionView()
-                            .environmentObject(viewModel)
-                    case .accountSetup:
-                        EmailView(viewModel: viewModel, isInConsolidatedFlow: true)
-                    case .organizationJoin:
-                        OrganizationJoinView(viewModel: viewModel, isInConsolidatedFlow: true)
-                    case .userDetails:
-                        UserInfoView(viewModel: viewModel, isInConsolidatedFlow: true)
-                    case .companyCode:
-                        CompanyCodeView(viewModel: viewModel)
-                    case .companyBasicInfo:
-                        CompanyBasicInfoView()
-                            .environmentObject(viewModel)
-                    case .companyAddress:
-                        CompanyAddressView()
-                            .environmentObject(viewModel)
-                    case .companyContact:
-                        CompanyContactView()
-                            .environmentObject(viewModel)
-                    case .companyDetails:
-                        CompanyDetailsView()
-                            .environmentObject(viewModel)
-                    case .teamInvites:
-                        TeamInvitesView()
-                            .environmentObject(viewModel)
-                    case .welcomeGuide:
-                        WelcomeGuideView()
-                            .environmentObject(viewModel)
-                    case .permissions:
-                        PermissionsView(viewModel: viewModel, isInConsolidatedFlow: true)
-                    case .fieldSetup:
-                        FieldSetupView(viewModel: viewModel)
-                            .environmentObject(DataController())
-                    case .completion:
-                        CompletionView {
-                            // Reset to first screen when complete
-                            selectedScreen = .welcome
+            // Preview Area
+            GeometryReader { geometry in
+                ZStack {
+                    // Background
+                    Color.black
+                    
+                    // Device frame container
+                    if showDeviceFrame {
+                        DeviceFrame(scale: deviceScale) {
+                            currentScreenView
                         }
+                    } else {
+                        currentScreenView
+                            .scaleEffect(deviceScale)
                     }
                 }
-                .scaleEffect(scale)
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(showDeviceFrame ? Color.gray.opacity(0.3) : Color.black)
         }
-        .background(Color.black)
-        .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
-        .environmentObject(DataController())
-        .environment(\.colorScheme, .dark)
+        .preferredColorScheme(.dark)
     }
     
-    /// Creates a view model with appropriate data based on the current step
-    private func createViewModel(for step: OnboardingStep) -> OnboardingViewModel {
-        let viewModel = OnboardingViewModel()
-        viewModel.currentStep = step
+    // Current screens based on selected flow
+    var currentScreens: [(name: String, view: AnyView)] {
+        switch selectedFlow {
+        case .consolidated:
+            return consolidatedFlowScreens
+        case .original:
+            return originalFlowScreens
+        case .company:
+            return companyFlowScreens
+        }
+    }
+    
+    // Current screen view
+    @ViewBuilder
+    var currentScreenView: some View {
+        if selectedScreen < currentScreens.count {
+            currentScreens[selectedScreen].view
+                .environmentObject(mockViewModel)
+                .environment(\.useConsolidatedOnboarding, selectedFlow == .consolidated)
+        }
+    }
+    
+    // Mock view model with sample data
+    var mockViewModel: OnboardingViewModel {
+        let vm = OnboardingViewModel()
         
-        // Add sample data based on how far we are in the flow
-        if step.rawValue >= OnboardingStep.accountSetup.rawValue {
-            viewModel.email = "user@example.com"
-            viewModel.password = "password123"
-            viewModel.confirmPassword = "password123"
+        // Set sample data based on current screen
+        if selectedScreen > 0 {
+            vm.email = "john.doe@example.com"
+            vm.selectedUserType = selectedFlow == .company ? .company : .employee
         }
         
-        if step.rawValue >= OnboardingStep.organizationJoin.rawValue {
-            viewModel.isSignedUp = true
-            viewModel.userId = "user123"
+        if selectedScreen > 1 {
+            vm.password = "password123"
+            vm.confirmPassword = "password123"
+            vm.isSignedUp = true
+            vm.userId = "12345"
         }
         
-        if step.rawValue >= OnboardingStep.userDetails.rawValue {
-            viewModel.firstName = "John"
-            viewModel.lastName = "Doe"
-            viewModel.phoneNumber = "5551234567"
-            viewModel.isSignedUp = true
+        if selectedScreen > 2 {
+            vm.phoneNumber = "5551234567"
+            vm.isPhoneValid = true
         }
         
-        if step.rawValue >= OnboardingStep.companyCode.rawValue {
-            viewModel.companyCode = "DEMO123"
+        if selectedScreen > 3 {
+            vm.firstName = "John"
+            vm.lastName = "Doe"
+            
+            if selectedFlow == .company {
+                vm.companyName = "OPS Construction Inc"
+                vm.companyEmail = "info@opsconstruction.com"
+                vm.companyPhone = "5559876543"
+            }
         }
         
-        if step.rawValue >= OnboardingStep.permissions.rawValue {
-            viewModel.companyName = "Demo Company, Inc."
-            viewModel.isCompanyJoined = true
-            viewModel.isLocationPermissionGranted = true
-            viewModel.isNotificationsPermissionGranted = true
+        if selectedScreen > 4 {
+            if selectedFlow != .company {
+                vm.companyCode = "OPS123"
+                vm.isCompanyJoined = true
+            } else {
+                vm.companyIndustry = .carpentry
+                vm.companySize = .sixToTen
+                vm.companyAge = .fiveToTen
+            }
         }
         
-        if step.rawValue >= OnboardingStep.fieldSetup.rawValue {
-            // Field setup data
-        }
-        
-        return viewModel
+        return vm
+    }
+    
+    // Consolidated flow screens (7 steps)
+    var consolidatedFlowScreens: [(name: String, view: AnyView)] {
+        [
+            ("Welcome", AnyView(WelcomeView(viewModel: mockViewModel))),
+            ("User Type", AnyView(UserTypeSelectionView().environmentObject(mockViewModel))),
+            ("Account Setup", AnyView(AccountSetupView(viewModel: mockViewModel))),
+            ("Phone", AnyView(PhoneNumberView(viewModel: mockViewModel))),
+            ("User Details", AnyView(UserDetailsView(viewModel: mockViewModel))),
+            ("Join Org", AnyView(OrganizationJoinView(viewModel: mockViewModel))),
+            ("Permissions", AnyView(ConsolidatedPermissionsView(viewModel: mockViewModel))),
+            ("Complete", AnyView(CompletionView(onComplete: {})))
+        ]
+    }
+    
+    // Original flow screens (11 steps)
+    var originalFlowScreens: [(name: String, view: AnyView)] {
+        [
+            ("Welcome", AnyView(WelcomeView(viewModel: mockViewModel))),
+            ("Email", AnyView(EmailView(viewModel: mockViewModel))),
+            ("Password", AnyView(PasswordView(viewModel: mockViewModel))),
+            ("User Info", AnyView(UserInfoView(viewModel: mockViewModel))),
+            ("Phone", AnyView(PhoneNumberView(viewModel: mockViewModel))),
+            ("Company Code", AnyView(CompanyCodeView(viewModel: mockViewModel))),
+            ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel).environmentObject(DataController()))),
+            ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel))),
+            ("Complete", AnyView(CompletionView(onComplete: {})))
+        ]
+    }
+    
+    // Company flow screens
+    var companyFlowScreens: [(name: String, view: AnyView)] {
+        [
+            ("Welcome", AnyView(WelcomeView(viewModel: mockViewModel))),
+            ("User Type", AnyView(UserTypeSelectionView().environmentObject(mockViewModel))),
+            ("Account Setup", AnyView(AccountSetupView(viewModel: mockViewModel))),
+            ("Phone", AnyView(PhoneNumberView(viewModel: mockViewModel))),
+            ("Welcome Guide", AnyView(WelcomeGuideView().environmentObject(mockViewModel))),
+            ("Basic Info", AnyView(CompanyBasicInfoView().environmentObject(mockViewModel))),
+            ("Contact", AnyView(CompanyContactView().environmentObject(mockViewModel))),
+            ("Details", AnyView(CompanyDetailsView().environmentObject(mockViewModel))),
+            ("Address", AnyView(CompanyAddressView().environmentObject(mockViewModel))),
+            ("Team Invites", AnyView(TeamInvitesView().environmentObject(mockViewModel))),
+            ("Permissions", AnyView(ConsolidatedPermissionsView(viewModel: mockViewModel))),
+            ("Complete", AnyView(CompletionView(onComplete: {})))
+        ]
     }
 }
 
-// OnboardingStep is already CaseIterable in OnboardingModels.swift
+// MARK: - Device Frame Component
+struct DeviceFrame<Content: View>: View {
+    let scale: CGFloat
+    let content: Content
+    
+    init(scale: CGFloat, @ViewBuilder content: () -> Content) {
+        self.scale = scale
+        self.content = content()
+    }
+    
+    var body: some View {
+        ZStack {
+            // iPhone frame
+            RoundedRectangle(cornerRadius: 40)
+                .strokeBorder(Color.gray, lineWidth: 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 40)
+                        .fill(Color.black)
+                )
+                .overlay(
+                    // Dynamic Island
+                    Capsule()
+                        .frame(width: 120, height: 35)
+                        .foregroundColor(Color.black)
+                        .offset(y: -UIScreen.main.bounds.height / 2 + 60)
+                )
+                .frame(width: 390, height: 844)
+                .scaleEffect(scale)
+            
+            // Screen content
+            content
+                .frame(width: 390, height: 844)
+                .clipShape(RoundedRectangle(cornerRadius: 35))
+                .scaleEffect(scale)
+        }
+    }
+}
 
-#Preview("Onboarding Flow") {
+// MARK: - Individual Screen Previews
+struct OnboardingScreenPreviews: PreviewProvider {
+    static var previews: some View {
+        // Main navigator
+        OnboardingFlowPreview()
+            .previewDisplayName("Flow Navigator")
+    }
+    
+    static func mockViewModelWithUserType() -> OnboardingViewModel {
+        let vm = OnboardingViewModel()
+        vm.selectedUserType = .employee
+        return vm
+    }
+    
+    static func mockViewModelWithEmail() -> OnboardingViewModel {
+        let vm = OnboardingViewModel()
+        vm.email = "test@"
+        vm.password = "pass"
+        return vm
+    }
+    
+    static func mockViewModelWithPhone() -> OnboardingViewModel {
+        let vm = OnboardingViewModel()
+        vm.phoneNumber = "555123"
+        return vm
+    }
+    
+    static func mockViewModelWithCode() -> OnboardingViewModel {
+        let vm = OnboardingViewModel()
+        vm.companyCode = "OPS"
+        vm.isLoading = false
+        return vm
+    }
+}
+
+// MARK: - Device Size Testing
+struct OnboardingDeviceSizePreview: PreviewProvider {
+    static var previews: some View {
+        Group {
+            // Different device sizes
+            ForEach(["iPhone 15 Pro", "iPhone 15 Pro Max", "iPhone SE (3rd generation)"], id: \.self) { device in
+                OnboardingPresenter()
+                    .environmentObject(DataController())
+                    .environmentObject(OnboardingViewModel())
+                    .environment(\.useConsolidatedOnboarding, true)
+                    .preferredColorScheme(.dark)
+                    .previewDevice(PreviewDevice(rawValue: device))
+                    .previewDisplayName(device)
+            }
+        }
+    }
+}
+
+// MARK: - Preview Provider
+struct OnboardingFlowPreview_Previews: PreviewProvider {
+    static var previews: some View {
+        OnboardingFlowPreview()
+            .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - State Testing Preview
+struct OnboardingStateTestingPreview: View {
+    @StateObject private var viewModel = OnboardingViewModel()
+    
+    var body: some View {
+        VStack {
+            // State controls
+            VStack(alignment: .leading, spacing: 12) {
+                Text("State Testing").font(.headline)
+                
+                Toggle("Is Signed Up", isOn: $viewModel.isSignedUp)
+                Toggle("Is Loading", isOn: $viewModel.isLoading)
+                Toggle("Has Error", isOn: .constant(!viewModel.errorMessage.isEmpty))
+                
+                if !viewModel.errorMessage.isEmpty {
+                    Text("Error: \(viewModel.errorMessage)")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+                
+                HStack {
+                    Text("User Type:")
+                    Picker("Type", selection: $viewModel.selectedUserType) {
+                        Text("None").tag(UserType?.none)
+                        Text("Employee").tag(UserType?.some(.employee))
+                        Text("Company").tag(UserType?.some(.company))
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                }
+            }
+            .padding()
+            .background(Color.gray.opacity(0.1))
+            
+            // Preview current state
+            AccountSetupView(viewModel: viewModel)
+                .preferredColorScheme(.dark)
+        }
+    }
+}
+
+#Preview("State Testing") {
+    OnboardingStateTestingPreview()
+}
+
+#Preview("Main Flow") {
     OnboardingFlowPreview()
 }

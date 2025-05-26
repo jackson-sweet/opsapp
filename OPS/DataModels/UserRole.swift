@@ -17,8 +17,8 @@ enum UserRole: String, Codable {
 }
 
 enum UserType: String, CaseIterable, Codable {
-    case employee = "Employee"
-    case company = "Company"
+    case employee = "employee"
+    case company = "company"
     
     var displayName: String {
         switch self {
@@ -26,6 +26,25 @@ enum UserType: String, CaseIterable, Codable {
             return "Employee"
         case .company:
             return "Business Owner"
+        }
+    }
+    
+    // Custom decoding to handle migration from old capitalized values
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        
+        // Handle old capitalized values
+        switch rawValue.lowercased() {
+        case "employee":
+            self = .employee
+        case "company":
+            self = .company
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid UserType value: \(rawValue)"
+            )
         }
     }
 }

@@ -189,6 +189,7 @@ struct SettingsToggle: View {
                 Text(description)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineSpacing(1.5)
             }
             
             Spacer()

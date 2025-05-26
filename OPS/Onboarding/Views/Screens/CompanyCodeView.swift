@@ -32,9 +32,9 @@ struct CompanyCodeView: View {
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(OPSStyle.Typography.captionBold)
                                 Text("Back")
-                                    .font(.system(size: 16, weight: .medium))
+                                    .font(OPSStyle.Typography.bodyBold)
                             }
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -42,7 +42,7 @@ struct CompanyCodeView: View {
                         Spacer()
                         
                         Text("Step 3 of 6")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(Color.gray)
                     }
                     .padding(.top, 8)
@@ -65,16 +65,16 @@ struct CompanyCodeView: View {
                     // Header
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Enter company")
-                            .font(.system(size: 28, weight: .bold))
+                            .font(OPSStyle.Typography.title)
                             .foregroundColor(.white)
                         
                         Text("code.")
-                            .font(.system(size: 28, weight: .bold))
+                            .font(OPSStyle.Typography.title)
                             .foregroundColor(.white)
                             .padding(.bottom, 12)
                         
                         Text("Your company code connects your account to your organization.")
-                            .font(.system(size: 16))
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(Color.gray)
                             .lineSpacing(4)
                     }
@@ -87,7 +87,7 @@ struct CompanyCodeView: View {
                         
                         //DO NOT FORCE CAPITALIZATION
                         TextField("Enter code", text: $viewModel.companyCode)
-                            .font(.system(size: 16))
+                            .font(OPSStyle.Typography.body)
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                             .onboardingTextFieldStyle()
@@ -99,10 +99,10 @@ struct CompanyCodeView: View {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "info.circle.fill")
                             .foregroundColor(.white.opacity(0.7))
-                            .font(.system(size: 14))
+                            .font(OPSStyle.Typography.caption)
                         
                         Text("Obtain your company code from your manager, in your organization's settings.")
-                            .font(.system(size: 14))
+                            .font(OPSStyle.Typography.caption)
                             .foregroundColor(.white.opacity(0.6))
                     }
                     .padding(.top, 8)

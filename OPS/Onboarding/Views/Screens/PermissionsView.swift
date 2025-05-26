@@ -29,9 +29,9 @@ struct PermissionsView: View {
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(OPSStyle.Typography.captionBold)
                                 Text("Back")
-                                    .font(.system(size: 16, weight: .medium))
+                                    .font(OPSStyle.Typography.bodyBold)
                             }
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -39,7 +39,7 @@ struct PermissionsView: View {
                         Spacer()
                         
                         Text("Step 4 of 6")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(Color.gray)
                     }
                     .padding(.top, 8)
@@ -84,7 +84,7 @@ struct PermissionsView: View {
                                     HStack {
                                         Image(systemName: "location.fill")
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .font(.system(size: 20))
+                                            .font(OPSStyle.Typography.subtitle)
                                         
                                         Text("Location Access")
                                             .font(OPSStyle.Typography.bodyBold)
@@ -128,7 +128,7 @@ struct PermissionsView: View {
                                     HStack {
                                         Image(systemName: "bell.fill")
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .font(.system(size: 20))
+                                            .font(OPSStyle.Typography.subtitle)
                                         
                                         Text("Push Notifications")
                                             .font(OPSStyle.Typography.bodyBold)
@@ -165,7 +165,7 @@ struct PermissionsView: View {
                             HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: "info.circle.fill")
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    .font(.system(size: 16))
+                                    .font(OPSStyle.Typography.body)
                                 
                                 Text("You can change these permissions later in your device settings if needed.")
                                     .font(OPSStyle.Typography.caption)
@@ -218,7 +218,7 @@ struct PermissionsView: View {
                             
                             // Location pin
                             Image(systemName: "location.fill")
-                                .font(.system(size: 48))
+                                .font(OPSStyle.Typography.largeTitle)
                                 .foregroundColor(.white)
                         }
                         .frame(height: 240)
@@ -230,10 +230,10 @@ struct PermissionsView: View {
                             HStack(alignment: .top, spacing: 12) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(Color.yellow)
-                                    .font(.system(size: 24))
+                                    .font(OPSStyle.Typography.title)
                                 
                                 Text("It is very important that you choose the \"Always Allow\" option in the next dialog. This will allow your teammates to locate you and improve comms.")
-                                    .font(.system(size: 14))
+                                    .font(OPSStyle.Typography.caption)
                                     .foregroundColor(.white)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -244,7 +244,7 @@ struct PermissionsView: View {
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(Color.yellow, lineWidth: 1)
                         )
-                        .cornerRadius(8)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         
                         // Buttons
                         Button(action: {
@@ -256,12 +256,12 @@ struct PermissionsView: View {
                             viewModel.moveToNextStep()
                         }) {
                             Text("ALLOW LOCATION ACCESS")
-                                .font(.system(size: 16, weight: .bold))
+                                .font(OPSStyle.Typography.bodyBold)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .foregroundColor(.white)
-                                .cornerRadius(8)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .padding(.top, 24)
                     }

@@ -108,6 +108,30 @@ struct AppConfiguration {
             ]
     }
     
+    // MARK: - App Info
+    
+    struct AppInfo {
+        /// App version from Bundle
+        static var version: String {
+            return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        }
+        
+        /// Build number from Bundle
+        static var build: String {
+            return Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+        }
+        
+        /// Full version string for display
+        static var fullVersion: String {
+            return "v\(version) (\(build))"
+        }
+        
+        /// Simple version string for display
+        static var displayVersion: String {
+            return "v\(version)"
+        }
+    }
+    
     // MARK: - Debug Settings
     
     struct Debug {

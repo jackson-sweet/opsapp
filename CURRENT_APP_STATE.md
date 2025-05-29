@@ -60,10 +60,11 @@ Comprehensive settings implementation including:
 - **Organization Settings**: Company details, team management
 - **Notification Settings**: Project-specific preferences
 - **Map Settings**: Navigation and display options
-- **Security Settings**: Password reset, authentication
-- **Data Storage Settings**: Cache management
+- **Security Settings**: Password reset, authentication, PIN reset with "Forgot PIN?" button
+- **Data Storage Settings**: Cache management with fixed storage slider
 - **Project/Expense History**: Historical data views
 - **App Settings**: General preferences
+- **What's Coming**: Categorized upcoming features with +1 voting system
 
 ### 7. Image Handling ✅
 - **Photo capture** for project documentation
@@ -85,6 +86,7 @@ Comprehensive settings implementation including:
    - Individual digit boxes with tap-to-activate design
    - Success/error states with haptic feedback and animations
    - Smooth fade transitions on authentication
+   - PIN reset functionality with "Forgot PIN?" button in Security Settings
    - Located: `/Network/Auth/SimplePINManager.swift` and `/Views/SimplePINEntryView.swift`
 
 2. **Enhanced UI Components** - Production-ready design system
@@ -92,6 +94,8 @@ Comprehensive settings implementation including:
    - **SegmentedControl**: Reusable component used throughout app
    - **FormTextField**: Standardized input fields with proper styling
    - **Enhanced Button Styles**: Consistent OPSStyle usage across app
+   - **Expandable Category Sections**: Collapsible feature categories in What's Coming
+   - **Vote Button Component**: +1 voting system with haptic feedback
 
 ### Core System Improvements (May 22-24)
 1. **Map zoom system rewrite** - Improved user control and eliminated conflicts

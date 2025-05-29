@@ -33,7 +33,7 @@ struct MiniMapView: View {
                     Map(initialPosition: .region(region(for: coordinate))) {
                         Annotation("Project Location", coordinate: coordinate) {
                             // Use SF Symbols marker - clean version without background, with white color
-                            Image(systemName: "mappin.circle.fill")
+                            Image(systemName: "pin")
                                 .font(.system(size: 28, weight: .semibold))
                                 .foregroundColor(Color.white)
                                 .shadow(color: Color.black.opacity(0.5), radius: 3, x: 0, y: 2)

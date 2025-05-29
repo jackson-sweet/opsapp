@@ -154,9 +154,17 @@ struct ProfileSettingsView: View {
                             )
                             .padding(.horizontal, 20)
                             
+                            // Email note
+                            Text("You cannot change your email address, it is the foundation of your account")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .italic()
+                                .padding(.horizontal, 20)
+                                .padding(.top, -16)
+                            
                             // Home address - with autocomplete
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Home Address")
+                                Text("HOME ADDRESS")
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
@@ -188,6 +196,7 @@ struct ProfileSettingsView: View {
                         }
                         .padding(.bottom, 40)
                     }
+                    .padding(.top, 12)
                 }
                 .tabBarPadding() // Add padding for tab bar
             }

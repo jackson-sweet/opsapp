@@ -12,8 +12,9 @@ struct ConsolidatedPermissionsView: View {
     
     var body: some View {
         ZStack {
-            // Background color
-            Color.black.edgesIgnoringSafeArea(.all)
+            // Background color - conditional theming
+            (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator
@@ -31,10 +32,6 @@ struct ConsolidatedPermissionsView: View {
                     }
                     
                     Spacer()
-                    
-                    Text("Step 5 of 7")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(Color.gray)
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
@@ -55,18 +52,18 @@ struct ConsolidatedPermissionsView: View {
                     VStack(spacing: 24) {
                         // Header
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Enable")
+                            Text("ENABLE")
                                 .font(OPSStyle.Typography.title)
-                                .foregroundColor(.white)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
                             
-                            Text("permissions.")
+                            Text("PERMISSIONS.")
                                 .font(OPSStyle.Typography.title)
-                                .foregroundColor(.white)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
                                 .padding(.bottom, 12)
                             
                             Text("OPS works best with location and notification permissions enabled. These help you stay updated on projects and navigate to job sites.")
                                 .font(OPSStyle.Typography.body)
-                                .foregroundColor(Color.gray)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                                 .lineSpacing(4)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -114,6 +111,7 @@ struct ConsolidatedPermissionsView: View {
                         OnboardingNavigationButtons(
                             primaryText: "Continue",
                             secondaryText: "Skip for Now",
+                            isLightTheme: viewModel.shouldUseLightTheme,
                             onPrimaryTapped: {
                                 print("ConsolidatedPermissionsView: Continue button tapped")
                                 viewModel.moveToNextStepV2()
@@ -218,10 +216,12 @@ struct PermissionCard: View {
 
 #Preview {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.isLocationPermissionGranted = false
     viewModel.isNotificationsPermissionGranted = true
     
     return ConsolidatedPermissionsView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

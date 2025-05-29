@@ -13,6 +13,7 @@ struct EmailView: View {
     
     // For confirm password functionality
     @State private var localConfirmPassword: String = ""
+    @State private var currentFieldIndex: Int = 0 // 0: email, 1: password, 2: confirm password
     
     // Check if passwords match
     private var passwordsMatch: Bool {
@@ -27,10 +28,27 @@ struct EmailView: View {
         }
     }
     
+    // Color scheme based on user type
+    private var backgroundColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background
+    }
+    
+    private var primaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+    
+    private var secondaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+    }
+    
+    private var cardBackgroundColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.cardBackground : OPSStyle.Colors.cardBackground
+    }
+    
     var body: some View {
         ZStack {
             // Background color
-            Color.black.edgesIgnoringSafeArea(.all)
+            backgroundColor.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Top navigation and progress section
@@ -39,7 +57,13 @@ struct EmailView: View {
                     if isInConsolidatedFlow {
                         HStack {
                             Button(action: {
-                                viewModel.moveToPreviousStepV2()
+                                if currentFieldIndex > 0 {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentFieldIndex -= 1
+                                    }
+                                } else {
+                                    viewModel.moveToPreviousStepV2()
+                                }
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left")
@@ -52,9 +76,13 @@ struct EmailView: View {
                             
                             Spacer()
                             
-                            Text("Step 1 of 6")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(Color.gray)
+                            Button(action: {
+                                viewModel.logoutAndReturnToLogin()
+                            }) {
+                                Text("Sign Out")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(secondaryTextColor)
+                            }
                         }
                         .padding(.top, 8)
                         .padding(.bottom, 8)
@@ -63,7 +91,7 @@ struct EmailView: View {
                         HStack(spacing: 4) {
                             ForEach(0..<6) { step in
                                 Rectangle()
-                                    .fill(step == 0 ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.4))
+                                    .fill(step == 0 ? OPSStyle.Colors.primaryAccent : secondaryTextColor.opacity(0.4))
                                     .frame(height: 4)
                             }
                         }
@@ -72,213 +100,216 @@ struct EmailView: View {
                 }
                 .padding(.horizontal, isInConsolidatedFlow ? OPSStyle.Layout.spacing3 : 0)
                 
-                // Main centered content area
-                GeometryReader { geometry in
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            // Center content vertically in available space
-                            Spacer()
-                                .frame(height: max(20, geometry.size.height * 0.1))
-                            
-                            // Main content
-                            VStack(spacing: 24) {
-                                // Header
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(isInConsolidatedFlow ? "Create your" : "What's your")
+                // Main centered content area - removed ScrollView
+                VStack(spacing: 0) {
+                    Spacer()
+                    
+                    // Main content
+                    VStack(spacing: 24) {
+                        // Header - changes based on current field
+                        VStack(alignment: .leading, spacing: 8) {
+                            if isInConsolidatedFlow {
+                                if currentFieldIndex == 0 {
+                                    Text("Create your")
                                         .font(OPSStyle.Typography.title)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(primaryTextColor)
                                     
-                                    Text(isInConsolidatedFlow ? "account." : "email address?")
+                                    Text("account.")
                                         .font(OPSStyle.Typography.title)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(primaryTextColor)
                                         .padding(.bottom, 12)
                                     
-                                    Text(isInConsolidatedFlow ? 
-                                        "Enter your email and create a password to get started with OPS." : 
-                                        "We'll use this to sign you in and send important updates.")
+                                    Text("Enter your email address to get started with OPS.")
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(Color.gray)
+                                        .foregroundColor(secondaryTextColor)
+                                        .lineSpacing(4)
+                                } else if currentFieldIndex == 1 {
+                                    Text("Create a")
+                                        .font(OPSStyle.Typography.title)
+                                        .foregroundColor(primaryTextColor)
+                                    
+                                    Text("password.")
+                                        .font(OPSStyle.Typography.title)
+                                        .foregroundColor(primaryTextColor)
+                                        .padding(.bottom, 12)
+                                    
+                                    Text("Use at least 8 characters for a strong password.")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(secondaryTextColor)
+                                        .lineSpacing(4)
+                                } else {
+                                    Text("Confirm your")
+                                        .font(OPSStyle.Typography.title)
+                                        .foregroundColor(primaryTextColor)
+                                    
+                                    Text("password.")
+                                        .font(OPSStyle.Typography.title)
+                                        .foregroundColor(primaryTextColor)
+                                        .padding(.bottom, 12)
+                                    
+                                    Text("Re-enter your password to confirm.")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(secondaryTextColor)
                                         .lineSpacing(4)
                                 }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.bottom, 20)
+                            } else {
+                                Text("What's your")
+                                    .font(OPSStyle.Typography.title)
+                                    .foregroundColor(primaryTextColor)
                                 
+                                Text("email address?")
+                                    .font(OPSStyle.Typography.title)
+                                    .foregroundColor(primaryTextColor)
+                                    .padding(.bottom, 12)
+                                
+                                Text("We'll use this to sign you in and send important updates.")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(secondaryTextColor)
+                                    .lineSpacing(4)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.bottom, 20)
+                        
+                        // Single field display based on currentFieldIndex
+                        VStack(spacing: 16) {
+                            if currentFieldIndex == 0 {
                                 // Email input
-                                VStack(alignment: .leading, spacing: 8) {
-                                    InputFieldLabel(label: "EMAIL ADDRESS")
-                                    
-                                    TextField("Email", text: $viewModel.email)
-                                        .font(OPSStyle.Typography.body)
-                                        .keyboardType(.emailAddress)
-                                        .autocapitalization(.none)
-                                        .disableAutocorrection(true)
-                                        .textContentType(.oneTimeCode) // Prevents autofill
-                                        .onboardingTextFieldStyle()
-                                        .transition(.opacity)
-                                        .animation(.easeInOut, value: isInConsolidatedFlow)
-                                }
+                                UnderlineTextField(
+                                    placeholder: "Email address",
+                                    text: $viewModel.email,
+                                    keyboardType: .emailAddress,
+                                    viewModel: viewModel,
+                                    onChange: { _ in
+                                        viewModel.errorMessage = ""
+                                    }
+                                )
+                                .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                                 
-                                // Validation indicator
+                                // Validation indicator for email
                                 if !viewModel.email.isEmpty {
                                     HStack {
                                         Image(systemName: viewModel.isEmailValid ? "checkmark.circle.fill" : "xmark.circle.fill")
                                             .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(viewModel.isEmailValid ? Color("StatusSuccess") : Color("StatusError"))
+                                            .foregroundColor(viewModel.isEmailValid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
                                         
                                         Text(viewModel.isEmailValid ? "Valid email" : "Invalid email format")
                                             .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(viewModel.isEmailValid ? Color("StatusSuccess") : Color("StatusError"))
+                                            .foregroundColor(viewModel.isEmailValid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.top, 4)
                                 }
+                            } else if currentFieldIndex == 1 {
+                                // Password input
+                                UnderlineTextField(
+                                    placeholder: "Password",
+                                    text: $viewModel.password,
+                                    isSecure: true,
+                                    viewModel: viewModel,
+                                    onChange: { _ in
+                                        viewModel.errorMessage = ""
+                                    }
+                                )
+                                .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                                 
-                                // Password section for consolidated flow
-                                if isInConsolidatedFlow {
-                                    // Password input
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        InputFieldLabel(label: "PASSWORD")
-                                        
-                                        SecureField("Password (8+ characters)", text: $viewModel.password)
-                                            .font(OPSStyle.Typography.body)
-                                            .textContentType(.oneTimeCode) // Prevents autofill
-                                            .onboardingTextFieldStyle()
-                                            .transition(.opacity)
-                                            .animation(.easeInOut, value: isInConsolidatedFlow)
-                                    }
-                                    .padding(.top, 16)
-                                    
-                                    // Password validation
-                                    if !viewModel.password.isEmpty {
-                                        HStack {
-                                            Image(systemName: viewModel.isPasswordValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                                .font(OPSStyle.Typography.caption)
-                                                .foregroundColor(viewModel.isPasswordValid ? Color("StatusSuccess") : Color("StatusError"))
-                                            
-                                            Text(viewModel.isPasswordValid ? "Password meets requirements" : "Password must be at least 8 characters")
-                                                .font(OPSStyle.Typography.caption)
-                                                .foregroundColor(viewModel.isPasswordValid ? Color("StatusSuccess") : Color("StatusError"))
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.top, 4)
-                                    }
-                                    
-                                    // Confirm password 
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        InputFieldLabel(label: "CONFIRM PASSWORD")
-                                        
-                                        SecureField("Re-enter password", text: $localConfirmPassword)
-                                            .font(OPSStyle.Typography.body)
-                                            .textContentType(.oneTimeCode) // Prevents autofill
-                                            .onboardingTextFieldStyle()
-                                            .transition(.opacity)
-                                            .animation(.easeInOut, value: isInConsolidatedFlow)
-                                    }
-                                    .padding(.top, 16)
-                                    
-                                    // Confirm password validation
-                                    if !localConfirmPassword.isEmpty {
-                                        HStack {
-                                            Image(systemName: passwordsMatch ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                                .font(OPSStyle.Typography.caption)
-                                                .foregroundColor(passwordsMatch ? Color("StatusSuccess") : Color("StatusError"))
-                                            
-                                            Text(passwordsMatch ? "Passwords match" : "Passwords don't match")
-                                                .font(OPSStyle.Typography.caption)
-                                                .foregroundColor(passwordsMatch ? Color("StatusSuccess") : Color("StatusError"))
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.top, 4)
-                                    }
-                                    
-                                    // Info message
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Image(systemName: "info.circle.fill")
-                                            .foregroundColor(.white.opacity(0.7))
+                                // Password validation
+                                if !viewModel.password.isEmpty {
+                                    HStack {
+                                        Image(systemName: viewModel.isPasswordValid ? "checkmark.circle.fill" : "xmark.circle.fill")
                                             .font(OPSStyle.Typography.caption)
+                                            .foregroundColor(viewModel.isPasswordValid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
                                         
-                                        Text("Your password should have at least 8 characters and include a mix of letters, numbers and symbols.")
+                                        Text(viewModel.isPasswordValid ? "Password meets requirements" : "Password must be at least 8 characters")
                                             .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(.white.opacity(0.6))
+                                            .foregroundColor(viewModel.isPasswordValid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
                                     }
-                                    .padding(.top, 8)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, 4)
                                 }
+                            } else {
+                                // Confirm password input
+                                UnderlineTextField(
+                                    placeholder: "Confirm password",
+                                    text: $localConfirmPassword,
+                                    isSecure: true,
+                                    viewModel: viewModel,
+                                    onChange: { _ in
+                                        viewModel.errorMessage = ""
+                                    }
+                                )
+                                .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                                 
-                                // Error message
-                                if !viewModel.errorMessage.isEmpty {
-                                    ErrorMessageView(message: viewModel.errorMessage)
-                                        .padding(.top, 16)
+                                // Confirm password validation
+                                if !localConfirmPassword.isEmpty {
+                                    HStack {
+                                        Image(systemName: passwordsMatch ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                            .font(OPSStyle.Typography.caption)
+                                            .foregroundColor(passwordsMatch ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
+                                        
+                                        Text(passwordsMatch ? "Passwords match" : "Passwords don't match")
+                                            .font(OPSStyle.Typography.caption)
+                                            .foregroundColor(passwordsMatch ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, 4)
                                 }
                             }
-                            .padding(.horizontal, 24)
-                            
-                            // Add spacer to push content up
-                            Spacer()
-                                .frame(height: max(20, geometry.size.height * 0.1))
                         }
-                        .frame(minHeight: geometry.size.height)
+                        
+                        // Error message
+                        if !viewModel.errorMessage.isEmpty {
+                            ErrorMessageView(message: viewModel.errorMessage)
+                        }
                     }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    
+                    Spacer()
                 }
                 
                 // Bottom button section
                 VStack {
-                    // Button actions differ based on flow
                     if isInConsolidatedFlow {
-                        // Account setup action (email + password)
-                        Button(action: {
-                            Task {
-                                viewModel.isLoading = true
-                                // Since we've added confirm password, set it in viewModel too
-                                viewModel.confirmPassword = localConfirmPassword
-                                
-                                let success = try? await viewModel.submitEmailPasswordSignUp()
-                                
-                                await MainActor.run {
-                                    viewModel.isLoading = false
-                                    
-                                    if success == true {
-                                        // Proceed to next step if signup successful
-                                        viewModel.moveToNextStepV2()
+                        StandardContinueButton(
+                            isDisabled: viewModel.isLoading ||
+                                       (currentFieldIndex == 0 && !viewModel.isEmailValid) ||
+                                       (currentFieldIndex == 1 && !viewModel.isPasswordValid) ||
+                                       (currentFieldIndex == 2 && !passwordsMatch),
+                            isLoading: viewModel.isLoading,
+                            onTap: {
+                                if currentFieldIndex == 0 && viewModel.isEmailValid {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentFieldIndex = 1
+                                    }
+                                } else if currentFieldIndex == 1 && viewModel.isPasswordValid {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentFieldIndex = 2
+                                    }
+                                } else if currentFieldIndex == 2 && passwordsMatch {
+                                    Task {
+                                        viewModel.isLoading = true
+                                        viewModel.confirmPassword = localConfirmPassword
+                                        
+                                        let success = try? await viewModel.submitEmailPasswordSignUp()
+                                        
+                                        await MainActor.run {
+                                            viewModel.isLoading = false
+                                            
+                                            if success == true {
+                                                viewModel.moveToNextStepV2()
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }) {
-                            ZStack {
-                                HStack {
-                                    Text("Continue")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(.black)
-                                        .opacity(viewModel.isLoading ? 0 : 1)
-                                    
-                                    Spacer()
-                                    
-                                    if !viewModel.isLoading && canProceed {
-                                        Image(systemName: "arrow.right")
-                                            .font(OPSStyle.Typography.captionBold)
-                                            .foregroundColor(.black)
-                                            .padding(.trailing, 20)
-                                    }
-                                }
-                                
-                                if viewModel.isLoading {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            .frame(height: 52)
-                            .frame(maxWidth: .infinity)
-                            .background(canProceed && !viewModel.isLoading ? Color.white : Color.white.opacity(0.7))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                        .disabled(!canProceed || viewModel.isLoading)
+                        )
                     } else {
-                        // Standard flow navigation
                         OnboardingNavigationButtons(
-                            primaryText: "Continue",
+                            primaryText: "CONTINUE",
                             secondaryText: "Back",
                             isPrimaryDisabled: !viewModel.isEmailValid,
                             isLoading: viewModel.isLoading,
+                            isLightTheme: viewModel.shouldUseLightTheme,
                             onPrimaryTapped: {
                                 viewModel.moveToNextStep()
                             },
@@ -290,18 +321,22 @@ struct EmailView: View {
                 }
                 .padding(.horizontal, isInConsolidatedFlow ? OPSStyle.Layout.spacing3 : 24)
                 .padding(.vertical, 20)
-                .background(Color.black.opacity(0.7))
+                .background(backgroundColor.opacity(0.7))
             }
         }
+        .dismissKeyboardOnTap()
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }
 
 // MARK: - Preview
 #Preview("Email Screen") {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.email = "user@example.com"
     
     return EmailView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

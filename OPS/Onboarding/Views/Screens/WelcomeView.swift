@@ -17,22 +17,21 @@ struct WelcomeView: View {
     var body: some View {
         ZStack {
             // Background with subtle gradient
-            LinearGradient(
-                gradient: Gradient(colors: [Color.black, Color(red: 0.05, green: 0.05, blue: 0.1)]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            Color(OPSStyle.Colors.background)
             .edgesIgnoringSafeArea(.all)
             
             VStack(alignment: .leading, spacing: 0) {
                 // Logo in top corner
                 HStack {
-                    Image("LogoWhite")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 40, height: 40)
-                        .scaleEffect(logoScale)
-                    
+                    HStack(alignment: .bottom){
+                        Image("LogoWhite")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 40, height: 40)
+                        Text("OPS")
+                            .font(OPSStyle.Typography.title)
+                            .frame(height: 24)
+                    }
                     Spacer()
                     
                     Button(action: {
@@ -68,27 +67,23 @@ struct WelcomeView: View {
                     
                     // Headline messaging
                     VStack(alignment: .leading, spacing: 24) {
-                        // Bold headline
-                        Text("Your jobsite streamlined.")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
-                        
+                
                         // Key benefits
                         VStack(alignment: .leading, spacing: 16) {
                             Spacer()
                             BenefitRow(
-                                icon: "list.clipboard",
-                                text: "Track projects from estimate to completion"
+                                icon: "bolt.shield",
+                                text: "SCHEDULE, JOB BOARD AND ASSIGNMENTS".uppercased()
                             )
                             
                             BenefitRow(
                                 icon: "person.2",
-                                text: "Coordinate your entire crew in one place"
+                                text: "JOB DETAILS, LOCATION AND CONTACT INFO".uppercased()
                             )
                             
                             BenefitRow(
-                                icon: "doc.text.image",
-                                text: "Document jobsite conditions with photos"
+                                icon: "iphone.motion",
+                                text: "ALL IN YOUR CREW'S POCKETS.".uppercased()
                             )
                             Spacer()
                         }
@@ -98,6 +93,7 @@ struct WelcomeView: View {
                     Spacer()
                     
                     Text("OPS.")
+                        .font(OPSStyle.Typography.cardTitle)
                     // Builder message
                     Text("Built by trades, for trades.")
                         .font(OPSStyle.Typography.bodyBold)
@@ -105,34 +101,21 @@ struct WelcomeView: View {
                         .padding(.bottom, 40)
                         .opacity(textOpacity)
                     
-                    // Get Started Button - modern style
-                    Button(action: {
-                        print("WelcomeView: Get Started button tapped")
-                        
-                        // Use the appropriate method for the flow
-                        if AppConfiguration.UX.useConsolidatedOnboardingFlow {
-                            viewModel.moveToNextStepV2()
-                            print("WelcomeView: Moving to next V2 step: \(viewModel.currentStepV2.title)")
-                        } else {
-                            viewModel.moveToNextStep()
-                            print("WelcomeView: Moving to next step: \(viewModel.currentStep.title)")
-                        }
-                    }) {
-                        HStack {
-                            Text("Continue")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.black)
-                                .frame(maxWidth: .infinity)
+                    // Get Started Button
+                    StandardContinueButton(
+                        onTap: {
+                            print("WelcomeView: Get Started button tapped")
                             
-                            Image(systemName: "arrow.right")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(.black)
+                            // Use the appropriate method for the flow
+                            if AppConfiguration.UX.useConsolidatedOnboardingFlow {
+                                viewModel.moveToNextStepV2()
+                                print("WelcomeView: Moving to next V2 step: \(viewModel.currentStepV2.title)")
+                            } else {
+                                viewModel.moveToNextStep()
+                                print("WelcomeView: Moving to next step: \(viewModel.currentStep.title)")
+                            }
                         }
-                        .frame(height: 52)
-                        .background(Color.white)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .padding(.horizontal, 24)
-                    }
+                    )
                     .opacity(buttonOpacity)
                     .padding(.bottom, 30)
                 }
@@ -197,8 +180,10 @@ struct InfoText: View {
 // MARK: - Preview
 #Preview("Welcome Screen") {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     
     return WelcomeView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

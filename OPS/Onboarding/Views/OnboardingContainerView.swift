@@ -72,14 +72,19 @@ struct OnboardingView: View {
                     OrganizationJoinView(viewModel: viewModel, isInConsolidatedFlow: true)
                 case .userDetails:
                     // Use existing UserInfoView but configured for consolidated flow
-                    UserInfoView(viewModel: viewModel, isInConsolidatedFlow: true)
+                    UserInfoView(viewModel: viewModel, isInConsolidatedFlow: false)
                 case .companyCode:
-                    CompanyCodeView(viewModel: viewModel)
+                    // Show different view based on user type
+                    if viewModel.selectedUserType == .employee {
+                        CompanyCodeInputView(viewModel: viewModel)
+                    } else {
+                        CompanyCodeDisplayView(viewModel: viewModel)
+                    }
                 case .companyBasicInfo:
-                    CompanyBasicInfoView()
+                    CompanyBasicInfoView(isInConsolidatedFlow: true)
                         .environmentObject(viewModel)
                 case .companyAddress:
-                    CompanyAddressView()
+                    CompanyAddressView(isInConsolidatedFlow: true)
                         .environmentObject(viewModel)
                 case .companyContact:
                     CompanyContactView()
@@ -102,6 +107,7 @@ struct OnboardingView: View {
                         .environmentObject(dataController)
                 case .completion:
                     CompleteOnboarding()
+                        .environmentObject(viewModel)
                 }
             }
             .id("step_\(viewModel.currentStep.rawValue)")
@@ -113,8 +119,15 @@ struct OnboardingView: View {
     @ViewBuilder
     private func CompleteOnboarding() -> some View {
         CompletionView {
-            // Save all relevant user data upon completion
-            UserDefaults.standard.set(true, forKey: "onboarding_completed")
+            // This onComplete callback is actually not used anymore
+            // The CompletionView calls onboardingViewModel.nextStep() directly
+            // which transitions to WelcomeGuideView
+            print("CompleteOnboarding: onComplete callback called (this shouldn't happen)")
+        }
+        .environmentObject(viewModel)
+        .onAppear {
+            // Save user data when completion view appears
+            // The actual completion happens after welcome guide
             
             // Flag indicating user has a company (required to enter app)
             let hasCompany = !viewModel.companyName.isEmpty || 
@@ -123,10 +136,7 @@ struct OnboardingView: View {
             
             UserDefaults.standard.set(hasCompany, forKey: "has_joined_company")
             
-            // CRITICAL: Set authentication flag that determines app entry
-            UserDefaults.standard.set(true, forKey: "is_authenticated")
-            
-            // Create or update user in database
+            // Create or update user in database (but don't set authentication yet)
             Task {
                 // Create a user object with the collected onboarding data
                 let userIdValue = UserDefaults.standard.string(forKey: "user_id") ?? viewModel.userId
@@ -175,16 +185,10 @@ struct OnboardingView: View {
                             // Set current user in DataController
                             dataController.currentUser = user
                             
-                            // Force update the DataController authentication state
-                            dataController.isAuthenticated = true
+                            // Don't set authentication yet - wait for welcome guide
                         } catch {
                             print("Error saving user to database: \(error.localizedDescription)")
                         }
-                    }
-                } else {
-                    // If we don't have user ID, just set auth flag
-                    await MainActor.run {
-                        dataController.isAuthenticated = true
                     }
                 }
             }
@@ -201,14 +205,10 @@ struct OnboardingView: View {
             UserDefaults.standard.set(viewModel.isLocationPermissionGranted, forKey: "location_permission_granted")
             UserDefaults.standard.set(viewModel.isNotificationsPermissionGranted, forKey: "notifications_permission_granted")
             
-            print("OnboardingView: Onboarding completed successfully!")
+            print("OnboardingView: Completion step reached, user data saved")
             print("OnboardingView: User has company: \(hasCompany)")
-            print("OnboardingView: Set is_authenticated = true to enable app entry")
             
-            // Call the completion handler - the user will be directed to main app
-            if let onComplete = onComplete {
-                onComplete()
-            }
+            // Don't call onComplete yet - wait for welcome guide to finish
         }
     }
 }
@@ -216,32 +216,40 @@ struct OnboardingView: View {
 // MARK: - Preview
 #Preview("Onboarding Flow") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     
     OnboardingView(initialStep: .welcome)
         .environmentObject(previewHelper)
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }
 
 #Preview("Welcome Screen") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     
     OnboardingView(initialStep: .welcome)
         .environmentObject(previewHelper)
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }
 
 #Preview("Account Setup Screen") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     
     OnboardingView(initialStep: .accountSetup)
         .environmentObject(previewHelper)
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }
 
 #Preview("Completion Screen") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     
     OnboardingView(initialStep: .completion)
         .environmentObject(previewHelper)
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

@@ -284,6 +284,52 @@ class DataController: ObservableObject {
                             if let companyId = user.companyId {
                                 UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
                                 UserDefaults.standard.set(companyId, forKey: "company_id")
+                                
+                                // Fetch company details if we're connected
+                                if isConnected {
+                                    Task {
+                                        do {
+                                            print("Fetching company details on authentication for ID: \(companyId)")
+                                            let companyDTO = try await apiService.fetchCompany(id: companyId)
+                                            
+                                            // Check if company already exists in database
+                                            let companyDescriptor = FetchDescriptor<Company>(
+                                                predicate: #Predicate<Company> { $0.id == companyId }
+                                            )
+                                            let existingCompanies = try context.fetch(companyDescriptor)
+                                            
+                                            if let existingCompany = existingCompanies.first {
+                                                // Update existing company
+                                                existingCompany.name = companyDTO.companyName ?? existingCompany.name
+                                                existingCompany.externalId = companyDTO.companyID
+                                                existingCompany.phone = companyDTO.phone
+                                                existingCompany.email = companyDTO.officeEmail
+                                                
+                                                if let loc = companyDTO.location {
+                                                    existingCompany.address = loc.formattedAddress
+                                                    existingCompany.latitude = loc.lat
+                                                    existingCompany.longitude = loc.lng
+                                                }
+                                                
+                                                existingCompany.openHour = companyDTO.openHour
+                                                existingCompany.closeHour = companyDTO.closeHour
+                                                existingCompany.lastSyncedAt = Date()
+                                                
+                                                print("Updated existing company on auth: \(existingCompany.name)")
+                                            } else {
+                                                // Create new company
+                                                let newCompany = companyDTO.toModel()
+                                                context.insert(newCompany)
+                                                print("Created new company on auth: \(newCompany.name)")
+                                            }
+                                            
+                                            try context.save()
+                                            print("Successfully saved company to database")
+                                        } catch {
+                                            print("Error fetching/saving company on auth: \(error)")
+                                        }
+                                    }
+                                }
                             }
                             
                             initializeSyncManager()
@@ -404,9 +450,53 @@ class DataController: ObservableObject {
                     user.role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
                 }
                 
-                // Handle company ID
+                // Handle company ID and fetch company details
                 if let companyId = userDTO.company, !companyId.isEmpty {
                     user.companyId = companyId
+                    
+                    // Fetch and store company details
+                    Task {
+                        do {
+                            print("Fetching company details for ID: \(companyId)")
+                            let companyDTO = try await apiService.fetchCompany(id: companyId)
+                            
+                            // Check if company already exists in database
+                            let companyDescriptor = FetchDescriptor<Company>(
+                                predicate: #Predicate<Company> { $0.id == companyId }
+                            )
+                            let existingCompanies = try context.fetch(companyDescriptor)
+                            
+                            if let existingCompany = existingCompanies.first {
+                                // Update existing company
+                                existingCompany.name = companyDTO.companyName ?? existingCompany.name
+                                existingCompany.externalId = companyDTO.companyID
+                                existingCompany.phone = companyDTO.phone
+                                existingCompany.email = companyDTO.officeEmail
+                                
+                                if let loc = companyDTO.location {
+                                    existingCompany.address = loc.formattedAddress
+                                    existingCompany.latitude = loc.lat
+                                    existingCompany.longitude = loc.lng
+                                }
+                                
+                                existingCompany.openHour = companyDTO.openHour
+                                existingCompany.closeHour = companyDTO.closeHour
+                                existingCompany.lastSyncedAt = Date()
+                                
+                                print("Updated existing company: \(existingCompany.name)")
+                            } else {
+                                // Create new company
+                                let newCompany = companyDTO.toModel()
+                                context.insert(newCompany)
+                                print("Created new company: \(newCompany.name)")
+                            }
+                            
+                            try context.save()
+                            print("Successfully saved company to database")
+                        } catch {
+                            print("Error fetching/saving company: \(error)")
+                        }
+                    }
                 }
                 
                 // Handle user type
@@ -489,6 +579,9 @@ class DataController: ObservableObject {
         // Sign out from auth manager
         authManager.signOut()
         
+        // Clear PIN settings first
+        simplePINManager.removePIN()
+        
         // Delete the current user from the database if needed
         if let userId = currentUser?.id, let context = modelContext {
             do {
@@ -548,11 +641,15 @@ class DataController: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "Company Name")
         UserDefaults.standard.removeObject(forKey: "has_joined_company")
         
+        // Clear PIN settings
+        UserDefaults.standard.removeObject(forKey: "appPIN")
+        UserDefaults.standard.removeObject(forKey: "hasPINEnabled")
+        
         // Ensure UserDefaults changes are saved immediately
         UserDefaults.standard.synchronize()
         
         // Log the cleanup
-        print("DataController: Authentication and all user data cleared")
+        print("DataController: Authentication, PIN, and all user data cleared")
     }
     
     /// Cleans up duplicate users in the database

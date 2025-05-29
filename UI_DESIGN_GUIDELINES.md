@@ -274,6 +274,20 @@ Text("Button").font(OPSStyle.Typography.button)              // ALWAYS
    - Selected: White background with primary text
    - Project counts: Small blue circles in top-right corner
 
+### Feature Request Patterns
+1. **Expandable Categories**
+   - Use chevron icons that rotate when expanded/collapsed
+   - Smooth animation transitions (0.3s duration)
+   - Category headers maintain tap targets for accessibility
+   - Content fades in/out for polished feel
+
+2. **Vote Button Component**
+   - +1 button with haptic feedback on tap
+   - Shows current vote count inline
+   - Disabled state when user has already voted
+   - Primary accent color for interactive state
+   - Secondary text color when voted
+
 ## Common Anti-Patterns to Avoid
 
 1. **Never use opacity modifiers on backgrounds** - Use the appropriate solid color

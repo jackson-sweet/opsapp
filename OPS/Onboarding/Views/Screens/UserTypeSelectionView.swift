@@ -10,22 +10,41 @@ import SwiftUI
 struct UserTypeSelectionView: View {
     @EnvironmentObject var viewModel: OnboardingViewModel
     
+    // Color scheme based on selected user type
+    private var backgroundColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background
+    }
+    
+    private var primaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+    
+    private var secondaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+    }
+    
+    private var cardBackgroundColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.cardBackground : OPSStyle.Colors.cardBackground
+    }
+    
     var body: some View {
         ZStack {
-            // Background
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            // Background - changes based on selection
+            backgroundColor.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 32) {
                 // Header
-                VStack(spacing: 16) {
+                HStack(alignment: .bottom, spacing: 16) {
                     Image("LogoWhite")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(height: 60)
+                        .colorMultiply(viewModel.shouldUseLightTheme ? .black : .white) // Adjust logo color
                     
                     Text("OPS")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
+                        .font(OPSStyle.Typography.largeTitle)
+                        .foregroundColor(primaryTextColor)
+                    Spacer()
                 }
                 .padding(.top, 60)
                 
@@ -33,37 +52,32 @@ struct UserTypeSelectionView: View {
                 
                 // Content
                 VStack(spacing: 24) {
-                    VStack(spacing: 8) {
-                        Text("How are you using OPS?")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                        
-                        Text("Choose the option that best describes you")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .multilineTextAlignment(.center)
-                    }
                     
                     // User type options
                     VStack(spacing: 16) {
                         UserTypeOption(
                             type: .company,
-                            title: "Business Owner",
-                            description: "I own or manage a construction business and want to organize projects and teams",
+                            title: "COMPANY LEAD",
+                            description: "Command operations. Coordinate teams. Control the outcomes.",
                             isSelected: viewModel.selectedUserType == .company,
+                            isLightTheme: viewModel.shouldUseLightTheme,
                             action: {
-                                viewModel.selectedUserType = .company
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    viewModel.selectedUserType = .company
+                                }
                             }
                         )
                         
                         UserTypeOption(
                             type: .employee,
-                            title: "Employee",
-                            description: "I work for a construction company and want to access assigned projects",
+                            title: "TEAM MEMBER",
+                            description: "Execute plans. Crush projects. Rise through the ranks.",
                             isSelected: viewModel.selectedUserType == .employee,
+                            isLightTheme: viewModel.shouldUseLightTheme,
                             action: {
-                                viewModel.selectedUserType = .employee
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    viewModel.selectedUserType = .employee
+                                }
                             }
                         )
                     }
@@ -72,25 +86,19 @@ struct UserTypeSelectionView: View {
                 Spacer()
                 
                 // Continue button
-                Button(action: {
-                    if viewModel.selectedUserType != nil {
-                        viewModel.moveToNextStepV2()
+                StandardContinueButton(
+                    isDisabled: viewModel.selectedUserType == nil,
+                    onTap: {
+                        if viewModel.selectedUserType != nil {
+                            viewModel.moveToNextStepV2()
+                        }
                     }
-                }) {
-                    Text("Continue")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(viewModel.selectedUserType != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                }
-                .disabled(viewModel.selectedUserType == nil)
-                .padding(.horizontal, 32)
+                )
                 .padding(.bottom, 50)
             }
+            .padding(20)
         }
-        .preferredColorScheme(.dark)
+        .animation(.easeInOut(duration: 0.3), value: viewModel.selectedUserType)
     }
 }
 
@@ -99,47 +107,55 @@ struct UserTypeOption: View {
     let title: String
     let description: String
     let isSelected: Bool
+    let isLightTheme: Bool
     let action: () -> Void
+    @EnvironmentObject var viewModel: OnboardingViewModel
+    
+    private var primaryTextColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+    
+    private var secondaryTextColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+    }
+    
+    private var cardBackgroundColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.cardBackground : OPSStyle.Colors.cardBackground
+    }
     
     var body: some View {
         Button(action: action) {
             HStack(spacing: 16) {
-                // Selection indicator
-                ZStack {
-                    Circle()
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
-                        .frame(width: 24, height: 24)
-                    
-                    if isSelected {
-                        Circle()
-                            .fill(OPSStyle.Colors.primaryAccent)
-                            .frame(width: 12, height: 12)
-                    }
-                }
-                
                 // Content
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(isSelected ? (isLightTheme ? .white : .black) : primaryTextColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     
                     Text(description)
                         .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .foregroundColor(isSelected ? (isLightTheme ? OPSStyle.Colors.Light.tertiaryText : OPSStyle.Colors.tertiaryText) : secondaryTextColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .lineLimit(nil)
                 }
                 
                 Spacer()
+                
+                // Selection indicator
+                Image(systemName: "rectangle.portrait.and.arrow.forward")
+                    .font(.system(size: 24))
+                    .foregroundColor(isSelected ? (isLightTheme ? .white : .black) : primaryTextColor)
             }
             .padding(20)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? OPSStyle.Colors.cardBackground : OPSStyle.Colors.cardBackground.opacity(0.3))
+                    .fill(isSelected ? 
+                          (isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText) : 
+                          cardBackgroundColor.opacity(0.3))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: 1)
+                            .stroke(isSelected ? OPSStyle.Colors.secondaryText : Color.clear, lineWidth: 1)
                     )
             )
         }
@@ -148,7 +164,10 @@ struct UserTypeOption: View {
 }
 
 #Preview {
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
+    
     UserTypeSelectionView()
         .environmentObject(OnboardingViewModel())
+        .environmentObject(dataController)
         .preferredColorScheme(.dark)
 }

@@ -9,19 +9,38 @@ import SwiftUI
 
 struct UserDetailsView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    @FocusState private var firstNameFocused: Bool
-    @FocusState private var lastNameFocused: Bool
+    @FocusState private var isFieldFocused: Bool
+    @State private var currentFieldIndex: Int = 0 // 0: first name, 1: last name
+    
+    // Color scheme based on user type
+    private var backgroundColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background
+    }
+    
+    private var primaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+    
+    private var secondaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+    }
     
     var body: some View {
         ZStack {
             // Background color
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            backgroundColor.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Minimal header with back button
                 HStack {
                     Button(action: {
-                        viewModel.moveToPreviousStepV2()
+                        if currentFieldIndex > 0 {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentFieldIndex -= 1
+                            }
+                        } else {
+                            viewModel.moveToPreviousStepV2()
+                        }
                     }) {
                         Image(systemName: "chevron.left")
                             .font(OPSStyle.Typography.body)
@@ -29,6 +48,14 @@ struct UserDetailsView: View {
                     }
                     
                     Spacer()
+                    
+                    Button(action: {
+                        viewModel.logoutAndReturnToLogin()
+                    }) {
+                        Text("Sign Out")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(secondaryTextColor)
+                    }
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
@@ -37,57 +64,75 @@ struct UserDetailsView: View {
                 VStack(spacing: 40) {
                     Spacer()
                     
-                    // Header with larger text
+                    // Header with larger text - changes based on current field
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Tell us about\nyourself.")
-                            .font(OPSStyle.Typography.largeTitle)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        Text("This helps your team identify you.")
-                            .font(OPSStyle.Typography.cardTitle)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if currentFieldIndex == 0 {
+                            Text("What's your")
+                                .font(OPSStyle.Typography.largeTitle)
+                                .foregroundColor(primaryTextColor)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text("first name?")
+                                .font(OPSStyle.Typography.largeTitle)
+                                .foregroundColor(primaryTextColor)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text("This helps your team identify you.")
+                                .font(OPSStyle.Typography.cardTitle)
+                                .foregroundColor(secondaryTextColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            Text("What's your")
+                                .font(OPSStyle.Typography.largeTitle)
+                                .foregroundColor(primaryTextColor)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text("last name?")
+                                .font(OPSStyle.Typography.largeTitle)
+                                .foregroundColor(primaryTextColor)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text("Almost done with your profile.")
+                                .font(OPSStyle.Typography.cardTitle)
+                                .foregroundColor(secondaryTextColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                     .padding(.horizontal, 24)
                         
-                    // Name fields with larger font and no labels
+                    // Single name field with larger font
                     VStack(spacing: 32) {
-                        // First Name Field
-                        VStack(spacing: 12) {
-                            TextField("First name", text: $viewModel.firstName)
-                                .font(OPSStyle.Typography.subtitle)
-                                .foregroundColor(.white)
-                                .textContentType(.givenName)
-                                .disableAutocorrection(true)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .focused($firstNameFocused)
-                            
-                            Rectangle()
-                                .fill(firstNameFocused || !viewModel.firstName.isEmpty ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.3))
-                                .frame(height: 1)
-                                .animation(.easeInOut(duration: 0.2), value: firstNameFocused)
-                        }
-                        
-                        // Last Name Field
-                        VStack(spacing: 12) {
-                            TextField("Last name", text: $viewModel.lastName)
-                                .font(OPSStyle.Typography.subtitle)
-                                .foregroundColor(.white)
-                                .textContentType(.familyName)
-                                .disableAutocorrection(true)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .focused($lastNameFocused)
-                            
-                            Rectangle()
-                                .fill(lastNameFocused || !viewModel.lastName.isEmpty ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.3))
-                                .frame(height: 1)
-                                .animation(.easeInOut(duration: 0.2), value: lastNameFocused)
+                        if currentFieldIndex == 0 {
+                            // First Name Field
+                            UnderlineTextField(
+                                placeholder: "First name",
+                                text: $viewModel.firstName,
+                                autocapitalization: .words,
+                                viewModel: viewModel,
+                                onChange: { _ in
+                                    viewModel.errorMessage = ""
+                                }
+                            )
+                            .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+                        } else {
+                            // Last Name Field
+                            UnderlineTextField(
+                                placeholder: "Last name",
+                                text: $viewModel.lastName,
+                                autocapitalization: .words,
+                                viewModel: viewModel,
+                                onChange: { _ in
+                                    viewModel.errorMessage = ""
+                                }
+                            )
+                            .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                         }
                     }
                     .padding(.horizontal, 24)
-                        
                         
                     // Error message
                     if !viewModel.errorMessage.isEmpty {
@@ -103,32 +148,51 @@ struct UserDetailsView: View {
                     // Continue button - minimal style
                     VStack(spacing: 24) {
                         Button(action: {
-                            let canProceed = !viewModel.firstName.isEmpty && !viewModel.lastName.isEmpty
-                            if canProceed {
-                                // Store user details
-                                UserDefaults.standard.set(viewModel.firstName, forKey: "user_first_name")
-                                UserDefaults.standard.set(viewModel.lastName, forKey: "user_last_name")
-                                
-                                // Move to next step
-                                viewModel.moveToNextStepV2()
+                            if currentFieldIndex == 0 {
+                                if !viewModel.firstName.isEmpty {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentFieldIndex = 1
+                                    }
+                                } else {
+                                    viewModel.errorMessage = "Please enter your first name"
+                                }
                             } else {
-                                viewModel.errorMessage = "Please enter your first and last name"
+                                if !viewModel.lastName.isEmpty {
+                                    // Store user details
+                                    UserDefaults.standard.set(viewModel.firstName, forKey: "user_first_name")
+                                    UserDefaults.standard.set(viewModel.lastName, forKey: "user_last_name")
+                                    
+                                    // Move to next step
+                                    viewModel.moveToNextStepV2()
+                                } else {
+                                    viewModel.errorMessage = "Please enter your last name"
+                                }
                             }
                         }) {
                             Text("CONTINUE")
                                 .font(OPSStyle.Typography.button)
-                                .foregroundColor(.black)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? .white : .black)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 56)
                                 .background(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .fill((!viewModel.firstName.isEmpty && !viewModel.lastName.isEmpty) ? Color.white : Color.white.opacity(0.3))
+                                        .fill(
+                                            (currentFieldIndex == 0 ? !viewModel.firstName.isEmpty : !viewModel.lastName.isEmpty) ? 
+                                            (viewModel.shouldUseLightTheme ? OPSStyle.Colors.primaryAccent : Color.white) : 
+                                            (viewModel.shouldUseLightTheme ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.white.opacity(0.3))
+                                        )
                                 )
                         }
-                        .disabled(viewModel.firstName.isEmpty || viewModel.lastName.isEmpty)
+                        .disabled(currentFieldIndex == 0 ? viewModel.firstName.isEmpty : viewModel.lastName.isEmpty)
                         .padding(.horizontal, 24)
                     }
                     .padding(.bottom, 40)
+                }
+                .onAppear {
+                    isFieldFocused = true
+                }
+                .onChange(of: currentFieldIndex) { _, _ in
+                    isFieldFocused = true
                 }
             }
         }
@@ -137,6 +201,7 @@ struct UserDetailsView: View {
 
 #Preview {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.firstName = "John"
     viewModel.lastName = "Doe"
     viewModel.phoneNumber = "5551234567"
@@ -144,5 +209,6 @@ struct UserDetailsView: View {
     
     return UserDetailsView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

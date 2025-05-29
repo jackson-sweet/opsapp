@@ -161,6 +161,7 @@ struct OrganizationSettingsView: View {
                         }
                     }
                     .padding(.bottom, 40)
+                    .padding(.top, 12)
                 }
                 .tabBarPadding()
             }

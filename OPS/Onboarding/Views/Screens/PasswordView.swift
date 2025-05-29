@@ -18,6 +18,20 @@ struct PasswordView: View {
             Color.black.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 24) {
+                // Navigation header
+                HStack {
+                    Spacer()
+                    
+                    Button(action: {
+                        viewModel.logoutAndReturnToLogin()
+                    }) {
+                        Text("Sign Out")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
+                .padding(.bottom, 8)
+                
                 // Header
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Create a")
@@ -66,6 +80,9 @@ struct PasswordView: View {
                             }
                         }
                         .onboardingTextFieldStyle()
+                        .onChange(of: viewModel.password) { _, _ in
+                            viewModel.errorMessage = ""
+                        }
                     }
                     
                     // Confirm password field
@@ -95,6 +112,9 @@ struct PasswordView: View {
                             }
                         }
                         .onboardingTextFieldStyle()
+                        .onChange(of: viewModel.confirmPassword) { _, _ in
+                            viewModel.errorMessage = ""
+                        }
                     }
                 }
                 
@@ -124,7 +144,7 @@ struct PasswordView: View {
                     primaryText: "Continue",
                     secondaryText: "Back",
                     isPrimaryDisabled: !viewModel.isPasswordValid || !viewModel.isPasswordMatching,
-                    isLoading: viewModel.isLoading,
+                    isLoading: viewModel.isLoading, isLightTheme: viewModel.shouldUseLightTheme,
                     onPrimaryTapped: {
                         // Attempt sign up with email/password
                         viewModel.errorMessage = ""
@@ -176,11 +196,13 @@ struct ValidationIndicator: View {
 // MARK: - Preview
 #Preview("Password Setup") {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.email = "user@example.com"
     viewModel.password = "password123"
     viewModel.confirmPassword = "password123"
     
     return PasswordView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

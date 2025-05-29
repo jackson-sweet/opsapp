@@ -141,38 +141,14 @@ struct ProjectDetailsView: View {
                         // Location map - more visual prominence
                         locationSection
                         
-                        // Project info - streamlined cards
+                        // Project info with notes - streamlined cards
                         infoSection
-                        
-                        // Team members - kept similar
-                        teamSection
                         
                         // Photos - improved grid layout
                         photosSection
                         
-                        // Notes section with heading
-                        VStack(alignment: .leading, spacing: 12) {
-                            // Notes heading with icon
-                            HStack {
-                                Image(systemName: "note.text")
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                
-                                Text("PROJECT NOTES")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                Spacer()
-                            }
-                            .padding(.horizontal)
-                            
-                            // Expandable notes view
-                            ExpandableNotesView(
-                                notes: project.notes ?? "",
-                                editedNotes: $noteText,
-                                onSave: saveNotes
-                            )
-                            .padding(.horizontal)
-                        }
+                        // Team members - moved to bottom
+                        teamSection
                         
                         // Bottom padding
                         Spacer()
@@ -255,15 +231,19 @@ struct ProjectDetailsView: View {
         }
         // Client contact sheet
         .sheet(isPresented: $showingClientContact) {
-            ContactDetailSheet(
-                name: project.clientName,
+            // Create a temporary TeamMember for client contact
+            let clientTeamMember = TeamMember(
+                id: "client-\(project.id)",
+                firstName: project.clientName.components(separatedBy: " ").first ?? project.clientName,
+                lastName: project.clientName.components(separatedBy: " ").dropFirst().joined(separator: " "),
                 role: "Client",
+                avatarURL: nil,
                 email: nil, // TODO: Add client email when available in API
-                phone: nil, // TODO: Add client phone when available in API
-                isClient: true
+                phone: nil  // TODO: Add client phone when available in API
             )
-            .presentationDragIndicator(.visible)
-            .presentationDetents([.medium])
+            
+            TeamMemberDetailView(user: nil, teamMember: clientTeamMember)
+                .presentationDragIndicator(.visible)
         }
     }
     
@@ -354,7 +334,7 @@ struct ProjectDetailsView: View {
                     openInMaps(coordinate: project.coordinate, address: project.address)
                 }
                 .frame(height: 180)
-                .cornerRadius(16)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
                 
                 
                 // Directions button on map
@@ -372,7 +352,7 @@ struct ProjectDetailsView: View {
                     .padding(.vertical, 8)
                     .background(OPSStyle.Colors.cardBackground)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .cornerRadius(16)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .padding(12)
             }
@@ -429,13 +409,36 @@ struct ProjectDetailsView: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackground)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                 }
+                
+                // Notes section
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "note.text")
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(width: 24)
+                        
+                        Text("PROJECT NOTES")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    
+                    // Expandable notes view
+                    ExpandableNotesView(
+                        notes: project.notes ?? "",
+                        editedNotes: $noteText,
+                        onSave: saveNotes
+                    )
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(OPSStyle.Colors.cardBackgroundDark)
             }
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBackground, lineWidth: 1)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
             .padding(.horizontal)
         }
@@ -535,8 +538,12 @@ struct ProjectDetailsView: View {
                     photoGridView(photos: photos)
                 }
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .padding(.horizontal)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.horizontal)
             )
         }
     }
@@ -563,7 +570,7 @@ struct ProjectDetailsView: View {
         .background(OPSStyle.Colors.cardBackgroundDark)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBackground, lineWidth: 1)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal)

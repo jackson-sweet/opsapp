@@ -27,6 +27,7 @@ struct LoginView: View {
     // UI states
     @State private var showLoginMode = false
     @State private var pageScale: CGFloat = 1.0
+    @State private var showForgotPassword = false
     
     var body: some View {
         ZStack {
@@ -43,39 +44,43 @@ struct LoginView: View {
                 // Logo (smaller, just as an element)
                 if !showLoginMode {
                     
-                    HStack {
+                    HStack(alignment: .bottom) {
                         
                         Image("LogoWhite")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 44, height: 44)
                             .padding(.bottom, 8)
+                        Text("OPS")
+                            .font(OPSStyle.Typography.largeTitle.weight(.bold))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         Spacer()
                         
-                    }.padding(.leading, 32)
+                    }.padding(.leading, 4)
                     
                     Spacer()
                     
                     // Bold message inspired by your inspiration designs
                     VStack(alignment: .leading, spacing: 32) {
                         
-                        Text("OPS.")
-                            .font(.system(size: 26, weight: .bold))
-                            .foregroundColor(.white)
                         
-                        Text("BUILT BY TRADES, FOR TRADES.")
-                            .font(.system(size: 26, weight: .bold))
-                            .foregroundColor(.white)
-                        
-                        Text("The job managment app that gets out of the way.")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(.white.opacity(0.7))
+                        VStack(alignment: .leading) {
+                            Text("BUILT BY TRADES,")
+                                .font(OPSStyle.Typography.largeTitle.weight(.bold))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                            Text("FOR TRADES.")
+                                .font(OPSStyle.Typography.largeTitle.weight(.bold))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                        Text("Designed in the field, not in a tech office.")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                             .padding(.top, 4)
                         
                         Spacer()
                             .frame(height: 40)
                         
-                    }.padding(.leading, 32)
+                    }
                     
                     // Login/Signup Options
                     
@@ -98,18 +103,18 @@ struct LoginView: View {
                             }
                         }) {
                             Text("GET SIGNED UP")
-                                .font(.system(size: 17, weight: .medium))
+                                .font(OPSStyle.Typography.button)
                                 .foregroundColor(.black)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 52)
+                                .frame(height: OPSStyle.Layout.touchTargetStandard)
                                 .background(Color.white)
-                                .cornerRadius(26)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     HStack {
                                         Spacer()
                                         Image(systemName: "arrow.right")
                                             .foregroundColor(.black)
-                                            .font(.system(size: 15, weight: .semibold))
+                                            .font(OPSStyle.Typography.caption.weight(.semibold))
                                             .padding(.trailing, 20)
                                     }
                                 )
@@ -133,19 +138,18 @@ struct LoginView: View {
                         }) {
                             HStack {
                                 Text("LOG INTO ACCOUNT")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(.white)
+                                    .font(OPSStyle.Typography.button)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                 
                                 Image(systemName: "arrow.right")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.7))
+                                    .font(OPSStyle.Typography.caption.weight(.medium))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
                             .background(Color.clear)
                         }
                     }
-                    .padding(.horizontal, 40)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
                 } else {
                     // Login form (once Sign In is selected)
@@ -166,29 +170,29 @@ struct LoginView: View {
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(OPSStyle.Typography.caption.weight(.semibold))
                                 Text("Back")
-                                    .font(.system(size: 16, weight: .medium))
+                                    .font(OPSStyle.Typography.button)
                             }
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                         .padding(.bottom, 8)
                         
                         // Form title
                         Text("Enter your credentials")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(OPSStyle.Typography.title.weight(.bold))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(.bottom, 24)
                         
                         // Username field with floating label design
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Username or email")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color.gray)
+                            Text("Email")
+                                .font(OPSStyle.Typography.caption.weight(.medium))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                             
                             TextField("", text: $username)
-                                .font(.system(size: 17))
-                                .foregroundColor(.white)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(.vertical, 12)
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
@@ -197,7 +201,7 @@ struct LoginView: View {
                                         Spacer()
                                         Rectangle()
                                             .frame(height: 1)
-                                            .foregroundColor(username.isEmpty ? Color.gray.opacity(0.5) : Color.white)
+                                            .foregroundColor(username.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                                     }
                                 )
                         }
@@ -206,19 +210,19 @@ struct LoginView: View {
                         // Password field with floating label design
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Password")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color.gray)
+                                .font(OPSStyle.Typography.caption.weight(.medium))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                             
                             SecureField("", text: $password)
-                                .font(.system(size: 17))
-                                .foregroundColor(.white)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(.vertical, 12)
                                 .overlay(
                                     VStack {
                                         Spacer()
                                         Rectangle()
                                             .frame(height: 1)
-                                            .foregroundColor(password.isEmpty ? Color.gray.opacity(0.5) : Color.white)
+                                            .foregroundColor(password.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                                     }
                                 )
                         }
@@ -233,23 +237,23 @@ struct LoginView: View {
                                 }
                                 
                                 Text(isLoggingIn ? "Signing in..." : "Continue")
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(OPSStyle.Typography.button)
                                     .foregroundColor(.black)
                             }
                             .frame(maxWidth: .infinity)
-                            .frame(height: 52)
+                            .frame(height: OPSStyle.Layout.touchTargetStandard)
                             .background(
                                 username.isEmpty || password.isEmpty || isLoggingIn ?
                                 Color.white.opacity(0.7) : Color.white
                             )
-                            .cornerRadius(26)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 !isLoggingIn ?
                                 HStack {
                                     Spacer()
                                     Image(systemName: "arrow.right")
                                         .foregroundColor(.black)
-                                        .font(.system(size: 15, weight: .semibold))
+                                        .font(OPSStyle.Typography.caption.weight(.semibold))
                                         .padding(.trailing, 20)
                                 } : nil
                             )
@@ -259,27 +263,27 @@ struct LoginView: View {
                         
                         // Forgot password link
                         Button(action: {
-                            // Forgot password action
+                            showForgotPassword = true
                         }) {
                             Text("Forgot password?")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(Color.gray)
+                                .font(OPSStyle.Typography.button)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .padding(.top, 16)
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .padding(.horizontal, 40)
                     .transition(.opacity.combined(with: .move(edge: .leading)))
                 }
                 
                 Spacer()
                 
                 // Version info
-                Text("v1.0.0")
+                Text(AppConfiguration.AppInfo.displayVersion)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                     .padding(.bottom, 20)
             }
+            .padding(40)
             .scaleEffect(pageScale)
             .dismissKeyboardOnTap()
             
@@ -321,8 +325,19 @@ struct LoginView: View {
                     showOnboarding = false
                 }
             }
+            
+            // Forgot password overlay
+            if showForgotPassword {
+                ForgotPasswordView(
+                    isPresented: $showForgotPassword,
+                    prefilledEmail: $username
+                )
+                .transition(.opacity)
+                .zIndex(3)
+            }
         }
         .animation(.easeInOut, value: showOnboarding)
+        .animation(.easeInOut, value: showForgotPassword)
         .alert(isPresented: $showError, content: {
             Alert(
                 title: Text("Sign In Failed"),

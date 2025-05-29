@@ -38,6 +38,10 @@ The OPS (Operational Project System) app is a field-optimized project management
 - **Calendar Components**: Month/week views with project indicators
   - Snapping week view, project count badges
   - Today's date highlighting
+- **Feature Request Components**: +1 voting system
+  - Vote button with haptic feedback
+  - Feature standardization for vote counting
+  - Expandable category sections
 
 ## Key Features
 
@@ -128,20 +132,26 @@ The OPS (Operational Project System) app is a field-optimized project management
    - Test project status updates across all states
    - Verify status change APIs work as expected
 
-6. **Push Notifications**
+6. **Feature Request System**
+   - **+1 Voting Implementation**: Users can vote on upcoming features
+   - **Feature Standardization**: Features are normalized before counting (e.g., "Dark Mode", "dark mode", "Dark mode" all count as the same feature)
+   - **Vote Storage**: Uses UserDefaults to track user votes per device
+   - **UI Pattern**: Expandable categories with vote buttons showing current count
+
+7. **Push Notifications**
    - Implement push notification registration
    - Add handling for project status update notifications
    - Create user preferences for notification types
 
-7. **Testing**
+8. **Testing**
    - Add automated testing for critical paths
    - Perform field testing in real-world conditions
 
-8. **Performance**
+9. **Performance**
    - Optimize performance for large data sets
    - Test app with realistic data volumes
 
-9. **App Store Preparation**
+10. **App Store Preparation**
    - Create app store screenshots and metadata
    - Prepare privacy policy and terms of service
 

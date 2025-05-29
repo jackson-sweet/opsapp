@@ -129,7 +129,7 @@ struct UserInfoView: View {
                         case .firstName:
                             FirstNamePhaseView(
                                 firstName: $viewModel.firstName,
-                                isLightTheme: viewModel.shouldUseLightTheme,
+                                viewModel: viewModel,
                                 onContinue: {
                                     withAnimation(.easeInOut(duration: 0.3)) {
                                         currentPhase = .lastName
@@ -139,8 +139,7 @@ struct UserInfoView: View {
                         case .lastName:
                             LastNamePhaseView(
                                 lastName: $viewModel.lastName,
-                                isLightTheme: viewModel.shouldUseLightTheme,
-                                userType: viewModel.selectedUserType,
+                                viewModel: viewModel,
                                 onContinue: {
                                     // Always go to phone number phase for all users
                                     withAnimation(.easeInOut(duration: 0.3)) {
@@ -151,7 +150,7 @@ struct UserInfoView: View {
                         case .phoneNumber:
                             PhoneNumberPhaseView(
                                 phoneNumber: $viewModel.phoneNumber,
-                                isLightTheme: viewModel.shouldUseLightTheme,
+                                viewModel: viewModel,
                                 onContinue: {
                                     if isInConsolidatedFlow {
                                         viewModel.moveToNextStepV2()
@@ -178,19 +177,19 @@ struct UserInfoView: View {
 
 struct FirstNamePhaseView: View {
     @Binding var firstName: String
-    let isLightTheme: Bool
+    @ObservedObject var viewModel: OnboardingViewModel
     let onContinue: () -> Void
     
     private var primaryTextColor: Color {
-        isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
     }
     
     private var secondaryTextColor: Color {
-        isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
     }
     
     private var placeholderColor: Color {
-        isLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.6) : OPSStyle.Colors.secondaryText.opacity(0.6)
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.6) : OPSStyle.Colors.secondaryText.opacity(0.6)
     }
     
     var body: some View {
@@ -215,23 +214,13 @@ struct FirstNamePhaseView: View {
             .padding(.bottom, 30)
             
             // First name input
-            TextField("First name", text: $firstName)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(primaryTextColor)
-                .keyboardType(.namePhonePad)
-                .autocapitalization(.words)
-                .disableAutocorrection(true)
-                .textContentType(.givenName)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(isLightTheme ? OPSStyle.Colors.Light.cardBackground : OPSStyle.Colors.cardBackground)
-                        )
-                )
+            UnderlineTextField(
+                placeholder: "First name",
+                text: $firstName,
+                keyboardType: .namePhonePad,
+                autocapitalization: .words,
+                viewModel: viewModel
+            )
             
             Spacer()
             
@@ -246,16 +235,15 @@ struct FirstNamePhaseView: View {
 
 struct LastNamePhaseView: View {
     @Binding var lastName: String
-    let isLightTheme: Bool
-    let userType: UserType?
+    @ObservedObject var viewModel: OnboardingViewModel
     let onContinue: () -> Void
     
     private var primaryTextColor: Color {
-        isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
     }
     
     private var secondaryTextColor: Color {
-        isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
     }
     
     var body: some View {
@@ -280,23 +268,13 @@ struct LastNamePhaseView: View {
             .padding(.bottom, 30)
             
             // Last name input
-            TextField("Last name", text: $lastName)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(primaryTextColor)
-                .keyboardType(.namePhonePad)
-                .autocapitalization(.words)
-                .disableAutocorrection(true)
-                .textContentType(.familyName)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(isLightTheme ? OPSStyle.Colors.Light.cardBackground : OPSStyle.Colors.cardBackground)
-                        )
-                )
+            UnderlineTextField(
+                placeholder: "Last name",
+                text: $lastName,
+                keyboardType: .namePhonePad,
+                autocapitalization: .words,
+                viewModel: viewModel
+            )
             
             Spacer()
             
@@ -311,15 +289,15 @@ struct LastNamePhaseView: View {
 
 struct PhoneNumberPhaseView: View {
     @Binding var phoneNumber: String
-    let isLightTheme: Bool
+    @ObservedObject var viewModel: OnboardingViewModel
     let onContinue: () -> Void
     
     private var primaryTextColor: Color {
-        isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
     }
     
     private var secondaryTextColor: Color {
-        isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
     }
     
     private var isPhoneValid: Bool {
@@ -349,30 +327,19 @@ struct PhoneNumberPhaseView: View {
             .padding(.bottom, 30)
             
             // Phone number input
-            TextField("(___) ___-____", text: $phoneNumber)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(primaryTextColor)
-                .keyboardType(.phonePad)
-                .textContentType(.telephoneNumber)
-                .onChange(of: phoneNumber) { oldValue, newValue in
+            UnderlineTextField(
+                placeholder: "(___) ___-____",
+                text: $phoneNumber,
+                keyboardType: .phonePad,
+                viewModel: viewModel,
+                onChange: { newValue in
                     // Only keep digits and format
                     let digits = newValue.filter { $0.isNumber }
                     if digits.count <= 10 {
                         phoneNumber = formatPhoneNumber(newValue)
-                    } else {
-                        phoneNumber = oldValue
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(isLightTheme ? OPSStyle.Colors.Light.cardBackground : OPSStyle.Colors.cardBackground)
-                        )
-                )
+            )
             
             Spacer()
             

@@ -59,6 +59,29 @@ enum OPSStyle {
             endPoint: .bottom
         )
         
+        // MARK: - Light Theme (Employee Onboarding)
+        enum Light {
+            // Background colors
+            static let background = Color.white
+            static let cardBackground = Color(red: 0.95, green: 0.95, blue: 0.97) // Light gray
+            static let cardBackgroundDark = Color(red: 0.92, green: 0.92, blue: 0.95) // Slightly darker light gray
+            
+            // Text colors
+            static let primaryText = Color.black
+            static let secondaryText = Color(red: 0.4, green: 0.4, blue: 0.4) // Medium gray
+            static let tertiaryText = Color(red: 0.6, green: 0.6, blue: 0.6) // Light gray
+            
+            // Brand colors (keep the same)
+            static let primaryAccent = Colors.primaryAccent
+            static let secondaryAccent = Colors.secondaryAccent
+            
+            // Status colors (keep the same)
+            static let successStatus = Colors.successStatus
+            static let warningStatus = Colors.warningStatus
+            static let errorStatus = Colors.errorStatus
+            static let inactiveStatus = Colors.inactiveStatus
+        }
+        
         // Utility
         static func statusColor(for status: Status) -> Color {
             switch status {

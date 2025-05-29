@@ -7,6 +7,22 @@ struct CompanyDetailsView: View {
     @State private var selectedAge: CompanyAge?
     @State private var showingIndustryPicker = false
     @State private var searchText = ""
+    @State private var currentPhase: CompanyDetailsPhase = .industry
+    
+    enum CompanyDetailsPhase: Int, CaseIterable {
+        case industry = 0
+        case size = 1
+        case age = 2
+    }
+    
+    // Calculate the current step number
+    private var currentStepNumber: Int {
+        return 6 // Company flow position - after contact
+    }
+    
+    private var totalSteps: Int {
+        return 10 // Company flow has 10 total steps
+    }
     
     var filteredIndustries: [Industry] {
         if searchText.isEmpty {
@@ -19,201 +35,381 @@ struct CompanyDetailsView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            OnboardingHeader(
-                title: "Company Details",
-                subtitle: "Step 4 of 6",
-                showBackButton: true,
-                onBack: {
-                    onboardingViewModel.previousStep()
-                }
-            )
+        ZStack {
+            // Background color - conditional theming
+            (onboardingViewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                .edgesIgnoringSafeArea(.all)
             
-            ScrollView {
-                VStack(spacing: 32) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Tell us about your business")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(Color("TextPrimary"))
-                        
-                        Text("This helps us match you with relevant projects and opportunities.")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(Color("TextSecondary"))
+            VStack(spacing: 24) {
+                // Navigation header
+                HStack {
+                    Button(action: {
+                        if currentPhase == .industry {
+                            onboardingViewModel.previousStep()
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentPhase = CompanyDetailsPhase(rawValue: currentPhase.rawValue - 1) ?? .industry
+                            }
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(OPSStyle.Typography.captionBold)
+                            Text("Back")
+                                .font(OPSStyle.Typography.bodyBold)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     
-                    VStack(spacing: 24) {
-                        // Industry Selection
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Primary Industry")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(Color("TextPrimary"))
-                            
-                            Button(action: {
-                                showingIndustryPicker = true
-                            }) {
-                                HStack {
-                                    Text(selectedIndustry?.displayName ?? "Select your industry")
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(selectedIndustry != nil ? Color("TextPrimary") : Color("TextSecondary"))
-                                    
-                                    Spacer()
-                                    
-                                    Image(systemName: "chevron.down")
-                                        .font(OPSStyle.Typography.captionBold)
-                                        .foregroundColor(Color("TextSecondary"))
+                    Spacer()
+                    
+                    Button(action: {
+                        onboardingViewModel.logoutAndReturnToLogin()
+                    }) {
+                        Text("Sign Out")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                
+                // Step indicator bars
+                HStack(spacing: 4) {
+                    ForEach(0..<totalSteps) { step in
+                        Rectangle()
+                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
+                            .frame(height: 4)
+                    }
+                }
+                .padding(.bottom, 16)
+                
+                // Content area with phases
+                VStack(spacing: 24) {
+                    // Phase content
+                    Group {
+                        switch currentPhase {
+                        case .industry:
+                            IndustryPhaseView(
+                                selectedIndustry: $selectedIndustry,
+                                showingIndustryPicker: $showingIndustryPicker,
+                                onContinue: {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentPhase = .size
+                                    }
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color("StatusInactive"), lineWidth: 1)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(Color("CardBackground"))
-                                        )
-                                )
-                            }
-                        }
-                        
-                        // Company Size Selection
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Company Size")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(Color("TextPrimary"))
-                            
-                            VStack(spacing: 8) {
-                                ForEach(CompanySize.allCases, id: \.self) { size in
-                                    Button(action: {
-                                        selectedSize = size
-                                    }) {
-                                        HStack {
-                                            Text(size.displayName)
-                                                .font(OPSStyle.Typography.body)
-                                                .foregroundColor(Color("TextPrimary"))
-                                            
-                                            Spacer()
-                                            
-                                            if selectedSize == size {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .font(OPSStyle.Typography.subtitle)
-                                                    .foregroundColor(Color("AccentPrimary"))
-                                            } else {
-                                                Circle()
-                                                    .stroke(Color("StatusInactive"), lineWidth: 1)
-                                                    .frame(width: 20, height: 20)
+                            )
+                        case .size:
+                            SizePhaseView(
+                                selectedSize: $selectedSize,
+                                onContinue: {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentPhase = .age
+                                    }
+                                }
+                            )
+                        case .age:
+                            AgePhaseView(
+                                selectedAge: $selectedAge,
+                                onContinue: {
+                                    onboardingViewModel.companyIndustry = selectedIndustry
+                                    onboardingViewModel.companySize = selectedSize
+                                    onboardingViewModel.companyAge = selectedAge
+                                    
+                                    // Create the company and get the company code
+                                    Task {
+                                        do {
+                                            try await onboardingViewModel.createCompany()
+                                            await MainActor.run {
+                                                onboardingViewModel.nextStep()
+                                            }
+                                        } catch {
+                                            await MainActor.run {
+                                                // Error is already set in viewModel
+                                                print("Failed to create company: \(error)")
                                             }
                                         }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 12)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(selectedSize == size ? Color("AccentPrimary").opacity(0.1) : Color("CardBackground"))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 8)
-                                                        .stroke(selectedSize == size ? Color("AccentPrimary") : Color("StatusInactive"), lineWidth: 1)
-                                                )
-                                        )
                                     }
-                                    .buttonStyle(PlainButtonStyle())
                                 }
-                            }
-                        }
-                        
-                        // Company Age Selection
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("How long has your company been in business?")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(Color("TextPrimary"))
-                            
-                            VStack(spacing: 8) {
-                                ForEach(CompanyAge.allCases, id: \.self) { age in
-                                    Button(action: {
-                                        selectedAge = age
-                                    }) {
-                                        HStack {
-                                            Text(age.displayName)
-                                                .font(OPSStyle.Typography.body)
-                                                .foregroundColor(Color("TextPrimary"))
-                                            
-                                            Spacer()
-                                            
-                                            if selectedAge == age {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .font(OPSStyle.Typography.subtitle)
-                                                    .foregroundColor(Color("AccentPrimary"))
-                                            } else {
-                                                Circle()
-                                                    .stroke(Color("StatusInactive"), lineWidth: 1)
-                                                    .frame(width: 20, height: 20)
-                                            }
-                                        }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 12)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(selectedAge == age ? Color("AccentPrimary").opacity(0.1) : Color("CardBackground"))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 8)
-                                                        .stroke(selectedAge == age ? Color("AccentPrimary") : Color("StatusInactive"), lineWidth: 1)
-                                                )
-                                        )
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
-                            }
+                            )
                         }
                     }
+                    .transition(.opacity)
+                    
+                    Spacer()
                 }
                 .padding(.horizontal, 24)
-                .padding(.bottom, 120)
             }
+            .sheet(isPresented: $showingIndustryPicker) {
+                IndustryPickerView(selectedIndustry: $selectedIndustry, searchText: $searchText, filteredIndustries: filteredIndustries)
+            }
+            .onAppear {
+                selectedIndustry = onboardingViewModel.companyIndustry
+                selectedSize = onboardingViewModel.companySize
+                selectedAge = onboardingViewModel.companyAge
+            }
+        }
+        .dismissKeyboardOnTap()
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+}
+
+// MARK: - Phase Views
+
+struct IndustryPhaseView: View {
+    @Binding var selectedIndustry: Industry?
+    @Binding var showingIndustryPicker: Bool
+    let onContinue: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("WHAT'S YOUR")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("INDUSTRY?")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.bottom, 12)
+                
+                Text("This helps us figure out what areas of the platform we should work on.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 30)
             
-            VStack(spacing: 16) {
+            // Industry Selection
+            VStack(alignment: .leading, spacing: 8) {
                 Button(action: {
-                    onboardingViewModel.companyIndustry = selectedIndustry
-                    onboardingViewModel.companySize = selectedSize
-                    onboardingViewModel.companyAge = selectedAge
-                    onboardingViewModel.nextStep()
+                    showingIndustryPicker = true
                 }) {
                     HStack {
-                        Text("Continue")
-                            .font(OPSStyle.Typography.bodyBold)
+                        Text(selectedIndustry?.displayName ?? "Select your industry")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(selectedIndustry != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                        
                         Spacer()
-                        Image(systemName: "arrow.right")
-                            .font(OPSStyle.Typography.bodyBold)
+                        
+                        Image(systemName: "chevron.down")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 16)
                     .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(isFormValid ? Color("AccentPrimary") : Color("StatusInactive"))
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(OPSStyle.Colors.cardBackground)
+                            )
                     )
                 }
-                .disabled(!isFormValid)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 34)
-            .background(
-                Rectangle()
-                    .fill(Color("Background"))
-                    .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: -4)
-            )
-        }
-        .background(Color("Background"))
-        .sheet(isPresented: $showingIndustryPicker) {
-            IndustryPickerView(selectedIndustry: $selectedIndustry, searchText: $searchText, filteredIndustries: filteredIndustries)
-        }
-        .onAppear {
-            selectedIndustry = onboardingViewModel.companyIndustry
-            selectedSize = onboardingViewModel.companySize
-            selectedAge = onboardingViewModel.companyAge
+            
+            Spacer()
+            
+            // Continue button
+            Button(action: onContinue) {
+                Text("CONTINUE")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(selectedIndustry != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+            .disabled(selectedIndustry == nil)
         }
     }
+}
+
+struct SizePhaseView: View {
+    @Binding var selectedSize: CompanySize?
+    let onContinue: () -> Void
     
-    private var isFormValid: Bool {
-        selectedIndustry != nil && selectedSize != nil && selectedAge != nil
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("HOW BIG")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("IS YOUR CREW?")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.bottom, 12)
+                
+                Text("This helps us determine the scale of your operations.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 30)
+            
+            // Size Selection
+            VStack(spacing: 12) {
+                ForEach(CompanySize.allCases, id: \.self) { size in
+                    Button(action: {
+                        selectedSize = size
+                    }) {
+                        HStack {
+                            Text(size.displayName)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                            
+                            Spacer()
+                            
+                            if selectedSize == size {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(OPSStyle.Typography.subtitle)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            } else {
+                                Circle()
+                                    .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: 1)
+                                    .frame(width: 20, height: 20)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(selectedSize == size ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackground)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(selectedSize == size ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            
+            Spacer()
+            
+            // Continue button
+            Button(action: onContinue) {
+                Text("CONTINUE")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(selectedSize != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+            .disabled(selectedSize == nil)
+        }
+    }
+}
+
+struct AgePhaseView: View {
+    @EnvironmentObject var onboardingViewModel: OnboardingViewModel
+    @Binding var selectedAge: CompanyAge?
+    let onContinue: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("HOW LONG HAVE")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("YOU BEEN RUNNING?")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.bottom, 12)
+                
+                Text("This will read us in on your company's experience.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 30)
+            
+            // Age Selection
+            VStack(spacing: 12) {
+                ForEach(CompanyAge.allCases, id: \.self) { age in
+                    Button(action: {
+                        selectedAge = age
+                    }) {
+                        HStack {
+                            Text(age.displayName)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                            
+                            Spacer()
+                            
+                            if selectedAge == age {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(OPSStyle.Typography.subtitle)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            } else {
+                                Circle()
+                                    .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: 1)
+                                    .frame(width: 20, height: 20)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(selectedAge == age ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackground)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(selectedAge == age ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            
+            Spacer()
+            
+            // Error message
+            if !onboardingViewModel.errorMessage.isEmpty {
+                Text(onboardingViewModel.errorMessage)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(Color("StatusError"))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            
+            // Continue button
+            Button(action: onContinue) {
+                if onboardingViewModel.isLoading {
+                    HStack {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                            .scaleEffect(0.8)
+                        Text("Creating company...")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.black)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(OPSStyle.Colors.primaryAccent)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                } else {
+                    Text("CONTINUE")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(selectedAge != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+            }
+            .disabled(selectedAge == nil || onboardingViewModel.isLoading)
+        }
     }
 }
 
@@ -229,20 +425,20 @@ struct IndustryPickerView: View {
                 // Search Bar
                 HStack {
                     Image(systemName: "magnifyingglass")
-                        .foregroundColor(Color("TextSecondary"))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                     
                     TextField("Search industries...", text: $searchText)
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(Color("TextPrimary"))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color("CardBackground"))
+                        .fill(OPSStyle.Colors.cardBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color("StatusInactive"), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
                         )
                 )
                 .padding(.horizontal, 16)
@@ -250,26 +446,25 @@ struct IndustryPickerView: View {
                 
                 // Industry List
                 List(filteredIndustries, id: \.self) { industry in
-                    Button(action: {
+                    HStack {
+                        Text(industry.displayName)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        
+                        Spacer()
+                        
+                        if selectedIndustry == industry {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .font(OPSStyle.Typography.bodyBold)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
                         selectedIndustry = industry
                         presentationMode.wrappedValue.dismiss()
-                    }) {
-                        HStack {
-                            Text(industry.displayName)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(Color("TextPrimary"))
-                            
-                            Spacer()
-                            
-                            if selectedIndustry == industry {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(Color("AccentPrimary"))
-                                    .font(OPSStyle.Typography.bodyBold)
-                            }
-                        }
-                        .padding(.vertical, 4)
                     }
-                    .buttonStyle(PlainButtonStyle())
                 }
                 .listStyle(PlainListStyle())
             }
@@ -283,6 +478,9 @@ struct IndustryPickerView: View {
 }
 
 #Preview {
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
+    
     CompanyDetailsView()
         .environmentObject(OnboardingViewModel())
+        .environmentObject(dataController)
 }

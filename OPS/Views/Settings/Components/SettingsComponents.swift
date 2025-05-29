@@ -160,7 +160,7 @@ struct SettingsSectionHeader: View {
     
     var body: some View {
         HStack {
-            Text(title)
+            Text(title.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, 20)
@@ -291,7 +291,7 @@ struct SettingsField: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
+            Text(title.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             

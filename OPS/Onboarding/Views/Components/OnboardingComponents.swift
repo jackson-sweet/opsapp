@@ -240,6 +240,52 @@ struct StandardContinueButton: View {
     }
 }
 
+// MARK: - Underline Text Field
+
+struct UnderlineTextField: View {
+    var placeholder: String
+    @Binding var text: String
+    var isSecure: Bool = false
+    var keyboardType: UIKeyboardType = .default
+    var autocapitalization: TextInputAutocapitalization = .never
+    var disableAutocorrection: Bool = true
+    @ObservedObject var viewModel: OnboardingViewModel
+    var onChange: ((String) -> Void)? = nil
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            if isSecure {
+                SecureField(placeholder, text: $text)
+                    .font(OPSStyle.Typography.subtitle)
+                    .disableAutocorrection(disableAutocorrection)
+                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .onChange(of: text) { _, newValue in
+                        onChange?(newValue)
+                    }
+            } else {
+                TextField(placeholder, text: $text)
+                    .font(OPSStyle.Typography.subtitle)
+                    .keyboardType(keyboardType)
+                    .textInputAutocapitalization(autocapitalization)
+                    .disableAutocorrection(disableAutocorrection)
+                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .onChange(of: text) { _, newValue in
+                        onChange?(newValue)
+                    }
+            }
+            
+            Rectangle()
+                .fill(!text.isEmpty ? 
+                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
+                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.3) : OPSStyle.Colors.secondaryText.opacity(0.3)))
+                .frame(height: 1)
+                .animation(.easeInOut(duration: 0.2), value: text.isEmpty)
+        }
+    }
+}
+
 // MARK: - Navigation Buttons
 
 struct OnboardingNavigationButtons: View {

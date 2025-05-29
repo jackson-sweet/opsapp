@@ -94,14 +94,14 @@ struct TeamInvitesView: View {
                                     }
                                 }
                                 
-                                FormTextField(
-                                    title: "",
+                                UnderlineTextField(
+                                    placeholder: "team.member@example.com",
                                     text: Binding(
                                         get: { inviteEmails[index] },
                                         set: { inviteEmails[index] = $0; validateEmail(at: index) }
                                     ),
-                                    placeholder: "team.member@example.com",
-                                    keyboardType: .emailAddress
+                                    keyboardType: .emailAddress,
+                                    viewModel: onboardingViewModel
                                 )
                                 
                                 if let error = emailErrors[index] {

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 /// Preview helpers for onboarding screens
 struct OnboardingPreviewHelpers {
@@ -39,6 +40,14 @@ struct OnboardingPreviewHelpers {
             static let cornerRadius: CGFloat = 8
             static let buttonRadius: CGFloat = 8
         }
+    }
+    
+    /// Creates a preview DataController for onboarding previews
+    static func createPreviewDataController() -> DataController {
+        let dataController = DataController()
+        // Set up basic state for previews
+        dataController.isAuthenticated = false
+        return dataController
     }
 }
 

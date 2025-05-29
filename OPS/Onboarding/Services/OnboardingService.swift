@@ -16,28 +16,29 @@ class OnboardingService {
         self.baseURL = baseURL
     }
     
-    /// Sign up a new user with Bubble API (email, password, and user type)
+    /// Sign up a new user with Bubble API (email and password only)
     /// - Parameters:
     ///   - email: User's email address
     ///   - password: User's password
-    ///   - userType: User type (employee or company)
-    /// - Returns: Sign up response with success status
+    ///   - userType: User type (employee or company) - determines which endpoint to use
+    /// - Returns: Sign up response with success status and user_id
     func signUpUser(email: String, password: String, userType: UserType) async throws -> SignUpResponse {
-        print("OnboardingService: Making API call to sign_user_up")
+        // Use different endpoints based on user type
+        let endpoint = userType == .company ? "sign_company_up" : "sign_employee_up"
+        print("OnboardingService: Making API call to \(endpoint)")
         
         // Configure API request
-        let url = baseURL.appendingPathComponent("api/1.1/wf/sign_user_up")
+        let url = baseURL.appendingPathComponent("api/1.1/wf/\(endpoint)")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
         
-        // Create request body with email, password, and user type
+        // Create request body with only email and password (removed employee_type parameter)
         let parameters: [String: String] = [
-            "user_email": email,
-            "user_password": password,
-            "user_type": userType.rawValue
+            "email": email,
+            "password": password
         ]
         
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
@@ -53,7 +54,7 @@ class OnboardingService {
             
             // Debug log the response
             print("OnboardingService: API Response - Status: \(httpResponse.statusCode)")
-            print("============ API RESPONSE (Sign Up) ============")
+            print("============ API RESPONSE (Sign Up - \(endpoint)) ============")
             let responseText = String(data: data, encoding: .utf8) ?? "No data"
             print(responseText)
             print("===============================================")
@@ -279,15 +280,75 @@ class OnboardingService {
             print("Update company HTTP status: \(httpResponse.statusCode)")
             
             if let responseString = String(data: data, encoding: .utf8) {
-                print("Update company response: \(responseString)")
+                print("============ UPDATE COMPANY RAW RESPONSE ============")
+                print(responseString)
+                print("====================================================")
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {
                 throw SignUpError.serverError("Company update failed with status \(httpResponse.statusCode)")
             }
             
-            let updateResponse = try JSONDecoder().decode(CompanyUpdateResponse.self, from: data)
-            return updateResponse
+            // First try to parse as JSON to see structure
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                print("DEBUG: Raw JSON structure:")
+                for (key, value) in json {
+                    print("  - \(key): \(type(of: value)) = \(value)")
+                }
+            }
+            
+            // Try to decode the response
+            do {
+                let updateResponse = try JSONDecoder().decode(CompanyUpdateResponse.self, from: data)
+                
+                // Debug the parsed response
+                print("DEBUG: Parsed CompanyUpdateResponse")
+                print("  - status: \(updateResponse.status ?? "nil")")
+                print("  - success: \(updateResponse.success ?? "nil")")
+                print("  - company exists: \(updateResponse.extractedCompany != nil)")
+                
+                if let company = updateResponse.extractedCompany {
+                    print("  - company._id: \(company._id ?? "nil")")
+                    print("  - company.id: \(company.id ?? "nil")")
+                    print("  - company.companyId (code): \(company.companyId ?? "nil")")
+                    print("  - company.code: \(company.code ?? "nil")")
+                    print("  - company.companyName: \(company.companyName ?? "nil")")
+                    print("  - company.name: \(company.name ?? "nil")")
+                }
+                
+                return updateResponse
+            } catch {
+                print("ERROR: Failed to decode CompanyUpdateResponse: \(error)")
+                
+                // Try a simpler response structure
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    // Create a manual response if we can extract company ID
+                    if let companyId = json["company"] as? String {
+                        print("DEBUG: Found company ID directly in response: \(companyId)")
+                        
+                        // Create a response with just the ID
+                        let companyData = CompanyResponseData(
+                            id: companyId,
+                            name: nil,
+                            email: nil,
+                            phone: nil,
+                            industry: nil,
+                            size: nil,
+                            age: nil,
+                            address: nil,
+                            code: companyId // Use ID as code
+                        )
+                        
+                        return CompanyUpdateResponse(
+                            success: "yes",
+                            company: companyData,
+                            error_message: nil
+                        )
+                    }
+                }
+                
+                throw error
+            }
             
         } catch let error as SignUpError {
             throw error
@@ -349,24 +410,125 @@ class OnboardingService {
 // MARK: - New Response Models
 
 struct CompanyUpdateResponse: Codable {
-    let success: String?
-    let company: CompanyResponseData?
+    let status: String?
+    let response: CompanyResponseWrapper?
+    let success: String? // Keep for backward compatibility
+    let company: CompanyResponseData? // Keep for backward compatibility
     let error_message: String?
     
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case response
+        case success
+        case company
+        case error_message
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Try new format first
+        self.status = try container.decodeIfPresent(String.self, forKey: .status)
+        self.response = try container.decodeIfPresent(CompanyResponseWrapper.self, forKey: .response)
+        
+        // Fallback to old format
+        self.success = try container.decodeIfPresent(String.self, forKey: .success)
+        self.company = try container.decodeIfPresent(CompanyResponseData.self, forKey: .company)
+        
+        self.error_message = try container.decodeIfPresent(String.self, forKey: .error_message)
+    }
+    
+    init(success: String? = nil, company: CompanyResponseData? = nil, error_message: String? = nil) {
+        self.status = nil
+        self.response = nil
+        self.success = success
+        self.company = company
+        self.error_message = error_message
+    }
+    
     var wasSuccessful: Bool {
-        return success?.lowercased() == "yes" || company != nil
+        return status?.lowercased() == "success" || success?.lowercased() == "yes" || response?.company != nil || company != nil
+    }
+    
+    // Helper to get company data from either format
+    var extractedCompany: CompanyResponseData? {
+        return response?.company ?? company
     }
 }
 
+struct CompanyResponseWrapper: Codable {
+    let company: CompanyResponseData?
+}
+
 struct CompanyResponseData: Codable {
-    let id: String?
-    let name: String?
-    let email: String?
+    let _id: String?
+    let id: String? // Keep for backward compatibility
+    let companyId: String? // The company code field
+    let companyName: String?
+    let name: String? // Keep for backward compatibility
+    let officeEmail: String?
+    let email: String? // Keep for backward compatibility
     let phone: String?
-    let industry: String?
-    let size: String?
-    let age: String?
+    let industry: [String]?
+    let companySize: String?
+    let size: String? // Keep for backward compatibility
+    let companyAge: String?
+    let age: String? // Keep for backward compatibility
     let address: String?
+    let code: String? // Keep for backward compatibility
+    
+    private enum CodingKeys: String, CodingKey {
+        case _id
+        case id
+        case companyId = "company id"
+        case companyName = "Company Name"
+        case name
+        case officeEmail = "office_email"
+        case email
+        case phone
+        case industry = "Industry"
+        case companySize = "company_size"
+        case size
+        case companyAge = "company_age"
+        case age
+        case address
+        case code
+    }
+    
+    init(id: String? = nil, name: String? = nil, email: String? = nil, 
+         phone: String? = nil, industry: String? = nil, size: String? = nil,
+         age: String? = nil, address: String? = nil, code: String? = nil) {
+        self._id = id
+        self.id = id
+        self.companyId = code
+        self.companyName = name
+        self.name = name
+        self.officeEmail = email
+        self.email = email
+        self.phone = phone
+        self.industry = industry != nil ? [industry!] : nil
+        self.companySize = size
+        self.size = size
+        self.companyAge = age
+        self.age = age
+        self.address = address
+        self.code = code
+    }
+    
+    // Helper to get the ID regardless of which field it's in
+    var extractedId: String? {
+        return _id ?? id
+    }
+    
+    // Helper to get the company code
+    var extractedCode: String? {
+        return companyId ?? code
+    }
+    
+    // Helper to get the company name
+    var extractedName: String? {
+        return companyName ?? name
+    }
 }
 
 struct InviteResponse: Codable {

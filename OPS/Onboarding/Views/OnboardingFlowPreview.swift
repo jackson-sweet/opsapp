@@ -159,6 +159,7 @@ struct OnboardingFlowPreview: View {
             if selectedFlow != .company {
                 vm.companyCode = "OPS123"
                 vm.isCompanyJoined = true
+                vm.companyName = "Demo Construction Co." // For welcome phase
             } else {
                 vm.companyIndustry = .carpentry
                 vm.companySize = .sixToTen

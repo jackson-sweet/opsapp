@@ -22,6 +22,13 @@ struct CompanyDTO: Codable {
     let teams: [BubbleReference]?
     let openHour: String?
     let closeHour: String?
+    let phone: String?
+    let officeEmail: String?
+    let industry: [String]?
+    let companySize: String?
+    let companyAge: String?
+    let employees: [BubbleReference]?
+    let admin: [BubbleReference]?
     
     
     // Custom coding keys to match Bubble's field names exactly
@@ -36,6 +43,13 @@ struct CompanyDTO: Codable {
         case teams = "Teams"
         case openHour = "Open Hour"
         case closeHour = "Close Hour"
+        case phone = "phone"
+        case officeEmail = "office_email"
+        case industry = "Industry"
+        case companySize = "company_size"
+        case companyAge = "company_age"
+        case employees = "Employees"
+        case admin = "Admin"
     }
     
     /// Convert DTO to SwiftData model
@@ -59,6 +73,10 @@ struct CompanyDTO: Codable {
             company.longitude = loc.lng
         }
         
+        // Handle contact information
+        company.phone = phone
+        company.email = officeEmail
+        
         // Handle logo
         if let logoImage = logo, let logoUrl = logoImage.url {
             company.logoURL = logoUrl
@@ -79,6 +97,9 @@ struct CompanyDTO: Codable {
             let teamIds = teamRefs.compactMap { $0.stringValue }
             company.teamIdsString = teamIds.joined(separator: ",")
         }
+        
+        // Note: industry, companySize, companyAge, employees, and admin are not stored in the Company model
+        // If needed, these should be added to the Company model first
         
         company.lastSyncedAt = Date()
         

@@ -18,21 +18,21 @@ struct SplashLoadingView: View {
             VStack {
                 Spacer()
                 
-                // Logo
-                Image("LogoWhite")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 80, height: 80)
-                
-                Text("OPS")
-                    .font(OPSStyle.Typography.largeTitle)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    HStack(alignment: .bottom){
+                        // Logo
+                        Image("LogoWhite")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 80, height: 80)
+                    }
                     .padding(.bottom, 40)
-                
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                    .scaleEffect(1.2)
-                
+                    
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
+                        .scaleEffect(1.2)
+                    
+                    
                 Spacer()
                 
                 // Version info

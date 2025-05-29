@@ -98,6 +98,7 @@ struct SecuritySettingsView: View {
                         .padding(16)
                     }
                     .padding(.vertical, 24)
+                    .padding(.top, 12)
                 }
             }
         }

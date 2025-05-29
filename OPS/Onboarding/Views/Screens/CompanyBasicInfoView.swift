@@ -92,6 +92,7 @@ struct CompanyBasicInfoView: View {
                         case .companyName:
                             CompanyNamePhaseView(
                                 companyName: $onboardingViewModel.companyName,
+                                viewModel: onboardingViewModel,
                                 onContinue: {
                                     withAnimation(.easeInOut(duration: 0.3)) {
                                         currentPhase = .companyLogo
@@ -122,6 +123,7 @@ struct CompanyBasicInfoView: View {
 
 struct CompanyNamePhaseView: View {
     @Binding var companyName: String
+    @ObservedObject var viewModel: OnboardingViewModel
     let onContinue: () -> Void
     
     private var isFormValid: Bool {
@@ -149,23 +151,12 @@ struct CompanyNamePhaseView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             
             // Company Name Field
-            VStack(alignment: .leading, spacing: 8) {
-                TextField("Company name", text: $companyName)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(.white)
-                    .textContentType(.organizationName)
-                    .disableAutocorrection(true)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(OPSStyle.Colors.cardBackground)
-                            )
-                    )
-            }
+            UnderlineTextField(
+                placeholder: "Company name",
+                text: $companyName,
+                autocapitalization: .words,
+                viewModel: viewModel
+            )
             
             Spacer()
             

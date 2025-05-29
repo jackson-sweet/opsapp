@@ -9,6 +9,7 @@ import SwiftUI
 
 struct StorageOptionSlider: View {
     @Binding var selectedStorageIndex: Int
+    @EnvironmentObject var viewModel: OnboardingViewModel
     
     let storageOptions: [(value: String, description: String)] = [
         ("No Storage", "Stream everything online. No offline access."),
@@ -31,11 +32,11 @@ struct StorageOptionSlider: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(storageOptions[selectedStorageIndex].value)
                         .font(.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
                     
                     Text(storageOptions[selectedStorageIndex].description)
                         .font(.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -43,83 +44,86 @@ struct StorageOptionSlider: View {
                 Spacer()
             }
             .padding()
-            .background(OPSStyle.Colors.cardBackground)
+            .background(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground.opacity(0.1) : OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             
             // Slider
-            VStack(spacing: 8) {
+            VStack(spacing: 16) {
+                // Value labels above slider
+                HStack(alignment: .bottom, spacing: 0) {
+                    ForEach(0..<storageOptions.count, id: \.self) { index in
+                        if index > 0 {
+                            Spacer()
+                        }
+                        
+                        Text(storageOptions[index].value)
+                            .font(.caption)
+                            .foregroundColor(index == selectedStorageIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                            .multilineTextAlignment(.center)
+                            .frame(width: 60)
+                            .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
+                        
+                        if index == storageOptions.count - 1 {
+                            Spacer()
+                                .frame(width: 0)
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+                
                 // Custom slider with snap points
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
-                        // Track
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
-                            .frame(height: 8)
-                        
-                        // Fill
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(OPSStyle.Colors.primaryAccent)
-                            .frame(
-                                width: geometry.size.width * CGFloat(selectedStorageIndex) / CGFloat(storageOptions.count - 1),
-                                height: 8
-                            )
-                        
-                        // Snap points
+                        // Track with dots
                         HStack(spacing: 0) {
                             ForEach(0..<storageOptions.count, id: \.self) { index in
                                 if index > 0 {
-                                    Spacer()
+                                    // Line between dots
+                                    Rectangle()
+                                        .fill(index <= selectedStorageIndex ? OPSStyle.Colors.primaryAccent : (viewModel.shouldUseLightTheme ? OPSStyle.Colors.tertiaryText.opacity(0.3) : OPSStyle.Colors.tertiaryText.opacity(0.3)))
+                                        .frame(height: 2)
+                                        .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
                                 }
                                 
+                                // Dot
                                 Circle()
-                                    .fill(index <= selectedStorageIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
-                                    .frame(width: 12, height: 12)
+                                    .fill(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                                    .frame(width: 8, height: 8)
                                     .overlay(
                                         Circle()
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                                            .stroke(index <= selectedStorageIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 2)
                                     )
+                                    .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
                                     .onTapGesture {
                                         withAnimation(.easeInOut(duration: 0.2)) {
                                             selectedStorageIndex = index
                                         }
                                     }
-                                
-                                if index == storageOptions.count - 1 {
-                                    Spacer()
-                                        .frame(width: 0)
-                                }
                             }
                         }
                         
-                        // Thumb
+                        // Thumb (larger circle)
                         Circle()
                             .fill(OPSStyle.Colors.primaryAccent)
-                            .frame(width: 24, height: 24)
-                            .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
-                            .offset(x: geometry.size.width * CGFloat(selectedStorageIndex) / CGFloat(storageOptions.count - 1) - 12)
+                            .frame(width: 20, height: 20)
+                            .overlay(
+                                Circle()
+                                    .fill(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                                    .frame(width: 8, height: 8)
+                            )
+                            .offset(x: (geometry.size.width / CGFloat(storageOptions.count - 1)) * CGFloat(selectedStorageIndex) - 10)
+                            .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
                             .gesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        let newIndex = Int(round(value.location.x / geometry.size.width * CGFloat(storageOptions.count - 1)))
+                                        let segmentWidth = geometry.size.width / CGFloat(storageOptions.count - 1)
+                                        let newIndex = Int(round(value.location.x / segmentWidth))
                                         selectedStorageIndex = max(0, min(storageOptions.count - 1, newIndex))
                                     }
                             )
                     }
                 }
-                .frame(height: 24)
-                
-                // Labels
-                HStack {
-                    Text(storageOptions.first?.value ?? "")
-                        .font(.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    
-                    Spacer()
-                    
-                    Text(storageOptions.last?.value ?? "")
-                        .font(.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
+                .frame(height: 20)
             }
         }
     }

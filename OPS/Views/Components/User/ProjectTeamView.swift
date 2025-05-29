@@ -117,16 +117,10 @@ struct ProjectTeamView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .sheet(isPresented: $showingTeamMemberDetails) {
             if let selectedMember = selectedTeamMember {
-                // Show contact details for a single member
-                ContactDetailSheet(
-                    name: "\(selectedMember.firstName) \(selectedMember.lastName)",
-                    role: selectedMember.role.displayName,
-                    email: selectedMember.email,
-                    phone: selectedMember.phone,
-                    isClient: false
-                )
-                .presentationDragIndicator(.visible)
-                .presentationDetents([.medium])
+                // Show team member details
+                TeamMemberDetailView(user: selectedMember, teamMember: nil)
+                    .presentationDragIndicator(.visible)
+                    .presentationDetents([.medium, .large])
             } else {
                 // Show full team list using the refreshed project if available
                 if let refreshed = refreshedProject {
@@ -266,7 +260,6 @@ struct FullTeamListView: View {
     let project: Project
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTeamMember: User? = nil
-    @State private var showingMemberDetails = false
     
     var body: some View {
         NavigationView {
@@ -285,16 +278,16 @@ struct FullTeamListView: View {
                                 // Details
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("\(member.firstName) \(member.lastName)")
-                                        .font(.system(size: 16, weight: .medium))
+                                        .font(OPSStyle.Typography.body.weight(.medium))
                                         .foregroundColor(.white)
                                     
                                     Text(member.role.displayName)
-                                        .font(.system(size: 14))
+                                        .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                     
                                     if let email = member.email, !email.isEmpty {
                                         Text(email)
-                                            .font(.system(size: 12))
+                                            .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                             .lineLimit(1)
                                     }
@@ -304,7 +297,7 @@ struct FullTeamListView: View {
                                 
                                 Image(systemName: "chevron.right")
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    .font(.system(size: 14))
+                                    .font(OPSStyle.Typography.smallBody)
                             }
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
@@ -312,39 +305,36 @@ struct FullTeamListView: View {
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 selectedTeamMember = member
-                                showingMemberDetails = true
                             }
                             .onLongPressGesture {
                                 // Same action as tap for now, can be customized later
                                 selectedTeamMember = member
-                                showingMemberDetails = true
                             }
                         }
                     }
                     .padding()
                 }
             }
-            .navigationTitle("Project Team")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("PROJECT TEAM")
+                        .font(OPSStyle.Typography.title)
+                        .foregroundColor(.white)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(.white)
                 }
             }
-            .sheet(isPresented: $showingMemberDetails) {
-                if let member = selectedTeamMember {
-                    ContactDetailSheet(
-                        name: "\(member.firstName) \(member.lastName)",
-                        role: member.role.displayName,
-                        email: member.email,
-                        phone: member.phone,
-                        isClient: false
-                    )
+            .sheet(item: $selectedTeamMember) { member in
+                TeamMemberDetailView(user: member, teamMember: nil)
                     .presentationDragIndicator(.visible)
-                    .presentationDetents([.medium])
-                }
+                    .presentationDetents([.medium, .large])
             }
         }
     }

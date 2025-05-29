@@ -11,10 +11,23 @@ struct PhoneNumberView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     @State private var showConfirmation = false
     
+    // Color scheme based on user type
+    private var backgroundColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background
+    }
+    
+    private var primaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+    
+    private var secondaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+    }
+    
     var body: some View {
         ZStack {
             // Background color
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            backgroundColor.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Skip back button at the top
@@ -25,7 +38,7 @@ struct PhoneNumberView: View {
                     }) {
                         Text("Skip")
                             .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .foregroundColor(secondaryTextColor)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -38,42 +51,36 @@ struct PhoneNumberView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Start with your phone\nnumber.")
                             .font(OPSStyle.Typography.largeTitle)
-                            .foregroundColor(.white)
+                            .foregroundColor(primaryTextColor)
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         
                         Text("Your number will be used in your company's directory, and won't be shared with anyone outside your organization.")
                             .font(OPSStyle.Typography.cardTitle)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .foregroundColor(secondaryTextColor)
                             .lineSpacing(4)
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 
                     // Phone field with larger font
-                    VStack(spacing: 20) {
-                        HStack(spacing: 16) {
-                            // Country code
-                            Text("+1")
-                                .font(OPSStyle.Typography.subtitle)
-                                .foregroundColor(.white)
-                            
-                            // Phone number with placeholder as hint
-                            TextField("Phone number", text: $viewModel.phoneNumber)
-                                .font(OPSStyle.Typography.subtitle)
-                                .foregroundColor(.white)
-                                .keyboardType(.phonePad)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .onChange(of: viewModel.phoneNumber) { oldValue, newValue in
-                                    viewModel.formatPhoneNumber()
-                                }
-                        }
+                    HStack(spacing: 16) {
+                        // Country code
+                        Text("+1")
+                            .font(OPSStyle.Typography.subtitle)
+                            .foregroundColor(primaryTextColor)
                         
-                        // Underline
-                        Rectangle()
-                            .fill(viewModel.phoneNumber.isEmpty ? Color.gray.opacity(0.3) : OPSStyle.Colors.primaryAccent)
-                            .frame(height: 1)
-                            .animation(.easeInOut(duration: 0.2), value: viewModel.phoneNumber.isEmpty)
+                        // Phone number with placeholder as hint
+                        UnderlineTextField(
+                            placeholder: "Phone number",
+                            text: $viewModel.phoneNumber,
+                            keyboardType: .phonePad,
+                            viewModel: viewModel,
+                            onChange: { _ in
+                                viewModel.formatPhoneNumber()
+                                viewModel.errorMessage = ""
+                            }
+                        )
                     }
                     .padding(.top, 40)
                 
@@ -97,12 +104,12 @@ struct PhoneNumberView: View {
                     }) {
                         Text("CONTINUE")
                             .font(OPSStyle.Typography.button)
-                            .foregroundColor(viewModel.isPhoneValid ? .white : .white.opacity(0.5))
+                            .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .fill(viewModel.isPhoneValid ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.3))
+                                    .fill(viewModel.isPhoneValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3))
                             )
                     }
                     .disabled(!viewModel.isPhoneValid || viewModel.isLoading)
@@ -113,13 +120,13 @@ struct PhoneNumberView: View {
                             // Handle terms tap
                         }
                         .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .foregroundColor(secondaryTextColor)
                         
                         Button("Privacy Policy") {
                             // Handle privacy policy tap
                         }
                         .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .foregroundColor(secondaryTextColor)
                     }
                     .padding(.top, 16)
                     .padding(.bottom, 8)
@@ -163,7 +170,7 @@ struct PhoneConfirmationView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            Color.black.edgesIgnoringSafeArea(.all) // Keep phone confirmation dark for now
             
             VStack(spacing: 40) {
                 Spacer()
@@ -215,6 +222,7 @@ struct PhoneConfirmationView: View {
 // MARK: - Preview
 #Preview("Phone Number Screen") {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.email = "user@example.com"
     viewModel.password = "password123"
     viewModel.firstName = "John"
@@ -223,5 +231,6 @@ struct PhoneConfirmationView: View {
     
     return PhoneNumberView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

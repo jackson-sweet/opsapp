@@ -126,15 +126,15 @@ struct CompanyContactView: View {
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(Color("TextPrimary"))
                             
-                            FormTextField(
-                                title: "",
-                                text: $email,
+                            UnderlineTextField(
                                 placeholder: "company@example.com",
-                                keyboardType: .emailAddress
+                                text: $email,
+                                keyboardType: .emailAddress,
+                                viewModel: onboardingViewModel,
+                                onChange: { _ in
+                                    validateEmail()
+                                }
                             )
-                            .onChange(of: email) { _ in
-                                validateEmail()
-                            }
                             
                             if let emailError = emailError {
                                 Text(emailError)
@@ -148,16 +148,16 @@ struct CompanyContactView: View {
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(Color("TextPrimary"))
                             
-                            FormTextField(
-                                title: "",
-                                text: $phoneNumber,
+                            UnderlineTextField(
                                 placeholder: "(555) 123-4567",
-                                keyboardType: .phonePad
+                                text: $phoneNumber,
+                                keyboardType: .phonePad,
+                                viewModel: onboardingViewModel,
+                                onChange: { newValue in
+                                    phoneNumber = formatPhoneNumber(newValue)
+                                    validatePhone()
+                                }
                             )
-                            .onChange(of: phoneNumber) { newValue in
-                                phoneNumber = formatPhoneNumber(newValue)
-                                validatePhone()
-                            }
                             
                             if let phoneError = phoneError {
                                 Text(phoneError)

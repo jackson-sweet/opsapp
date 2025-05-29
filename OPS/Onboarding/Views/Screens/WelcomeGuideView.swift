@@ -85,10 +85,11 @@ struct WelcomeGuideView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 40)
             }
-            }
         }
     }
 
+
+}
 
 struct WelcomePageView: View {
     let page: WelcomeGuidePage
@@ -147,6 +148,9 @@ struct WelcomeGuidePage {
 }
 
 #Preview {
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
+    
     WelcomeGuideView()
         .environmentObject(OnboardingViewModel())
+        .environmentObject(dataController)
 }

@@ -18,7 +18,14 @@ class OnboardingViewModel: ObservableObject {
     @Published var currentStep: OnboardingStep = .welcome
     
     // User input data
-    @Published var selectedUserType: UserType? = nil
+    @Published var selectedUserType: UserType? = nil {
+        didSet {
+            if let userType = selectedUserType {
+                UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
+                print("OnboardingViewModel: Saved user type: \(userType.rawValue)")
+            }
+        }
+    }
     @Published var email: String = ""
     @Published var password: String = ""
     @Published var confirmPassword: String = ""
@@ -62,6 +69,11 @@ class OnboardingViewModel: ObservableObject {
     private let onboardingService = OnboardingService()
     private var cancellables = Set<AnyCancellable>()
     
+    // Computed property to determine if we should use light theme (for employee signup)
+    var shouldUseLightTheme: Bool {
+        return selectedUserType == .employee
+    }
+    
     init() {
         // Check if we're resuming onboarding
         let isResuming = UserDefaults.standard.bool(forKey: "resume_onboarding")
@@ -86,6 +98,20 @@ class OnboardingViewModel: ObservableObject {
             if let companyId = UserDefaults.standard.string(forKey: "company_id") {
                 self.isCompanyJoined = true
                 self.companyName = UserDefaults.standard.string(forKey: "Company Name") ?? "Your Company"
+            }
+            
+            // Load the saved user type if available
+            if let userTypeRaw = UserDefaults.standard.string(forKey: "selected_user_type"),
+               let userType = UserType(rawValue: userTypeRaw) {
+                self.selectedUserType = userType
+                print("OnboardingViewModel: Loaded saved user type: \(userType.rawValue)")
+            }
+            
+            // Load the last saved step if available
+            let lastStepRaw = UserDefaults.standard.integer(forKey: "last_onboarding_step_v2")
+            if lastStepRaw > 0, let savedStep = OnboardingStep(rawValue: lastStepRaw) {
+                self.currentStep = savedStep
+                print("OnboardingViewModel: Resuming at saved step: \(savedStep.title)")
             }
             
             print("OnboardingViewModel: Initialized with resumed data - User ID: \(userId), Email: \(email)")
@@ -338,28 +364,38 @@ class OnboardingViewModel: ObservableObject {
     func joinCompany() async -> Bool {
         // Validate fields
         guard !firstName.isEmpty else {
-            errorMessage = "First name is required"
+            await MainActor.run {
+                errorMessage = "First name is required"
+            }
             return false
         }
         
         guard !lastName.isEmpty else {
-            errorMessage = "Last name is required"
+            await MainActor.run {
+                errorMessage = "Last name is required"
+            }
             return false
         }
         
         guard isPhoneValid else {
-            errorMessage = "A valid phone number is required"
+            await MainActor.run {
+                errorMessage = "A valid phone number is required"
+            }
             return false
         }
         
         guard !companyCode.isEmpty else {
-            errorMessage = "Company code is required"
+            await MainActor.run {
+                errorMessage = "Company code is required"
+            }
             return false
         }
         
         // Ensure we have email and password
         guard !email.isEmpty else {
-            errorMessage = "Email is required"
+            await MainActor.run {
+                errorMessage = "Email is required"
+            }
             return false
         }
         
@@ -367,9 +403,13 @@ class OnboardingViewModel: ObservableObject {
         if password.isEmpty {
             if let savedPassword = UserDefaults.standard.string(forKey: "user_password"), !savedPassword.isEmpty {
                 print("OnboardingViewModel: Found password in UserDefaults, using that for company join")
-                password = savedPassword
+                await MainActor.run {
+                    password = savedPassword
+                }
             } else {
-                errorMessage = "Password is missing. Please restart the onboarding process."
+                await MainActor.run {
+                    errorMessage = "Password is missing. Please restart the onboarding process."
+                }
                 return false
             }
         }
@@ -488,7 +528,7 @@ class OnboardingViewModel: ObservableObject {
         // This would connect to your location manager
         // For now, we'll simulate granting permission
         isLocationPermissionGranted = true
-        moveToNextStepV2()
+        // Don't auto-advance - user should tap continue
     }
     
     // MARK: - Navigation Methods
@@ -618,6 +658,9 @@ class OnboardingViewModel: ObservableObject {
         if let prevStep = currentStep.previousStep(userType: selectedUserType) {
             print("OnboardingViewModel: Found previous step: \(prevStep.title) (raw: \(prevStep.rawValue))")
             
+            // Save the step to UserDefaults for potential resume later
+            UserDefaults.standard.set(prevStep.rawValue, forKey: "last_onboarding_step_v2")
+            
             DispatchQueue.main.async {
                 self.currentStep = prevStep
                 print("OnboardingViewModel: ✅ UPDATED currentStep to previous: \(self.currentStep.title) (raw: \(self.currentStep.rawValue))")
@@ -640,6 +683,13 @@ class OnboardingViewModel: ObservableObject {
     // MARK: - Company Creation Methods
     
     func createCompany() async throws {
+        print("=== CREATE COMPANY DEBUG ===")
+        print("userId: '\(userId)'")
+        print("companyName: '\(companyName)'")
+        print("companyEmail: '\(companyEmail)'")
+        print("companyPhone: '\(companyPhone)'")
+        print("===========================")
+        
         guard isCompanyNameValid else {
             throw OnboardingError.invalidCompanyName
         }
@@ -668,7 +718,7 @@ class OnboardingViewModel: ObservableObject {
         errorMessage = ""
         
         do {
-            try await onboardingService.updateCompany(
+            let response = try await onboardingService.updateCompany(
                 name: companyName,
                 email: companyEmail,
                 phone: companyPhone,
@@ -684,6 +734,39 @@ class OnboardingViewModel: ObservableObject {
                 // Store company data
                 UserDefaults.standard.set(companyName, forKey: "Company Name")
                 UserDefaults.standard.set(true, forKey: "company_created")
+                
+                // Store company ID and code if available
+                if let company = response.extractedCompany {
+                    print("DEBUG: Company object received from API")
+                    print("DEBUG: Company _id: \(company._id ?? "nil")")
+                    print("DEBUG: Company id: \(company.id ?? "nil")")
+                    print("DEBUG: Company extractedId: \(company.extractedId ?? "nil")")
+                    print("DEBUG: Company companyId (code): \(company.companyId ?? "nil")")
+                    print("DEBUG: Company code: \(company.code ?? "nil")")
+                    print("DEBUG: Company extractedCode: \(company.extractedCode ?? "nil")")
+                    print("DEBUG: Company name: \(company.extractedName ?? "nil")")
+                    
+                    // Store company ID first
+                    if let companyId = company.extractedId, !companyId.isEmpty {
+                        UserDefaults.standard.set(companyId, forKey: "company_id")
+                        print("Stored company_id: \(companyId)")
+                    }
+                    
+                    // Store company code - prefer the actual code field if available
+                    if let companyCode = company.extractedCode, !companyCode.isEmpty {
+                        self.companyCode = companyCode
+                        UserDefaults.standard.set(companyCode, forKey: "company_code")
+                        print("Company code found and stored: \(companyCode)")
+                    } else if let companyId = company.extractedId, !companyId.isEmpty {
+                        // Fallback: Use company ID as the code if no specific code field
+                        self.companyCode = companyId
+                        UserDefaults.standard.set(companyId, forKey: "company_code")
+                        print("No company code found, using company ID as code: \(companyId)")
+                    }
+                } else {
+                    print("ERROR: No company object in update_company response")
+                    print("ERROR: Unable to store company code - response.extractedCompany is nil")
+                }
             }
         } catch {
             await MainActor.run {
@@ -726,9 +809,60 @@ class OnboardingViewModel: ObservableObject {
             UserDefaults.standard.set(userType.rawValue, forKey: "user_type")
         }
         
-        print("OnboardingViewModel: Onboarding completed successfully")
+        // Set authentication flag to enter the app
+        UserDefaults.standard.set(true, forKey: "is_authenticated")
+        
+        print("OnboardingViewModel: Onboarding completed successfully, setting is_authenticated = true")
+        
+        // Update DataController if available
+        if let dataController = dataController {
+            DispatchQueue.main.async {
+                dataController.isAuthenticated = true
+            }
+        }
         
         // Dismiss the onboarding overlay
+        NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
+    }
+    
+    func logoutAndReturnToLogin() {
+        print("OnboardingViewModel: User requested logout, clearing all data")
+        
+        // Clear all user data and reset onboarding state
+        clearUserData()
+        
+        // Clear authentication and onboarding state
+        UserDefaults.standard.removeObject(forKey: "is_authenticated")
+        UserDefaults.standard.removeObject(forKey: "user_id")
+        UserDefaults.standard.removeObject(forKey: "resume_onboarding")
+        UserDefaults.standard.removeObject(forKey: "onboarding_completed")
+        UserDefaults.standard.removeObject(forKey: "company_id")
+        UserDefaults.standard.removeObject(forKey: "Company Name")
+        UserDefaults.standard.removeObject(forKey: "has_joined_company")
+        UserDefaults.standard.removeObject(forKey: "company_created")
+        UserDefaults.standard.removeObject(forKey: "user_type")
+        
+        // Reset all view model properties
+        selectedUserType = nil
+        currentStep = .welcome
+        isSignedUp = false
+        isCompanyJoined = false
+        errorMessage = ""
+        isLoading = false
+        
+        // Reset company data
+        companyName = ""
+        companyAddress = ""
+        companyEmail = ""
+        companyPhone = ""
+        companyIndustry = nil
+        companySize = nil
+        companyAge = nil
+        teamInviteEmails = []
+        
+        print("OnboardingViewModel: All data cleared, returning to login")
+        
+        // Dismiss onboarding and return to login
         NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
     }
 }

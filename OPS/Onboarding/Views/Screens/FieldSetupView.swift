@@ -81,7 +81,7 @@ struct FieldSetupView: View {
                     .padding(.bottom, 16)
                     .padding(.horizontal, 24)
                     
-                    ScrollView {
+             
                         VStack(spacing: 0) {
                             // Header
                             OnboardingHeaderView(
@@ -99,14 +99,15 @@ struct FieldSetupView: View {
                                     description: "Choose how much data to store for offline use when connectivity is limited"
                                 ) {
                                     StorageOptionSlider(selectedStorageIndex: $selectedStorageIndex)
+                                        .environmentObject(viewModel)
                                 }
+                                .environmentObject(viewModel)
                             }
                             .padding(.horizontal, 16)
                             
                             Spacer(minLength: geometry.size.height * 0.1)
                         }
-                        .frame(minHeight: geometry.size.height - 100)
-                    }
+                        .padding(20)
                     
                     // Continue button
                     StandardContinueButton(
@@ -162,20 +163,28 @@ struct SettingsSection<Content: View>: View {
     var title: String
     var description: String
     @ViewBuilder var content: Content
+    @EnvironmentObject var viewModel: OnboardingViewModel
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(.white)
+            Text(title.uppercased())
+                .font(OPSStyle.Typography.cardSubtitle)
+                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : .white)
             
             Text(description)
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(Color.gray)
+                .font(OPSStyle.Typography.cardBody)
+                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
                 .padding(.bottom, 4)
             
             content
         }
+        .padding()
+        .background(viewModel.shouldUseLightTheme ? Color.white : OPSStyle.Colors.cardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
+        )
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 }
 

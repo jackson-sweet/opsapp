@@ -9,6 +9,7 @@ import SwiftUI
 
 struct WhatsNewView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var dataController: DataController
     
     struct FeatureItem {
         let icon: String
@@ -24,6 +25,10 @@ struct WhatsNewView: View {
     }
     
     @State private var expandedCategories: Set<String> = []
+    @State private var votingFeatures: Set<String> = []
+    @State private var votedFeatures: Set<String> = []
+    @State private var showVoteError = false
+    @State private var voteErrorMessage = ""
     
     let featureCategories = [
         FeatureCategory(
@@ -243,7 +248,10 @@ struct WhatsNewView: View {
                                                 expandedCategories.insert(category.name)
                                             }
                                         }
-                                    }
+                                    },
+                                    votingFeatures: votingFeatures,
+                                    votedFeatures: votedFeatures,
+                                    onVote: voteForFeature
                                 )
                             }
                         }
@@ -295,6 +303,88 @@ struct WhatsNewView: View {
         }
         .navigationBarBackButtonHidden(true)
         .enableNativeSwipeBack()
+        .alert("Error", isPresented: $showVoteError) {
+            Button("OK") { }
+        } message: {
+            Text(voteErrorMessage)
+        }
+        .onAppear {
+            // Load previously voted features
+            if let savedVotes = UserDefaults.standard.array(forKey: "votedFeatures") as? [String] {
+                votedFeatures = Set(savedVotes)
+            }
+        }
+    }
+    
+    private func voteForFeature(_ feature: FeatureItem) {
+        // Check if already voting or voted
+        guard !votingFeatures.contains(feature.title),
+              !votedFeatures.contains(feature.title) else { return }
+        
+        // Mark as voting
+        votingFeatures.insert(feature.title)
+        
+        Task {
+            do {
+                try await submitFeatureVote(feature)
+                
+                await MainActor.run {
+                    votingFeatures.remove(feature.title)
+                    votedFeatures.insert(feature.title)
+                    
+                    // Store voted features in UserDefaults
+                    UserDefaults.standard.set(Array(votedFeatures), forKey: "votedFeatures")
+                }
+            } catch {
+                await MainActor.run {
+                    votingFeatures.remove(feature.title)
+                    voteErrorMessage = "Failed to submit vote. Please try again."
+                    showVoteError = true
+                }
+            }
+        }
+    }
+    
+    private func submitFeatureVote(_ feature: FeatureItem) async throws {
+        // Get the current user ID
+        guard let userId = dataController.currentUser?.id else {
+            throw NSError(domain: "WhatsNewView", code: 1,
+                         userInfo: [NSLocalizedDescriptionKey: "User not logged in"])
+        }
+        
+        // Create standardized parameters - exact same format every time for accurate counting
+        let parameters: [String: Any] = [
+            "feature_title": feature.title,
+            "feature_description": feature.description,
+            "user": userId,
+            "platform": "iOS mobile +1",
+            "Requested By": userId
+        ]
+        
+        // Create JSON body
+        let jsonData = try JSONSerialization.data(withJSONObject: parameters)
+        
+        // Create URL
+        let endpoint = "api/1.1/wf/request_feature"
+        var request = URLRequest(url: AppConfiguration.bubbleBaseURL.appendingPathComponent(endpoint))
+        request.httpMethod = "POST"
+        request.httpBody = jsonData
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Execute request
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        // Check response
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "WhatsNewView", code: 2,
+                         userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+        
+        // Check status code
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw NSError(domain: "WhatsNewView", code: 3,
+                         userInfo: [NSLocalizedDescriptionKey: "Request failed"])
+        }
     }
 }
 
@@ -302,6 +392,9 @@ struct FeatureCategorySection: View {
     let category: WhatsNewView.FeatureCategory
     let isExpanded: Bool
     let onToggle: () -> Void
+    let votingFeatures: Set<String>
+    let votedFeatures: Set<String>
+    let onVote: (WhatsNewView.FeatureItem) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
@@ -345,8 +438,13 @@ struct FeatureCategorySection: View {
             if isExpanded {
                 VStack(spacing: 8) {
                     ForEach(category.features, id: \.title) { feature in
-                        FeatureCard(feature: feature)
-                            .padding(.leading, 20)
+                        FeatureCard(
+                            feature: feature,
+                            isVoting: votingFeatures.contains(feature.title),
+                            hasVoted: votedFeatures.contains(feature.title),
+                            onVote: { onVote(feature) }
+                        )
+                        .padding(.leading, 20)
                     }
                 }
                 .padding(.top, 8)
@@ -357,6 +455,9 @@ struct FeatureCategorySection: View {
 
 struct FeatureCard: View {
     let feature: WhatsNewView.FeatureItem
+    let isVoting: Bool
+    let hasVoted: Bool
+    let onVote: () -> Void
     
     var statusColor: Color {
         switch feature.status {
@@ -401,10 +502,40 @@ struct FeatureCard: View {
                         .cornerRadius(4)
                 }
                 
-                Text(feature.description)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text(feature.description)
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    
+                    Spacer()
+                    
+                    // +1 Vote button
+                    Button(action: onVote) {
+                        HStack(spacing: 4) {
+                            Image(systemName: hasVoted ? "hand.thumbsup.fill" : "hand.thumbsup")
+                                .font(.system(size: 14))
+                            Text("+1")
+                                .font(OPSStyle.Typography.caption)
+                        }
+                        .foregroundColor(hasVoted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            hasVoted ? OPSStyle.Colors.successStatus.opacity(0.2) : OPSStyle.Colors.primaryAccent.opacity(0.2)
+                        )
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(
+                                    hasVoted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent,
+                                    lineWidth: 1
+                                )
+                        )
+                    }
+                    .disabled(isVoting || hasVoted)
+                    .opacity(isVoting ? 0.6 : 1.0)
+                }
             }
         }
         .padding(12)
@@ -417,6 +548,7 @@ struct FeatureCard: View {
 #Preview {
     NavigationStack {
         WhatsNewView()
+            .environmentObject(DataController())
     }
     .preferredColorScheme(.dark)
 }

@@ -5,11 +5,17 @@
 //  Created by Jackson Sweet on 2025-05-05.
 //
 
+// TODO: REDO COMPLETION PAGE
+// This completion page needs to be redesigned to better reflect
+// the OPS brand and provide a more seamless transition into the app.
+// Consider simplifying the animation and focusing on key messaging.
+
 import SwiftUI
 import Combine
 
 struct CompletionView: View {
-    var onComplete: () -> Void
+    @EnvironmentObject var onboardingViewModel: OnboardingViewModel
+    var onComplete: () -> Void = {}
     
     // Animation states
     @State private var logoScale: CGFloat = 0.1
@@ -126,29 +132,16 @@ struct CompletionView: View {
                     Spacer()
                     
                     // Enter button
-                    Button(action: {
-                        print("CompletionView: ENTER APP button tapped")
-                        // Mark onboarding as complete explicitly
-                        UserDefaults.standard.set(true, forKey: "onboarding_completed")
-                        UserDefaults.standard.set(true, forKey: "is_authenticated")
-                        // Clear the resume flag
-                        UserDefaults.standard.set(false, forKey: "resume_onboarding")
-                        print("CompletionView: Saved authentication state and completed onboarding")
-                        // Continue with callback
-                        onComplete()
-                    }) {
-                        Text("ENTER OPS")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .tracking(1)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(OPSStyle.Colors.primaryAccent)
-                            .foregroundColor(.white)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
+                    StandardContinueButton(
+                        isDisabled: !showContinueButton,
+                        onTap: {
+                            print("CompletionView: ENTER APP button tapped")
+                            // Move to welcome guide
+                            onboardingViewModel.nextStep()
+                        }
+                    )
                     .opacity(buttonOpacity)
                     .offset(y: buttonOffset)
-                    .disabled(!showContinueButton)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 30)
@@ -268,5 +261,5 @@ struct CompletionView: View {
     
     // Add styles to the environment for the preview
     return PreviewCompletionView()
-        .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(OnboardingViewModel())
 }

@@ -12,6 +12,8 @@ import Foundation
 
 struct CompanyCodeInputView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @State private var showWelcomePhase = false
+    @State private var welcomeOpacity = 0.0
     
     // Calculate the current step number for employee flow
     private var currentStepNumber: Int {
@@ -86,7 +88,35 @@ struct CompanyCodeInputView: View {
                 VStack(spacing: 0) {
                     Spacer()
                     
-                    VStack(spacing: 24) {
+                    if showWelcomePhase {
+                        // Welcome phase after successful join
+                        VStack(spacing: 24) {
+                            VStack(spacing: 16) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 80))
+                                    .foregroundColor(OPSStyle.Colors.successStatus)
+                                
+                                Text("WELCOME TO")
+                                    .font(OPSStyle.Typography.title)
+                                    .foregroundColor(primaryTextColor)
+                                
+                                Text(viewModel.companyName.uppercased())
+                                    .font(OPSStyle.Typography.largeTitle)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .multilineTextAlignment(.center)
+                                
+                                Text("You've successfully joined your organization.")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(secondaryTextColor)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.top, 8)
+                            }
+                            .opacity(welcomeOpacity)
+                        }
+                        .padding(.horizontal, 24)
+                    } else {
+                        // Input form
+                        VStack(spacing: 24) {
                         // Header
                         VStack(alignment: .leading, spacing: 8) {
                             Text("ENTER COMPANY")
@@ -161,29 +191,38 @@ struct CompanyCodeInputView: View {
                                     )
                             )
                         }
-                    }
-                    .padding(.horizontal, 24)
+                        }
+                        .padding(.horizontal, 24)
+                    } // End of else block
                     
                     Spacer()
                 }
                 
                 // Bottom button section
                 VStack(spacing: 16) {
-                    StandardContinueButton(
-                        isDisabled: viewModel.companyCode.isEmpty,
-                        isLoading: viewModel.isLoading,
-                        onTap: {
-                            joinCompany()
+                    if showWelcomePhase {
+                        StandardContinueButton(
+                            onTap: {
+                                viewModel.moveToNextStep()
+                            }
+                        )
+                    } else {
+                        StandardContinueButton(
+                            isDisabled: viewModel.companyCode.isEmpty,
+                            isLoading: viewModel.isLoading,
+                            onTap: {
+                                joinCompany()
+                            }
+                        )
+                        
+                        Button(action: {
+                            // Show help or contact info
+                            viewModel.errorMessage = "Contact your organization administrator for your company code."
+                        }) {
+                            Text("Need Help?")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(secondaryTextColor)
                         }
-                    )
-                    
-                    Button(action: {
-                        // Show help or contact info
-                        viewModel.errorMessage = "Contact your organization administrator for your company code."
-                    }) {
-                        Text("Need Help?")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(secondaryTextColor)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -233,8 +272,15 @@ struct CompanyCodeInputView: View {
                     // Store the fact that the user has successfully joined a company
                     UserDefaults.standard.set(true, forKey: "has_joined_company")
                     
-                    // Continue to next step
-                    viewModel.moveToNextStep()
+                    // Show welcome phase
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showWelcomePhase = true
+                    }
+                    
+                    // Animate welcome message
+                    withAnimation(.easeIn(duration: 0.5).delay(0.2)) {
+                        welcomeOpacity = 1.0
+                    }
                 } else {
                     // Error message is already set by the joinCompany method
                     print("Company join failed: \(viewModel.errorMessage)")

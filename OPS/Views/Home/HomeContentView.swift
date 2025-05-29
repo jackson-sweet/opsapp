@@ -232,14 +232,14 @@ struct HomeContentView: View {
                 
             }
             .padding()
-            .frame(width: geometry.size.width - 40) // Remove fixed height
+            //.frame(width: geometry.size.width - 40) // Remove fixed height
             .background(
                 // Custom background with blur effect
                 BlurView(style: .dark)
                     .cornerRadius(5)
             )
             .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .position(x: geometry.size.width / 2, y: geometry.size.height / 2) // Center the card
+            .position(x: geometry.size.width / 2, y: geometry.size.height / 4) // Center the card
             .contentShape(Rectangle()) // Make entire card tappable
         }
         .frame(minHeight: 85) // Set minimum height for the container

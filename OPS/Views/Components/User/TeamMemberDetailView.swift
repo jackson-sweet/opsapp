@@ -48,8 +48,11 @@ struct TeamMemberDetailView: View {
                             .padding(.horizontal)
                         
                         // Role information with improved card styling
-                        roleSection
-                            .padding(.horizontal)
+                        // Only show role section if not a client
+                        if !isClient {
+                            roleSection
+                                .padding(.horizontal)
+                        }
                         
                         // Spacer for bottom padding
                         Spacer(minLength: 40)
@@ -74,7 +77,7 @@ struct TeamMemberDetailView: View {
                 }
                 
                 ToolbarItem(placement: .principal) {
-                    Text("Team Member")
+                    Text(isClient ? "CLIENT" : "TEAM MEMBER")
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(.white)
                 }
@@ -352,13 +355,13 @@ struct TeamMemberDetailView: View {
                         .fill(OPSStyle.Colors.cardBackground)
                         .frame(width: contactIconSize, height: contactIconSize)
                     
-                    Image(systemName: "person.badge.shield.checkmark")
+                    Image(systemName: isClient ? "building.2" : "person.badge.shield.checkmark")
                         .font(OPSStyle.Typography.smallBody)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Employee Type")
+                    Text(isClient ? "Type" : "Employee Type")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
@@ -381,6 +384,14 @@ struct TeamMemberDetailView: View {
     }
     
     // MARK: - Helper Computed Properties
+    
+    private var isClient: Bool {
+        // Check if the role indicates this is a client
+        if let teamMember = teamMember {
+            return teamMember.role.lowercased() == "client"
+        }
+        return false
+    }
     
     private var fullName: String {
         if let user = user {

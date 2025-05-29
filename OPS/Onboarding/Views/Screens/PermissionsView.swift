@@ -100,9 +100,8 @@ struct PermissionsView: View {
                             // Location permission
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("LOCATION")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(Color.gray)
+                                    .font(OPSStyle.Typography.cardSubtitle)
+                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
                                 
                                 VStack(alignment: .leading, spacing: 12) {
                                     HStack {
@@ -110,9 +109,9 @@ struct PermissionsView: View {
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                             .font(OPSStyle.Typography.subtitle)
                                         
-                                        Text("Location Access")
-                                            .font(OPSStyle.Typography.bodyBold)
-                                            .foregroundColor(.white)
+                                        Text("LOCATION ACCESS")
+                                            .font(OPSStyle.Typography.cardSubtitle)
+                                            .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : .white)
                                         
                                         Spacer()
                                         
@@ -133,20 +132,23 @@ struct PermissionsView: View {
                                     }
                                     
                                     Text("Shows nearby jobs and enables navigation to job sites. Most useful in 'Always Allow' mode.")
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(Color.gray)
+                                        .font(OPSStyle.Typography.cardBody)
+                                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
                                 }
                                 .padding()
-                                .background(Color(white: 0.15))
+                                .background(viewModel.shouldUseLightTheme ? Color.white : Color(white: 0.15))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
+                                )
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                             
                             // Notification permission
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("NOTIFICATIONS")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(Color.gray)
+                                    .font(OPSStyle.Typography.cardSubtitle)
+                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
                                 
                                 VStack(alignment: .leading, spacing: 12) {
                                     HStack {
@@ -154,9 +156,9 @@ struct PermissionsView: View {
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                             .font(OPSStyle.Typography.subtitle)
                                         
-                                        Text("Push Notifications")
-                                            .font(OPSStyle.Typography.bodyBold)
-                                            .foregroundColor(.white)
+                                        Text("PUSH NOTIFICATIONS")
+                                            .font(OPSStyle.Typography.cardSubtitle)
+                                            .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : .white)
                                         
                                         Spacer()
                                         
@@ -177,11 +179,15 @@ struct PermissionsView: View {
                                     }
                                     
                                     Text("Get updates about your jobs and team activities. Critical for staying informed about schedule changes.")
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(Color.gray)
+                                        .font(OPSStyle.Typography.cardBody)
+                                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
                                 }
                                 .padding()
-                                .background(Color(white: 0.15))
+                                .background(viewModel.shouldUseLightTheme ? Color.white : Color(white: 0.15))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
+                                )
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                             
@@ -193,7 +199,7 @@ struct PermissionsView: View {
                                 
                                 Text("You can change these permissions later in your device settings if needed.")
                                     .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(Color.gray)
+                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
                             }
                             .padding(.top, 4)
                         }
@@ -293,12 +299,12 @@ struct PermissionsView: View {
                                 
                                 Text("It is very important that you choose the \"Always Allow\" option in the next dialog. This will allow your teammates to locate you and improve comms.")
                                     .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : .white)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         .padding(16)
-                        .background(Color.black.opacity(0.7))
+                        .background(viewModel.shouldUseLightTheme ? Color.white : Color.black.opacity(0.7))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(Color.yellow, lineWidth: 1)

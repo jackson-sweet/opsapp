@@ -16,6 +16,23 @@ struct OrganizationJoinView: View {
     @State private var messageOpacity: Double = 0
     @State private var contentOpacity: Double = 0
     
+    // Calculate the current step number based on user type
+    private var currentStepNumber: Int {
+        if viewModel.selectedUserType == .employee {
+            return 2 // Employee flow position - after account setup
+        } else {
+            return 2 // This view shouldn't appear for company flow
+        }
+    }
+    
+    private var totalSteps: Int {
+        if viewModel.selectedUserType == .employee {
+            return 8 // Employee flow has 8 total steps
+        } else {
+            return 10 // Company flow has 10 total steps
+        }
+    }
+    
     init(viewModel: OnboardingViewModel, isInConsolidatedFlow: Bool = false) {
         self.viewModel = viewModel
         self._isInConsolidatedFlow = State(initialValue: isInConsolidatedFlow)
@@ -24,78 +41,59 @@ struct OrganizationJoinView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Background
-                Color.black.edgesIgnoringSafeArea(.all)
+                // Background - conditional theming
+                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                    .edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 0) {
-                    // No step indicators for organization join view as per requirements
+                    // Navigation header with step indicator
+                    HStack {
+                        Spacer()
+                        
+                        Button(action: {
+                            viewModel.logoutAndReturnToLogin()
+                        }) {
+                            Text("Sign Out")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                        }
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .padding(.horizontal, 24)
+                    
+                    // Step indicator bars
+                    HStack(spacing: 4) {
+                        ForEach(0..<totalSteps) { step in
+                            Rectangle()
+                                .fill(step < currentStepNumber ? 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
+                                .frame(height: 4)
+                        }
+                    }
+                    .padding(.bottom, 16)
+                    .padding(.horizontal, 24)
                     
                     // Fixed VStack instead of ScrollView since this content should fit on screen
                     VStack(spacing: 0) {
                         // Header
                         OnboardingHeaderView(
-                            title: "Account Created Successfully",
-                            subtitle: "Now let's connect you with your organization."
+                            title: "Account Created.".uppercased(),
+                            subtitle: "Now let's connect you with your organization.",
+                            isLightTheme: viewModel.shouldUseLightTheme
                         )
                         .padding(.bottom, 20)
                         
-                        // Success icon and message
-                        VStack(alignment: .leading, spacing: 30) {
-                            // Check icon with circle in modern style
-                            ZStack {
-                                // Outer circle
-                                Circle()
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                                    .frame(width: 80, height: 80)
-                                
-                                // Inner circle with accent color
-                                Circle()
-                                    .fill(OPSStyle.Colors.primaryAccent.opacity(0.15))
-                                    .frame(width: 76, height: 76)
-                                
-                                // Icon
-                                Image(systemName: "checkmark")
-                                    .font(OPSStyle.Typography.largeTitle)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    .scaleEffect(iconScale)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 10)
-                            
-                            // Information message
-                            VStack(alignment: .leading, spacing: 20) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Connect with your team")
-                                        .font(OPSStyle.Typography.subtitle)
-                                        .foregroundColor(.white)
-                                    
-                                    Text("In the next steps, you'll connect to your organization's projects and team members.")
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(Color.gray)
-                                        .lineSpacing(4)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                
-                                // Benefits of connecting
-                                VStack(alignment: .leading, spacing: 12) {
-                                    FeatureItem(text: "Access to your organization's projects")
-                                    FeatureItem(text: "Coordinate with your team members")
-                                    FeatureItem(text: "Share updates and site photos")
-                                }
-                            }
-                            .opacity(messageOpacity)
-                        }
-                        .opacity(contentOpacity)
-                        .frame(maxWidth: .infinity)
                         
                         Spacer() // This will push content up and button to the bottom
                     }
+                    .padding(.horizontal, 24)
                     .padding(.top, 40)
                     
-                    // Navigation buttons
-                    OnboardingNavigationButtons(
-                        primaryText: "CONTINUE",
-                        onPrimaryTapped: {
+                    // Continue button
+                    StandardContinueButton(
+                        onTap: {
                             print("OrganizationJoinView: Continue button tapped")
                             if isInConsolidatedFlow {
                                 viewModel.moveToNextStep()
@@ -105,8 +103,8 @@ struct OrganizationJoinView: View {
                         }
                     )
                     .padding(.bottom, 30)
+                    .padding(.horizontal, 24)
                 }
-                .padding(.horizontal, 24)
             }
         }
         .onAppear {
@@ -151,7 +149,7 @@ struct FeatureItem: View {
             // Feature text
             Text(text)
                 .font(OPSStyle.Typography.caption)
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -174,18 +172,22 @@ struct OnboardingStepIndicator: View {
 // MARK: - Preview
 #Preview("Organization Join View") {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.email = "user@example.com"
     
     return OrganizationJoinView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }
 
 #Preview("Organization Join View - Consolidated") {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.email = "user@example.com"
     
     return OrganizationJoinView(viewModel: viewModel, isInConsolidatedFlow: true)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

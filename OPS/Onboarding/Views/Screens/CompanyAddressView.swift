@@ -8,22 +8,70 @@ struct CompanyAddressView: View {
         span: MKCoordinateSpan(latitudeDelta: 50, longitudeDelta: 60)
     )
     @State private var selectedLocation: CLLocationCoordinate2D?
+    var isInConsolidatedFlow: Bool = false
+    
+    // Calculate the current step number based on user type
+    private var currentStepNumber: Int {
+        return 4 // Company flow position - after basic info
+    }
+    
+    private var totalSteps: Int {
+        if onboardingViewModel.selectedUserType == .employee {
+            return 8 // Employee flow has 8 total steps
+        } else {
+            return 10 // Company flow has 10 total steps
+        }
+    }
     
     var body: some View {
-        VStack(spacing: 0) {
-            OnboardingHeader(
-                title: "Company Address",
-                subtitle: "Step 2 of 6",
-                showBackButton: true,
-                onBack: {
-                    onboardingViewModel.previousStep()
+        ZStack {
+            // Background color
+            Color.black.edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 0) {
+                // Navigation header with step indicator
+                HStack {
+                    Button(action: {
+                        onboardingViewModel.previousStep()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(OPSStyle.Typography.caption)
+                            Text("Back")
+                                .font(OPSStyle.Typography.body)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        onboardingViewModel.logoutAndReturnToLogin()
+                    }) {
+                        Text("Sign Out")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
                 }
-            )
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                .padding(.horizontal, 24)
+                
+                // Step indicator bars
+                HStack(spacing: 4) {
+                    ForEach(0..<totalSteps) { step in
+                        Rectangle()
+                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
+                            .frame(height: 4)
+                    }
+                }
+                .padding(.bottom, 16)
+                .padding(.horizontal, 24)
             
             ScrollView {
                 VStack(spacing: 32) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Where is your company located?")
+                        Text("WHERE IS YOUR COMPANY LOCATED?")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(Color("TextPrimary"))
                         
@@ -63,25 +111,12 @@ struct CompanyAddressView: View {
             }
             
             VStack(spacing: 16) {
-                Button(action: {
-                    onboardingViewModel.nextStep()
-                }) {
-                    HStack {
-                        Text("Continue")
-                            .font(OPSStyle.Typography.bodyBold)
-                        Spacer()
-                        Image(systemName: "arrow.right")
-                            .font(OPSStyle.Typography.bodyBold)
+                StandardContinueButton(
+                    isDisabled: !isAddressValid,
+                    onTap: {
+                        onboardingViewModel.nextStep()
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(isAddressValid ? Color("AccentPrimary") : Color("StatusInactive"))
-                    )
-                }
-                .disabled(!isAddressValid)
+                )
                 
                 Button(action: {
                     onboardingViewModel.nextStep()
@@ -98,8 +133,8 @@ struct CompanyAddressView: View {
                     .fill(Color("Background"))
                     .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: -4)
             )
+            }
         }
-        .background(Color("Background"))
     }
     
     private var isAddressValid: Bool {
@@ -113,6 +148,9 @@ struct MapPin: Identifiable {
 }
 
 #Preview {
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
+    
     CompanyAddressView()
         .environmentObject(OnboardingViewModel())
+        .environmentObject(dataController)
 }

@@ -10,15 +10,15 @@ import SwiftData
 
 // MARK: - Main Preview Navigator
 struct OnboardingFlowPreview: View {
-    @State private var selectedFlow: FlowType = .consolidated
+    @State private var selectedFlow: FlowType = .employee
     @State private var selectedScreen = 0
     @State private var showDeviceFrame = false
     @State private var deviceScale: CGFloat = 0.8
     
     enum FlowType: String, CaseIterable {
-        case consolidated = "Consolidated (7 Steps)"
+        case employee = "Employee Flow (8 Steps)"
+        case company = "Company Flow (10 Steps)"
         case original = "Original (11 Steps)"
-        case company = "Company Flow"
     }
     
     var body: some View {
@@ -103,12 +103,12 @@ struct OnboardingFlowPreview: View {
     // Current screens based on selected flow
     var currentScreens: [(name: String, view: AnyView)] {
         switch selectedFlow {
-        case .consolidated:
-            return consolidatedFlowScreens
-        case .original:
-            return originalFlowScreens
+        case .employee:
+            return employeeFlowScreens
         case .company:
             return companyFlowScreens
+        case .original:
+            return originalFlowScreens
         }
     }
     
@@ -118,7 +118,7 @@ struct OnboardingFlowPreview: View {
         if selectedScreen < currentScreens.count {
             currentScreens[selectedScreen].view
                 .environmentObject(mockViewModel)
-                .environment(\.useConsolidatedOnboarding, selectedFlow == .consolidated)
+                .environmentObject(OnboardingPreviewHelpers.createPreviewDataController())
         }
     }
     
@@ -169,17 +169,19 @@ struct OnboardingFlowPreview: View {
         return vm
     }
     
-    // Consolidated flow screens (7 steps)
-    var consolidatedFlowScreens: [(name: String, view: AnyView)] {
+    // Employee flow screens (8 steps total)
+    var employeeFlowScreens: [(name: String, view: AnyView)] {
         [
             ("Welcome", AnyView(WelcomeView(viewModel: mockViewModel))),
             ("User Type", AnyView(UserTypeSelectionView().environmentObject(mockViewModel))),
-            ("Account Setup", AnyView(AccountSetupView(viewModel: mockViewModel))),
-            ("Phone", AnyView(PhoneNumberView(viewModel: mockViewModel))),
-            ("User Details", AnyView(UserDetailsView(viewModel: mockViewModel))),
-            ("Join Org", AnyView(OrganizationJoinView(viewModel: mockViewModel))),
-            ("Permissions", AnyView(ConsolidatedPermissionsView(viewModel: mockViewModel))),
-            ("Complete", AnyView(CompletionView(onComplete: {})))
+            ("Account Setup", AnyView(EmailView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
+            ("Organization Join", AnyView(OrganizationJoinView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
+            ("User Details", AnyView(UserInfoView(viewModel: mockViewModel, isInConsolidatedFlow: false))),
+            ("Company Code", AnyView(CompanyCodeInputView(viewModel: mockViewModel))),
+            ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
+            ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel))),
+            ("Complete", AnyView(CompletionView(onComplete: {}))),
+            ("Welcome Guide", AnyView(WelcomeGuideView().environmentObject(mockViewModel)))
         ]
     }
     
@@ -191,28 +193,30 @@ struct OnboardingFlowPreview: View {
             ("Password", AnyView(PasswordView(viewModel: mockViewModel))),
             ("User Info", AnyView(UserInfoView(viewModel: mockViewModel))),
             ("Phone", AnyView(PhoneNumberView(viewModel: mockViewModel))),
-            ("Company Code", AnyView(CompanyCodeView(viewModel: mockViewModel))),
-            ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel).environmentObject(DataController()))),
+            ("Company Code", AnyView(CompanyCodeInputView(viewModel: mockViewModel))),
+            ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel))),
             ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel))),
             ("Complete", AnyView(CompletionView(onComplete: {})))
         ]
     }
     
-    // Company flow screens
+    // Company flow screens (10 steps total)
     var companyFlowScreens: [(name: String, view: AnyView)] {
         [
             ("Welcome", AnyView(WelcomeView(viewModel: mockViewModel))),
             ("User Type", AnyView(UserTypeSelectionView().environmentObject(mockViewModel))),
-            ("Account Setup", AnyView(AccountSetupView(viewModel: mockViewModel))),
-            ("Phone", AnyView(PhoneNumberView(viewModel: mockViewModel))),
-            ("Welcome Guide", AnyView(WelcomeGuideView().environmentObject(mockViewModel))),
-            ("Basic Info", AnyView(CompanyBasicInfoView().environmentObject(mockViewModel))),
+            ("Account Setup", AnyView(EmailView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
+            ("User Details", AnyView(UserInfoView(viewModel: mockViewModel, isInConsolidatedFlow: false))),
+            ("Basic Info", AnyView(CompanyBasicInfoView(isInConsolidatedFlow: true).environmentObject(mockViewModel))),
+            ("Address", AnyView(CompanyAddressView(isInConsolidatedFlow: true).environmentObject(mockViewModel))),
             ("Contact", AnyView(CompanyContactView().environmentObject(mockViewModel))),
             ("Details", AnyView(CompanyDetailsView().environmentObject(mockViewModel))),
-            ("Address", AnyView(CompanyAddressView().environmentObject(mockViewModel))),
+            ("Company Code", AnyView(CompanyCodeDisplayView(viewModel: mockViewModel))),
             ("Team Invites", AnyView(TeamInvitesView().environmentObject(mockViewModel))),
-            ("Permissions", AnyView(ConsolidatedPermissionsView(viewModel: mockViewModel))),
-            ("Complete", AnyView(CompletionView(onComplete: {})))
+            ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
+            ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel))),
+            ("Complete", AnyView(CompletionView(onComplete: {}))),
+            ("Welcome Guide", AnyView(WelcomeGuideView().environmentObject(mockViewModel)))
         ]
     }
 }
@@ -297,9 +301,8 @@ struct OnboardingDeviceSizePreview: PreviewProvider {
             // Different device sizes
             ForEach(["iPhone 15 Pro", "iPhone 15 Pro Max", "iPhone SE (3rd generation)"], id: \.self) { device in
                 OnboardingPresenter()
-                    .environmentObject(DataController())
+                    .environmentObject(OnboardingPreviewHelpers.createPreviewDataController())
                     .environmentObject(OnboardingViewModel())
-                    .environment(\.useConsolidatedOnboarding, true)
                     .preferredColorScheme(.dark)
                     .previewDevice(PreviewDevice(rawValue: device))
                     .previewDisplayName(device)

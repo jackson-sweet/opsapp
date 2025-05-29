@@ -6,21 +6,64 @@ struct TeamInvitesView: View {
     @State private var emailErrors: [String?] = [nil]
     @State private var isLoading = false
     
+    // Calculate the current step number based on user type
+    private var currentStepNumber: Int {
+        return 8 // Company flow position - after company code
+    }
+    
+    private var totalSteps: Int {
+        if onboardingViewModel.selectedUserType == .employee {
+            return 8 // Employee flow has 8 total steps
+        } else {
+            return 10 // Company flow has 10 total steps
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
-            OnboardingHeader(
-                title: "Invite Team Members",
-                subtitle: "Step 5 of 6",
-                showBackButton: true,
-                onBack: {
+            // Navigation header with step indicator
+            HStack {
+                Button(action: {
                     onboardingViewModel.previousStep()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(OPSStyle.Typography.caption)
+                        Text("Back")
+                            .font(OPSStyle.Typography.body)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
-            )
+                
+                Spacer()
+                
+                Button(action: {
+                    onboardingViewModel.logoutAndReturnToLogin()
+                }) {
+                    Text("Sign Out")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .padding(.horizontal, 24)
+            
+            // Step indicator bars
+            HStack(spacing: 4) {
+                ForEach(0..<totalSteps) { step in
+                    Rectangle()
+                        .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
+                        .frame(height: 4)
+                }
+            }
+            .padding(.bottom, 16)
+            .padding(.horizontal, 24)
             
             ScrollView {
                 VStack(spacing: 32) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Ready to build your team?")
+                        Text("READY TO BUILD YOUR TEAM?")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(Color("TextPrimary"))
                         
@@ -131,22 +174,9 @@ struct TeamInvitesView: View {
                             .fill(Color("AccentPrimary"))
                     )
                 } else {
-                    Button(action: sendInvitations) {
-                        HStack {
-                            Text(hasValidEmails ? "Send Invitations" : "Continue without inviting")
-                                .font(OPSStyle.Typography.bodyBold)
-                            Spacer()
-                            Image(systemName: hasValidEmails ? "paperplane.fill" : "arrow.right")
-                                .font(OPSStyle.Typography.bodyBold)
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color("AccentPrimary"))
-                        )
-                    }
+                    StandardContinueButton(
+                        onTap: sendInvitations
+                    )
                 }
                 
                 Button(action: {
@@ -251,6 +281,9 @@ struct TeamInvitesView: View {
 }
 
 #Preview {
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
+    
     TeamInvitesView()
         .environmentObject(OnboardingViewModel())
+        .environmentObject(dataController)
 }

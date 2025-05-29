@@ -9,27 +9,21 @@ import Foundation
 
 // Models for onboarding process
 
-// Response from sign_user_up endpoint
+// Response from sign_company_up and sign_employee_up endpoints
 struct SignUpResponse: Codable {
-    let status: String? // "success" or other status
-    let success: String? // "yes" or "no" (legacy format)
-    let error_message: String?
+    let success: Bool? // true or false
     let user_id: String? // User ID returned when signup is successful
+    let error_message: String?
     let response: ResponseData? // Additional response data that might contain user_id
     
-    // On Bubble, we may get 200 status codes with different response formats
+    // Check if signup was successful based on new API format
     var wasSuccessful: Bool {
-        // Check new status field first
-        if let status = status, status.lowercased() == "success" {
-            return true
+        // Check new success boolean field first
+        if let success = success {
+            return success
         }
         
-        // Check legacy success flag
-        if let success = success, success.lowercased() == "yes" {
-            return true
-        }
-        
-        // Check if we have a direct user_id
+        // Fallback: Check if we have a valid user_id
         if let userId = user_id, !userId.isEmpty {
             return true
         }
@@ -424,7 +418,7 @@ enum OnboardingStep: Int, CaseIterable {
         case .userDetails:
             return "Tell us who you are so your team can recognize you."
         case .companyCode:
-            return "Enter your company code to join your team's projects."
+            return "Your unique company code for employees to join."
         case .companyBasicInfo:
             return "Set up your company profile basics."
         case .companyAddress:
@@ -486,17 +480,25 @@ enum OnboardingStep: Int, CaseIterable {
         case .companyContact:
             return .companyDetails
         case .companyDetails:
-            return .teamInvites
+            // Show company code page after details for business owners
+            return .companyCode
+        case .companyCode:
+            // For business owners, show team invites after company code
+            if let userType = userType, userType == .company {
+                return .teamInvites
+            }
+            // For employees, go to permissions
+            return .permissions
         case .teamInvites:
-            return .welcomeGuide
+            return .permissions
         case .permissions:
             return .fieldSetup
         case .fieldSetup:
             return .completion
         case .completion:
-            return nil
+            return .welcomeGuide
         case .welcomeGuide:
-            return .permissions
+            return nil
         }
     }
     
@@ -523,6 +525,11 @@ enum OnboardingStep: Int, CaseIterable {
             }
             return .organizationJoin // Default to employee flow
         case .companyCode:
+            // For business owners coming from company details
+            if let userType = userType, userType == .company {
+                return .companyDetails
+            }
+            // For employees
             return .userDetails
         case .companyBasicInfo:
             return .userDetails
@@ -533,9 +540,7 @@ enum OnboardingStep: Int, CaseIterable {
         case .companyDetails:
             return .companyContact
         case .teamInvites:
-            return .companyDetails
-        case .welcomeGuide:
-            return .teamInvites
+            return .companyCode
         case .permissions:
             // Branch based on user type
             if let userType = userType {
@@ -543,7 +548,7 @@ enum OnboardingStep: Int, CaseIterable {
                 case .employee:
                     return .companyCode
                 case .company:
-                    return .welcomeGuide
+                    return .teamInvites
                 }
             }
             return .companyCode // Default to employee flow
@@ -551,6 +556,8 @@ enum OnboardingStep: Int, CaseIterable {
             return .permissions
         case .completion:
             return .fieldSetup
+        case .welcomeGuide:
+            return .completion
         }
     }
 }

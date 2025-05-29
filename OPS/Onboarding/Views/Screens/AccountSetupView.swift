@@ -14,6 +14,19 @@ struct AccountSetupView: View {
     @State private var isPasswordVisible = false
     @State private var isConfirmPasswordVisible = false
     
+    // Calculate the current step number and total steps based on user type
+    private var currentStepNumber: Int {
+        return 1 // First step for both flows
+    }
+    
+    private var totalSteps: Int {
+        if viewModel.selectedUserType == .employee {
+            return 8 // Employee flow has 8 total steps
+        } else {
+            return 10 // Company flow has 10 total steps
+        }
+    }
+    
     var body: some View {
         ZStack {
             // Background color
@@ -35,10 +48,6 @@ struct AccountSetupView: View {
                     }
                     
                     Spacer()
-                    
-                    Text("Step 1 of 7")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(Color.gray)
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
@@ -46,9 +55,9 @@ struct AccountSetupView: View {
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
-                    ForEach(0..<7) { step in
+                    ForEach(0..<totalSteps) { step in
                         Rectangle()
-                            .fill(step == 0 ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.4))
+                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.4))
                             .frame(height: 4)
                     }
                 }
@@ -59,11 +68,11 @@ struct AccountSetupView: View {
                     VStack(spacing: 24) {
                         // Header
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Create your")
+                            Text("CREATE YOUR")
                                 .font(OPSStyle.Typography.title)
                                 .foregroundColor(.white)
                             
-                            Text("account.")
+                            Text("ACCOUNT")
                                 .font(OPSStyle.Typography.title)
                                 .foregroundColor(.white)
                                 .padding(.bottom, 12)
@@ -180,12 +189,11 @@ struct AccountSetupView: View {
                         
                         Spacer()
                         
-                        // Navigation buttons
-                        OnboardingNavigationButtons(
-                            primaryText: "Create Account",
-                            isPrimaryDisabled: !viewModel.canProceedFromAccountSetup,
+                        // Continue button
+                        StandardContinueButton(
+                            isDisabled: !viewModel.canProceedFromAccountSetup,
                             isLoading: viewModel.isLoading,
-                            onPrimaryTapped: {
+                            onTap: {
                                 submitAccountSetup()
                             }
                         )
@@ -236,11 +244,13 @@ struct AccountSetupView: View {
 
 #Preview {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.email = "user@example.com"
     viewModel.password = "password123"
     viewModel.confirmPassword = "password123"
     
     return AccountSetupView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

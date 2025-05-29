@@ -9,9 +9,25 @@ import SwiftUI
 
 struct CompanyBasicInfoView: View {
     @EnvironmentObject var onboardingViewModel: OnboardingViewModel
+    @State private var currentPhase: CompanyInfoPhase = .companyName
+    var isInConsolidatedFlow: Bool = false
     
-    private var isFormValid: Bool {
-        !onboardingViewModel.companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    enum CompanyInfoPhase: Int, CaseIterable {
+        case companyName = 0
+        case companyLogo = 1
+    }
+    
+    // Calculate the current step number based on user type
+    private var currentStepNumber: Int {
+        return 3 // Company flow position - after user details
+    }
+    
+    private var totalSteps: Int {
+        if onboardingViewModel.selectedUserType == .employee {
+            return 8 // Employee flow has 8 total steps
+        } else {
+            return 10 // Company flow has 10 total steps
+        }
     }
     
     var body: some View {
@@ -23,7 +39,13 @@ struct CompanyBasicInfoView: View {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        onboardingViewModel.previousStep()
+                        if currentPhase == .companyName {
+                            onboardingViewModel.previousStep()
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentPhase = CompanyInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .companyName
+                            }
+                        }
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -35,10 +57,15 @@ struct CompanyBasicInfoView: View {
                     }
                     
                     Spacer()
+                    Spacer()
                     
-                    Text("Step 1 of 6")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Button(action: {
+                        onboardingViewModel.logoutAndReturnToLogin()
+                    }) {
+                        Text("Sign Out")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
@@ -46,126 +73,175 @@ struct CompanyBasicInfoView: View {
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
-                    ForEach(0..<6) { step in
+                    ForEach(0..<totalSteps) { step in
                         Rectangle()
-                            .fill(step < 1 ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
+                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
                             .frame(height: 4)
                     }
                 }
                 .padding(.bottom, 16)
                 .padding(.horizontal, 24)
                 
-                ScrollView {
-                    VStack(spacing: 32) {
-                        // Header
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Let's start with your")
-                                .font(OPSStyle.Typography.title)
-                                .foregroundColor(.white)
+                // Main centered content area
+                VStack(spacing: 0) {
+                    Spacer()
+                    
+                    // Phase content
+                    Group {
+                        switch currentPhase {
+                        case .companyName:
+                            CompanyNamePhaseView(
+                                companyName: $onboardingViewModel.companyName,
+                                onContinue: {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentPhase = .companyLogo
+                                    }
+                                }
+                            )
+                        case .companyLogo:
+                            CompanyLogoPhaseView(
+                                onContinue: {
+                                    onboardingViewModel.nextStep()
+                                }
+                            )
+                        }
+                    }
+                    .transition(.opacity)
+                    .padding(.horizontal, 24)
+                    
+                    Spacer()
+                }
+            }
+        }
+        .dismissKeyboardOnTap()
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+}
+
+// MARK: - Phase Views
+
+struct CompanyNamePhaseView: View {
+    @Binding var companyName: String
+    let onContinue: () -> Void
+    
+    private var isFormValid: Bool {
+        !companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    var body: some View {
+        VStack(spacing: 32) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("LET'S START WITH YOUR")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(.white)
+                
+                Text("COMPANY NAME.")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(.white)
+                    .padding(.bottom, 12)
+                
+                Text("This information will be visible to your team members and helps identify your company.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            
+            // Company Name Field
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Company name", text: $companyName)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(.white)
+                    .textContentType(.organizationName)
+                    .disableAutocorrection(true)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(OPSStyle.Colors.cardBackground)
+                            )
+                    )
+            }
+            
+            Spacer()
+            
+            // Continue button
+            StandardContinueButton(
+                isDisabled: !isFormValid,
+                onTap: onContinue
+            )
+        }
+    }
+}
+
+struct CompanyLogoPhaseView: View {
+    let onContinue: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 32) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ADD YOUR")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(.white)
+                
+                Text("COMPANY LOGO.")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(.white)
+                    .padding(.bottom, 12)
+                
+                Text("Your company logo will be added to projects and communications. You can add this later in settings.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            
+            // Logo Upload Placeholder
+            VStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 2)
+                    .fill(OPSStyle.Colors.cardBackground)
+                    .frame(height: 160)
+                    .overlay(
+                        VStack(spacing: 12) {
+                            Image(systemName: "photo")
+                                .font(.system(size: 48))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            Text("company basics.")
-                                .font(OPSStyle.Typography.title)
-                                .foregroundColor(.white)
-                                .padding(.bottom, 12)
-                            
-                            Text("This information will be visible to your team members and helps identify your company.")
+                            Text("Logo upload coming soon")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .lineSpacing(4)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        VStack(spacing: 24) {
-                            // Company Name Field
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("COMPANY NAME")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                TextField("Enter your company name", text: $onboardingViewModel.companyName)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
-                                    .textContentType(.organizationName)
-                                    .disableAutocorrection(true)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                    .background(OPSStyle.Colors.cardBackground)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                                    )
-                            }
-                            
-                            // Company Logo Placeholder
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("COMPANY LOGO")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                VStack(spacing: 12) {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 2)
-                                        .fill(OPSStyle.Colors.cardBackground)
-                                        .frame(height: 120)
-                                        .overlay(
-                                            VStack(spacing: 8) {
-                                                Image(systemName: "photo")
-                                                    .font(OPSStyle.Typography.title)
-                                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                                
-                                                Text("Logo upload coming soon")
-                                                    .font(OPSStyle.Typography.caption)
-                                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                            }
-                                        )
-                                    
-                                    Text("Your company logo will be added to projects and communications. This feature will be available soon.")
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.8))
-                                        .multilineTextAlignment(.leading)
-                                }
-                            }
-                        }
-                        
-                        // Error message
-                        if !onboardingViewModel.errorMessage.isEmpty {
-                            Text(onboardingViewModel.errorMessage)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.errorStatus)
-                        }
-                        
-                        Spacer()
-                        
-                        // Continue button
-                        Button(action: {
-                            if isFormValid {
-                                onboardingViewModel.nextStep()
-                            } else {
-                                onboardingViewModel.errorMessage = "Please enter your company name to continue"
-                            }
-                        }) {
-                            Text("Continue")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.black)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(isFormValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                        .disabled(!isFormValid)
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 20)
-                    .padding(.bottom, 30)
-                }
+                    )
+                
+                Text("This feature will be available in a future update.")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.8))
+                    .multilineTextAlignment(.center)
+            }
+            
+            Spacer()
+            
+            // Continue and Skip buttons
+            VStack(spacing: 12) {
+                StandardContinueButton(
+                    onTap: onContinue
+                )
             }
         }
     }
 }
 
 #Preview {
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
+    
     CompanyBasicInfoView()
         .environmentObject(OnboardingViewModel())
+        .environmentObject(dataController)
         .preferredColorScheme(.dark)
 }

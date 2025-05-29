@@ -15,10 +15,28 @@ struct PermissionsView: View {
     @State private var isRequestingLocation = false
     @State private var isRequestingNotifications = false
     
+    // Calculate the current step number based on user type
+    private var currentStepNumber: Int {
+        if viewModel.selectedUserType == .employee {
+            return 5 // Employee flow position - after company code
+        } else {
+            return 9 // Company flow position - after team invites
+        }
+    }
+    
+    private var totalSteps: Int {
+        if viewModel.selectedUserType == .employee {
+            return 8 // Employee flow has 8 total steps
+        } else {
+            return 10 // Company flow has 10 total steps
+        }
+    }
+    
     var body: some View {
         ZStack {
-            // Background color
-            Color.black.edgesIgnoringSafeArea(.all)
+            // Background color - conditional theming
+            (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Navigation bar for consolidated flow
@@ -38,18 +56,24 @@ struct PermissionsView: View {
                         
                         Spacer()
                         
-                        Text("Step 4 of 6")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(Color.gray)
+                        Button(action: {
+                            viewModel.logoutAndReturnToLogin()
+                        }) {
+                            Text("Sign Out")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                        }
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 8)
                     
                     // Step indicator bars
                     HStack(spacing: 4) {
-                        ForEach(0..<6) { step in
+                        ForEach(0..<totalSteps) { step in
                             Rectangle()
-                                .fill(step <= 3 ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.4))
+                                .fill(step < currentStepNumber ? 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
                                 .frame(height: 4)
                         }
                     }
@@ -63,13 +87,13 @@ struct PermissionsView: View {
                         VStack(alignment: .leading, spacing: 24) {
                             // Header
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("App Permissions")
+                                Text("APP PERMISSIONS")
                                     .font(OPSStyle.Typography.title)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
                                 
                                 Text("These permissions help OPS work better in the field.")
                                     .font(OPSStyle.Typography.body)
-                                    .foregroundColor(Color.gray)
+                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             
@@ -177,32 +201,67 @@ struct PermissionsView: View {
                     }
                     
                     // Consolidated flow continue button
-                    Button(action: {
-                        // Store permission status
-                        UserDefaults.standard.set(viewModel.isLocationPermissionGranted, forKey: "location_permission_granted")
-                        UserDefaults.standard.set(viewModel.isNotificationsPermissionGranted, forKey: "notifications_permission_granted")
-                        
-                        // Proceed to field setup step
-                        viewModel.moveToNextStepV2()
-                    }) {
-                        Text("CONTINUE")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(height: OPSStyle.Layout.touchTargetStandard)
-                            .frame(maxWidth: .infinity)
-                            .background(OPSStyle.Colors.primaryAccent)
-                            .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    }
+                    StandardContinueButton(
+                        onTap: {
+                            // Store permission status
+                            UserDefaults.standard.set(viewModel.isLocationPermissionGranted, forKey: "location_permission_granted")
+                            UserDefaults.standard.set(viewModel.isNotificationsPermissionGranted, forKey: "notifications_permission_granted")
+                            
+                            // Proceed to field setup step
+                            viewModel.moveToNextStepV2()
+                        }
+                    )
                     .padding(.horizontal, 24)
                     .padding(.vertical, 24)
                 } else {
                     // Original permissions view
+                    // Navigation header with step indicator
+                    HStack {
+                        Button(action: {
+                            viewModel.previousStep()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                    .font(OPSStyle.Typography.caption)
+                                Text("Back")
+                                    .font(OPSStyle.Typography.body)
+                            }
+                            .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent)
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            viewModel.logoutAndReturnToLogin()
+                        }) {
+                            Text("Sign Out")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                        }
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .padding(.horizontal, 24)
+                    
+                    // Step indicator bars
+                    HStack(spacing: 4) {
+                        ForEach(0..<totalSteps) { step in
+                            Rectangle()
+                                .fill(step < currentStepNumber ? 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
+                                .frame(height: 4)
+                        }
+                    }
+                    .padding(.bottom, 16)
+                    .padding(.horizontal, 24)
+                    
                     VStack(spacing: 24) {
                         // Header
                         OnboardingHeaderView(
                             title: "We also need access to Location",
-                            subtitle: "Your location will keep you and your teammates moving as a unit, allowing nearby crew to reach out for help, or coordinate material runs."
+                            subtitle: "Your location will keep you and your teammates moving as a unit, allowing nearby crew to reach out for help, or coordinate material runs.",
+                            isLightTheme: viewModel.shouldUseLightTheme
                         )
                         
                         Spacer()
@@ -249,11 +308,8 @@ struct PermissionsView: View {
                         // Buttons
                         Button(action: {
                             print("PermissionsView: Allow location access button tapped")
-                            // For testing, simulate permission granted and move to next step
-                            viewModel.isLocationPermissionGranted = true
-                            
-                            // Go to next step
-                            viewModel.moveToNextStep()
+                            // Request location permission
+                            viewModel.requestLocationPermission()
                         }) {
                             Text("ALLOW LOCATION ACCESS")
                                 .font(OPSStyle.Typography.bodyBold)
@@ -264,6 +320,14 @@ struct PermissionsView: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .padding(.top, 24)
+                        
+                        // Continue button
+                        StandardContinueButton(
+                            onTap: {
+                                viewModel.moveToNextStep()
+                            }
+                        )
+                        .padding(.top, 12)
                     }
                     .padding(.horizontal, 24)
                     .padding(.top, 20)
@@ -293,8 +357,10 @@ struct PermissionsView: View {
         vm.companyName = "Demo Company, Inc."
         return vm
     }()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     
     return PermissionsView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

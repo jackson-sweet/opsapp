@@ -33,18 +33,54 @@ func formatPhoneNumber(_ phoneNumber: String) -> String {
 struct UserInfoView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     var isInConsolidatedFlow: Bool = false
+    @State private var currentPhase: UserInfoPhase = .firstName
+    
+    enum UserInfoPhase: Int, CaseIterable {
+        case firstName = 0
+        case lastName = 1
+        case phoneNumber = 2
+    }
+    
+    // Calculate the current step number based on user type
+    private var currentStepNumber: Int {
+        if viewModel.selectedUserType == .employee {
+            return 3 // Employee flow position - after organization join
+        } else {
+            return 2 // Company flow position - after account setup
+        }
+    }
+    
+    private var totalSteps: Int {
+        if viewModel.selectedUserType == .employee {
+            return 8 // Employee flow has 8 total steps
+        } else {
+            return 10 // Company flow has 10 total steps
+        }
+    }
     
     var body: some View {
         ZStack {
-            // Background color
-            Color.black.edgesIgnoringSafeArea(.all)
+            // Background color - conditional theming
+            (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
-                // Navigation bar for consolidated flow
-                if isInConsolidatedFlow {
+                // Top navigation and progress section
+                VStack(spacing: 0) {
+                    // Navigation bar with back button and step indicator
                     HStack {
                         Button(action: {
-                            viewModel.moveToPreviousStepV2()
+                            if currentPhase == .firstName {
+                                if isInConsolidatedFlow {
+                                    viewModel.moveToPreviousStepV2()
+                                } else {
+                                    viewModel.moveToPreviousStep()
+                                }
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    currentPhase = UserInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .firstName
+                                }
+                            }
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "chevron.left")
@@ -56,177 +92,295 @@ struct UserInfoView: View {
                         }
                         
                         Spacer()
+                        Spacer()
                         
-                        Text("Step 2 of 6")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(Color.gray)
+                        Button(action: {
+                            viewModel.logoutAndReturnToLogin()
+                        }) {
+                            Text("Sign Out")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                        }
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 8)
                     
                     // Step indicator bars
                     HStack(spacing: 4) {
-                        ForEach(0..<6) { step in
+                        ForEach(0..<totalSteps) { step in
                             Rectangle()
-                                .fill(step <= 1 ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.4))
+                                .fill(step < currentStepNumber ? 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
                                 .frame(height: 4)
                         }
                     }
                     .padding(.bottom, 16)
                 }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
-                // Content
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(isInConsolidatedFlow ? "Your" : "Tell us your")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
-                        
-                        Text(isInConsolidatedFlow ? "information." : "name.")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
-                            .padding(.bottom, 12)
-                        
-                        Text(isInConsolidatedFlow ? 
-                            "Tell us who you are so your team can recognize you." : 
-                            "This will be used for your profile in the OPS app.")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(Color.gray)
-                            .lineSpacing(4)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 10)
-                    
-                    // First name field
-                    VStack(alignment: .leading, spacing: 8) {
-                        InputFieldLabel(label: "FIRST NAME")
-                        
-                        TextField("First name", text: $viewModel.firstName)
-                            .font(OPSStyle.Typography.body)
-                            .keyboardType(.namePhonePad)
-                            .autocapitalization(.words)
-                            .disableAutocorrection(true)
-                            .textContentType(.oneTimeCode) // Prevents autofill
-                            .onboardingTextFieldStyle()
-                            .transition(.opacity)
-                            .animation(.easeInOut, value: viewModel.firstName)
-                    }
-                    
-                    // Last name field
-                    VStack(alignment: .leading, spacing: 8) {
-                        InputFieldLabel(label: "LAST NAME")
-                        
-                        TextField("Last name", text: $viewModel.lastName)
-                            .font(OPSStyle.Typography.body)
-                            .keyboardType(.namePhonePad)
-                            .autocapitalization(.words)
-                            .disableAutocorrection(true)
-                            .textContentType(.oneTimeCode) // Prevents autofill
-                            .onboardingTextFieldStyle()
-                            .transition(.opacity)
-                            .animation(.easeInOut, value: viewModel.lastName)
-                    }
-                    
-                    // Phone number field for consolidated flow
-                    if isInConsolidatedFlow {
-                        VStack(alignment: .leading, spacing: 8) {
-                            InputFieldLabel(label: "PHONE NUMBER")
-                            
-                            TextField("(___) ___-____", text: $viewModel.phoneNumber)
-                                .font(OPSStyle.Typography.body)
-                                .keyboardType(.phonePad)
-                                .textContentType(.oneTimeCode) // Prevents autofill
-                                .onChange(of: viewModel.phoneNumber) { oldValue, newValue in
-                                    // Only keep digits and format
-                                    let digits = newValue.filter { $0.isNumber }
-                                    if digits.count <= 10 {
-                                        viewModel.phoneNumber = formatPhoneNumber(newValue)
-                                    } else {
-                                        viewModel.phoneNumber = oldValue
-                                    }
-                                }
-                                .onboardingTextFieldStyle()
-                                .transition(.opacity)
-                                .animation(.easeInOut, value: viewModel.phoneNumber)
-                        }
-                        
-                        // Phone validation indicator
-                        if !viewModel.phoneNumber.isEmpty {
-                            HStack {
-                                Image(systemName: viewModel.isPhoneValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(viewModel.isPhoneValid ? Color("StatusSuccess") : Color("StatusError"))
-                                
-                                Text(viewModel.isPhoneValid ? "Valid phone number" : "Please enter full 10-digit number")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(viewModel.isPhoneValid ? Color("StatusSuccess") : Color("StatusError"))
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 4)
-                        }
-                    }
-                    
-                    // Error message
-                    ErrorMessageView(message: viewModel.errorMessage)
-                    
+                // Main centered content area
+                VStack(spacing: 0) {
                     Spacer()
                     
-                    // Different button actions for consolidated flow
-                    if isInConsolidatedFlow {
-                        Button(action: {
-                            if viewModel.canProceedFromUserDetails {
-                                viewModel.moveToNextStepV2()
-                            }
-                        }) {
-                            ZStack {
-                                HStack {
-                                    Text("Continue")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(.black)
-                                    
-                                    Spacer()
-                                    
-                                    if viewModel.canProceedFromUserDetails {
-                                        Image(systemName: "arrow.right")
-                                            .font(OPSStyle.Typography.captionBold)
-                                            .foregroundColor(.black)
-                                            .padding(.trailing, 20)
+                    // Phase content
+                    Group {
+                        switch currentPhase {
+                        case .firstName:
+                            FirstNamePhaseView(
+                                firstName: $viewModel.firstName,
+                                isLightTheme: viewModel.shouldUseLightTheme,
+                                onContinue: {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentPhase = .lastName
                                     }
                                 }
-                            }
-                            .padding(.horizontal, 20)
-                            .frame(height: 52)
-                            .frame(maxWidth: .infinity)
-                            .background(viewModel.canProceedFromUserDetails ? Color.white : Color.white.opacity(0.7))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            )
+                        case .lastName:
+                            LastNamePhaseView(
+                                lastName: $viewModel.lastName,
+                                isLightTheme: viewModel.shouldUseLightTheme,
+                                userType: viewModel.selectedUserType,
+                                onContinue: {
+                                    // Always go to phone number phase for all users
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentPhase = .phoneNumber
+                                    }
+                                }
+                            )
+                        case .phoneNumber:
+                            PhoneNumberPhaseView(
+                                phoneNumber: $viewModel.phoneNumber,
+                                isLightTheme: viewModel.shouldUseLightTheme,
+                                onContinue: {
+                                    if isInConsolidatedFlow {
+                                        viewModel.moveToNextStepV2()
+                                    } else {
+                                        viewModel.moveToNextStep()
+                                    }
+                                }
+                            )
                         }
-                        .disabled(!viewModel.canProceedFromUserDetails)
-                    } else {
-                        // Original flow buttons
-                        OnboardingNavigationButtons(
-                            primaryText: "Continue",
-                            secondaryText: "Back",
-                            isPrimaryDisabled: viewModel.firstName.isEmpty || viewModel.lastName.isEmpty,
-                            isLoading: viewModel.isLoading,
-                            onPrimaryTapped: {
-                                print("UserInfoView: Continue button tapped")
-                                // Proceed to the next step
-                                viewModel.moveToNextStep()
-                            },
-                            onSecondaryTapped: {
-                                print("UserInfoView: Back button tapped")
-                                // Go back to password step
-                                viewModel.moveToPreviousStep()
-                            }
+                    }
+                    .transition(.opacity)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    
+                    Spacer()
+                }
+            }
+        }
+        .dismissKeyboardOnTap()
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+}
+
+// MARK: - Phase Views
+
+struct FirstNamePhaseView: View {
+    @Binding var firstName: String
+    let isLightTheme: Bool
+    let onContinue: () -> Void
+    
+    private var primaryTextColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+    
+    private var secondaryTextColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+    }
+    
+    private var placeholderColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.6) : OPSStyle.Colors.secondaryText.opacity(0.6)
+    }
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("WHAT'S YOUR")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(primaryTextColor)
+                
+                Text("FIRST NAME?")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(primaryTextColor)
+                    .padding(.bottom, 12)
+                
+                Text("This will be used for your profile so your team can recognize you.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(secondaryTextColor)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 30)
+            
+            // First name input
+            TextField("First name", text: $firstName)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(primaryTextColor)
+                .keyboardType(.namePhonePad)
+                .autocapitalization(.words)
+                .disableAutocorrection(true)
+                .textContentType(.givenName)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(isLightTheme ? OPSStyle.Colors.Light.cardBackground : OPSStyle.Colors.cardBackground)
                         )
+                )
+            
+            Spacer()
+            
+            // Continue button
+            StandardContinueButton(
+                isDisabled: firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                onTap: onContinue
+            )
+        }
+    }
+}
+
+struct LastNamePhaseView: View {
+    @Binding var lastName: String
+    let isLightTheme: Bool
+    let userType: UserType?
+    let onContinue: () -> Void
+    
+    private var primaryTextColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+    
+    private var secondaryTextColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+    }
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("AND YOUR")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(primaryTextColor)
+                
+                Text("LAST NAME?")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(primaryTextColor)
+                    .padding(.bottom, 12)
+                
+                Text("This completes your profile name for team identification.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(secondaryTextColor)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 30)
+            
+            // Last name input
+            TextField("Last name", text: $lastName)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(primaryTextColor)
+                .keyboardType(.namePhonePad)
+                .autocapitalization(.words)
+                .disableAutocorrection(true)
+                .textContentType(.familyName)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(isLightTheme ? OPSStyle.Colors.Light.cardBackground : OPSStyle.Colors.cardBackground)
+                        )
+                )
+            
+            Spacer()
+            
+            // Continue button
+            StandardContinueButton(
+                isDisabled: lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                onTap: onContinue
+            )
+        }
+    }
+}
+
+struct PhoneNumberPhaseView: View {
+    @Binding var phoneNumber: String
+    let isLightTheme: Bool
+    let onContinue: () -> Void
+    
+    private var primaryTextColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+    
+    private var secondaryTextColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+    }
+    
+    private var isPhoneValid: Bool {
+        let digits = phoneNumber.filter { $0.isNumber }
+        return digits.count >= 10
+    }
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("YOUR PHONE")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(primaryTextColor)
+                
+                Text("NUMBER?")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(primaryTextColor)
+                    .padding(.bottom, 12)
+                
+                Text("We'll use this to send you project updates and notifications.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(secondaryTextColor)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 30)
+            
+            // Phone number input
+            TextField("(___) ___-____", text: $phoneNumber)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(primaryTextColor)
+                .keyboardType(.phonePad)
+                .textContentType(.telephoneNumber)
+                .onChange(of: phoneNumber) { oldValue, newValue in
+                    // Only keep digits and format
+                    let digits = newValue.filter { $0.isNumber }
+                    if digits.count <= 10 {
+                        phoneNumber = formatPhoneNumber(newValue)
+                    } else {
+                        phoneNumber = oldValue
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, isInConsolidatedFlow ? 0 : 20)
-                .padding(.bottom, 30)
-            }
-            .padding(.horizontal, isInConsolidatedFlow ? OPSStyle.Layout.spacing3 : 0)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(isLightTheme ? OPSStyle.Colors.Light.cardBackground : OPSStyle.Colors.cardBackground)
+                        )
+                )
+            
+            Spacer()
+            
+            // Continue button
+            StandardContinueButton(
+                isDisabled: !isPhoneValid,
+                onTap: onContinue
+            )
         }
     }
 }
@@ -234,6 +388,7 @@ struct UserInfoView: View {
 // MARK: - Preview
 #Preview("User Info Screen") {
     let viewModel = OnboardingViewModel()
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.email = "user@example.com"
     viewModel.password = "password123"
     viewModel.firstName = "John"
@@ -241,5 +396,6 @@ struct UserInfoView: View {
     
     return UserInfoView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
+        .environmentObject(dataController)
         .environment(\.colorScheme, .dark)
 }

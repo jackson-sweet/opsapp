@@ -130,23 +130,62 @@ struct ErrorMessageView: View {
 // MARK: - Loading Overlay
 // LoadingView moved to UIComponents.swift
 
+// MARK: - Standard Navigation Header
+
+struct StandardNavigationHeader: View {
+    var showBack: Bool = true
+    var showSignOut: Bool = true
+    var onBack: () -> Void
+    var onSignOut: () -> Void
+    
+    var body: some View {
+        HStack {
+            if showBack {
+                Button(action: onBack) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(OPSStyle.Typography.caption)
+                        Text("Back")
+                            .font(OPSStyle.Typography.bodyBold)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+            
+            Spacer()
+            
+            if showSignOut {
+                Button(action: onSignOut) {
+                    Text("Sign Out")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+            }
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .padding(.horizontal, 24)
+    }
+}
+
 // MARK: - Header
 
 struct OnboardingHeaderView: View {
     var title: String
     var subtitle: String
+    var isLightTheme: Bool = false // Default to dark theme
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
+            Text(title.uppercased())
                 .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
+                .foregroundColor(isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
                 .padding(.bottom, subtitle.isEmpty ? 0 : 4)
             
             if !subtitle.isEmpty {
                 Text(subtitle)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(Color.gray)
+                    .foregroundColor(isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -170,6 +209,37 @@ struct InputFieldLabel: View {
     }
 }
 
+// MARK: - Standard Continue Button
+
+struct StandardContinueButton: View {
+    var isDisabled: Bool = false
+    var isLoading: Bool = false
+    var onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                Text("CONTINUE")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .opacity(isLoading ? 0 : 1)
+                
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                }
+            }
+            .foregroundColor(isDisabled ? Color.gray : OPSStyle.Colors.primaryAccent)
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isDisabled ? Color.gray : OPSStyle.Colors.primaryAccent, lineWidth: 1)
+            )
+        }
+        .disabled(isDisabled || isLoading)
+    }
+}
+
 // MARK: - Navigation Buttons
 
 struct OnboardingNavigationButtons: View {
@@ -178,6 +248,7 @@ struct OnboardingNavigationButtons: View {
     var isPrimaryDisabled: Bool = false
     var isLoading: Bool = false
     var showSecondary: Bool = true
+    var isLightTheme: Bool = false // Default to dark theme
     var onPrimaryTapped: () -> Void
     var onSecondaryTapped: (() -> Void)? = nil
     
@@ -199,17 +270,19 @@ struct OnboardingNavigationButtons: View {
                                 .padding(.trailing, 20)
                         }
                     }
-                    .foregroundColor(.black)
+                    .foregroundColor(isLightTheme ? .white : .black)
                     
                     if isLoading {
                         ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                            .progressViewStyle(CircularProgressViewStyle(tint: isLightTheme ? .white : .black))
                     }
                 }
                 .padding(.horizontal, 20)
                 .frame(height: 52)
                 .frame(maxWidth: .infinity)
-                .background(isPrimaryDisabled || isLoading ? Color.white.opacity(0.7) : Color.white)
+                .background(isPrimaryDisabled || isLoading ? 
+                           (isLightTheme ? OPSStyle.Colors.primaryAccent.opacity(0.7) : Color.white.opacity(0.7)) : 
+                           (isLightTheme ? OPSStyle.Colors.primaryAccent : Color.white))
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .disabled(isPrimaryDisabled || isLoading)
@@ -230,10 +303,10 @@ struct OnboardingNavigationButtons: View {
                             Spacer()
                             Image(systemName: "arrow.right")
                                 .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                         }
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
                     .padding(.horizontal, 20)
                     .frame(height: 52)
                     .frame(maxWidth: .infinity)

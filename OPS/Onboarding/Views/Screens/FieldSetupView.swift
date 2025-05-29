@@ -12,63 +12,91 @@ struct FieldSetupView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     @EnvironmentObject private var dataController: DataController
     
-    @State private var syncSetting: SyncSetting = .auto
     @State private var selectedStorageIndex: Int = 3 // Default to 500MB
     @State private var isLoading = false
     
-    enum SyncSetting: String, CaseIterable {
-        case auto = "Automatic"
-        case manual = "Manual"
-        case never = "Never"
+    // Calculate the current step number based on user type
+    private var currentStepNumber: Int {
+        if viewModel.selectedUserType == .employee {
+            return 6 // Employee flow position - after permissions
+        } else {
+            return 10 // Company flow position - last step
+        }
+    }
+    
+    private var totalSteps: Int {
+        if viewModel.selectedUserType == .employee {
+            return 8 // Employee flow has 8 total steps
+        } else {
+            return 10 // Company flow has 10 total steps
+        }
     }
     
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Background color
-                Color.black.edgesIgnoringSafeArea(.all)
+                // Background color - conditional theming
+                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                    .edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 0) {
-                    // Progress indicator
-                    OnboardingStepIndicator(
-                        currentStep: .fieldSetup,
-                        text: OnboardingStep.fieldSetup.stepIndicator
-                    )
-                    .padding(.top, 20)
-                    .padding(.bottom, 10)
+                    // Navigation header with step indicator
+                    HStack {
+                        Button(action: {
+                            viewModel.previousStep()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                    .font(OPSStyle.Typography.caption)
+                                Text("Back")
+                                    .font(OPSStyle.Typography.body)
+                            }
+                            .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent)
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            viewModel.logoutAndReturnToLogin()
+                        }) {
+                            Text("Sign Out")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                        }
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .padding(.horizontal, 24)
+                    
+                    // Step indicator bars
+                    HStack(spacing: 4) {
+                        ForEach(0..<totalSteps) { step in
+                            Rectangle()
+                                .fill(step < currentStepNumber ? 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
+                                .frame(height: 4)
+                        }
+                    }
+                    .padding(.bottom, 16)
+                    .padding(.horizontal, 24)
                     
                     ScrollView {
                         VStack(spacing: 0) {
                             // Header
                             OnboardingHeaderView(
-                                title: "Field Setup",
-                                subtitle: "Customize how OPS should work when you're on job sites with limited connectivity."
+                                title: "FIELD SETUP",
+                                subtitle: "Customize how OPS should work when you're on job sites with limited connectivity.",
+                                isLightTheme: viewModel.shouldUseLightTheme
                             )
                             .padding(.bottom, 30)
                             
                             // Field settings
                             VStack(spacing: 24) {
-                                // Sync settings
-                                SettingsSection(
-                                    title: "Data Synchronization",
-                                    description: "Choose how you want OPS to sync data when in the field"
-                                ) {
-                                    ForEach(SyncSetting.allCases, id: \.self) { setting in
-                                        SettingOptionCard(
-                                            isSelected: syncSetting == setting,
-                                            title: setting.rawValue,
-                                            description: getSyncDescription(setting),
-                                            onTap: {
-                                                syncSetting = setting
-                                            }
-                                        )
-                                    }
-                                }
-                                
                                 // Offline data settings with storage slider
                                 SettingsSection(
                                     title: "Offline Storage",
-                                    description: "Choose how much data to store for offline use"
+                                    description: "Choose how much data to store for offline use when connectivity is limited"
                                 ) {
                                     StorageOptionSlider(selectedStorageIndex: $selectedStorageIndex)
                                 }
@@ -81,26 +109,12 @@ struct FieldSetupView: View {
                     }
                     
                     // Continue button
-                    Button(action: {
-                        applySettings()
-                    }) {
-                        ZStack {
-                            Text("CONTINUE")
-                                .opacity(isLoading ? 0 : 1)
-                            
-                            if isLoading {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            }
+                    StandardContinueButton(
+                        isLoading: isLoading,
+                        onTap: {
+                            applySettings()
                         }
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
-                        .padding()
-                        .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        .frame(maxWidth: .infinity)
-                        .background(OPSStyle.Colors.primaryAccent)
-                        .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    }
+                    )
                     .padding(.horizontal, 24)
                     .padding(.vertical, 16)
                 }
@@ -111,21 +125,6 @@ struct FieldSetupView: View {
     // Apply settings and move to next step
     private func applySettings() {
         isLoading = true
-        
-        // Save sync settings to UserDefaults
-        switch syncSetting {
-        case .auto:
-            UserDefaults.standard.set(true, forKey: "syncOnLaunch")
-            UserDefaults.standard.set(true, forKey: "syncOnWiFi")
-            UserDefaults.standard.set(3600, forKey: "syncInterval") // Every hour
-        case .manual:
-            UserDefaults.standard.set(false, forKey: "syncOnLaunch")
-            UserDefaults.standard.set(false, forKey: "syncOnWiFi")
-        case .never:
-            UserDefaults.standard.set(false, forKey: "syncOnLaunch")
-            UserDefaults.standard.set(false, forKey: "syncOnWiFi")
-            UserDefaults.standard.set(false, forKey: "autoSync")
-        }
         
         // Save offline storage settings based on slider selection
         let storageValues = [0, 100, 250, 500, 1000, 5000, -1] // -1 for unlimited
@@ -155,19 +154,6 @@ struct FieldSetupView: View {
             viewModel.moveToNextStep()
         }
     }
-    
-    // Get description for sync settings
-    private func getSyncDescription(_ setting: SyncSetting) -> String {
-        switch setting {
-        case .auto:
-            return "Automatically sync data when app launches and on WiFi"
-        case .manual:
-            return "Only sync data when you manually request it"
-        case .never:
-            return "Never sync automatically (use with caution)"
-        }
-    }
-    
 }
 
 // MARK: - Helper Components
@@ -190,60 +176,6 @@ struct SettingsSection<Content: View>: View {
             
             content
         }
-    }
-}
-
-struct SettingOptionCard: View {
-    var isSelected: Bool
-    var title: String
-    var description: String
-    var onTap: () -> Void
-    
-    var body: some View {
-        Button(action: onTap) {
-            HStack(alignment: .top, spacing: 12) {
-                // Selection indicator
-                ZStack {
-                    Circle()
-                        .stroke(isSelected ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.5), lineWidth: 2)
-                        .frame(width: 24, height: 24)
-                    
-                    if isSelected {
-                        Circle()
-                            .fill(OPSStyle.Colors.primaryAccent)
-                            .frame(width: 12, height: 12)
-                    }
-                }
-                .padding(.top, 2)
-                
-                // Content
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
-                    
-                    Text(description)
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(Color.gray)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                
-                Spacer()
-            }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(OPSStyle.Colors.cardBackground.opacity(0.4))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: isSelected ? 1 : 0)
-                    )
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PlainButtonStyle())
-        .padding(.vertical, 4)
     }
 }
 

@@ -6,22 +6,70 @@ struct CompanyContactView: View {
     @State private var phoneNumber = ""
     @State private var emailError: String?
     @State private var phoneError: String?
+    var isInConsolidatedFlow: Bool = false
+    
+    // Calculate the current step number based on user type
+    private var currentStepNumber: Int {
+        return 5 // Company flow position - after address
+    }
+    
+    private var totalSteps: Int {
+        if onboardingViewModel.selectedUserType == .employee {
+            return 8 // Employee flow has 8 total steps
+        } else {
+            return 10 // Company flow has 10 total steps
+        }
+    }
     
     var body: some View {
-        VStack(spacing: 0) {
-            OnboardingHeader(
-                title: "Contact Information",
-                subtitle: "Step 3 of 6",
-                showBackButton: true,
-                onBack: {
-                    onboardingViewModel.previousStep()
-                }
-            )
+        ZStack {
+            // Background color
+            Color.black.edgesIgnoringSafeArea(.all)
             
-            ScrollView {
+            VStack(spacing: 0) {
+                // Navigation header with step indicator
+                HStack {
+                    Button(action: {
+                        onboardingViewModel.previousStep()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(OPSStyle.Typography.caption)
+                            Text("Back")
+                                .font(OPSStyle.Typography.body)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        onboardingViewModel.logoutAndReturnToLogin()
+                    }) {
+                        Text("Sign Out")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                .padding(.horizontal, 24)
+                
+                // Step indicator bars
+                HStack(spacing: 4) {
+                    ForEach(0..<totalSteps) { step in
+                        Rectangle()
+                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
+                            .frame(height: 4)
+                    }
+                }
+                .padding(.bottom, 16)
+                .padding(.horizontal, 24)
+                
+                ScrollView {
                 VStack(spacing: 32) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("How can customers reach you?")
+                        Text("HOW CAN CUSTOMERS REACH YOU?")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(Color("TextPrimary"))
                         
@@ -30,6 +78,47 @@ struct CompanyContactView: View {
                             .foregroundColor(Color("TextSecondary"))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // Autofill buttons
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            email = onboardingViewModel.email
+                            validateEmail()
+                        }) {
+                            HStack {
+                                Image(systemName: "envelope.fill")
+                                    .font(OPSStyle.Typography.caption)
+                                Text("Use my email")
+                                    .font(OPSStyle.Typography.body)
+                            }
+                            .foregroundColor(Color("AccentPrimary"))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color("AccentPrimary"), lineWidth: 1)
+                            )
+                        }
+                        
+                        Button(action: {
+                            phoneNumber = formatPhoneNumber(onboardingViewModel.phoneNumber)
+                            validatePhone()
+                        }) {
+                            HStack {
+                                Image(systemName: "phone.fill")
+                                    .font(OPSStyle.Typography.caption)
+                                Text("Use my phone")
+                                    .font(OPSStyle.Typography.body)
+                            }
+                            .foregroundColor(Color("AccentPrimary"))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color("AccentPrimary"), lineWidth: 1)
+                            )
+                        }
+                    }
                     
                     VStack(spacing: 24) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -80,32 +169,19 @@ struct CompanyContactView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 120)
-            }
-            
-            VStack(spacing: 16) {
-                Button(action: {
-                    if validateForm() {
-                        onboardingViewModel.companyEmail = email
-                        onboardingViewModel.companyPhone = phoneNumber
-                        onboardingViewModel.nextStep()
-                    }
-                }) {
-                    HStack {
-                        Text("Continue")
-                            .font(OPSStyle.Typography.bodyBold)
-                        Spacer()
-                        Image(systemName: "arrow.right")
-                            .font(OPSStyle.Typography.bodyBold)
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(isFormValid ? Color("AccentPrimary") : Color("StatusInactive"))
-                    )
                 }
-                .disabled(!isFormValid)
+                
+                VStack(spacing: 16) {
+                StandardContinueButton(
+                    isDisabled: !isFormValid,
+                    onTap: {
+                        if validateForm() {
+                            onboardingViewModel.companyEmail = email
+                            onboardingViewModel.companyPhone = phoneNumber
+                            onboardingViewModel.nextStep()
+                        }
+                    }
+                )
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 34)
@@ -114,6 +190,7 @@ struct CompanyContactView: View {
                     .fill(Color("Background"))
                     .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: -4)
             )
+            } // End of main VStack
         }
         .background(Color("Background"))
         .onAppear {
@@ -189,6 +266,9 @@ extension String {
 }
 
 #Preview {
+    let dataController = OnboardingPreviewHelpers.createPreviewDataController()
+    
     CompanyContactView()
         .environmentObject(OnboardingViewModel())
+        .environmentObject(dataController)
 }

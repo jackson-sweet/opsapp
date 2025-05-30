@@ -65,20 +65,26 @@ Bubble.io uses specific response formats:
 - `lastName` → Bubble: `Last Name`
 - `email` → Bubble: `Email`
 - `phone` → Bubble: `Phone`
-- `role` → Bubble: `Role`
+- `role` → Bubble: `Role` (Field Crew, Office Crew, Admin)
 - `employeeType` → Bubble: `Employee Type`
 - `companyId` → Bubble: `Company`
 - `profileImageURL` → Bubble: `Avatar`
+- `homeAddress` → Bubble: `Home Address` (geographic address)
 
 #### Company
 - `id`: Bubble unique identifier
-- `name` → Bubble: `Name`
-- `address` → Bubble: `Address` (complex object)
-- `email` → Bubble: `Email`
-- `phone` → Bubble: `Phone`
-- `teamMemberIds` → Bubble: `Team Members` (array)
-- `status` → Bubble: `Status`
-- `companyCode` → Bubble: `Company Code`
+- `name` → Bubble: `Company Name`
+- `address` → Bubble: `Location` (geographic address)
+- `email` → Bubble: `Office Email`
+- `phone` → Bubble: `phone`
+- `teamMemberIds` → Bubble: `Teams` (array)
+- `employees` → Bubble: `Employees` (array of User references)
+- `admin` → Bubble: `Admin` (array of User references)
+- `companyCode` → Bubble: `company id`
+- `description` → Bubble: `Company Description`
+- `openHour` → Bubble: `Open Hour`
+- `closeHour` → Bubble: `Close Hour`
+- `logo` → Bubble: `Logo` (image object)
 
 ### Enums and Constants
 
@@ -165,6 +171,19 @@ Fetches a company by ID.
 func fetchCompanyByCode(code: String) async throws -> CompanyDTO?
 ```
 Fetches a company using its company code.
+
+## Admin Role Management
+
+### Automatic Admin Detection
+When syncing company data, the app automatically checks if the current user is listed in the company's admin array:
+- The Company DTO includes an `admin` field containing an array of User references
+- During company sync, if the current user's ID matches any ID in the admin list, their role is automatically updated to `Admin`
+- This ensures users with administrative privileges are properly identified without manual role assignment
+
+### Role Types
+- **Field Crew**: Standard field worker role
+- **Office Crew**: Office-based worker role  
+- **Admin**: Administrative user with elevated privileges (auto-detected from company admin list)
 
 ## Synchronization
 

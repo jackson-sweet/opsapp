@@ -59,7 +59,7 @@ struct SimplePINEntryView: View {
                     Text("ENTER PIN")
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(.white)
-                }
+                }.padding(.horizontal, 24)
                 
                 
                 // PIN input with individual boxes

@@ -1,6 +1,6 @@
 # OPS App - Current State Overview
 
-Last Updated: May 24, 2025
+Last Updated: May 30, 2025
 
 ## Project Summary
 
@@ -50,9 +50,11 @@ OPS (Operational Project System) is a field-first job management iOS app designe
 
 ### 5. Team Features ✅
 - **Team member management**
-- **Role-based permissions**
+- **Role-based permissions** (Field Crew, Office Crew, Admin)
+- **Admin role auto-detection** from company admin list
 - **Team assignment to projects**
 - **Contact information display**
+- **Empty state handling** with standardized components
 
 ### 6. Settings ✅
 Comprehensive settings implementation including:
@@ -79,6 +81,24 @@ Comprehensive settings implementation including:
 - **Location permissions** handling
 
 ## Recent Updates & New Features
+
+### Latest Updates (May 30, 2025)
+1. **Admin Role Implementation**
+   - Added Admin user role to UserRole enum
+   - Automatic admin detection when syncing company data
+   - Checks company admin list from API and updates user roles accordingly
+   
+2. **UI Component Standardization**
+   - Updated TeamMembersView to use standardized EmptyStateView component
+   - Consistent empty state messaging across the app
+   
+3. **Bug Fixes & Improvements**
+   - Fixed field setup view bleeding off page (added ScrollView)
+   - Fixed organization settings data display (address, contact info)
+   - Fixed company data sync on OrganizationSettingsView appearance
+   - Fixed team members API decoding (Home Address type mismatch)
+   - Fixed calendar showing all company projects but only displaying user-assigned
+   - Removed sample projects from database with automatic cleanup
 
 ### Major System Implementations (May 24, 2025)
 1. **PIN Security System** - Professional app entry protection

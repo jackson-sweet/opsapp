@@ -1,6 +1,7 @@
 {
   "images" : [
     {
+      "filename" : "OPS WHITE ON BLACK 1024.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -12,6 +13,7 @@
           "value" : "dark"
         }
       ],
+      "filename" : "OPS WHITE ON BLACK 1025.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -23,6 +25,7 @@
           "value" : "tinted"
         }
       ],
+      "filename" : "OPS WHITE ON BLACK 1026.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

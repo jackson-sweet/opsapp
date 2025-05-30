@@ -324,7 +324,7 @@ struct AppHeader: View {
             
             // App version and logo
             HStack {
-                Image("AppIcon") // Placeholder for actual logo
+                Image("LogoWhite") // Placeholder for actual logo
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 44, height: 44)

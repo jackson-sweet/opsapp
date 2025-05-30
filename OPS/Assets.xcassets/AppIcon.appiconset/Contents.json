@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "OPS WHITE ON BLACK 1024.png",
+      "filename" : "AppIcon.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,7 +13,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "OPS WHITE ON BLACK 1025.png",
+      "filename" : "AppIcon 1.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -25,7 +25,7 @@
           "value" : "tinted"
         }
       ],
-      "filename" : "OPS WHITE ON BLACK 1026.png",
+      "filename" : "AppIcon 2.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

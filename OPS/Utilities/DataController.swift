@@ -506,7 +506,7 @@ class DataController: ObservableObject {
                 
                 // Handle home address
                 if let address = userDTO.homeAddress {
-                    user.homeAddress = address
+                    user.homeAddress = address.formattedAddress
                 }
                 
                 // We don't have these fields in the DTO currently
@@ -650,6 +650,54 @@ class DataController: ObservableObject {
         
         // Log the cleanup
         print("DataController: Authentication, PIN, and all user data cleared")
+    }
+    
+    /// Removes sample/test projects from the database
+    @MainActor
+    func removeSampleProjects() async {
+        guard let context = modelContext else {
+            print("Cannot remove sample projects: ModelContext is nil")
+            return
+        }
+        
+        do {
+            // Define patterns that indicate sample/test projects
+            let samplePatterns = [
+                "Sample Project",
+                "Test Project",
+                "Demo Project",
+                "Example Project"
+            ]
+            
+            // Fetch all projects
+            let descriptor = FetchDescriptor<Project>()
+            let allProjects = try context.fetch(descriptor)
+            
+            // Find projects that match sample patterns
+            let sampleProjects = allProjects.filter { project in
+                return samplePatterns.contains { pattern in
+                    project.title.localizedCaseInsensitiveContains(pattern)
+                }
+            }
+            
+            if sampleProjects.isEmpty {
+                print("No sample projects found to remove")
+                return
+            }
+            
+            print("Found \(sampleProjects.count) sample projects to remove:")
+            for project in sampleProjects {
+                print("  - Removing: \(project.title)")
+                context.delete(project)
+            }
+            
+            // Save the changes
+            try context.save()
+            print("Successfully removed \(sampleProjects.count) sample projects")
+            
+        } catch {
+            print("Error removing sample projects: \(error.localizedDescription)")
+        }
     }
     
     /// Cleans up duplicate users in the database
@@ -803,11 +851,41 @@ class DataController: ObservableObject {
         company.externalId = dto.companyID
         company.companyDescription = dto.companyDescription
         
+        // Handle location
         if let location = dto.location {
             company.address = location.formattedAddress
             company.latitude = location.lat
             company.longitude = location.lng
         }
+        
+        // Handle contact information
+        company.phone = dto.phone
+        company.email = dto.officeEmail
+        company.website = nil // Not in DTO yet
+        
+        // Handle logo
+        if let logoImage = dto.logo, let logoUrl = logoImage.url {
+            company.logoURL = logoUrl
+        }
+        
+        // Handle business hours
+        company.openHour = dto.openHour
+        company.closeHour = dto.closeHour
+        
+        // Handle admin role update
+        if let currentUser = currentUser,
+           let adminRefs = dto.admin {
+            // Check if current user's ID is in the admin list
+            let adminIds = adminRefs.compactMap { $0.stringValue }
+            if adminIds.contains(currentUser.id) {
+                // Update current user's role to admin
+                currentUser.role = .admin
+                print("Updated user role to Admin based on company admin list")
+            }
+        }
+        
+        // Handle industry, company size, age if needed for display
+        // These are currently not displayed but could be added
         
         company.lastSyncedAt = Date()
         company.needsSync = false
@@ -1192,6 +1270,11 @@ class DataController: ObservableObject {
         // Fetch fresh data from API
         let companyDTO = try await apiService.fetchCompany(id: id)
         print("Successfully fetched company data from API")
+        print("Company DTO data:")
+        print("  - Name: \(companyDTO.companyName ?? "nil")")
+        print("  - Phone: \(companyDTO.phone ?? "nil")")
+        print("  - Email: \(companyDTO.officeEmail ?? "nil")")
+        print("  - Address: \(companyDTO.location?.formattedAddress ?? "nil")")
         
         // Check if we already have this company locally
         let descriptor = FetchDescriptor<Company>(

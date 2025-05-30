@@ -98,7 +98,7 @@ struct CompanyAddressView: View {
                         
                         if selectedLocation != nil {
                             Map(coordinateRegion: .constant(region), annotationItems: [MapPin(coordinate: selectedLocation!)]) { pin in
-                                MapMarker(coordinate: pin.coordinate, tint: Color("AccentPrimary"))
+                                MapMarker(coordinate: pin.coordinate, tint: Color(OPSStyle.Colors.background))
                             }
                             .frame(height: 200)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)

@@ -29,6 +29,8 @@ final class User {
     var homeAddress: String?  // User's home address
     var clientId: String?
     var isActive: Bool?
+    var userColor: String?  // User's unique color in HEX
+    var devPermission: Bool = false  // Dev permission for testing features
     
     // Fixed relationship with proper inverse that matches Project's declaration
     @Relationship(deleteRule: .noAction, inverse: \Project.teamMembers)
@@ -69,6 +71,8 @@ final class User {
             return .blue
         case .officeCrew:
             return .orange
+        case .admin:
+            return .green
         }
     }
     

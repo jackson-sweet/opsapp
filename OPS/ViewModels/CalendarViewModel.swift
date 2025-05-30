@@ -155,7 +155,11 @@ class CalendarViewModel: ObservableObject {
             
             // For other dates, get the count from DataController
             if let dataController = dataController {
-                let count = dataController.getProjects(for: date).count
+                // Filter by current user to match what's shown when day is tapped
+                let count = dataController.getProjects(
+                    for: date,
+                    assignedTo: dataController.currentUser
+                ).count
                 
                 // Cache the result
                 projectCountCache[dateKey] = count

@@ -15,6 +15,7 @@ import Combine
 
 struct CompletionView: View {
     @EnvironmentObject var onboardingViewModel: OnboardingViewModel
+    @EnvironmentObject var dataController: DataController
     var onComplete: () -> Void = {}
     
     // Animation states
@@ -27,6 +28,7 @@ struct CompletionView: View {
     @State private var buttonOpacity: Double = 0
     @State private var buttonOffset: CGFloat = 100
     @State private var showContinueButton: Bool = false
+    @State private var companyDataFetched = false
     
     // Dynamic properties
     let statusItems = ["IDENTITY VERIFIED", "PROFILE CREATED", "COMPANY LINKED", "ACCESS GRANTED"]
@@ -149,6 +151,7 @@ struct CompletionView: View {
         }
         .onAppear {
             animateTacticalSequence()
+            fetchCompanyDataIfNeeded()
         }
         .onReceive(timer) { newTime in
             currentTime = newTime
@@ -164,6 +167,43 @@ struct CompletionView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
         return formatter.string(from: currentTime)
+    }
+    
+    // Fetch company data if user is a company owner
+    private func fetchCompanyDataIfNeeded() {
+        // Only fetch if user is a company owner and hasn't fetched yet
+        guard !companyDataFetched,
+              onboardingViewModel.selectedUserType == .company,
+              let companyId = UserDefaults.standard.string(forKey: "company_id"),
+              !companyId.isEmpty else {
+            print("CompletionView: No need to fetch company data")
+            return
+        }
+        
+        print("CompletionView: Fetching company data for ID: \(companyId)")
+        companyDataFetched = true
+        
+        Task {
+            do {
+                // Force refresh company data from API
+                try await dataController.forceRefreshCompany(id: companyId)
+                print("CompletionView: Successfully fetched and stored company data")
+                
+                // Update status to show company is fully linked
+                await MainActor.run {
+                    // Ensure the "COMPANY LINKED" checkmark shows after data is fetched
+                    if !statusCheckmarks[2] {
+                        withAnimation(.spring()) {
+                            statusCheckmarks[2] = true
+                        }
+                    }
+                }
+            } catch {
+                print("CompletionView: Error fetching company data: \(error.localizedDescription)")
+                // Don't block the user from continuing even if fetch fails
+                // They can still proceed and data will be fetched on next app launch
+            }
+        }
     }
     
     // Simplified tactical animation sequence
@@ -262,4 +302,5 @@ struct CompletionView: View {
     // Add styles to the environment for the preview
     return PreviewCompletionView()
         .environmentObject(OnboardingViewModel())
+        .environmentObject(DataController())
 }

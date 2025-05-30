@@ -10,6 +10,7 @@ import Foundation
 enum UserRole: String, Codable {
     case fieldCrew = "Field Crew"
     case officeCrew = "Office Crew"
+    case admin = "Admin"
     
     var displayName: String {
         return self.rawValue

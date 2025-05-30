@@ -115,25 +115,18 @@ struct TeamMembersView: View {
     // MARK: - Component Views
     
     private var emptyStateView: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "person.3.sequence.fill")
-                .font(OPSStyle.Typography.largeTitle)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.top, 40)
+        VStack {
+            Spacer()
             
-            Text("No Team Members")
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
-            
-            Text("There are no team members in your organization yet.")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+            EmptyStateView(
+                icon: "person.3.sequence.fill",
+                title: "No Team Members",
+                message: "There are no team members in your organization yet."
+            )
+            .padding(.horizontal, 20)
             
             Spacer()
         }
-        .padding()
     }
     
     private func memberCard(_ member: User) -> some View {

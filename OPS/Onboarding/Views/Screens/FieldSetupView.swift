@@ -81,7 +81,8 @@ struct FieldSetupView: View {
                     .padding(.bottom, 16)
                     .padding(.horizontal, 24)
                     
-             
+                    // Scrollable content
+                    ScrollView {
                         VStack(spacing: 0) {
                             // Header
                             OnboardingHeaderView(
@@ -108,6 +109,7 @@ struct FieldSetupView: View {
                             Spacer(minLength: geometry.size.height * 0.1)
                         }
                         .padding(20)
+                    }
                     
                     // Continue button
                     StandardContinueButton(

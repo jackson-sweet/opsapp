@@ -33,23 +33,23 @@ struct CompanyDTO: Codable {
     
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
-        case id = "_id"
-        case companyName = "Company Name"
-        case companyID = "companyID"
-        case companyDescription = "Company Description"
-        case location = "Location"
-        case logo = "Logo"
-        case projects = "Projects"
-        case teams = "Teams"
-        case openHour = "Open Hour"
-        case closeHour = "Close Hour"
-        case phone = "phone"
-        case officeEmail = "office_email"
-        case industry = "Industry"
-        case companySize = "company_size"
-        case companyAge = "company_age"
-        case employees = "Employees"
-        case admin = "Admin"
+        case id = "_id" // The company's unique id, assigned by bubble. We pass this in to bubble to fetch a specific company.
+        case companyName = "Company Name" // The company name, type string.
+        case companyID = "company id" // Company code/ company ID. THis is the unique code that employees use to join a company. The default value is the comapny's unique id, "_id" CodingKey, or "id" in our object.
+        case companyDescription = "Company Description" // Company Description. Type string.
+        case location = "Location" // Company's office address. Type 'geographic address'.
+        case logo = "Logo" // Company logo of type "image".
+        case projects = "Projects" // A list of "Project" objects.
+        case teams = "Teams" // A list of "Team" objects. Not used yet in this version. In version X (a future version), we will use this. "Team" object contains a 'teamColor' (string of a hex color), 'teamName' string denoting name of the team, and a list of Users, who are the team members.
+        case openHour = "Open Hour" // Opening hour for the company. Type string. Not used in the app.
+        case closeHour = "Close Hour" // Closing hour for the company. Type of string. Not used in the app.
+        case phone = "phone" // Customer facing contact phone for the company. Type String
+        case officeEmail = "Office Email" // Customer facing contact email for the company. Type string
+        case industry = "Industry" // industry of company. This is used for development data collection. Type "Industry", which is a string.
+        case companySize = "company_size" //size of company. This is used for development data collection. Type string.
+        case companyAge = "company_age" // age range of the company. This is used for development data collection. Type string.
+        case employees = "Employees" // A list of all the employees in the company. Type is a list of User objects.
+        case admin = "Admin" // This is the list of admins in the company. The type is a list of User objects.
     }
     
     /// Convert DTO to SwiftData model

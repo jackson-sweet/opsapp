@@ -66,7 +66,7 @@ struct CompanyContactView: View {
                 .padding(.bottom, 16)
                 .padding(.horizontal, 24)
                 
-                ScrollView {
+
                 VStack(spacing: 32) {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("HOW CAN CUSTOMERS REACH YOU?")
@@ -80,16 +80,18 @@ struct CompanyContactView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     
                     // Autofill buttons
-                    HStack(spacing: 12) {
+                    HStack(spacing: 24) {
                         Button(action: {
                             email = onboardingViewModel.email
                             validateEmail()
                         }) {
                             HStack {
-                                Image(systemName: "envelope.fill")
+                                Image(systemName: "envelope")
                                     .font(OPSStyle.Typography.caption)
-                                Text("Use my email")
-                                    .font(OPSStyle.Typography.body)
+                                Spacer()
+                                Text("USE MY EMAIL")
+                                    .font(OPSStyle.Typography.cardBody)
+                                    .lineLimit(1)
                             }
                             .foregroundColor(Color("AccentPrimary"))
                             .padding(.horizontal, 16)
@@ -98,17 +100,22 @@ struct CompanyContactView: View {
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(Color("AccentPrimary"), lineWidth: 1)
                             )
+                            
                         }
+                        
+                        Spacer()
                         
                         Button(action: {
                             phoneNumber = formatPhoneNumber(onboardingViewModel.phoneNumber)
                             validatePhone()
                         }) {
                             HStack {
-                                Image(systemName: "phone.fill")
+                                Image(systemName: "phone")
                                     .font(OPSStyle.Typography.caption)
-                                Text("Use my phone")
-                                    .font(OPSStyle.Typography.body)
+                                Spacer()
+                                Text("USE MY PHONE")
+                                    .font(OPSStyle.Typography.cardBody)
+                                    .lineLimit(1)
                             }
                             .foregroundColor(Color("AccentPrimary"))
                             .padding(.horizontal, 16)
@@ -117,6 +124,7 @@ struct CompanyContactView: View {
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(Color("AccentPrimary"), lineWidth: 1)
                             )
+
                         }
                     }
                     
@@ -169,7 +177,7 @@ struct CompanyContactView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 120)
-                }
+                
                 
                 VStack(spacing: 16) {
                 StandardContinueButton(

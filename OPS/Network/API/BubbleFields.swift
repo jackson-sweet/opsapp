@@ -27,6 +27,7 @@ struct BubbleFields {
         static let inProgress = "In Progress"
         static let completed = "Completed"
         static let closed = "Closed"
+        static let archived = "Archived"
         
         static func toSwiftEnum(_ bubbleStatus: String) -> Status {
             switch bubbleStatus {
@@ -36,6 +37,7 @@ struct BubbleFields {
             case inProgress: return .inProgress
             case completed: return .completed
             case closed: return .closed
+            case archived: return .archived
             default: return .rfq // Default to RFQ if unknown
             }
         }

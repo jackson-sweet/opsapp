@@ -86,9 +86,10 @@ struct CompanyData: Codable {
 
 // Response from join_company endpoint
 struct JoinCompanyResponse: Codable {
-    let company_joined: String? // "yes" or "no"
+    let company_joined: Bool? // TRUE or FALSE
+    let user_id: String? // Always returned
+    let company: CompanyDTO? // Full company object if successful
     let error_message: String?
-    let company: CompanyData?
     let response: JoinCompanyResponseData? // Additional response data that might be nested
 
     // Root-level company properties for alternate formats
@@ -100,8 +101,9 @@ struct JoinCompanyResponse: Codable {
     // Using CodingKeys to map "Company Name" to our rootCompanyName property
     private enum CodingKeys: String, CodingKey {
         case company_joined
-        case error_message
+        case user_id
         case company
+        case error_message
         case response
         case id
         case _id
@@ -110,13 +112,13 @@ struct JoinCompanyResponse: Codable {
     }
     
     var wasSuccessful: Bool {
-        // Check primary success flag
-        if let joined = company_joined, joined.lowercased() == "yes" {
-            return true
+        // Check primary success flag (now boolean)
+        if let joined = company_joined {
+            return joined
         }
         
         // Check if we have valid company data in company object
-        if let company = company, company.isValid {
+        if let company = company, !company.id.isEmpty {
             return true
         }
         
@@ -135,14 +137,10 @@ struct JoinCompanyResponse: Codable {
     
     // Get the effective company data regardless of where it's located in the response
     var extractedCompanyData: (id: String, name: String)? {
-        // Get from company object first
-        if let company = company, company.isValid {
-            let companyId = company.companyId ?? ""
-            let companyName = company.name ?? "Your Company"
-            
-            if !companyId.isEmpty {
-                return (companyId, companyName)
-            }
+        // Get from company DTO object first
+        if let company = company, !company.id.isEmpty {
+            let companyName = company.companyName ?? "Your Company"
+            return (company.id, companyName)
         }
         
         // Try root-level properties

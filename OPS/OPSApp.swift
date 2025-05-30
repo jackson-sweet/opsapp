@@ -62,6 +62,12 @@ struct OPSApp: App {
                     Task {
                         // Run migration in background
                         ImageFileManager.shared.migrateAllImages()
+                        
+                        // Clean up any sample projects (one-time cleanup)
+                        if !UserDefaults.standard.bool(forKey: "sample_projects_cleaned") {
+                            await dataController.removeSampleProjects()
+                            UserDefaults.standard.set(true, forKey: "sample_projects_cleaned")
+                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in

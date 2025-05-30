@@ -91,7 +91,10 @@ struct CalendarHeaderView: View {
     
     // Get projects for today specifically, not the selected date
     private var todaysProjectCount: Int {
-        // Direct access - no conditionals needed
-        dataController.getProjects(for: today).count
+        // Filter by current user to match what's shown in the project list
+        dataController.getProjects(
+            for: today,
+            assignedTo: dataController.currentUser
+        ).count
     }
 }

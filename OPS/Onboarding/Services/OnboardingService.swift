@@ -414,6 +414,7 @@ struct CompanyUpdateResponse: Codable {
     let response: CompanyResponseWrapper?
     let success: String? // Keep for backward compatibility
     let company: CompanyResponseData? // Keep for backward compatibility
+    let user: UserDTO? // New field for user object
     let error_message: String?
     
     private enum CodingKeys: String, CodingKey {
@@ -421,6 +422,7 @@ struct CompanyUpdateResponse: Codable {
         case response
         case success
         case company
+        case user
         case error_message
     }
     
@@ -434,15 +436,17 @@ struct CompanyUpdateResponse: Codable {
         // Fallback to old format
         self.success = try container.decodeIfPresent(String.self, forKey: .success)
         self.company = try container.decodeIfPresent(CompanyResponseData.self, forKey: .company)
+        self.user = try container.decodeIfPresent(UserDTO.self, forKey: .user)
         
         self.error_message = try container.decodeIfPresent(String.self, forKey: .error_message)
     }
     
-    init(success: String? = nil, company: CompanyResponseData? = nil, error_message: String? = nil) {
+    init(success: String? = nil, company: CompanyResponseData? = nil, user: UserDTO? = nil, error_message: String? = nil) {
         self.status = nil
         self.response = nil
         self.success = success
         self.company = company
+        self.user = user
         self.error_message = error_message
     }
     
@@ -458,6 +462,7 @@ struct CompanyUpdateResponse: Codable {
 
 struct CompanyResponseWrapper: Codable {
     let company: CompanyResponseData?
+    let user: UserDTO?
 }
 
 struct CompanyResponseData: Codable {

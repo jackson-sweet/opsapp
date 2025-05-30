@@ -16,6 +16,7 @@ struct OrganizationSettingsView: View {
     @State private var organization: Company?
     @State private var teamMembers: [User] = []
     @State private var isLoading = true
+    @State private var isRefreshing = false
     
     var body: some View {
         ZStack {
@@ -32,6 +33,24 @@ struct OrganizationSettingsView: View {
                     }
                 )
                 .padding(.bottom, 8)
+                .overlay(
+                    // Refresh indicator in top right
+                    Group {
+                        if isRefreshing {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                    .scaleEffect(0.8)
+                                Text("Updating...")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                            .padding(.trailing, 20)
+                        }
+                    },
+                    alignment: .trailing
+                )
                 
                 // Scrollable content
                 ScrollView {
@@ -291,12 +310,28 @@ struct OrganizationSettingsView: View {
             if let companyID = dataController.currentUser?.companyId {
                 print("Loading organization data for company ID: \(companyID)")
                 
-                // Attempt to fetch fresh data from API if we're online
+                // Always attempt to fetch fresh data from API when online
+                // This ensures we have the latest company info including address, phone, email
                 if dataController.isConnected {
+                    // Show refresh indicator
+                    await MainActor.run {
+                        isRefreshing = true
+                    }
+                    
                     do {
-                        // Try to force a refresh of company data from the API
+                        // Force a refresh of company data from the API every time view opens
+                        print("OrganizationSettingsView: Fetching latest company data from API...")
                         try await dataController.forceRefreshCompany(id: companyID)
                         print("Successfully refreshed company data from API")
+                        
+                        // Debug: Log what we got from the API
+                        if let refreshedCompany = dataController.getCompany(id: companyID) {
+                            print("Company data after refresh:")
+                            print("  - Name: \(refreshedCompany.name)")
+                            print("  - Address: \(refreshedCompany.address ?? "nil")")
+                            print("  - Phone: \(refreshedCompany.phone ?? "nil")")
+                            print("  - Email: \(refreshedCompany.email ?? "nil")")
+                        }
                         
                         // Sync company team members if we're online
                         if let company = dataController.getCompany(id: companyID) {
@@ -306,7 +341,12 @@ struct OrganizationSettingsView: View {
                     } catch {
                         print("Failed to refresh company data from API: \(error.localizedDescription)")
                         // Continue with local data even if API refresh fails
+                        await MainActor.run {
+                            isRefreshing = false
+                        }
                     }
+                } else {
+                    print("OrganizationSettingsView: Offline - using cached company data")
                 }
                 
                 // Get company from local database (newly refreshed if the API call succeeded)
@@ -342,13 +382,17 @@ struct OrganizationSettingsView: View {
                     self.organization = company
                     self.teamMembers = users
                     self.isLoading = false
+                    self.isRefreshing = false
                     
                     // Debug info
                     if let org = self.organization {
                         print("Organization set: \(org.name)")
                         print("Address: \(org.address ?? "nil")")
+                        print("Phone: \(org.phone ?? "nil")")
                         print("Email: \(org.email ?? "nil")")
                         print("Logo URL: \(org.logoURL ?? "nil")")
+                        print("Open Hour: \(org.openHour ?? "nil")")
+                        print("Close Hour: \(org.closeHour ?? "nil")")
                         print("Team members count: \(org.teamMembers.count)")
                     } else {
                         print("Organization is nil after loading!")

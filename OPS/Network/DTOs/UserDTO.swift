@@ -14,8 +14,10 @@ struct UserDTO: Codable {
     let avatar: String?
     let company: String?
     let email: String?
-    let homeAddress: String?
+    let homeAddress: BubbleAddress?
     let phone: String?
+    let userColor: String?
+    let devPermission: Bool?
     let authentication: Authentication?
     
     // Authentication information
@@ -35,17 +37,19 @@ struct UserDTO: Codable {
     
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
-        case id = "_id"
-        case nameFirst = "Name First"
-        case nameLast = "Name Last"
-        case employeeType = "Employee Type"
-        case userType = "User Type"
-        case avatar = "Avatar"
-        case company = "Company"
-        case authentication
-        case email
-        case homeAddress = "Home Address"
-        case phone = "Phone"
+        case id = "_id" // Unique id assigned by bubble. This is known colloquially as user ID.
+        case nameFirst = "Name First" // User first name. String
+        case nameLast = "Name Last" // Last name, string.
+        case employeeType = "Employee Type" // Employee type. This is type Employee Type, which is a string, either "Office Crew", or "Field Crew".
+        case userType = "User Type" // User type, which is of type User Type, which is a string, either Company, Employee, Client or Admin. Admin in this context refers to an OPS admin. in version X (some later version) we will allow users to register as clients to track their project progress etc.
+        case avatar = "Avatar" // User's avatar or profile picture. type Image.
+        case company = "Company" // The user's company. Type Company.
+        case authentication // this is not a bubble field.
+        case email // the user's email address, which is what they registered with. It is used for contact purposes, and also as a login field.
+        case homeAddress = "Home Address" // The user's home address, of type 'geographic address'.
+        case phone = "Phone" // The user's contact phone number.
+        case userColor = "User Color" // The user's unique color in HEX.
+        case devPermission = "Dev Permission" // Bool indicating if user has dev permission for testing features.
     }
     
     /// Convert DTO to SwiftData model
@@ -80,8 +84,13 @@ struct UserDTO: Codable {
         
         // Handle home address if available
         if let address = homeAddress {
-            user.homeAddress = address
+            user.homeAddress = address.formattedAddress
+            // Could also store lat/lng if needed in the future
         }
+        
+        // Handle new fields
+        user.userColor = userColor
+        user.devPermission = devPermission ?? false
         
         // Handle phone number if available
         if let phoneNumber = phone {

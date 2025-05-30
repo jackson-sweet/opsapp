@@ -14,6 +14,8 @@ final class Project: Identifiable {
     var id: String
     var title: String
     var clientName: String
+    var clientEmail: String?
+    var clientPhone: String?
     var address: String
     var latitude: Double?
     var longitude: Double?
@@ -54,6 +56,8 @@ final class Project: Identifiable {
         self.status = status
         self.address = ""
         self.clientName = ""
+        self.clientEmail = nil
+        self.clientPhone = nil
         self.companyId = ""
         self.teamMemberIdsString = ""
         self.projectImagesString = ""

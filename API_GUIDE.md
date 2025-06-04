@@ -260,6 +260,110 @@ extension DateFormatter {
 4. Token is stored securely in Keychain
 5. Token is included in subsequent API requests
 
+## Image Upload API Integration
+
+### Overview
+The OPS app uses a multi-tier approach for image handling, integrating AWS S3 for storage and Bubble.io for metadata management.
+
+### Image Upload Workflow Endpoints
+
+#### 1. Direct S3 Upload (Default)
+The app uploads directly to S3 using AWS v4 signature authentication:
+```
+PUT https://ops-app-files-prod.s3.us-west-2.amazonaws.com/company-{companyId}/{projectId}/photos/{filename}
+```
+
+**Headers Required:**
+- `Authorization`: AWS4-HMAC-SHA256 signature
+- `X-Amz-Date`: Timestamp in UTC
+- `X-Amz-Content-SHA256`: SHA256 hash of image data
+- `Content-Type`: image/jpeg
+- `Content-Length`: Size in bytes
+
+#### 2. Bubble Image Registration
+After S3 upload, register images with project:
+```http
+POST https://opsapp.co/version-test/api/1.1/wf/upload_project_images
+
+Body:
+{
+    "project_id": "{project-id}",
+    "images": [
+        "https://ops-app-files-prod.s3.us-west-2.amazonaws.com/...",
+        "https://ops-app-files-prod.s3.us-west-2.amazonaws.com/..."
+    ]
+}
+```
+
+**Note**: The `images` field is an array of URL strings, not objects.
+
+#### 3. Presigned URL Upload (Optional)
+If enabled, the app can use presigned URLs via Lambda:
+```http
+POST https://opsapp.co/version-test/api/1.1/wf/get_presigned_url
+
+Body:
+{
+    "filename": "123MainSt_IMG_1234567890_0.jpg",
+    "contentType": "image/jpeg",
+    "projectId": "{project-id}",
+    "companyId": "{company-id}"
+}
+
+Expected Response:
+{
+    "uploadUrl": "https://s3.amazonaws.com/...",
+    "fileUrl": "https://s3.amazonaws.com/...",
+    "fields": {} // Optional, for POST-based uploads
+}
+```
+
+### Image Storage Structure
+
+#### S3 Path Convention
+```
+company-{companyId}/{projectId}/photos/{filename}
+```
+
+#### Filename Convention
+```
+{StreetAddress}_IMG_{timestamp}_{index}.jpg
+```
+- Street address extracted from project location
+- Timestamp in Unix epoch format
+- Index for multiple images in same upload batch
+
+### Offline Image Handling
+
+When offline, images are stored locally with URLs:
+```
+local://project_images/{filename}
+```
+
+These are queued in `pendingImageUploads` and synced when connectivity returns.
+
+### Image Sync Behavior
+
+#### Deletion Sync
+When images are deleted on the web app:
+1. Next sync compares local vs remote image sets
+2. Deleted images are identified by set difference
+3. Local file cache and memory cache are cleaned
+4. Project's image list is updated to match server
+
+#### Duplicate Prevention
+When uploading new images:
+1. Extract existing filenames from project
+2. Check for name conflicts before upload
+3. Generate unique names with suffixes (_1, _2, etc.)
+4. Track names during batch uploads
+5. Maximum 100 attempts for unique naming
+
+#### Cache Management
+- **Cache Keys**: SHA256 hash of URL (32 chars) + optional suffix
+- **One-time Clear**: App clears old truncated cache on first launch
+- **Format**: `remote_{32-char-hash}{suffix}`
+
 ## Adding New API Endpoints
 
 1. Define DTOs that match Bubble structure

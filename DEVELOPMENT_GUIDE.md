@@ -110,6 +110,19 @@ The OPS (Operational Project System) app is a field-optimized project management
 - Handle offline scenarios gracefully
 - Implement proper error handling for API failures
 
+### Image Handling
+- **Storage Strategy**: Images use a multi-tier approach (S3 → Local Files → Memory Cache)
+- **Offline Support**: All images work offline with automatic sync when connected
+- **File Naming**: `{StreetAddress}_IMG_{timestamp}_{index}.jpg`
+- **Compression**: JPEG 0.7 quality for optimal size/quality balance
+- **Sync Priority**: Images get priority 2 (high) for background sync
+- **Error Recovery**: Failed uploads automatically retry on next sync
+- **Cache Keys**: SHA256 hashing ensures unique identifiers (no truncation)
+- **Duplicate Prevention**: Upload services check existing filenames before generating new ones
+- **Deletion Sync**: Images deleted on web are automatically removed from iOS cache
+- **Update Flow**: ImageSyncManager is single source of truth for all image operations
+- See `IMAGE_HANDLING.md` for complete documentation
+
 ## Remaining MVP Tasks
 
 1. **Authentication Flow**

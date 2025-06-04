@@ -128,6 +128,14 @@ class DataController: ObservableObject {
             connectivityMonitor: connectivityMonitor
         )
         
+        // Immediately check for pending images after initialization
+        if isConnected {
+            Task {
+                print("DataController: Checking for pending images after ImageSyncManager initialization")
+                await imageSyncManager?.syncPendingImages()
+            }
+        }
+        
         // Listen for sync state changes
         self.syncManager.syncStatePublisher
             .receive(on: RunLoop.main)
@@ -142,28 +150,40 @@ class DataController: ObservableObject {
     
     // Method to perform sync on app launch
     func performAppLaunchSync() {
+        print("DataController: performAppLaunchSync called")
         
-        let syncOnLaunch = UserDefaults.standard.bool(forKey: "syncOnLaunch")
-            
-        guard syncOnLaunch,
-              isAuthenticated,
-              isConnected else { return }
-        
-        // Check if we've synced too recently
-        if let lastSync = lastSyncTime,
-           Date().timeIntervalSince(lastSync) < AppConfiguration.Sync.minimumSyncInterval {
-            return
-        }
-        
-        // Trigger sync
+        // Always check for pending images, regardless of sync settings
         Task {
-            print("PERFORMING SYNC ON APP LAUNCH")
-            await syncManager?.triggerBackgroundSync()
-            
-            // Also sync any pending images
-            if let imageSyncManager = imageSyncManager {
-                await imageSyncManager.syncPendingImages()
+            // First, sync pending images if we're online
+            if isConnected && isAuthenticated {
+                print("DataController: Checking for pending image uploads...")
+                if let imageSyncManager = imageSyncManager {
+                    await imageSyncManager.syncPendingImages()
+                } else {
+                    print("DataController: ImageSyncManager not initialized yet, will retry after initialization")
+                }
             }
+            
+            // Then check if we should do a full data sync
+            let syncOnLaunch = UserDefaults.standard.bool(forKey: "syncOnLaunch")
+            
+            guard syncOnLaunch,
+                  isAuthenticated,
+                  isConnected else {
+                print("DataController: Skipping full data sync (syncOnLaunch: \(syncOnLaunch), authenticated: \(isAuthenticated), connected: \(isConnected))")
+                return
+            }
+            
+            // Check if we've synced too recently
+            if let lastSync = lastSyncTime,
+               Date().timeIntervalSince(lastSync) < AppConfiguration.Sync.minimumSyncInterval {
+                print("DataController: Skipping sync - too recent (last sync: \(lastSync))")
+                return
+            }
+            
+            // Trigger full data sync
+            print("DataController: Performing full data sync on app launch")
+            await syncManager?.triggerBackgroundSync()
             
             lastSyncTime = Date()
         }

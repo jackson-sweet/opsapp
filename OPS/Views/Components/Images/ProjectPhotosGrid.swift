@@ -237,6 +237,7 @@ struct PhotoThumbnail: View {
     let project: Project? // Optional to maintain backward compatibility
     @State private var image: UIImage?
     @State private var isLoading = true
+    private let id = UUID() // Unique identifier to prevent view reuse
     
     var body: some View {
         ZStack {
@@ -254,7 +255,7 @@ struct PhotoThumbnail: View {
                             Spacer()
                             
                             // Unsynced indicator
-                            Image(systemName: "cloud.slash.fill")
+                            Image(systemName: "icloud.slash")
                                 .font(.system(size: 12))
                                 .foregroundColor(.white)
                                 .padding(2)
@@ -276,6 +277,7 @@ struct PhotoThumbnail: View {
             }
         }
         .onAppear(perform: loadImage)
+        .id("\(url)-\(id)") // Force unique view identity with URL and UUID
     }
     
     private func loadImage() {
@@ -283,12 +285,14 @@ struct PhotoThumbnail: View {
         
         isLoading = true
         
+        print("PhotoThumbnail: Loading image for URL: \(url)")
+        
         // First check in-memory cache
         if let cachedImage = ImageCache.shared.get(forKey: url) {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = cachedImage
-                print("PhotoThumbnail: Using cached image from memory")
+                print("PhotoThumbnail: Using cached image from memory for URL: \(url)")
             }
             return
         }
@@ -298,10 +302,11 @@ struct PhotoThumbnail: View {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = loadedImage
-                print("PhotoThumbnail: Successfully loaded image from file system")
+                print("PhotoThumbnail: Successfully loaded image from file system for URL: \(url)")
                 
                 // Cache in memory for faster access next time
                 ImageCache.shared.set(loadedImage, forKey: url)
+                print("PhotoThumbnail: Cached image in memory with key: \(url)")
             }
             return
         }
@@ -647,31 +652,13 @@ extension ProjectPhotosGrid {
                     print("ProjectPhotosGrid: Using ImageSyncManager for upload")
                     
                     // Process the image through the ImageSyncManager
-                    let url = await imageSyncManager.saveImage(image, for: project)
+                    let urls = await imageSyncManager.saveImages([image], for: project)
                     
-                    if !url.isEmpty {
-                        // Add to project's images
-                        var currentImages = project.getProjectImages()
-                        print("ProjectPhotosGrid: Current images count before: \(currentImages.count)")
-                        currentImages.append(url)
-                        print("ProjectPhotosGrid: Current images count after: \(currentImages.count)")
+                    if let url = urls.first, !url.isEmpty {
+                        // ImageSyncManager already added the image to the project
+                        print("ProjectPhotosGrid: ✅ ImageSyncManager successfully uploaded image")
                         
-                        // Update project in database
                         await MainActor.run {
-                            project.setProjectImageURLs(currentImages)
-                            project.needsSync = true
-                            project.syncPriority = 2 // Higher priority for image changes
-                            
-                            // Save changes to the database
-                            if let modelContext = dataController.modelContext {
-                                do {
-                                    try modelContext.save()
-                                    print("ProjectPhotosGrid: ✅ Saved to model context successfully")
-                                } catch {
-                                    print("ProjectPhotosGrid: ⚠️ Error saving to model context: \(error.localizedDescription)")
-                                }
-                            }
-                            
                             // Clear selected image and hide loading
                             cameraImage = nil
                             processingImage = false

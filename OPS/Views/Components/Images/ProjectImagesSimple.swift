@@ -27,12 +27,10 @@ struct ProjectImagesSimple: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             } else {
                 // Super simple grid with minimal layout complexity
-                ForEach(0..<images.count, id: \.self) { index in
-                    if index < images.count {
-                        SimpleImageView(urlString: images[index])
-                            .frame(height: 200)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
+                ForEach(Array(images.enumerated()), id: \.element) { index, url in
+                    SimpleImageView(urlString: url)
+                        .frame(height: 200)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
             }
         }

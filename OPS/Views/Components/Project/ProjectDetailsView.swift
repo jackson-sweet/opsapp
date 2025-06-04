@@ -581,7 +581,7 @@ struct ProjectDetailsView: View {
         VStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(Array(photos.enumerated()), id: \.0) { index, url in
+                    ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                         photoThumbnailView(url: url, index: index)
                     }
                 }
@@ -822,32 +822,11 @@ struct ProjectDetailsView: View {
                     let urls = await imageSyncManager.saveImages(selectedImages, for: project)
                     
                     if !urls.isEmpty {
-                        // Add to project's images
-                        var currentImages = project.getProjectImages()
-                        print("Current images count before: \(currentImages.count)")
-                        currentImages.append(contentsOf: urls)
-                        print("Current images count after: \(currentImages.count)")
+                        // ImageSyncManager already added the images to the project
+                        // We just need to clear the UI state
+                        print("✅ ImageSyncManager successfully processed \(urls.count) images")
                         
-                        // Use MainActor for UI updates and model changes
                         await MainActor.run {
-                            project.setProjectImageURLs(currentImages)
-                            print("Updated project image URLs")
-                            
-                            // Mark project for sync with priority
-                            project.needsSync = true
-                            project.syncPriority = 2 // Higher priority for image changes
-                            
-                            if let modelContext = dataController.modelContext {
-                                do {
-                                    try modelContext.save()
-                                    print("✅ Saved to model context successfully")
-                                } catch {
-                                    print("⚠️ Error saving to model context: \(error.localizedDescription)")
-                                }
-                            } else {
-                                print("⚠️ Model context is nil")
-                            }
-                            
                             // Clear selected images and hide loading
                             selectedImages.removeAll()
                             processingImages = false

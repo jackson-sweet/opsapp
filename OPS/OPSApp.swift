@@ -63,6 +63,14 @@ struct OPSApp: App {
                         // Run migration in background
                         ImageFileManager.shared.migrateAllImages()
                         
+                        // One-time fix: Clear remote image cache to fix duplicate image issue
+                        if !UserDefaults.standard.bool(forKey: "remote_cache_cleared_v2") {
+                            ImageFileManager.shared.clearRemoteImageCache()
+                            ImageCache.shared.clear() // Also clear memory cache
+                            UserDefaults.standard.set(true, forKey: "remote_cache_cleared_v2")
+                            print("Cleared remote image cache to fix duplicate issue")
+                        }
+                        
                         // Clean up any sample projects (one-time cleanup)
                         if !UserDefaults.standard.bool(forKey: "sample_projects_cleaned") {
                             await dataController.removeSampleProjects()

@@ -132,6 +132,23 @@ This document provides a comprehensive overview of the current state of the OPS 
 - Local image caching with FileManager
 - Conflict resolution for concurrent edits
 
+### Image Management System
+- **Multi-tier Storage**: AWS S3 (primary), local files (offline/cache), memory cache (performance)
+- **Automatic Sync**: Pending images sync on app launch, network restore, or manual trigger
+- **Smart Upload**: Direct S3 upload with AWS v4 signatures or presigned URLs via Lambda
+- **Offline Capture**: Images saved locally with `local://` URLs, queued for sync
+- **Bubble Integration**: S3 URLs registered with projects via `/api/1.1/wf/upload_project_images`
+- **Legacy Migration**: Automatic migration from UserDefaults to file system
+- **Filename Convention**: `{StreetAddress}_IMG_{timestamp}_{index}.jpg`
+- **Compression**: JPEG 0.7 quality for optimal size/quality balance
+
+### Recent Image System Improvements
+1. **Deletion Sync**: Images deleted on web are now properly removed from iOS app during sync
+2. **Cache Key Fix**: Replaced truncation with SHA256 hashing for unique cache identifiers
+3. **Duplicate Prevention**: Upload services check existing filenames and generate unique names
+4. **Upload Fix**: Eliminated duplicate image additions in UI after upload
+5. **Error Recovery**: Enhanced cleanup for deleted images in both file and memory caches
+
 ## Testing Considerations
 
 ### Device Support

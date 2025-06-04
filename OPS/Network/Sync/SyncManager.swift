@@ -990,9 +990,44 @@ class SyncManager {
             localProject.longitude = bubbleAddress.lng
         }
         
-        if let projectImages = remoteDTO.projectImages, !projectImages.isEmpty {
-            print("🔄 Syncing \(projectImages.count) images for project \(remoteDTO.id)")
+        // Update project images - handle both populated and empty arrays (for deletions)
+        if let projectImages = remoteDTO.projectImages {
+            let remoteImageURLs = Set(projectImages)
+            let localImageURLs = Set(localProject.getProjectImages())
+            
+            // Find images that were deleted on the server
+            let deletedImages = localImageURLs.subtracting(remoteImageURLs)
+            
+            if !deletedImages.isEmpty {
+                print("🗑️ Found \(deletedImages.count) images deleted on server for project \(remoteDTO.id)")
+                
+                // Clean up local cache for deleted images
+                for deletedURL in deletedImages {
+                    // Remove from file cache
+                    ImageFileManager.shared.deleteImage(localID: deletedURL)
+                    // Remove from memory cache
+                    ImageCache.shared.remove(forKey: deletedURL)
+                    print("  - Removed local cache for: \(deletedURL)")
+                }
+            }
+            
+            // Update project with server's image list (handles both additions and deletions)
             localProject.projectImagesString = projectImages.joined(separator: ",")
+            print("🔄 Synced images for project \(remoteDTO.id): \(projectImages.count) images (was \(localImageURLs.count))")
+        } else {
+            // If projectImages is nil, clear all local images
+            let localImages = localProject.getProjectImages()
+            if !localImages.isEmpty {
+                print("🗑️ Clearing all \(localImages.count) images for project \(remoteDTO.id) (no images from server)")
+                
+                // Clean up local cache
+                for imageURL in localImages {
+                    ImageFileManager.shared.deleteImage(localID: imageURL)
+                    ImageCache.shared.remove(forKey: imageURL)
+                }
+            }
+            
+            localProject.projectImagesString = ""
         }
         
         // Update dates

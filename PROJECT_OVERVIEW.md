@@ -64,6 +64,18 @@ OPS (Operational Project System) is a specialized project management app built s
    - Team member assignment and tracking
    - Permission-based access
 
+5. **Image Management**
+   - Multi-tier storage (S3, local files, memory cache)
+   - Offline capture with automatic sync
+   - AWS S3 integration for cloud storage
+   - Bubble.io registration for project association
+   - Automatic migration from legacy UserDefaults storage
+   - **Recent Fixes**:
+     - Deletion sync from web to iOS
+     - SHA256 cache keys prevent duplicate display
+     - Unique filename generation prevents overwrites
+     - Single source of truth for image updates
+
 ## Technical Details
 
 ### Style System

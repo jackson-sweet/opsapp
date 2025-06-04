@@ -88,6 +88,12 @@ final class Project: Identifiable {
     func getProjectImages() -> [String] {
         let images = projectImagesString.isEmpty ? [] : projectImagesString.components(separatedBy: ",")
         print("Project[\(id)] - getProjectImages() returning \(images.count) images")
+        if images.count > 0 {
+            print("  Image URLs:")
+            for (index, url) in images.enumerated() {
+                print("    [\(index)]: \(url)")
+            }
+        }
         return images
     }
     

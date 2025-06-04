@@ -7,6 +7,7 @@
 
 import UIKit
 import Foundation
+import CryptoKit
 
 /// Helper for managing image storage in the file system instead of UserDefaults
 class ImageFileManager {
@@ -42,15 +43,21 @@ class ImageFileManager {
     
     /// Encode a remote URL to make it safe for use as a file name
     private func encodeRemoteURL(_ url: String) -> String {
-        // Use Base64 encoding to create a safe file name that preserves the original URL
+        // Use SHA256 hash to create a unique, fixed-length identifier
         let data = url.data(using: .utf8)!
-        let base64 = data.base64EncodedString()
+        let hash = SHA256.hash(data: data)
+        let hashString = hash.compactMap { String(format: "%02x", $0) }.joined()
         
-        // Truncate if the encoded string is too long to avoid path length issues
-        if base64.count > 200 {
-            return "remote_\(base64.prefix(200))"
+        // Extract the filename from the URL if possible to make debugging easier
+        var filenameSuffix = ""
+        if let urlComponents = URL(string: url),
+           let filename = urlComponents.lastPathComponent.split(separator: ".").first {
+            // Take last 20 characters of the filename
+            filenameSuffix = "_" + String(filename.suffix(20))
         }
-        return "remote_\(base64)"
+        
+        // Return a combination of hash prefix and filename for uniqueness and debuggability
+        return "remote_\(hashString.prefix(32))\(filenameSuffix)"
     }
     
     /// Get the file URL for a local image identifier
@@ -259,5 +266,25 @@ class ImageFileManager {
         }
         
         print("ImageFileManager: Migration complete - \(migratedCount) images migrated, \(failedCount) failed")
+    }
+    
+    /// Clear all cached remote images (useful for fixing cache issues)
+    func clearRemoteImageCache() {
+        do {
+            let fileManager = FileManager.default
+            let files = try fileManager.contentsOfDirectory(at: imagesDirectory, includingPropertiesForKeys: nil)
+            
+            var deletedCount = 0
+            for file in files {
+                if file.lastPathComponent.hasPrefix("remote_") {
+                    try fileManager.removeItem(at: file)
+                    deletedCount += 1
+                }
+            }
+            
+            print("ImageFileManager: Cleared \(deletedCount) remote image cache files")
+        } catch {
+            print("ImageFileManager: Error clearing remote cache: \(error.localizedDescription)")
+        }
     }
 }

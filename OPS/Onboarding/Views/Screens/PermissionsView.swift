@@ -14,13 +14,15 @@ struct PermissionsView: View {
     var isInConsolidatedFlow: Bool = false
     @State private var isRequestingLocation = false
     @State private var isRequestingNotifications = false
+    @State private var showLocationDeniedAlert = false
+    @State private var showNotificationDeniedAlert = false
     
     // Calculate the current step number based on user type
     private var currentStepNumber: Int {
         if viewModel.selectedUserType == .employee {
             return 5 // Employee flow position - after company code
         } else {
-            return 9 // Company flow position - after team invites
+            return 8 // Company flow position - after team invites (adjusted after removing logo step)
         }
     }
     
@@ -28,7 +30,7 @@ struct PermissionsView: View {
         if viewModel.selectedUserType == .employee {
             return 8 // Employee flow has 8 total steps
         } else {
-            return 10 // Company flow has 10 total steps
+            return 9 // Company flow has 9 total steps (reduced from 10 after removing logo step)
         }
     }
     
@@ -118,6 +120,14 @@ struct PermissionsView: View {
                                         Button(action: {
                                             isRequestingLocation = true
                                             viewModel.requestLocationPermission()
+                                            
+                                            // Check for denied status after a delay
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                                if viewModel.locationManager.authorizationStatus == .denied || 
+                                                   viewModel.locationManager.authorizationStatus == .restricted {
+                                                    showLocationDeniedAlert = true
+                                                }
+                                            }
                                         }) {
                                             Text(viewModel.isLocationPermissionGranted ? "Granted" : "Allow")
                                                 .font(OPSStyle.Typography.caption)
@@ -165,6 +175,17 @@ struct PermissionsView: View {
                                         Button(action: {
                                             isRequestingNotifications = true
                                             viewModel.requestNotificationsPermission()
+                                            
+                                            // Check for denied status after a delay
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                                UNUserNotificationCenter.current().getNotificationSettings { settings in
+                                                    DispatchQueue.main.async {
+                                                        if settings.authorizationStatus == .denied {
+                                                            showNotificationDeniedAlert = true
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }) {
                                             Text(viewModel.isNotificationsPermissionGranted ? "Granted" : "Allow")
                                                 .font(OPSStyle.Typography.caption)
@@ -316,6 +337,14 @@ struct PermissionsView: View {
                             print("PermissionsView: Allow location access button tapped")
                             // Request location permission
                             viewModel.requestLocationPermission()
+                            
+                            // Check for denied status after a delay
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                if viewModel.locationManager.authorizationStatus == .denied || 
+                                   viewModel.locationManager.authorizationStatus == .restricted {
+                                    showLocationDeniedAlert = true
+                                }
+                            }
                         }) {
                             Text("ALLOW LOCATION ACCESS")
                                 .font(OPSStyle.Typography.bodyBold)
@@ -347,6 +376,28 @@ struct PermissionsView: View {
             .onChange(of: viewModel.isNotificationsPermissionGranted) { _, _ in
                 isRequestingNotifications = false
             }
+        }
+        // Location Permission Denied Alert
+        .alert("Location Access Required", isPresented: $showLocationDeniedAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+        } message: {
+            Text("OPS needs location access to show nearby jobs and navigate to job sites. Please enable location access in Settings to use these features.")
+        }
+        // Notification Permission Denied Alert
+        .alert("Notifications Required", isPresented: $showNotificationDeniedAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+        } message: {
+            Text("OPS needs notification access to keep you updated about schedule changes and job assignments. Please enable notifications in Settings.")
         }
     }
 }

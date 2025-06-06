@@ -30,32 +30,52 @@ struct ProjectActionBar: View {
     // @State private var receiptImage: UIImage?
     
     var body: some View {
-        // Semi-transparent background with blur
+        // Blurred background similar to tab bar
         ZStack {
-            BlurView(style: .dark)
-                .cornerRadius(50)
-                .frame(width: 362, height: 85)
+            // Blur effect
+            BlurView(style: .systemThinMaterialDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
             
-            HStack(spacing: 20) {
-                ForEach(ProjectAction.allCases, id: \.self) { action in
+            // Semi-transparent overlay
+            Color(OPSStyle.Colors.cardBackgroundDark)
+                .opacity(0.3)
+                .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
+            
+            // Actions with dividers
+            HStack(spacing: 0) {
+                ForEach(Array(ProjectAction.allCases.enumerated()), id: \.element) { index, action in
+                    // Action button
                     Button(action: {
                         handleAction(action)
                     }) {
-                        Image(systemName: action.iconName)
-                            .font(.system(size: 24))
-                            .foregroundColor(OPSStyle.Colors.secondaryAccent)
-                            .frame(width: 72, height: 72)
-                            .background(
-                                Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
-                            )
+                        VStack(spacing: 4) {
+                            Image(systemName: action.iconName)
+                                .font(.system(size: 24))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            
+                            Text(action.label.uppercased())
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 60)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    // Vertical divider between buttons (not after last one)
+                    if index < ProjectAction.allCases.count - 1 {
+                        Rectangle()
+                            .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
+                            .frame(width: 1, height: 40)
                     }
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
         }
-        .frame(maxHeight: 85)
-        .frame(maxWidth: 362)
+        .frame(height: 80)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
+        .contentMargins(.bottom, 90)
         // Complete Project Confirmation
         .alert(isPresented: $showCompleteConfirmation) {
             Alert(
@@ -106,8 +126,10 @@ struct ProjectActionBar: View {
                                 .padding(.top, 10)
                         }
                     }
-                    .frame(width: 362, height: 85)
-                    .cornerRadius(50)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 80)
+                    .padding(.horizontal, 20)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
                 }
             }
         )

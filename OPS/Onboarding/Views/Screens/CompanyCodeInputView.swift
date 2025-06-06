@@ -92,7 +92,7 @@ struct CompanyCodeInputView: View {
                         // Welcome phase after successful join
                         VStack(spacing: 24) {
                             VStack(spacing: 16) {
-                                Image(systemName: "checkmark.circle.fill")
+                                Image(systemName: "checkmark.circle")
                                     .font(.system(size: 80))
                                     .foregroundColor(OPSStyle.Colors.successStatus)
                                 
@@ -100,8 +100,8 @@ struct CompanyCodeInputView: View {
                                     .font(OPSStyle.Typography.title)
                                     .foregroundColor(primaryTextColor)
                                 
-                                Text(viewModel.companyName.uppercased())
-                                    .font(OPSStyle.Typography.largeTitle)
+                                Text("[ \(viewModel.companyName.uppercased()) ]")
+                                    .font(OPSStyle.Typography.subtitle)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     .multilineTextAlignment(.center)
                                 

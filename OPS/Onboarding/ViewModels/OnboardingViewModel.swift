@@ -9,6 +9,8 @@ import Foundation
 import SwiftUI
 import Combine
 import SwiftData
+import CoreLocation
+import UserNotifications
 
 class OnboardingViewModel: ObservableObject {
     // Reference to DataController for database operations
@@ -67,6 +69,7 @@ class OnboardingViewModel: ObservableObject {
     
     // Services
     private let onboardingService = OnboardingService()
+    let locationManager = LocationManager() // Made internal so PermissionsView can access it
     private var cancellables = Set<AnyCancellable>()
     
     // Computed property to determine if we should use light theme (for employee signup)
@@ -120,6 +123,9 @@ class OnboardingViewModel: ObservableObject {
             clearUserData()
         }
         
+        // Check current permission states
+        checkCurrentPermissions()
+        
         setupValidations()
     }
     
@@ -146,6 +152,22 @@ class OnboardingViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "company_code")
         
         print("OnboardingViewModel: Cleared all user data for new onboarding flow")
+    }
+    
+    // Check current permission states
+    private func checkCurrentPermissions() {
+        // Check location permission
+        let locationStatus = locationManager.authorizationStatus
+        isLocationPermissionGranted = (locationStatus == .authorizedAlways || locationStatus == .authorizedWhenInUse)
+        print("OnboardingViewModel: Initial location permission status: \(locationStatus.rawValue), granted: \(isLocationPermissionGranted)")
+        
+        // Check notification permission
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            DispatchQueue.main.async {
+                self?.isNotificationsPermissionGranted = (settings.authorizationStatus == .authorized)
+                print("OnboardingViewModel: Initial notification permission granted: \(self?.isNotificationsPermissionGranted ?? false)")
+            }
+        }
     }
     
     // Setup field validations
@@ -525,10 +547,34 @@ class OnboardingViewModel: ObservableObject {
     
     // Request location permission
     func requestLocationPermission() {
-        // This would connect to your location manager
-        // For now, we'll simulate granting permission
-        isLocationPermissionGranted = true
-        // Don't auto-advance - user should tap continue
+        print("OnboardingViewModel: Requesting location permission")
+        
+        // Check current status first
+        let currentStatus = locationManager.authorizationStatus
+        print("OnboardingViewModel: Current location status: \(currentStatus.rawValue)")
+        
+        // If already granted, just update the state
+        if currentStatus == .authorizedAlways || currentStatus == .authorizedWhenInUse {
+            isLocationPermissionGranted = true
+            UserDefaults.standard.set(true, forKey: "location_permission_granted")
+            return
+        }
+        
+        // Request permission
+        locationManager.requestPermissionIfNeeded(requestAlways: true)
+        
+        // Observe authorization changes
+        locationManager.$authorizationStatus
+            .sink { [weak self] status in
+                DispatchQueue.main.async {
+                    self?.isLocationPermissionGranted = (status == .authorizedAlways || status == .authorizedWhenInUse)
+                    print("OnboardingViewModel: Location permission updated - status: \(status.rawValue), granted: \(self?.isLocationPermissionGranted ?? false)")
+                    
+                    // Store permission status in UserDefaults
+                    UserDefaults.standard.set(self?.isLocationPermissionGranted ?? false, forKey: "location_permission_granted")
+                }
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Navigation Methods
@@ -718,6 +764,9 @@ class OnboardingViewModel: ObservableObject {
         errorMessage = ""
         
         do {
+            // Format phone number for API
+            let formattedPhone = phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+            
             let response = try await onboardingService.updateCompany(
                 name: companyName,
                 email: companyEmail,
@@ -726,7 +775,10 @@ class OnboardingViewModel: ObservableObject {
                 size: size.rawValue,
                 age: age.rawValue,
                 address: companyAddress,
-                userId: userId
+                userId: userId,
+                firstName: firstName,
+                lastName: lastName,
+                userPhone: formattedPhone
             )
             
             await MainActor.run {

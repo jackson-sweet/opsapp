@@ -20,7 +20,7 @@ struct FieldSetupView: View {
         if viewModel.selectedUserType == .employee {
             return 6 // Employee flow position - after permissions
         } else {
-            return 10 // Company flow position - last step
+            return 9 // Company flow position - last step (adjusted after removing logo step)
         }
     }
     
@@ -28,7 +28,7 @@ struct FieldSetupView: View {
         if viewModel.selectedUserType == .employee {
             return 8 // Employee flow has 8 total steps
         } else {
-            return 10 // Company flow has 10 total steps
+            return 9 // Company flow has 9 total steps (reduced from 10 after removing logo step)
         }
     }
     
@@ -81,7 +81,7 @@ struct FieldSetupView: View {
                     .padding(.bottom, 16)
                     .padding(.horizontal, 24)
                     
-                    // Scrollable content
+                    // Main content area
                     ScrollView {
                         VStack(spacing: 0) {
                             // Header
@@ -90,6 +90,7 @@ struct FieldSetupView: View {
                                 subtitle: "Customize how OPS should work when you're on job sites with limited connectivity.",
                                 isLightTheme: viewModel.shouldUseLightTheme
                             )
+                            .padding(.horizontal, 24)
                             .padding(.bottom, 30)
                             
                             // Field settings
@@ -104,11 +105,11 @@ struct FieldSetupView: View {
                                 }
                                 .environmentObject(viewModel)
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 24)
                             
-                            Spacer(minLength: geometry.size.height * 0.1)
+                            Spacer(minLength: 40)
                         }
-                        .padding(20)
+                        .padding(.top, 20)
                     }
                     
                     // Continue button

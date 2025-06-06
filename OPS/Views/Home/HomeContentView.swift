@@ -8,6 +8,7 @@
 import SwiftUI
 import MapKit
 import Combine
+import CoreLocation
 
 /// A container for the main content of the HomeView
 /// Used to reduce expression complexity in HomeView
@@ -25,6 +26,8 @@ struct HomeContentView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var inProgressManager: InProgressManager
     
+    // Location manager to track authorization status
+    @StateObject private var locationManager = LocationManager()
     
     // Callbacks
     let startProject: (Project) -> Void
@@ -117,6 +120,7 @@ struct HomeContentView: View {
                 .allowsHitTesting(false)
         }
         .ignoresSafeArea()
+        .overlay(locationDisabledOverlay)
     }
     
     private var gradientOverlay: some View {
@@ -275,4 +279,81 @@ struct HomeContentView: View {
     
     // MARK: - Helper Methods
     // All map zoom/region logic has been moved to ProjectMapView for centralized state management
+    
+    // MARK: - Location Disabled Overlay
+    private var locationDisabledOverlay: some View {
+        Group {
+            // Show overlay only when location is denied/restricted and in project mode with routing active
+            if (locationManager.authorizationStatus == .denied || 
+                locationManager.authorizationStatus == .restricted) &&
+                appState.isInProjectMode &&
+                inProgressManager.isRouting {
+                
+                ZStack {
+                    // Semi-transparent background
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                    
+                    // Message card
+                    VStack(spacing: 16) {
+                        // Icon
+                        Image(systemName: "location.slash.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                        
+                        // Title
+                        Text("LOCATION SERVICES DISABLED")
+                            .font(OPSStyle.Typography.title)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                        
+                        // Message
+                        Text("Enable location services in Settings to see routing and navigation.")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                        
+                        // Open Settings button
+                        Button(action: {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "gear")
+                                    .font(.system(size: 18))
+                                
+                                Text("OPEN SETTINGS")
+                                    .font(OPSStyle.Typography.button)
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(OPSStyle.Colors.primaryAccent)
+                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                        }
+                        .padding(.top, 8)
+                    }
+                    .padding(32)
+                    .background(
+                        ZStack {
+                            // Blur effect
+                            BlurView(style: .systemThinMaterialDark)
+                            
+                            // Semi-transparent overlay
+                            Color(OPSStyle.Colors.cardBackgroundDark)
+                                .opacity(0.3)
+                        }
+                    )
+                    .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
+                    .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
+                    .padding(.horizontal, 40)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                .animation(.easeInOut(duration: 0.3), value: locationManager.authorizationStatus)
+            }
+        }
+    }
 }

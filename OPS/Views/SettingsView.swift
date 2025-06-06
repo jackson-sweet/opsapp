@@ -194,31 +194,35 @@ struct SettingsView: View {
                 .padding(.vertical, 16)
             }
             
-            // Feature request and logout buttons in HStack
-            HStack(spacing: 16) {
-                // Feature request button (1/3 width)
-                NavigationLink(destination: FeatureRequestView()) {
-                    HStack {
-                        Image(systemName: "lightbulb")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        
-                        Text("REQUEST FEATURE")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            // Feature request, report issue, and logout buttons
+            HStack(spacing: 12) {
+                // First row: Feature request and Report issue buttons
+                VStack(spacing: 12) {
+                    
+                    // Report issue button
+                    NavigationLink(destination: ReportIssueView()) {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                            
+                            Text("REPORT ISSUE")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
+                        )
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                    )
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .frame(height: 44)
                 }
-                .frame(height: 44)
                 
-                // Logout button (2/3 width)
+                // Second row: Logout button (full width)
                 Button(action: {
                     showLogoutConfirmation = true
                 }) {
@@ -240,7 +244,7 @@ struct SettingsView: View {
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(height: 44)
             }
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 20)

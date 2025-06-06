@@ -14,7 +14,6 @@ struct CompanyBasicInfoView: View {
     
     enum CompanyInfoPhase: Int, CaseIterable {
         case companyName = 0
-        case companyLogo = 1
     }
     
     // Calculate the current step number based on user type
@@ -26,7 +25,7 @@ struct CompanyBasicInfoView: View {
         if onboardingViewModel.selectedUserType == .employee {
             return 8 // Employee flow has 8 total steps
         } else {
-            return 10 // Company flow has 10 total steps
+            return 9 // Company flow has 9 total steps (reduced from 10 after removing logo step)
         }
     }
     
@@ -39,13 +38,7 @@ struct CompanyBasicInfoView: View {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        if currentPhase == .companyName {
-                            onboardingViewModel.previousStep()
-                        } else {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                currentPhase = CompanyInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .companyName
-                            }
-                        }
+                        onboardingViewModel.previousStep()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -93,14 +86,6 @@ struct CompanyBasicInfoView: View {
                             CompanyNamePhaseView(
                                 companyName: $onboardingViewModel.companyName,
                                 viewModel: onboardingViewModel,
-                                onContinue: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        currentPhase = .companyLogo
-                                    }
-                                }
-                            )
-                        case .companyLogo:
-                            CompanyLogoPhaseView(
                                 onContinue: {
                                     onboardingViewModel.nextStep()
                                 }
@@ -169,64 +154,6 @@ struct CompanyNamePhaseView: View {
     }
 }
 
-struct CompanyLogoPhaseView: View {
-    let onContinue: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 32) {
-            // Header
-            VStack(alignment: .leading, spacing: 8) {
-                Text("ADD YOUR")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
-                
-                Text("COMPANY LOGO.")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
-                    .padding(.bottom, 12)
-                
-                Text("Your company logo will be added to projects and communications. You can add this later in settings.")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineSpacing(4)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            
-            // Logo Upload Placeholder
-            VStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 2)
-                    .fill(OPSStyle.Colors.cardBackground)
-                    .frame(height: 160)
-                    .overlay(
-                        VStack(spacing: 12) {
-                            Image(systemName: "photo")
-                                .font(.system(size: 48))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            Text("Logo upload coming soon")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                    )
-                
-                Text("This feature will be available in a future update.")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.8))
-                    .multilineTextAlignment(.center)
-            }
-            
-            Spacer()
-            
-            // Continue and Skip buttons
-            VStack(spacing: 12) {
-                StandardContinueButton(
-                    onTap: onContinue
-                )
-            }
-        }
-    }
-}
 
 #Preview {
     let dataController = OnboardingPreviewHelpers.createPreviewDataController()

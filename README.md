@@ -1,59 +1,122 @@
 # OPS App - Field Operations Management System
 
 ## Overview
+
 OPS (Operational Project System) is a specialized iOS app built for trade workers to manage projects and crews in the field. The app prioritizes reliability, simplicity, and offline functionality.
+
+**Status**: LAUNCHED ✅  
+**Version**: 1.0  
+**Platform**: iOS 17+
 
 ## Key Documentation
 
-### Core Documentation
-- [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) - High-level project structure and architecture
+### Essential Guides
 - [`CURRENT_STATE.md`](CURRENT_STATE.md) - Current implementation status and features
+- [`MVP_GUIDE.md`](MVP_GUIDE.md) - MVP status, release criteria, and roadmap
+- [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) - High-level architecture and structure
 - [`DEVELOPMENT_GUIDE.md`](DEVELOPMENT_GUIDE.md) - Development guidelines and best practices
+
+### Technical Documentation
 - [`API_GUIDE.md`](API_GUIDE.md) - Bubble.io API integration details
-
-### Feature Documentation
-- [`IMAGE_HANDLING.md`](IMAGE_HANDLING.md) - Complete image upload/fetch system documentation
+- [`IMAGE_HANDLING.md`](IMAGE_HANDLING.md) - Complete image upload/sync system
 - [`ONBOARDING_GUIDE.md`](ONBOARDING_GUIDE.md) - Onboarding flow implementation
-- [`UI_DESIGN_GUIDELINES.md`](UI_DESIGN_GUIDELINES.md) - UI/UX design standards
 
-### Brand & Design
+### Design & Brand
 - [`CLAUDE.md`](CLAUDE.md) - Brand guidelines and development instructions
-- [`DESIGN_PHILOSOPHY.md`](DESIGN_PHILOSOPHY.md) - Design principles and philosophy
+- [`DESIGN_PHILOSOPHY.md`](DESIGN_PHILOSOPHY.md) - Core design principles
+- [`UI_DESIGN_GUIDELINES.md`](UI_DESIGN_GUIDELINES.md) - Comprehensive UI/UX standards
 
-### Release Planning
-- [`MVP_STATUS_UPDATE.md`](MVP_STATUS_UPDATE.md) - Current MVP completion status
-- [`MVP_TODO.md`](MVP_TODO.md) - Remaining tasks for MVP
-- [`MVP_RELEASE_CHECKLIST.md`](MVP_RELEASE_CHECKLIST.md) - Pre-release checklist
+### Future Development
+- [`V2_FEATURES.md`](V2_FEATURES.md) - Post-MVP feature roadmap
+- [`SettingsRefinementPlan.md`](SettingsRefinementPlan.md) - Settings UI improvements
 
 ## Quick Start
 
-### Architecture
-- **Platform**: iOS 17+ (SwiftUI)
-- **Data**: SwiftData with offline-first sync
-- **Backend**: Bubble.io API
-- **Storage**: AWS S3 for images
-- **Design**: Dark theme optimized for field use
+### Prerequisites
+- Xcode 15+
+- iOS 17+ device or simulator
+- Bubble.io account (for backend)
+- AWS account (for S3 image storage)
 
-### Key Features
-1. **Offline-First** - Full functionality without connectivity
-2. **Image Management** - Multi-tier storage with automatic sync
-3. **Project Tracking** - Status workflow from RFQ to Completed
-4. **Team Coordination** - Role-based permissions and assignments
-5. **Field-Optimized UI** - Large touch targets, high contrast
+### Setup
+1. Clone the repository
+2. Open `OPS.xcodeproj` in Xcode
+3. Update configuration in `AppConfiguration.swift`:
+   - Bubble API endpoints
+   - AWS credentials (temporary in `S3UploadService.swift`)
+4. Build and run on device/simulator
 
-### Development Setup
-1. Open `OPS.xcodeproj` in Xcode
-2. Update AWS credentials in `S3UploadService.swift` (temporary)
-3. Configure Bubble API endpoints in `AppConfiguration.swift`
-4. Run on iOS 17+ device or simulator
+## Architecture
 
-## Technical Stack
-- **SwiftUI** - Modern declarative UI
-- **SwiftData** - Local persistence
-- **Combine** - Reactive programming
-- **AWS SDK** - S3 integration
-- **MapKit** - Location services
-- **PhotosUI** - Image selection
+### Core Stack
+- **UI Framework**: SwiftUI
+- **Data Persistence**: SwiftData
+- **Backend**: Bubble.io REST API
+- **Image Storage**: AWS S3
+- **Authentication**: Keychain Services
+
+### Design Patterns
+- **Architecture**: MVVM (Model-View-ViewModel)
+- **Navigation**: Coordinator pattern for onboarding
+- **Networking**: Async/await with proper error handling
+- **Storage**: Offline-first with background sync
+
+## Key Features
+
+### Field-First Design
+- Dark theme optimized for outdoor visibility
+- Large touch targets (44pt+) for glove operation
+- Offline functionality with automatic sync
+- Battery-efficient operation
+
+### Core Functionality
+1. **Project Management** - Status tracking from RFQ to completion
+2. **Team Coordination** - Role-based permissions and assignments
+3. **Image Documentation** - Capture and sync project photos
+4. **Calendar Integration** - Schedule visualization and planning
+5. **Offline Operation** - Full functionality without connectivity
+
+### Security
+- PIN-based app protection
+- Secure token storage in Keychain
+- Admin role auto-detection
+- Encrypted data transmission
+
+## Development Guidelines
+
+### Code Standards
+- Use OPS typography system (NO system fonts)
+- Follow OPSStyle for all UI components
+- Maintain offline-first architecture
+- Test with gloves and in sunlight
+
+### Git Workflow
+- Feature branches from main
+- Clear, descriptive commit messages
+- No AI attribution in commits
+- Regular rebasing to avoid conflicts
+
+### Testing Requirements
+- Manual testing on real devices
+- Offline scenario validation
+- Performance testing on older devices
+- Field condition simulation
 
 ## Support
-For detailed information on any component, refer to the documentation files listed above.
+
+### Documentation
+See the documentation files listed above for detailed information on specific topics.
+
+### Reporting Issues
+1. Check existing documentation
+2. Test in offline mode
+3. Provide device/iOS version
+4. Include steps to reproduce
+
+## License
+
+Copyright © 2025 OPS App. All rights reserved.
+
+---
+
+**Built by trades, for trades.** 🔨

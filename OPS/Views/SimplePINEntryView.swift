@@ -51,16 +51,6 @@ struct SimplePINEntryView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(height: 60)
-                HStack {
-                    
-                    Text(Image(systemName: "lock"))
-                        .font(.system(size: 24))
-                    Spacer()
-                    Text("ENTER PIN")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
-                }.padding(.horizontal, 24)
-                
                 
                 // PIN input with individual boxes
                 PINDigitBoxes(pin: $enteredPIN, validationState: pinState)

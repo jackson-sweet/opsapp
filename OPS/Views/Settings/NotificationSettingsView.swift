@@ -38,32 +38,31 @@ struct NotificationSettingsView: View {
                 .padding(.bottom, 24)
                 
                 ScrollView {
-                    VStack(spacing: 32) {
+                    VStack(spacing: 24) {
                         // Permission Status Card
                         notificationStatusCard
+                            .padding(20)
                         
                         // Project Notifications Section
                         VStack(alignment: .leading, spacing: 16) {
-                            sectionHeader("PROJECT UPDATES")
-                            projectNotificationsCard
+                            SettingsSectionHeader(title: "PROJECT UPDATES")
+                            projectNotificationSettings
                         }
                         
                         // Advance Notice Section
                         VStack(alignment: .leading, spacing: 16) {
-                            sectionHeader("ADVANCE REMINDERS")
-                            advanceNoticeCard
+                            SettingsSectionHeader(title: "ADVANCE REMINDERS")
+                            advanceNoticeSettings
                         }
                         
                         // Test Notification Section
                         VStack(alignment: .leading, spacing: 16) {
-                            sectionHeader("TEST NOTIFICATIONS")
+                            SettingsSectionHeader(title: "TEST NOTIFICATIONS")
                             testNotificationCard
                         }
                     }
-                    .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                 }
-                .tabBarPadding()
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -137,90 +136,67 @@ struct NotificationSettingsView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
     
-    private var projectNotificationsCard: some View {
-        VStack(spacing: 0) {
+    private var projectNotificationSettings: some View {
+        VStack(spacing: 12) {
             // Assignment Notifications
-            NotificationRow(
-                icon: "person.badge.plus",
-                title: "Project Assignments",
-                description: "When assigned to new projects",
-                isOn: $notifyProjectAssignment
-            )
-            
-            Divider()
-                .background(OPSStyle.Colors.cardBackground)
-                .padding(.vertical, 4)
+            SettingsCard(title: "", showTitle: false) {
+                SettingsToggle(
+                    title: "Project Assignments",
+                    description: "Get notified when assigned to new projects",
+                    isOn: $notifyProjectAssignment
+                )
+            }
             
             // Schedule Changes
-            NotificationRow(
-                icon: "calendar.badge.clock",
-                title: "Schedule Changes",
-                description: "When project dates change",
-                isOn: $notifyProjectScheduleChanges
-            )
-            
-            Divider()
-                .background(OPSStyle.Colors.cardBackground)
-                .padding(.vertical, 4)
+            SettingsCard(title: "", showTitle: false) {
+                SettingsToggle(
+                    title: "Schedule Changes",
+                    description: "Receive alerts when project dates change",
+                    isOn: $notifyProjectScheduleChanges
+                )
+            }
             
             // Completion Notifications
-            NotificationRow(
-                icon: "checkmark.circle",
-                title: "Project Completion",
-                description: "When projects are marked complete",
-                isOn: $notifyProjectCompletion
-            )
+            SettingsCard(title: "", showTitle: false) {
+                SettingsToggle(
+                    title: "Project Completion",
+                    description: "Be notified when projects are marked complete",
+                    isOn: $notifyProjectCompletion
+                )
+            }
         }
-        .padding(24)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
     
-    private var advanceNoticeCard: some View {
-        VStack(spacing: 20) {
+    private var advanceNoticeSettings: some View {
+        VStack(spacing: 12) {
             // Master Toggle
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("ADVANCE REMINDERS")
-                        .font(OPSStyle.Typography.cardTitle)
-                        .foregroundColor(.white)
-                    
-                    Text("Get notified before projects start")
-                        .font(OPSStyle.Typography.cardBody)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                
-                Spacer()
-                
-                Toggle("", isOn: $notifyProjectAdvance)
-                    .tint(OPSStyle.Colors.primaryAccent)
+            SettingsCard(title: "", showTitle: false) {
+                SettingsToggle(
+                    title: "Enable Advance Reminders",
+                    description: "Get notified before projects start",
+                    isOn: $notifyProjectAdvance
+                )
             }
             
             // Day Selectors
             if notifyProjectAdvance {
-                VStack(spacing: 12) {
-                    Text("REMIND ME")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    HStack(spacing: 12) {
-                        DaySelector(value: $advanceNoticeDays1, label: "First")
-                        DaySelector(value: $advanceNoticeDays2, label: "Second")
-                        DaySelector(value: $advanceNoticeDays3, label: "Third")
+                SettingsCard(title: "REMINDER SCHEDULE") {
+                    VStack(spacing: 12) {
+                        HStack(spacing: 12) {
+                            DaySelector(value: $advanceNoticeDays1, label: "First")
+                            DaySelector(value: $advanceNoticeDays2, label: "Second")
+                            DaySelector(value: $advanceNoticeDays3, label: "Third")
+                        }
+                        
+                        Text("\(advanceNoticeDays1), \(advanceNoticeDays2) & \(advanceNoticeDays3) days before")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 8)
                     }
-                    
-                    Text("\(advanceNoticeDays1), \(advanceNoticeDays2) & \(advanceNoticeDays3) days before")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
                 }
             }
         }
-        .padding(24)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
     
     private var testNotificationCard: some View {
@@ -258,12 +234,6 @@ struct NotificationSettingsView: View {
     
     // MARK: - Helper Components
     
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(OPSStyle.Typography.caption)
-            .foregroundColor(OPSStyle.Colors.secondaryText)
-    }
-    
     private func sendTestNotification() {
         _ = notificationManager.scheduleProjectNotification(
             projectId: "test",
@@ -275,38 +245,6 @@ struct NotificationSettingsView: View {
 }
 
 // MARK: - Supporting Views
-
-struct NotificationRow: View {
-    let icon: String
-    let title: String
-    let description: String
-    @Binding var isOn: Bool
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: 20))
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: 24)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title.uppercased())
-                    .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(.white)
-                
-                Text(description)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            
-            Spacer()
-            
-            Toggle("", isOn: $isOn)
-                .tint(OPSStyle.Colors.primaryAccent)
-        }
-        .padding(.vertical, 4)
-    }
-}
 
 struct DaySelector: View {
     @Binding var value: Int

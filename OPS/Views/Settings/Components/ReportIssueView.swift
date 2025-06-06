@@ -1,20 +1,20 @@
 //
-//  FeatureRequestView.swift
+//  ReportIssueView.swift
 //  OPS
 //
-//  Created by Jackson Sweet on 2025-05-13.
+//  View for reporting bugs and issues
 //
 
 import SwiftUI
 import Combine
 import UIKit
 
-struct FeatureRequestView: View {
+struct ReportIssueView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
     
-    @State private var featureTitle = ""
-    @State private var featureDescription = ""
+    @State private var issueTitle = ""
+    @State private var issueDescription = ""
     @State private var isSubmitting = false
     @State private var showSuccessAlert = false
     @State private var errorMessage: String?
@@ -28,7 +28,7 @@ struct FeatureRequestView: View {
             VStack(spacing: 0) {
                 // Header with back button
                 SettingsHeader(
-                    title: "Request a Feature",
+                    title: "Report an Issue",
                     onBackTapped: {
                         dismiss()
                     }
@@ -37,7 +37,7 @@ struct FeatureRequestView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         // Explanation
-                        Text("Have an idea for improving OPS? Let us know what feature you'd like to see!")
+                        Text("Experiencing an issue? Let us know so we can fix it.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)
@@ -46,20 +46,19 @@ struct FeatureRequestView: View {
                         
                         // Form
                         VStack(spacing: 20) {
-                            // Feature title
-                            // Use a standard styled text field since FormField might be causing issues
+                            // Issue title
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("FEATURE TITLE")
+                                Text("ISSUE TITLE")
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 
-                                TextField("E.g. Team Chat, Calendar Export", text: $featureTitle)
+                                TextField("E.g. App crashes when uploading photos", text: $issueTitle)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(.white)
                                     .padding()
                                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .cornerRadius(12)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
@@ -67,8 +66,7 @@ struct FeatureRequestView: View {
                             }
                             .padding(.horizontal, 20)
                             
-                            // Feature description
-                            // Use a standard styled text editor since FormTextEditor might be causing issues
+                            // Issue description
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("DESCRIPTION")
                                     .font(OPSStyle.Typography.caption)
@@ -76,16 +74,15 @@ struct FeatureRequestView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 
                                 ZStack(alignment: .topLeading) {
-                                    // iOS 16 compatibility handling 
                                     ZStack {
                                         OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         
-                                        TextEditor(text: $featureDescription)
+                                        TextEditor(text: $issueDescription)
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(.white)
                                             .background(Color.clear)
-                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                            .cornerRadius(12)
                                     }
                                     .frame(height: 150)
                                     .padding(12)
@@ -94,8 +91,9 @@ struct FeatureRequestView: View {
                                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                                     )
                                     
-                                    if featureDescription.isEmpty {
-                                        Text("Please describe the feature you'd like to see and how it would help you...")
+                                    
+                                    if issueDescription.isEmpty {
+                                        Text("Please describe the issue you're experiencing, including steps to reproduce if possible...")
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.6))
                                             .padding(.horizontal, 16)
@@ -107,27 +105,27 @@ struct FeatureRequestView: View {
                             .padding(.horizontal, 20)
                             
                             // Submit button
-                            Button(action: submitFeatureRequest) {
+                            Button(action: submitIssueReport) {
                                 HStack {
                                     if isSubmitting {
                                         ProgressView()
                                             .tint(.black)
                                     } else {
-                                        Text("SUBMIT REQUEST")
+                                        Text("SUBMIT REPORT")
                                             .font(OPSStyle.Typography.bodyBold)
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(
-                                    (featureTitle.isEmpty || featureDescription.isEmpty || isSubmitting)
+                                    (issueTitle.isEmpty || issueDescription.isEmpty || isSubmitting)
                                     ? OPSStyle.Colors.primaryAccent.opacity(0.5)
                                     : OPSStyle.Colors.primaryAccent
                                 )
                                 .foregroundColor(.black)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
-                            .disabled(featureTitle.isEmpty || featureDescription.isEmpty || isSubmitting)
+                            .disabled(issueTitle.isEmpty || issueDescription.isEmpty || isSubmitting)
                             .padding(.horizontal, 20)
                             .padding(.top, 16)
                         }
@@ -138,29 +136,29 @@ struct FeatureRequestView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
-        .alert("Request Submitted", isPresented: $showSuccessAlert) {
+        .alert("Report Submitted", isPresented: $showSuccessAlert) {
             Button("OK") {
                 dismiss()
             }
         } message: {
-            Text("Thank you for your suggestion! We'll review your feature request.")
+            Text("Thank you for reporting this issue! We'll investigate and work on a fix.")
         }
         .alert("Error", isPresented: $showErrorAlert) {
             Button("Try Again") { }
         } message: {
-            Text(errorMessage ?? "An error occurred while submitting your request. Please try again.")
+            Text(errorMessage ?? "An error occurred while submitting your report. Please try again.")
         }
     }
     
-    private func submitFeatureRequest() {
-        guard !featureTitle.isEmpty, !featureDescription.isEmpty else { return }
+    private func submitIssueReport() {
+        guard !issueTitle.isEmpty, !issueDescription.isEmpty else { return }
         
         isSubmitting = true
         
         Task {
             do {
-                // Use the API service to submit the feature request
-                try await submitFeatureRequestToAPI()
+                // Use the API service to submit the issue report
+                try await submitIssueReportToAPI()
                 
                 // Handle success
                 await MainActor.run {
@@ -178,26 +176,26 @@ struct FeatureRequestView: View {
         }
     }
     
-    private func submitFeatureRequestToAPI() async throws {
+    private func submitIssueReportToAPI() async throws {
         // Get the current user ID
         guard let userId = dataController.currentUser?.id else {
-            throw NSError(domain: "FeatureRequestView", code: 1, 
+            throw NSError(domain: "ReportIssueView", code: 1, 
                          userInfo: [NSLocalizedDescriptionKey: "User not logged in"])
         }
         
-        // Create parameters
+        // Create parameters - using same endpoint but with isBug = true
         let parameters: [String: Any] = [
-            "feature_title": featureTitle,
-            "feature_description": featureDescription,
+            "feature_title": issueTitle,
+            "feature_description": issueDescription,
             "user": userId,
             "platform": "iOS mobile",
-            "isBug": false // This is a feature request, not a bug
+            "isBug": true // This is a bug report, not a feature request
         ]
         
         // Create JSON body
         let jsonData = try JSONSerialization.data(withJSONObject: parameters)
         
-        // Create URL
+        // Create URL - using same endpoint as feature requests
         let endpoint = "api/1.1/wf/request_feature"
         var request = URLRequest(url: AppConfiguration.bubbleBaseURL.appendingPathComponent(endpoint))
         request.httpMethod = "POST"
@@ -209,23 +207,20 @@ struct FeatureRequestView: View {
         
         // Check response
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw NSError(domain: "FeatureRequestView", code: 2,
+            throw NSError(domain: "ReportIssueView", code: 2,
                          userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
         }
         
         // Check status code
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw NSError(domain: "FeatureRequestView", code: 3,
+            throw NSError(domain: "ReportIssueView", code: 3,
                          userInfo: [NSLocalizedDescriptionKey: "Request failed with status code \(httpResponse.statusCode)"])
         }
     }
 }
 
-// Placeholder extension no longer needed as we're using standardized components
-
-
 #Preview {
-    FeatureRequestView()
+    ReportIssueView()
         .environmentObject(DataController())
         .preferredColorScheme(.dark)
 }

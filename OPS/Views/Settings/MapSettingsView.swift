@@ -6,10 +6,12 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 struct MapSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
+    @StateObject private var locationManager = LocationManager()
     
     // Map settings preferences
     @AppStorage("mapAutoZoom") private var mapAutoZoom = true
@@ -44,7 +46,7 @@ struct MapSettingsView: View {
             VStack(spacing: 0) {
                 // Header - Always visible, not part of ScrollView
                 SettingsHeader(
-                    title: "Map Settings",
+                    title: "Maps",
                     onBackTapped: {
                         dismiss()
                     }
@@ -54,6 +56,9 @@ struct MapSettingsView: View {
                 // Content - Scrollable when needed
                 ScrollView {
                     VStack(spacing: 20) {
+                        // Location Permission Status Card
+                        locationStatusCard
+                        
                         // Map Features
                         SettingsSectionHeader(title: "MAP FEATURES")
                         
@@ -194,6 +199,10 @@ struct MapSettingsView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            // Request current location authorization status
+            locationManager.requestPermissionIfNeeded(requestAlways: false)
+        }
         .onChange(of: mapAutoCenterTime) { _, newValue in
             print("🔧 MapSettingsView: mapAutoCenterTime changed to \(newValue)")
             // Force UserDefaults to synchronize immediately
@@ -206,6 +215,133 @@ struct MapSettingsView: View {
         .onChange(of: mapZoomLevel) { _, newValue in
             print("🔧 MapSettingsView: mapZoomLevel changed to \(newValue)")
             UserDefaults.standard.synchronize()
+        }
+    }
+    
+    // MARK: - Location Status Card
+    
+    private var locationStatusCard: some View {
+        HStack(spacing: 16) {
+            // Status Icon
+            ZStack {
+                Circle()
+                    .fill(locationManager.authorizationStatus == .authorizedAlways || 
+                          locationManager.authorizationStatus == .authorizedWhenInUse ? 
+                          OPSStyle.Colors.successStatus.opacity(0.2) : 
+                          OPSStyle.Colors.errorStatus.opacity(0.2))
+                    .frame(width: 48, height: 48)
+                
+                Image(systemName: locationManager.authorizationStatus == .authorizedAlways || 
+                                  locationManager.authorizationStatus == .authorizedWhenInUse ? 
+                      "location.fill" : "location.slash.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(locationManager.authorizationStatus == .authorizedAlways || 
+                                     locationManager.authorizationStatus == .authorizedWhenInUse ? 
+                                   OPSStyle.Colors.successStatus : 
+                                   OPSStyle.Colors.errorStatus)
+            }
+            
+            // Status Text
+            VStack(alignment: .leading, spacing: 4) {
+                Text(locationStatusText)
+                    .font(OPSStyle.Typography.cardTitle)
+                    .foregroundColor(.white)
+                
+                Text(locationStatusDescription)
+                    .font(OPSStyle.Typography.cardBody)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+            
+            Spacer()
+            
+            // Action Button
+            Button {
+                handleLocationAction()
+            } label: {
+                Text(locationActionText)
+                    .font(OPSStyle.Typography.button)
+                    .foregroundColor(locationManager.authorizationStatus == .authorizedAlways || 
+                                   locationManager.authorizationStatus == .authorizedWhenInUse ? 
+                                   OPSStyle.Colors.primaryText : .black)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(locationManager.authorizationStatus == .authorizedAlways || 
+                                locationManager.authorizationStatus == .authorizedWhenInUse ? 
+                                Color.clear : OPSStyle.Colors.primaryText)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(locationManager.authorizationStatus == .authorizedAlways || 
+                                  locationManager.authorizationStatus == .authorizedWhenInUse ? 
+                                  OPSStyle.Colors.primaryText : Color.clear, 
+                                  lineWidth: 1)
+                    )
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+        }
+        .padding(24)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .padding(.horizontal, 20)
+    }
+    
+    private var locationStatusText: String {
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways:
+            return "LOCATION ALWAYS ENABLED"
+        case .authorizedWhenInUse:
+            return "LOCATION WHEN IN USE"
+        case .denied, .restricted:
+            return "LOCATION DISABLED"
+        case .notDetermined:
+            return "LOCATION NOT SET"
+        @unknown default:
+            return "LOCATION STATUS UNKNOWN"
+        }
+    }
+    
+    private var locationStatusDescription: String {
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways:
+            return "Full location access enabled"
+        case .authorizedWhenInUse:
+            return "Location available when app is open"
+        case .denied, .restricted:
+            return "Enable to see your location on map"
+        case .notDetermined:
+            return "Grant permission to use location"
+        @unknown default:
+            return "Check location settings"
+        }
+    }
+    
+    private var locationActionText: String {
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            return "MANAGE"
+        case .denied, .restricted:
+            return "ENABLE"
+        case .notDetermined:
+            return "ALLOW"
+        @unknown default:
+            return "SETTINGS"
+        }
+    }
+    
+    private func handleLocationAction() {
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse, .denied, .restricted:
+            // Open app settings
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        case .notDetermined:
+            // Request permission
+            locationManager.requestPermissionIfNeeded(requestAlways: false)
+        @unknown default:
+            // Open settings as fallback
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
         }
     }
     

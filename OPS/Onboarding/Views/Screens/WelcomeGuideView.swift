@@ -2,9 +2,19 @@ import SwiftUI
 
 struct WelcomeGuideView: View {
     @EnvironmentObject var onboardingViewModel: OnboardingViewModel
+    @EnvironmentObject var dataController: DataController
     @State private var currentPage = 0
     
-    private let pages = WelcomeGuidePage.allPages
+    private var pages: [WelcomeGuidePage] {
+        // Determine user role based on user type or actual role
+        if onboardingViewModel.selectedUserType == .company {
+            // Business owners/crew leads see crew lead pages
+            return WelcomeGuidePage.crewLeadPages
+        } else {
+            // Employees see employee pages
+            return WelcomeGuidePage.employeePages
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -125,22 +135,45 @@ struct WelcomeGuidePage {
     let iconName: String
     let features: [String]
     
-    static let allPages: [WelcomeGuidePage] = [
+    // Pages for employees
+    static let employeePages: [WelcomeGuidePage] = [
         WelcomeGuidePage(
-            title: "Welcome to Ops.",
-            description: "Time to streamline your operations.\n\nMaximize your efficiency.\n\nBurn the scattered notes on your Silverado's dashboard.",
+            title: "YOUR PROJECTS.",
+            description: "See assigned jobs.\nMark projects complete.\nAdd and reference photos from the field.",
             iconName: "",
             features: []
         ),
         WelcomeGuidePage(
-            title: "Built by trades, for trades.",
-            description: "It's not just another tool.\nIt's THE tool.\n\nBuilt to solve real problems for real tradesmen, so you can focus on building, leading, and succeeding.",
+            title: "WORKS OFFLINE.",
+            description: "No signal required.\nUpdates your progress when you're back online.",
             iconName: "",
             features: []
         ),
         WelcomeGuidePage(
-            title: "You're all set up!",
-            description: "Your company profile is ready and your team can start joining.\n\nLet's get to work.",
+            title: "NOTHING FANCY.",
+            description: "Designed for simplicity.\nTested for reliability.",
+            iconName: "",
+            features: []
+        )
+    ]
+    
+    // Pages for crew leads / business owners
+    static let crewLeadPages: [WelcomeGuidePage] = [
+        WelcomeGuidePage(
+            title: "TRACK PROJECTS",
+            description: "Monitor job progress.\nView team assignments.\nUpdate from field.",
+            iconName: "",
+            features: []
+        ),
+        WelcomeGuidePage(
+            title: "FULL CONTROL COMING",
+            description: "V2 update brings project creation, crew management, advanced scheduling.",
+            iconName: "",
+            features: []
+        ),
+        WelcomeGuidePage(
+            title: "FIELD-READY.",
+            description: "Works offline.\nUpdates sync upon reconnection.\nEverything you need.\nNothing you don't.",
             iconName: "",
             features: []
         )

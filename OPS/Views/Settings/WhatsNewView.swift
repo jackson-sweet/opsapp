@@ -11,195 +11,14 @@ struct WhatsNewView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     
-    struct FeatureItem {
-        let icon: String
-        let title: String
-        let description: String
-        let status: String
-    }
-    
-    struct FeatureCategory {
-        let name: String
-        let icon: String
-        let features: [FeatureItem]
-    }
-    
     @State private var expandedCategories: Set<String> = []
     @State private var votingFeatures: Set<String> = []
     @State private var votedFeatures: Set<String> = []
     @State private var showVoteError = false
     @State private var voteErrorMessage = ""
     
-    let featureCategories = [
-        FeatureCategory(
-            name: "Calendar & Scheduling",
-            icon: "calendar",
-            features: [
-                FeatureItem(
-                    icon: "calendar.badge.plus",
-                    title: "Calendar Request System",
-                    description: "Long press on calendar dates to request days off or schedule changes",
-                    status: "Coming Soon"
-                ),
-                FeatureItem(
-                    icon: "cloud.sun.rain.fill",
-                    title: "Weather Integration",
-                    description: "Choose weather source in settings, mark jobs as weather dependent, get rain warnings",
-                    status: "Planned"
-                )
-            ]
-        ),
-        FeatureCategory(
-            name: "Time & Analytics",
-            icon: "clock.fill",
-            features: [
-                FeatureItem(
-                    icon: "location.circle.fill",
-                    title: "Automatic Time Tracking",
-                    description: "Auto-start tracking when arriving at projects, stop when leaving",
-                    status: "Coming Soon"
-                ),
-                FeatureItem(
-                    icon: "chart.line.uptrend.xyaxis",
-                    title: "Work Analytics",
-                    description: "Track days worked, hours logged, jobs completed per hour, and productivity trends",
-                    status: "Coming Soon"
-                ),
-                FeatureItem(
-                    icon: "chart.line.uptrend.xyaxis",
-                    title: "Project Analytics",
-                    description: "Track project completion times, team productivity, and trends",
-                    status: "Planned"
-                )
-            ]
-        ),
-        FeatureCategory(
-            name: "Team & Communication",
-            icon: "person.2.fill",
-            features: [
-                FeatureItem(
-                    icon: "person.2.fill",
-                    title: "Team Member Notes",
-                    description: "Add specific notes for each team member on a project",
-                    status: "In Development"
-                ),
-                FeatureItem(
-                    icon: "map.fill",
-                    title: "Team Member Locations",
-                    description: "See where your team members are on the map with real-time updates",
-                    status: "In Development"
-                ),
-                FeatureItem(
-                    icon: "message.fill",
-                    title: "In-App Messaging",
-                    description: "Message team members directly within the app with project context",
-                    status: "Coming Soon"
-                ),
-                FeatureItem(
-                    icon: "person.crop.circle.badge.checkmark",
-                    title: "Contact Info Updates",
-                    description: "Update teammate contact info with approval notifications",
-                    status: "Planned"
-                ),
-                FeatureItem(
-                    icon: "bell.badge",
-                    title: "Project Note Notifications",
-                    description: "Get notified when teammates update project notes",
-                    status: "Planned"
-                )
-            ]
-        ),
-        FeatureCategory(
-            name: "Business Features",
-            icon: "dollarsign.circle.fill",
-            features: [
-                FeatureItem(
-                    icon: "creditcard.fill",
-                    title: "Payment Processing",
-                    description: "Set up payment model for business transactions",
-                    status: "Planned"
-                ),
-                FeatureItem(
-                    icon: "receipt.fill",
-                    title: "Expense Tracking",
-                    description: "Detailed expense tracking and submission functionality",
-                    status: "Coming Soon"
-                ),
-                FeatureItem(
-                    icon: "checkmark.shield.fill",
-                    title: "Certifications & Training",
-                    description: "Track team member certifications, training records, and expiration dates",
-                    status: "Coming Soon"
-                )
-            ]
-        ),
-        FeatureCategory(
-            name: "AI & Web Features",
-            icon: "brain",
-            features: [
-                FeatureItem(
-                    icon: "globe",
-                    title: "Web Application",
-                    description: "Access OPS from any web browser",
-                    status: "Planned"
-                ),
-                FeatureItem(
-                    icon: "doc.text.magnifyingglass",
-                    title: "AI Quoting System",
-                    description: "Upload price sheets and project drawings for AI-powered quotes",
-                    status: "Planned"
-                ),
-                FeatureItem(
-                    icon: "eyedropper.halffull",
-                    title: "Smart UI Colors",
-                    description: "Extract colors from company logo for personalized UI themes",
-                    status: "Planned"
-                )
-            ]
-        ),
-        FeatureCategory(
-            name: "Data & Projects",
-            icon: "folder.fill",
-            features: [
-                FeatureItem(
-                    icon: "arrow.triangle.2.circlepath",
-                    title: "Multiple Project Visits",
-                    description: "Track multiple visits to the same project with new 'visit' data type",
-                    status: "Coming Soon"
-                ),
-                FeatureItem(
-                    icon: "doc.text.fill",
-                    title: "Client Project History",
-                    description: "View all projects for a specific client in one place",
-                    status: "Planned"
-                )
-            ]
-        ),
-        FeatureCategory(
-            name: "Technology Integration",
-            icon: "apps.iphone",
-            features: [
-                FeatureItem(
-                    icon: "car.fill",
-                    title: "Apple CarPlay",
-                    description: "Access OPS safely while driving with CarPlay integration",
-                    status: "Planned"
-                )
-            ]
-        ),
-        FeatureCategory(
-            name: "Marketing & Merchandise",
-            icon: "tag.fill",
-            features: [
-                FeatureItem(
-                    icon: "tshirt.fill",
-                    title: "OPS Merchandise",
-                    description: "Limited edition OPS apparel - launching soon!",
-                    status: "Coming Soon"
-                )
-            ]
-        )
-    ]
+    // Use feature categories from AppConfiguration
+    private let featureCategories = AppConfiguration.WhatsNew.featureCategories
     
     var body: some View {
         ZStack {
@@ -316,7 +135,7 @@ struct WhatsNewView: View {
         }
     }
     
-    private func voteForFeature(_ feature: FeatureItem) {
+    private func voteForFeature(_ feature: AppConfiguration.WhatsNew.FeatureItem) {
         // Check if already voting or voted
         guard !votingFeatures.contains(feature.title),
               !votedFeatures.contains(feature.title) else { return }
@@ -345,7 +164,7 @@ struct WhatsNewView: View {
         }
     }
     
-    private func submitFeatureVote(_ feature: FeatureItem) async throws {
+    private func submitFeatureVote(_ feature: AppConfiguration.WhatsNew.FeatureItem) async throws {
         // Get the current user ID
         guard let userId = dataController.currentUser?.id else {
             throw NSError(domain: "WhatsNewView", code: 1,
@@ -358,7 +177,8 @@ struct WhatsNewView: View {
             "feature_description": feature.description,
             "user": userId,
             "platform": "iOS mobile +1",
-            "Requested By": userId
+            "Requested By": userId,
+            "isBug": false // This is a feature vote, not a bug
         ]
         
         // Create JSON body
@@ -389,12 +209,12 @@ struct WhatsNewView: View {
 }
 
 struct FeatureCategorySection: View {
-    let category: WhatsNewView.FeatureCategory
+    let category: AppConfiguration.WhatsNew.FeatureCategory
     let isExpanded: Bool
     let onToggle: () -> Void
     let votingFeatures: Set<String>
     let votedFeatures: Set<String>
-    let onVote: (WhatsNewView.FeatureItem) -> Void
+    let onVote: (AppConfiguration.WhatsNew.FeatureItem) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
@@ -407,7 +227,7 @@ struct FeatureCategorySection: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 30)
                     
-                    Text(category.name)
+                    Text(category.name.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     
@@ -454,18 +274,18 @@ struct FeatureCategorySection: View {
 }
 
 struct FeatureCard: View {
-    let feature: WhatsNewView.FeatureItem
+    let feature: AppConfiguration.WhatsNew.FeatureItem
     let isVoting: Bool
     let hasVoted: Bool
     let onVote: () -> Void
     
     var statusColor: Color {
         switch feature.status {
-        case "In Development":
+        case .inDevelopment:
             return OPSStyle.Colors.secondaryAccent
-        case "Coming Soon":
+        case .comingSoon:
             return OPSStyle.Colors.primaryAccent
-        default:
+        case .planned:
             return OPSStyle.Colors.secondaryText
         }
     }
@@ -493,7 +313,7 @@ struct FeatureCard: View {
                     Spacer()
                     
                     // Status badge
-                    Text(feature.status)
+                    Text(feature.status.rawValue)
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(statusColor)
                         .padding(.horizontal, 8)

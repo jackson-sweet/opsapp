@@ -13,57 +13,54 @@ struct CompletionView: View {
     var onComplete: () -> Void = {}
     
     // Animation states
-    @State private var showAnimatedLogo = true
-    @State private var buttonOpacity: Double = 0
-    @State private var buttonOffset: CGFloat = 100
-    @State private var showContinueButton: Bool = false
+    @State private var logoOpacity: Double = 0
+    @State private var textOpacity: Double = 0
     @State private var companyDataFetched = false
     
     var body: some View {
         ZStack {
-            if showAnimatedLogo {
-                // Show animated logo
-                AnimatedOPSLogo(onAnimationComplete: {
-                    // Transition to button
-                    withAnimation(.easeOut(duration: 0.5)) {
-                        showAnimatedLogo = false
-                    }
-                    
-                    // Show continue button
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        showContinueButton = true
-                        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
-                            buttonOffset = 0
-                            buttonOpacity = 1.0
-                        }
-                    }
-                })
-                .transition(.opacity)
-            } else {
-                // Dark background after animation
-                Color.black.edgesIgnoringSafeArea(.all)
+            // Black background
+            Color.black.edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 40) {
+                Spacer()
                 
-                VStack {
-                    Spacer()
-                    
-                    // Enter button
-                    StandardContinueButton(
-                        isDisabled: !showContinueButton,
-                        onTap: {
-                            print("CompletionView: ENTER APP button tapped")
-                            // Move to welcome guide
-                            onboardingViewModel.nextStep()
-                        }
-                    )
-                    .opacity(buttonOpacity)
-                    .offset(y: buttonOffset)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 30)
-                }
+                // OPS Logo
+                Image("LogoWhite")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 120, height: 120)
+                    .opacity(logoOpacity)
+                
+                // Welcome text
+                Text("WELCOME TO OPS.")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(.white)
+                    .opacity(textOpacity)
+                
+                Spacer()
             }
         }
         .onAppear {
             fetchCompanyDataIfNeeded()
+            
+            // Start animation sequence
+            withAnimation(.easeIn(duration: 0.8)) {
+                logoOpacity = 1.0
+            }
+            
+            // Fade in text after logo
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                withAnimation(.easeIn(duration: 0.8)) {
+                    textOpacity = 1.0
+                }
+            }
+            
+            // Automatically continue to welcome guide after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                print("CompletionView: Automatically moving to welcome guide")
+                onboardingViewModel.nextStep()
+            }
         }
     }
     

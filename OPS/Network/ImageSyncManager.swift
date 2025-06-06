@@ -318,7 +318,7 @@ class ImageSyncManager {
         }
         
         // Handle legacy Bubble URLs
-        if urlString.contains("opsapp.co/version-test/img/") {
+        if urlString.contains("opsapp.co/") && urlString.contains("/img/") {
             // Remove from local cache
             ImageFileManager.shared.deleteImage(localID: urlString)
             return true

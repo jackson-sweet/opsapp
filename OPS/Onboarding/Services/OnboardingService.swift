@@ -243,8 +243,11 @@ class OnboardingService {
     ///   - age: Company age
     ///   - address: Company address
     ///   - userId: User ID to associate with company
+    ///   - firstName: User's first name
+    ///   - lastName: User's last name
+    ///   - userPhone: User's phone number
     /// - Returns: Company update response
-    func updateCompany(name: String, email: String, phone: String?, industry: String, size: String, age: String, address: String, userId: String) async throws -> CompanyUpdateResponse {
+    func updateCompany(name: String, email: String, phone: String?, industry: String, size: String, age: String, address: String, userId: String, firstName: String, lastName: String, userPhone: String) async throws -> CompanyUpdateResponse {
         print("OnboardingService: Making API call to update_company")
         
         let url = baseURL.appendingPathComponent("api/1.1/wf/update_company")
@@ -261,7 +264,10 @@ class OnboardingService {
             "size": size,
             "age": age,
             "address": address,
-            "user": userId
+            "user": userId,
+            "name_first": firstName,
+            "name_last": lastName,
+            "user_phone": userPhone
         ]
         
         if let phone = phone, !phone.isEmpty {

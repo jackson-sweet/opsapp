@@ -1127,7 +1127,7 @@ struct ZoomablePhotoView: View {
         }
         
         // For legacy support: try UserDefaults if not found in file system
-        if url.hasPrefix("local://") || url.contains("opsapp.co/version-test/img/") {
+        if url.hasPrefix("local://") || (url.contains("opsapp.co/") && url.contains("/img/")) {
             if let base64String = UserDefaults.standard.string(forKey: url),
                let imageData = Data(base64Encoded: base64String),
                let loadedImage = UIImage(data: imageData) {

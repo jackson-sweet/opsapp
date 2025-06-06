@@ -33,95 +33,94 @@ struct FieldSetupView: View {
     }
     
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Background color - conditional theming
-                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
-                    .edgesIgnoringSafeArea(.all)
-                
-                VStack(spacing: 0) {
-                    // Navigation header with step indicator
-                    HStack {
-                        Button(action: {
-                            viewModel.previousStep()
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                    .font(OPSStyle.Typography.caption)
-                                Text("Back")
-                                    .font(OPSStyle.Typography.body)
-                            }
-                            .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent)
+        ZStack {
+            // Background color - conditional theming
+            (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                .edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 0) {
+                // Navigation header with step indicator
+                HStack {
+                    Button(action: {
+                        viewModel.previousStep()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(OPSStyle.Typography.caption)
+                            Text("Back")
+                                .font(OPSStyle.Typography.body)
                         }
-                        
-                        Spacer()
-                        
-                        Button(action: {
-                            viewModel.logoutAndReturnToLogin()
-                        }) {
-                            Text("Sign Out")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
-                        }
-                    }
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
-                    .padding(.horizontal, 24)
-                    
-                    // Step indicator bars
-                    HStack(spacing: 4) {
-                        ForEach(0..<totalSteps) { step in
-                            Rectangle()
-                                .fill(step < currentStepNumber ? 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
-                                .frame(height: 4)
-                        }
-                    }
-                    .padding(.bottom, 16)
-                    .padding(.horizontal, 24)
-                    
-                    // Main content area
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            // Header
-                            OnboardingHeaderView(
-                                title: "FIELD SETUP",
-                                subtitle: "Customize how OPS should work when you're on job sites with limited connectivity.",
-                                isLightTheme: viewModel.shouldUseLightTheme
-                            )
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 30)
-                            
-                            // Field settings
-                            VStack(spacing: 24) {
-                                // Offline data settings with storage slider
-                                SettingsSection(
-                                    title: "Offline Storage",
-                                    description: "Choose how much data to store for offline use when connectivity is limited"
-                                ) {
-                                    StorageOptionSlider(selectedStorageIndex: $selectedStorageIndex)
-                                        .environmentObject(viewModel)
-                                }
-                                .environmentObject(viewModel)
-                            }
-                            .padding(.horizontal, 24)
-                            
-                            Spacer(minLength: 40)
-                        }
-                        .padding(.top, 20)
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent)
                     }
                     
-                    // Continue button
-                    StandardContinueButton(
-                        isLoading: isLoading,
-                        onTap: {
-                            applySettings()
-                        }
-                    )
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 16)
+                    Spacer()
+                    
+                    Button(action: {
+                        viewModel.logoutAndReturnToLogin()
+                    }) {
+                        Text("Sign Out")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                    }
                 }
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                .padding(.horizontal, 24)
+                
+                // Step indicator bars
+                HStack(spacing: 4) {
+                    ForEach(0..<totalSteps, id: \.self) { step in
+                        Rectangle()
+                            .fill(step < currentStepNumber ? 
+                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
+                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
+                            .frame(height: 4)
+                    }
+                }
+                .padding(.bottom, 16)
+                .padding(.horizontal, 24)
+                
+                // Main content area wrapped in ScrollView
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Header
+                        OnboardingHeaderView(
+                            title: "FIELD SETUP",
+                            subtitle: "Customize how OPS should work when you're on job sites with limited connectivity.",
+                            isLightTheme: viewModel.shouldUseLightTheme
+                        )
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 30)
+                        
+                        // Field settings
+                        VStack(spacing: 24) {
+                            // Offline data settings with storage slider
+                            SettingsSection(
+                                title: "Offline Storage",
+                                description: "Choose how much data to store for offline use when connectivity is limited"
+                            ) {
+                                StorageOptionSlider(selectedStorageIndex: $selectedStorageIndex)
+                                    .environmentObject(viewModel)
+                            }
+                            .environmentObject(viewModel)
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 40) // Add bottom padding to prevent cutoff
+                    }
+                    .padding(.top, 40) // Add consistent top padding
+                }
+                
+                Spacer(minLength: 0)
+                
+                // Continue button
+                StandardContinueButton(
+                    isLoading: isLoading,
+                    onTap: {
+                        applySettings()
+                    }
+                )
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
             }
         }
     }

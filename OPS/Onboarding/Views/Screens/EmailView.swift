@@ -100,10 +100,8 @@ struct EmailView: View {
                 }
                 .padding(.horizontal, isInConsolidatedFlow ? OPSStyle.Layout.spacing3 : 0)
                 
-                // Main centered content area - removed ScrollView
+                // Main content area - top-justified alignment
                 VStack(spacing: 0) {
-                    Spacer()
-                    
                     // Main content
                     VStack(spacing: 24) {
                         // Header - changes based on current field
@@ -169,7 +167,6 @@ struct EmailView: View {
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.bottom, 20)
                         
                         // Single field display based on currentFieldIndex
                         VStack(spacing: 16) {
@@ -263,9 +260,10 @@ struct EmailView: View {
                         }
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    
-                    Spacer()
+                    .padding(.top, 40) // Add consistent top padding
                 }
+                
+                Spacer() // Push buttons to bottom
                 
                 // Bottom button section
                 VStack {

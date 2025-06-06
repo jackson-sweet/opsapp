@@ -55,7 +55,7 @@ struct AccountSetupView: View {
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
-                    ForEach(0..<totalSteps) { step in
+                    ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.4))
                             .frame(height: 4)
@@ -64,7 +64,8 @@ struct AccountSetupView: View {
                 .padding(.bottom, 16)
                 .padding(.horizontal, 24)
                 
-                ScrollView {
+                // Main content area - top-justified
+                VStack(spacing: 0) {
                     VStack(spacing: 24) {
                         // Header
                         VStack(alignment: .leading, spacing: 8) {
@@ -186,10 +187,14 @@ struct AccountSetupView: View {
                         
                         // Error message
                         ErrorMessageView(message: viewModel.errorMessage)
-                        
-                        Spacer()
-                        
-                        // Continue button
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 40) // Add consistent top padding
+                    
+                    Spacer()
+                    
+                    // Continue button
+                    VStack {
                         StandardContinueButton(
                             isDisabled: !viewModel.canProceedFromAccountSetup,
                             isLoading: viewModel.isLoading,
@@ -199,7 +204,6 @@ struct AccountSetupView: View {
                         )
                     }
                     .padding(.horizontal, 24)
-                    .padding(.top, 20)
                     .padding(.bottom, 30)
                 }
                 

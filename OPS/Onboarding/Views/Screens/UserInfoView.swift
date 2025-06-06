@@ -107,7 +107,7 @@ struct UserInfoView: View {
                     
                     // Step indicator bars
                     HStack(spacing: 4) {
-                        ForEach(0..<totalSteps) { step in
+                        ForEach(0..<totalSteps, id: \.self) { step in
                             Rectangle()
                                 .fill(step < currentStepNumber ? 
                                     (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
@@ -119,10 +119,8 @@ struct UserInfoView: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
-                // Main centered content area
+                // Main content area - top-justified
                 VStack(spacing: 0) {
-                    Spacer()
-                    
                     // Phase content
                     Group {
                         switch currentPhase {
@@ -163,6 +161,7 @@ struct UserInfoView: View {
                     }
                     .transition(.opacity)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, 40) // Add consistent top padding
                     
                     Spacer()
                 }
@@ -221,10 +220,12 @@ struct FirstNamePhaseView: View {
                 autocapitalization: .words,
                 viewModel: viewModel
             )
-            
-            Spacer()
-            
-            // Continue button
+        }
+        
+        Spacer()
+        
+        // Continue button
+        VStack {
             StandardContinueButton(
                 isDisabled: firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 onTap: onContinue
@@ -275,10 +276,12 @@ struct LastNamePhaseView: View {
                 autocapitalization: .words,
                 viewModel: viewModel
             )
-            
-            Spacer()
-            
-            // Continue button
+        }
+        
+        Spacer()
+        
+        // Continue button
+        VStack {
             StandardContinueButton(
                 isDisabled: lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 onTap: onContinue
@@ -340,10 +343,12 @@ struct PhoneNumberPhaseView: View {
                     }
                 }
             )
-            
-            Spacer()
-            
-            // Continue button
+        }
+        
+        Spacer()
+        
+        // Continue button
+        VStack {
             StandardContinueButton(
                 isDisabled: !isPhoneValid,
                 onTap: onContinue

@@ -338,6 +338,7 @@ struct PINSetupSheet: View {
                                 errorMessage = "PIN must be 4 digits"
                             }
                         }
+                        .font(OPSStyle.Typography.body)
                         .buttonStyle(OPSButtonStyle.Primary())
                         .disabled(enteredPIN.count != 4)
                     } else {
@@ -363,6 +364,7 @@ struct PINSetupSheet: View {
                                 errorMessage = ""
                             }
                             .buttonStyle(OPSButtonStyle.Secondary())
+                            .font(OPSStyle.Typography.body)
                             
                             Button("SAVE") {
                                 if confirmedPIN == enteredPIN {
@@ -374,6 +376,7 @@ struct PINSetupSheet: View {
                                 }
                             }
                             .buttonStyle(OPSButtonStyle.Primary())
+                            .font(OPSStyle.Typography.body)
                             .disabled(confirmedPIN.count != 4)
                         }
                     }

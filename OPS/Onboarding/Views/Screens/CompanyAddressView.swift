@@ -68,8 +68,10 @@ struct CompanyAddressView: View {
                 .padding(.bottom, 16)
                 .padding(.horizontal, 24)
             
-            ScrollView {
-                VStack(spacing: 32) {
+            // Main content area - top-justified
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 32) {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("WHERE IS YOUR COMPANY LOCATED?")
                             .font(OPSStyle.Typography.title)
@@ -96,20 +98,25 @@ struct CompanyAddressView: View {
                             }
                         )
                         
-                        if selectedLocation != nil {
-                            Map(coordinateRegion: .constant(region), annotationItems: [MapPin(coordinate: selectedLocation!)]) { pin in
-                                MapMarker(coordinate: pin.coordinate, tint: Color(OPSStyle.Colors.background))
+                        if let selectedLocation = selectedLocation {
+                            Map(initialPosition: .region(region)) {
+                                Marker("", coordinate: selectedLocation)
+                                    .tint(Color(OPSStyle.Colors.background))
                             }
                             .frame(height: 200)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .disabled(true)
                         }
                     }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 40) // Add consistent top padding
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 120)
+                
+                Spacer()
             }
             
+            // Bottom button section
             VStack(spacing: 16) {
                 StandardContinueButton(
                     isDisabled: !isAddressValid,
@@ -140,11 +147,6 @@ struct CompanyAddressView: View {
     private var isAddressValid: Bool {
         !onboardingViewModel.companyAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
-}
-
-struct MapPin: Identifiable {
-    let id = UUID()
-    let coordinate: CLLocationCoordinate2D
 }
 
 #Preview {

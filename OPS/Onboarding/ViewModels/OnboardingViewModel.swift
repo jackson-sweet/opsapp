@@ -98,7 +98,7 @@ class OnboardingViewModel: ObservableObject {
             self.companyCode = UserDefaults.standard.string(forKey: "company_code") ?? ""
             
             // Load company information if available
-            if let companyId = UserDefaults.standard.string(forKey: "company_id") {
+            if UserDefaults.standard.string(forKey: "company_id") != nil {
                 self.isCompanyJoined = true
                 self.companyName = UserDefaults.standard.string(forKey: "Company Name") ?? "Your Company"
             }
@@ -693,7 +693,7 @@ class OnboardingViewModel: ObservableObject {
         
         // Special case: if we're at the company code step and we loaded directly into it
         // because the user needs to complete it, don't allow going back
-        if currentStep == .companyCode && UserDefaults.standard.bool(forKey: "user_id") != nil {
+        if currentStep == .companyCode && UserDefaults.standard.string(forKey: "user_id") != nil {
             print("OnboardingViewModel: ❌ Cannot go back from company code step when resuming incomplete signup")
             
             // Set error message to explain why
@@ -837,7 +837,7 @@ class OnboardingViewModel: ObservableObject {
         
         do {
             let companyId = UserDefaults.standard.string(forKey: "company_id") ?? ""
-            try await onboardingService.sendInvites(emails: teamInviteEmails, companyId: companyId)
+            _ = try await onboardingService.sendInvites(emails: teamInviteEmails, companyId: companyId)
             
             await MainActor.run {
                 isLoading = false

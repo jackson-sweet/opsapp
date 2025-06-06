@@ -84,10 +84,8 @@ struct CompanyCodeInputView: View {
                 .padding(.bottom, 16)
                 .padding(.horizontal, 24)
                 
-                // Main content - no ScrollView needed
+                // Main content - top-justified
                 VStack(spacing: 0) {
-                    Spacer()
-                    
                     if showWelcomePhase {
                         // Welcome phase after successful join
                         VStack(spacing: 24) {
@@ -114,6 +112,7 @@ struct CompanyCodeInputView: View {
                             .opacity(welcomeOpacity)
                         }
                         .padding(.horizontal, 24)
+                        .padding(.top, 80) // Add padding for welcome phase
                     } else {
                         // Input form
                         VStack(spacing: 24) {
@@ -193,6 +192,7 @@ struct CompanyCodeInputView: View {
                         }
                         }
                         .padding(.horizontal, 24)
+                        .padding(.top, 40) // Add consistent top padding
                     } // End of else block
                     
                     Spacer()

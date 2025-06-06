@@ -110,7 +110,7 @@ struct HomeView: View {
         // Note: StopRouting notifications are handled above to avoid duplication
         .onChange(of: appState.activeProjectID) { _, newProjectID in
             if let newProjectID = newProjectID,
-               let project = todaysProjects.first(where: { $0.id == newProjectID }),
+               let _ = todaysProjects.first(where: { $0.id == newProjectID }),
                appState.isInProjectMode {
                 
                 print("HomeView: activeProjectID changed and isInProjectMode=true")

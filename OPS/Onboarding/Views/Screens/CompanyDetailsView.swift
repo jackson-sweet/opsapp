@@ -40,7 +40,7 @@ struct CompanyDetailsView: View {
             (onboardingViewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
                 .edgesIgnoringSafeArea(.all)
             
-            VStack(spacing: 24) {
+            VStack(spacing: 0) {
                 // Navigation header
                 HStack {
                     Button(action: {
@@ -76,7 +76,7 @@ struct CompanyDetailsView: View {
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
-                    ForEach(0..<totalSteps) { step in
+                    ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
                             .frame(height: 4)
@@ -84,10 +84,11 @@ struct CompanyDetailsView: View {
                 }
                 .padding(.bottom, 16)
                 
-                // Content area with phases
-                VStack(spacing: 24) {
-                    // Phase content
-                    Group {
+                // Content area with phases - top-justified
+                VStack(spacing: 0) {
+                    VStack(spacing: 24) {
+                        // Phase content
+                        Group {
                         switch currentPhase {
                         case .industry:
                             IndustryPhaseView(
@@ -133,12 +134,14 @@ struct CompanyDetailsView: View {
                                 }
                             )
                         }
+                        }
+                        .transition(.opacity)
                     }
-                    .transition(.opacity)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 40) // Add consistent top padding
                     
                     Spacer()
                 }
-                .padding(.horizontal, 24)
             }
             .sheet(isPresented: $showingIndustryPicker) {
                 IndustryPickerView(selectedIndustry: $selectedIndustry, searchText: $searchText, filteredIndustries: filteredIndustries)
@@ -210,10 +213,12 @@ struct IndustryPhaseView: View {
                     )
                 }
             }
-            
-            Spacer()
-            
-            // Continue button
+        }
+        
+        Spacer()
+        
+        // Continue button
+        VStack {
             Button(action: onContinue) {
                 Text("CONTINUE")
                     .font(OPSStyle.Typography.bodyBold)
@@ -225,8 +230,8 @@ struct IndustryPhaseView: View {
             }
             .disabled(selectedIndustry == nil)
         }
+        }
     }
-}
 
 struct SizePhaseView: View {
     @Binding var selectedSize: CompanySize?
@@ -290,10 +295,12 @@ struct SizePhaseView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            
-            Spacer()
-            
-            // Continue button
+        }
+        
+        Spacer()
+        
+        // Continue button
+        VStack {
             Button(action: onContinue) {
                 Text("CONTINUE")
                     .font(OPSStyle.Typography.bodyBold)
@@ -372,8 +379,6 @@ struct AgePhaseView: View {
                 }
             }
             
-            Spacer()
-            
             // Error message
             if !onboardingViewModel.errorMessage.isEmpty {
                 Text(onboardingViewModel.errorMessage)
@@ -382,8 +387,12 @@ struct AgePhaseView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
             }
-            
-            // Continue button
+        }
+        
+        Spacer()
+        
+        // Continue button
+        VStack {
             Button(action: onContinue) {
                 if onboardingViewModel.isLoading {
                     HStack {
@@ -410,8 +419,8 @@ struct AgePhaseView: View {
             }
             .disabled(selectedAge == nil || onboardingViewModel.isLoading)
         }
+        }
     }
-}
 
 struct IndustryPickerView: View {
     @Binding var selectedIndustry: Industry?

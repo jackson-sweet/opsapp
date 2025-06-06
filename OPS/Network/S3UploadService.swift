@@ -30,7 +30,7 @@ class S3UploadService {
         print("🚀 S3UploadService: Starting upload of \(images.count) images")
         print("  - Project: \(project.id) - \(project.title)")
         print("  - Company ID: \(companyId)")
-        print("  - Project Address: \(project.address ?? "No address")")
+        print("  - Project Address: \(project.address)")
         
         var uploadedImages: [(url: String, filename: String)] = []
         
@@ -62,7 +62,7 @@ class S3UploadService {
             print("  - Compressed size: \(imageData.count) bytes (\(imageData.count / 1024)KB)")
             
             // Generate filename with street address prefix
-            let streetPrefix = extractStreetAddress(from: project.address ?? "")
+            let streetPrefix = extractStreetAddress(from: project.address)
             let timestamp = Date().timeIntervalSince1970
             var attemptCount = 0
             var filename = ""

@@ -51,7 +51,7 @@ struct TeamInvitesView: View {
             
             // Step indicator bars
             HStack(spacing: 4) {
-                ForEach(0..<totalSteps) { step in
+                ForEach(0..<totalSteps, id: \.self) { step in
                     Rectangle()
                         .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
                         .frame(height: 4)
@@ -60,8 +60,10 @@ struct TeamInvitesView: View {
             .padding(.bottom, 16)
             .padding(.horizontal, 24)
             
-            ScrollView {
-                VStack(spacing: 32) {
+            // Main content area - top-justified
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 32) {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("READY TO BUILD YOUR TEAM?")
                             .font(OPSStyle.Typography.title)
@@ -151,11 +153,15 @@ struct TeamInvitesView: View {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color("AccentPrimary").opacity(0.1))
                     )
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 40) // Add consistent top padding
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 140)
+                
+                Spacer()
             }
             
+            // Bottom button section
             VStack(spacing: 16) {
                 if isLoading {
                     HStack {

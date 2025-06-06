@@ -17,7 +17,7 @@ struct PasswordView: View {
             // Background color
             Color.black.edgesIgnoringSafeArea(.all)
             
-            VStack(spacing: 24) {
+            VStack(spacing: 0) {
                 // Navigation header
                 HStack {
                     Spacer()
@@ -30,10 +30,12 @@ struct PasswordView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, 16)
                 
-                // Header
-                VStack(alignment: .leading, spacing: 8) {
+                // Main content area - top-justified
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(alignment: .leading, spacing: 8) {
                     Text("Create a")
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(.white)
@@ -47,12 +49,11 @@ struct PasswordView: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(Color.gray)
                         .lineSpacing(4)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 10)
-                
-                // Password input
-                VStack(spacing: 20) {
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // Password input
+                    VStack(spacing: 20) {
                     // Password field
                     VStack(alignment: .leading, spacing: 8) {
                         InputFieldLabel(label: "PASSWORD")
@@ -116,10 +117,10 @@ struct PasswordView: View {
                             viewModel.errorMessage = ""
                         }
                     }
-                }
-                
-                // Password validation indicators
-                VStack(alignment: .leading, spacing: 8) {
+                    }
+                    
+                    // Password validation indicators
+                    VStack(alignment: .leading, spacing: 8) {
                     ValidationIndicator(
                         isValid: viewModel.isPasswordValid,
                         text: "At least 8 characters"
@@ -131,11 +132,13 @@ struct PasswordView: View {
                             text: "Passwords match"
                         )
                     }
+                    }
+                    .padding(.top, 8)
+                    
+                    // Error message
+                    ErrorMessageView(message: viewModel.errorMessage)
                 }
-                .padding(.top, 8)
-                
-                // Error message
-                ErrorMessageView(message: viewModel.errorMessage)
+                .padding(.top, 40) // Add consistent top padding
                 
                 Spacer()
                 

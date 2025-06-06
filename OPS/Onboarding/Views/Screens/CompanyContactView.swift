@@ -57,7 +57,7 @@ struct CompanyContactView: View {
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
-                    ForEach(0..<totalSteps) { step in
+                    ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
                             .frame(height: 4)
@@ -66,9 +66,10 @@ struct CompanyContactView: View {
                 .padding(.bottom, 16)
                 .padding(.horizontal, 24)
                 
-
-                VStack(spacing: 32) {
-                    VStack(alignment: .leading, spacing: 16) {
+                // Main content area - top-justified
+                VStack(spacing: 0) {
+                    VStack(spacing: 32) {
+                        VStack(alignment: .leading, spacing: 16) {
                         Text("HOW CAN CUSTOMERS REACH YOU?")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(Color("TextPrimary"))
@@ -173,12 +174,15 @@ struct CompanyContactView: View {
                                     .foregroundColor(Color("StatusError"))
                             }
                         }
+                        }
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 40) // Add consistent top padding
+                    
+                    Spacer()
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 120)
                 
-                
+                // Bottom button section
                 VStack(spacing: 16) {
                 StandardContinueButton(
                     isDisabled: !isFormValid,

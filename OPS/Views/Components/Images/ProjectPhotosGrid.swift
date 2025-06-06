@@ -646,88 +646,81 @@ extension ProjectPhotosGrid {
         print("ProjectPhotosGrid: Starting to process image")
         
         Task {
-            do {
-                // Use the ImageSyncManager if available
-                if let imageSyncManager = dataController.imageSyncManager {
-                    print("ProjectPhotosGrid: Using ImageSyncManager for upload")
+            // Use the ImageSyncManager if available
+            if let imageSyncManager = dataController.imageSyncManager {
+                print("ProjectPhotosGrid: Using ImageSyncManager for upload")
+                
+                // Process the image through the ImageSyncManager
+                let urls = await imageSyncManager.saveImages([image], for: project)
+                
+                if let url = urls.first, !url.isEmpty {
+                    // ImageSyncManager already added the image to the project
+                    print("ProjectPhotosGrid: ✅ ImageSyncManager successfully uploaded image")
                     
-                    // Process the image through the ImageSyncManager
-                    let urls = await imageSyncManager.saveImages([image], for: project)
-                    
-                    if let url = urls.first, !url.isEmpty {
-                        // ImageSyncManager already added the image to the project
-                        print("ProjectPhotosGrid: ✅ ImageSyncManager successfully uploaded image")
-                        
-                        await MainActor.run {
-                            // Clear selected image and hide loading
-                            cameraImage = nil
-                            processingImage = false
-                        }
-                    } else {
-                        print("ProjectPhotosGrid: ⚠️ No URL returned from ImageSyncManager")
-                        await MainActor.run {
-                            processingImage = false
-                            showingNetworkError = true
-                            networkErrorMessage = "Failed to upload image to the server. Please check your network connection and try again."
-                        }
+                    await MainActor.run {
+                        // Clear selected image and hide loading
+                        cameraImage = nil
+                        processingImage = false
                     }
                 } else {
-                    // Fallback to ImageFileManager if ImageSyncManager is not available
-                    print("ProjectPhotosGrid: ⚠️ ImageSyncManager not available, using direct file storage")
-                    
-                    // Compress image for storage
-                    guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-                        print("ProjectPhotosGrid: ⚠️ Failed to compress image")
-                        await MainActor.run {
-                            processingImage = false
-                        }
-                        return
-                    }
-                    
-                    // Generate a unique filename
-                    let timestamp = Date().timeIntervalSince1970
-                    let filename = "project_\(project.id)_\(timestamp)_\(UUID().uuidString).jpg"
-                    let localURL = "local://project_images/\(filename)"
-                    
-                    // Store the image in file system
-                    let success = ImageFileManager.shared.saveImage(data: imageData, localID: localURL)
-                    
-                    if success {
-                        print("ProjectPhotosGrid: Stored image data with ImageFileManager: \(localURL)")
-                        
-                        // Add to project's images
-                        await MainActor.run {
-                            var currentImages = project.getProjectImages()
-                            currentImages.append(localURL)
-                            
-                            project.setProjectImageURLs(currentImages)
-                            project.needsSync = true
-                            project.syncPriority = 2
-                            
-                            if let modelContext = dataController.modelContext {
-                                do {
-                                    try modelContext.save()
-                                    print("ProjectPhotosGrid: ✅ Saved to model context successfully")
-                                } catch {
-                                    print("ProjectPhotosGrid: ⚠️ Error saving to model context: \(error.localizedDescription)")
-                                }
-                            }
-                            
-                            // Clear selected image and hide loading
-                            cameraImage = nil
-                            processingImage = false
-                        }
-                    } else {
-                        await MainActor.run {
-                            print("ProjectPhotosGrid: ❌ Failed to save image with ImageFileManager")
-                            processingImage = false
-                        }
+                    print("ProjectPhotosGrid: ⚠️ No URL returned from ImageSyncManager")
+                    await MainActor.run {
+                        processingImage = false
+                        showingNetworkError = true
+                        networkErrorMessage = "Failed to upload image to the server. Please check your network connection and try again."
                     }
                 }
-            } catch {
-                print("ProjectPhotosGrid: ❌ Error processing image: \(error.localizedDescription)")
-                await MainActor.run {
-                    processingImage = false
+            } else {
+                // Fallback to ImageFileManager if ImageSyncManager is not available
+                print("ProjectPhotosGrid: ⚠️ ImageSyncManager not available, using direct file storage")
+                
+                // Compress image for storage
+                guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+                    print("ProjectPhotosGrid: ⚠️ Failed to compress image")
+                    await MainActor.run {
+                        processingImage = false
+                    }
+                    return
+                }
+                
+                // Generate a unique filename
+                let timestamp = Date().timeIntervalSince1970
+                let filename = "project_\(project.id)_\(timestamp)_\(UUID().uuidString).jpg"
+                let localURL = "local://project_images/\(filename)"
+                
+                // Store the image in file system
+                let success = ImageFileManager.shared.saveImage(data: imageData, localID: localURL)
+                
+                if success {
+                    print("ProjectPhotosGrid: Stored image data with ImageFileManager: \(localURL)")
+                    
+                    // Add to project's images
+                    await MainActor.run {
+                        var currentImages = project.getProjectImages()
+                        currentImages.append(localURL)
+                        
+                        project.setProjectImageURLs(currentImages)
+                        project.needsSync = true
+                        project.syncPriority = 2
+                        
+                        if let modelContext = dataController.modelContext {
+                            do {
+                                try modelContext.save()
+                                print("ProjectPhotosGrid: ✅ Saved to model context successfully")
+                            } catch {
+                                print("ProjectPhotosGrid: ⚠️ Error saving to model context: \(error.localizedDescription)")
+                            }
+                        }
+                        
+                        // Clear selected image and hide loading
+                        cameraImage = nil
+                        processingImage = false
+                    }
+                } else {
+                    await MainActor.run {
+                        print("ProjectPhotosGrid: ❌ Failed to save image with ImageFileManager")
+                        processingImage = false
+                    }
                 }
             }
         }

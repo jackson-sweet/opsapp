@@ -44,11 +44,10 @@ struct PhoneNumberView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
                 
-                VStack(spacing: 24) {
-                    Spacer()
-                    
-                    // Header - larger text
-                    VStack(alignment: .leading, spacing: 16) {
+                VStack(spacing: 0) {
+                    VStack(spacing: 24) {
+                        // Header - larger text
+                        VStack(alignment: .leading, spacing: 16) {
                         Text("Start with your phone\nnumber.")
                             .font(OPSStyle.Typography.largeTitle)
                             .foregroundColor(primaryTextColor)
@@ -92,7 +91,10 @@ struct PhoneNumberView: View {
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 8)
+                        }
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 40) // Add consistent top padding
                     
                     Spacer()
                     
@@ -130,9 +132,9 @@ struct PhoneNumberView: View {
                     }
                     .padding(.top, 16)
                     .padding(.bottom, 8)
+                    }
+                    .padding(.horizontal, 24)
                 }
-                .padding(.horizontal, 24)
-            }
         }
         .sheet(isPresented: $showConfirmation) {
             PhoneConfirmationView(

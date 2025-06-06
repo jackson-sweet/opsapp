@@ -75,10 +75,8 @@ struct CompanyBasicInfoView: View {
                 .padding(.bottom, 16)
                 .padding(.horizontal, 24)
                 
-                // Main centered content area
+                // Main content area - top-justified
                 VStack(spacing: 0) {
-                    Spacer()
-                    
                     // Phase content
                     Group {
                         switch currentPhase {
@@ -94,6 +92,7 @@ struct CompanyBasicInfoView: View {
                     }
                     .transition(.opacity)
                     .padding(.horizontal, 24)
+                    .padding(.top, 40) // Add consistent top padding
                     
                     Spacer()
                 }
@@ -142,10 +141,12 @@ struct CompanyNamePhaseView: View {
                 autocapitalization: .words,
                 viewModel: viewModel
             )
-            
-            Spacer()
-            
-            // Continue button
+        }
+        
+        Spacer()
+        
+        // Continue button
+        VStack {
             StandardContinueButton(
                 isDisabled: !isFormValid,
                 onTap: onContinue

@@ -251,7 +251,7 @@ class ImageFileManager {
             // Handle remote URLs (http or https)
             else if (key.hasPrefix("http") || key.hasPrefix("//")) && value is Data {
                 if let imageData = userDefaults.data(forKey: key) {
-                    let encodedID = encodeRemoteURL(key)
+                    let _ = encodeRemoteURL(key)
                     let success = saveImage(data: imageData, localID: key)
                     if success {
                         // Remove from UserDefaults to free up space

@@ -1004,7 +1004,7 @@ class SyncManager {
                 // Clean up local cache for deleted images
                 for deletedURL in deletedImages {
                     // Remove from file cache
-                    ImageFileManager.shared.deleteImage(localID: deletedURL)
+                    _ = ImageFileManager.shared.deleteImage(localID: deletedURL)
                     // Remove from memory cache
                     ImageCache.shared.remove(forKey: deletedURL)
                     print("  - Removed local cache for: \(deletedURL)")
@@ -1022,7 +1022,7 @@ class SyncManager {
                 
                 // Clean up local cache
                 for imageURL in localImages {
-                    ImageFileManager.shared.deleteImage(localID: imageURL)
+                    _ = ImageFileManager.shared.deleteImage(localID: imageURL)
                     ImageCache.shared.remove(forKey: imageURL)
                 }
             }

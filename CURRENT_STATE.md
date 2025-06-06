@@ -1,7 +1,7 @@
 # OPS App - Current State & MVP Status
 
-**Last Updated**: June 5, 2025  
-**Current Completion**: 90-93% MVP Ready  
+**Last Updated**: June 6, 2025  
+**Current Completion**: 93-95% MVP Ready  
 **Target Release**: June 1, 2025 (LAUNCHED)
 
 ## Executive Summary
@@ -88,6 +88,20 @@ Comprehensive settings implementation with 13+ screens:
 
 ## Recent Improvements (May-June 2025)
 
+### UI/UX Enhancements (June 6)
+- **Location Services Overlay**: Added clear messaging when location is disabled during routing
+- **Standardized Settings Components**: Converted notification settings to use SettingsToggle
+- **Location Status Cards**: Added to map settings matching notification design
+- **Project Action Bar Redesign**: Blurred background with icon-based design and dividers
+- **Bug Reporting**: Implemented dedicated ReportIssueView for user feedback
+- **Centralized Configuration**: Moved What's New features to AppConfiguration
+
+### Onboarding Improvements (June 6)
+- **Role-Based Welcome**: Different welcome messages for employees vs crew leads
+- **Simplified Flow**: Removed company logo upload requirement
+- **Permission Handling**: Added error alerts when permissions are denied
+- **Completion Animation**: Simplified to clean fade-in effect
+
 ### UI Refinements
 - Fixed field setup view ScrollView for proper display
 - Enhanced organization settings data display
@@ -102,6 +116,7 @@ Comprehensive settings implementation with 13+ screens:
 - Enhanced sync reliability
 - Optimized app launch time
 - Refined loading states
+- Converted Brand Identity from RTF to Markdown
 
 ## Known Limitations
 

@@ -13,8 +13,8 @@ struct OPSButtonStyle {
                 .padding(.vertical, 16)
                 .background(
                     isDisabled 
-                    ? OPSStyle.Colors.primaryAccent.opacity(0.5) 
-                    : OPSStyle.Colors.primaryAccent.opacity(configuration.isPressed ? 0.8 : 1)
+                    ? OPSStyle.Colors.primaryText.opacity(0.1)
+                    : OPSStyle.Colors.primaryText.opacity(configuration.isPressed ? 0.8 : 1)
                 )
                 .cornerRadius(OPSStyle.Layout.buttonRadius)
                 .scaleEffect(configuration.isPressed ? 0.98 : 1.0)

@@ -261,7 +261,7 @@ class ImageSyncManager {
             let pendingUpload = PendingImageUpload(
                 localURL: localURL,
                 projectId: project.id,
-                companyId: project.companyId ?? "",
+                companyId: project.companyId,
                 timestamp: Date()
                
             )
@@ -286,7 +286,7 @@ class ImageSyncManager {
         // Check if it's a local URL
         if urlString.starts(with: "local://") {
             // Remove from file system
-            ImageFileManager.shared.deleteImage(localID: urlString)
+            _ = ImageFileManager.shared.deleteImage(localID: urlString)
             
             // Remove from pending uploads if present
             pendingUploads.removeAll { $0.localURL == urlString }
@@ -308,7 +308,7 @@ class ImageSyncManager {
                 try await s3Service.deleteImageFromS3(url: urlString, companyId: companyId, projectId: project.id)
                 
                 // Also remove from local cache if present
-                ImageFileManager.shared.deleteImage(localID: urlString)
+                _ = ImageFileManager.shared.deleteImage(localID: urlString)
                 
                 return true
             } catch {

@@ -12,7 +12,7 @@ struct StorageOptionSlider: View {
     @EnvironmentObject var viewModel: OnboardingViewModel
     
     let storageOptions: [(value: String, description: String)] = [
-        ("No Storage", "Stream everything online. No offline access."),
+        ("0", "Stream everything online. No offline access."),
         ("100 MB", "~50 projects with basic info"),
         ("250 MB", "~125 projects with basic info"),
         ("500 MB", "~250 projects with photos"),
@@ -31,14 +31,14 @@ struct StorageOptionSlider: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(storageOptions[selectedStorageIndex].value)
-                        .font(.title)
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
                     
                     Text(storageOptions[selectedStorageIndex].description)
                         .font(.caption)
                         .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                         .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                        
                 }
                 
                 Spacer()
@@ -56,17 +56,19 @@ struct StorageOptionSlider: View {
                             Spacer()
                         }
                         
+                        /*
                         Text(storageOptions[index].value)
                             .font(.caption)
                             .foregroundColor(index == selectedStorageIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                             .multilineTextAlignment(.center)
-                            .frame(width: 60)
+                            //.frame(width: 60)
                             .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
                         
                         if index == storageOptions.count - 1 {
                             Spacer()
                                 .frame(width: 0)
                         }
+                        */
                     }
                 }
                 .padding(.horizontal, 4)
@@ -104,8 +106,8 @@ struct StorageOptionSlider: View {
                         
                         // Thumb (larger circle)
                         Circle()
-                            .fill(OPSStyle.Colors.primaryAccent)
-                            .frame(width: 20, height: 20)
+                            //.fill(OPSStyle.Colors.primaryAccent)
+                            .frame(width: 30, height: 30)
                             .overlay(
                                 Circle()
                                     .fill(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)

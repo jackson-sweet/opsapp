@@ -71,7 +71,7 @@ struct PermissionsView: View {
                     
                     // Step indicator bars
                     HStack(spacing: 4) {
-                        ForEach(0..<totalSteps) { step in
+                        ForEach(0..<totalSteps, id: \.self) { step in
                             Rectangle()
                                 .fill(step < currentStepNumber ? 
                                     (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
@@ -272,7 +272,7 @@ struct PermissionsView: View {
                     
                     // Step indicator bars
                     HStack(spacing: 4) {
-                        ForEach(0..<totalSteps) { step in
+                        ForEach(0..<totalSteps, id: \.self) { step in
                             Rectangle()
                                 .fill(step < currentStepNumber ? 
                                     (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 

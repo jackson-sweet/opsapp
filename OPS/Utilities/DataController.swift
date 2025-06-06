@@ -272,7 +272,7 @@ class DataController: ObservableObject {
         // Fall back to traditional authentication check if needed
         // Check for stored credentials
         if let userId = keychainManager.retrieveUserId(),
-           let token = keychainManager.retrieveToken() {
+           let _ = keychainManager.retrieveToken() {
             
             print("DataController: Found token in keychain for user ID: \(userId)")
             
@@ -392,7 +392,7 @@ class DataController: ObservableObject {
     func login(username: String, password: String) async -> Bool {
         do {
             // Sign in with the auth manager
-            let token = try await authManager.signIn(username: username, password: password)
+            let _ = try await authManager.signIn(username: username, password: password)
             
             // Store the username (only for re-authentication, not displayed to user)
             keychainManager.storeUsername(username)

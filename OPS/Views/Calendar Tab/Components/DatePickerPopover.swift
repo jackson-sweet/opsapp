@@ -299,7 +299,7 @@ struct DatePickerPopover: View {
         
         // Add days from next month to complete the grid (max 6 rows)
         let remainingDays = 42 - allDates.count
-        for i in 0..<remainingDays {
+        for _ in 0..<remainingDays {
             if let lastDate = allDates.last, 
                let date = calendar.date(byAdding: .day, value: 1, to: lastDate) {
                 allDates.append(date)
@@ -322,7 +322,7 @@ struct DatePickerPopover: View {
     private func selectWeek(_ date: Date) {
         let calendar = Calendar.current
         // Get the first day of the week containing this date
-        var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         guard let firstDay = calendar.date(from: components) else { return }
         
         onSelectDate(firstDay)

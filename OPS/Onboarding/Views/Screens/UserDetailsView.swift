@@ -61,11 +61,11 @@ struct UserDetailsView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 8)
                 
-                VStack(spacing: 40) {
-                    Spacer()
-                    
-                    // Header with larger text - changes based on current field
-                    VStack(alignment: .leading, spacing: 16) {
+                VStack(spacing: 0) {
+                    // Main content area - top-justified
+                    VStack(spacing: 40) {
+                        // Header with larger text - changes based on current field
+                        VStack(alignment: .leading, spacing: 16) {
                         if currentFieldIndex == 0 {
                             Text("What's your")
                                 .font(OPSStyle.Typography.largeTitle)
@@ -135,13 +135,15 @@ struct UserDetailsView: View {
                     .padding(.horizontal, 24)
                         
                     // Error message
-                    if !viewModel.errorMessage.isEmpty {
-                        Text(viewModel.errorMessage)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.errorStatus)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
+                        if !viewModel.errorMessage.isEmpty {
+                            Text(viewModel.errorMessage)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.errorStatus)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
                     }
+                    .padding(.top, 40) // Add consistent top padding
                     
                     Spacer()
                     

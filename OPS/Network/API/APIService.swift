@@ -246,7 +246,7 @@ class APIService {
                 
                 // Check if we need to convert to Bubble's expected array format
                 if let key = constraints["key"] as? String,
-                   let constraintType = constraints["constraint_type"] as? String,
+                   let _ = constraints["constraint_type"] as? String,
                    constraints["value"] != nil {
                     // This is a single constraint object that needs to be wrapped in an array
                     constraintsObject = [constraints]

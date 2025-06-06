@@ -2,7 +2,8 @@
 
 **Status**: LAUNCHED ✅  
 **Release Date**: June 1, 2025  
-**Completion**: 90-93% Feature Complete
+**Completion**: 93-95% Feature Complete  
+**Last Updated**: June 6, 2025
 
 ## MVP Success Criteria ✅
 
@@ -66,6 +67,10 @@
 - Professional typography (Mohave/Kosugi)
 - Consistent design system
 - Field-optimized interactions
+- Location disabled overlay with clear messaging
+- Standardized settings components
+- Redesigned project action bar with blur effect
+- Bug reporting functionality
 
 ## Known Limitations (Acceptable for Launch)
 

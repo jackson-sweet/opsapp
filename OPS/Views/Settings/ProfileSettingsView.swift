@@ -26,6 +26,7 @@ struct ProfileSettingsView: View {
     @State private var passwordResetError: String? = nil
     @State private var passwordResetSuccess = false
     @State private var refreshID = UUID()
+    @State private var showDeleteAccountSheet = false
     
     // Track changes for save button
     @State private var originalFirstName: String = ""
@@ -193,6 +194,16 @@ struct ProfileSettingsView: View {
                                 }
                             )
                             .padding(.horizontal, 20)
+                            
+                            SettingsCategoryButton(
+                                title: "Delete Account",
+                                description: "Permanently remove your account and data",
+                                icon: "trash.circle",
+                                action: {
+                                    showDeleteAccountSheet = true
+                                }
+                            )
+                            .padding(.horizontal, 20)
                         }
                         .padding(.bottom, 40)
                     }
@@ -225,6 +236,9 @@ struct ProfileSettingsView: View {
                             resetEmail = userEmail
                         }
                     }
+            }
+            .sheet(isPresented: $showDeleteAccountSheet) {
+                deleteAccountSheet
             }
         }
     }
@@ -359,6 +373,99 @@ struct ProfileSettingsView: View {
                 }
             }
             .padding(.vertical, 20)
+        }
+    }
+    
+    // Delete account sheet view
+    private var deleteAccountSheet: some View {
+        ZStack {
+            OPSStyle.Colors.backgroundGradient
+                .edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 24) {
+                // Header
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        showDeleteAccountSheet = false
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 20))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(width: 44, height: 44)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                
+                // Icon
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                    .padding(.top, 20)
+                
+                // Title
+                Text("Delete Account")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(.white)
+                
+                // Warning message
+                VStack(spacing: 16) {
+                    Text("WARNING")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                    
+                    Text("Once your account is deleted, it cannot be recovered. All your data, projects, and settings will be permanently removed.")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                    
+                    Text("To delete your account, please log in to the OPS website and head to your settings.")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                        .padding(.top, 8)
+                }
+                
+                Spacer()
+                
+                // Buttons
+                VStack(spacing: 16) {
+                    Button(action: {
+                        if let url = URL(string: "https://opsapp.co") {
+                            UIApplication.shared.open(url)
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "safari")
+                                .font(.system(size: 18))
+                            Text("Open OPS Website")
+                                .font(OPSStyle.Typography.button)
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(OPSStyle.Colors.primaryAccent)
+                        .cornerRadius(12)
+                    }
+                    
+                    Button(action: {
+                        showDeleteAccountSheet = false
+                    }) {
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.button)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(12)
+                    }
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 40)
+            }
         }
     }
     

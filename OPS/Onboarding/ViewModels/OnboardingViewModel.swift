@@ -132,16 +132,18 @@ class OnboardingViewModel: ObservableObject {
     /// Clears all user data from UserDefaults to ensure we don't mix data between different users
     private func clearUserData() {
         // Reset all local properties
-        self.email = ""
-        self.password = ""
-        self.confirmPassword = ""
-        self.firstName = ""
-        self.lastName = ""
-        self.phoneNumber = ""
-        self.companyCode = ""
-        self.userId = ""
-        self.isSignedUp = false
-        self.isCompanyJoined = false
+        DispatchQueue.main.async {
+            self.email = ""
+            self.password = ""
+            self.confirmPassword = ""
+            self.firstName = ""
+            self.lastName = ""
+            self.phoneNumber = ""
+            self.companyCode = ""
+            self.userId = ""
+            self.isSignedUp = false
+            self.isCompanyJoined = false
+        }
         
         // Clear data from UserDefaults (only onboarding-specific fields)
         UserDefaults.standard.removeObject(forKey: "user_email")
@@ -158,8 +160,11 @@ class OnboardingViewModel: ObservableObject {
     private func checkCurrentPermissions() {
         // Check location permission
         let locationStatus = locationManager.authorizationStatus
-        isLocationPermissionGranted = (locationStatus == .authorizedAlways || locationStatus == .authorizedWhenInUse)
-        print("OnboardingViewModel: Initial location permission status: \(locationStatus.rawValue), granted: \(isLocationPermissionGranted)")
+        let isGranted = (locationStatus == .authorizedAlways || locationStatus == .authorizedWhenInUse)
+        DispatchQueue.main.async {
+            self.isLocationPermissionGranted = isGranted
+        }
+        print("OnboardingViewModel: Initial location permission status: \(locationStatus.rawValue), granted: \(isGranted)")
         
         // Check notification permission
         UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
@@ -555,7 +560,9 @@ class OnboardingViewModel: ObservableObject {
         
         // If already granted, just update the state
         if currentStatus == .authorizedAlways || currentStatus == .authorizedWhenInUse {
-            isLocationPermissionGranted = true
+            DispatchQueue.main.async {
+                self.isLocationPermissionGranted = true
+            }
             UserDefaults.standard.set(true, forKey: "location_permission_granted")
             return
         }
@@ -697,7 +704,9 @@ class OnboardingViewModel: ObservableObject {
             print("OnboardingViewModel: ❌ Cannot go back from company code step when resuming incomplete signup")
             
             // Set error message to explain why
-            errorMessage = "You must complete company registration to continue. Please enter your company code."
+            DispatchQueue.main.async {
+                self.errorMessage = "You must complete company registration to continue. Please enter your company code."
+            }
             return
         }
         
@@ -760,8 +769,10 @@ class OnboardingViewModel: ObservableObject {
             throw OnboardingError.missingCompanyAge
         }
         
-        isLoading = true
-        errorMessage = ""
+        await MainActor.run {
+            isLoading = true
+            errorMessage = ""
+        }
         
         do {
             // Format phone number for API
@@ -832,8 +843,10 @@ class OnboardingViewModel: ObservableObject {
     func sendTeamInvitations() async throws {
         guard !teamInviteEmails.isEmpty else { return }
         
-        isLoading = true
-        errorMessage = ""
+        await MainActor.run {
+            isLoading = true
+            errorMessage = ""
+        }
         
         do {
             let companyId = UserDefaults.standard.string(forKey: "company_id") ?? ""
@@ -895,22 +908,24 @@ class OnboardingViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "user_type")
         
         // Reset all view model properties
-        selectedUserType = nil
-        currentStep = .welcome
-        isSignedUp = false
-        isCompanyJoined = false
-        errorMessage = ""
-        isLoading = false
-        
-        // Reset company data
-        companyName = ""
-        companyAddress = ""
-        companyEmail = ""
-        companyPhone = ""
-        companyIndustry = nil
-        companySize = nil
-        companyAge = nil
-        teamInviteEmails = []
+        DispatchQueue.main.async {
+            self.selectedUserType = nil
+            self.currentStep = .welcome
+            self.isSignedUp = false
+            self.isCompanyJoined = false
+            self.errorMessage = ""
+            self.isLoading = false
+            
+            // Reset company data
+            self.companyName = ""
+            self.companyAddress = ""
+            self.companyEmail = ""
+            self.companyPhone = ""
+            self.companyIndustry = nil
+            self.companySize = nil
+            self.companyAge = nil
+            self.teamInviteEmails = []
+        }
         
         print("OnboardingViewModel: All data cleared, returning to login")
         

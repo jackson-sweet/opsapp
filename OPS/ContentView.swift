@@ -49,10 +49,8 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            // Request Locations Permission if necessary
-            // Use the enhanced version that logs more details
-            locationManager.requestPermissionIfNeeded(requestAlways: true)
-            print("ContentView: onAppear - requesting location permission")
+            // DO NOT request location permissions here - wait for proper context in onboarding or when needed
+            // Removed: locationManager.requestPermissionIfNeeded(requestAlways: true)
             
             // Allow more time for auth checking to complete
             let isAuthAlreadySet = dataController.isAuthenticated

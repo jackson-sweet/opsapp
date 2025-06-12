@@ -11,11 +11,17 @@ import CoreLocation
 
 struct PermissionsView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    var isInConsolidatedFlow: Bool = false
+    var isInConsolidatedFlow: Bool = true
     @State private var isRequestingLocation = false
     @State private var isRequestingNotifications = false
     @State private var showLocationDeniedAlert = false
     @State private var showNotificationDeniedAlert = false
+    @State private var currentPhase: PermissionPhase = .location
+    
+    enum PermissionPhase {
+        case location
+        case notifications
+    }
     
     // Calculate the current step number based on user type
     private var currentStepNumber: Int {
@@ -66,9 +72,9 @@ struct PermissionsView: View {
                     HStack(spacing: 4) {
                         ForEach(0..<totalSteps, id: \.self) { step in
                             Rectangle()
-                                .fill(step < currentStepNumber ? 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
+                                .fill(step < currentStepNumber ?
+                                      (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) :
+                                        (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
                                 .frame(height: 4)
                         }
                     }
@@ -77,162 +83,267 @@ struct PermissionsView: View {
                 
                 // Content area
                 if isInConsolidatedFlow {
-                    // Consolidated permissions view
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
-                            // Header
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("APP PERMISSIONS")
-                                    .font(OPSStyle.Typography.title)
-                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
-                                
-                                Text("These permissions help OPS work better in the field.")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            // Location permission
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("LOCATION")
-                                    .font(OPSStyle.Typography.cardSubtitle)
-                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
-                                
-                                VStack(alignment: .leading, spacing: 12) {
-                                    HStack {
-                                        Image(systemName: "location.fill")
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .font(OPSStyle.Typography.subtitle)
-                                        
-                                        Text("LOCATION ACCESS")
-                                            .font(OPSStyle.Typography.cardSubtitle)
-                                            .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : .white)
-                                        
-                                        Spacer()
-                                        
-                                        Button(action: {
-                                            isRequestingLocation = true
-                                            viewModel.requestLocationPermission()
-                                            
-                                            // Check for denied status after a delay
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                                if viewModel.locationManager.authorizationStatus == .denied || 
-                                                   viewModel.locationManager.authorizationStatus == .restricted {
-                                                    showLocationDeniedAlert = true
-                                                }
-                                            }
-                                        }) {
-                                            Text(viewModel.isLocationPermissionGranted ? "Granted" : "Allow")
-                                                .font(OPSStyle.Typography.caption)
-                                                .padding(.horizontal, 12)
-                                                .padding(.vertical, 6)
-                                                .background(viewModel.isLocationPermissionGranted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent)
-                                                .foregroundColor(.white)
-                                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                        }
-                                        .opacity(isRequestingLocation ? 0.5 : 1)
-                                        .disabled(isRequestingLocation)
-                                    }
+                    // Two-phase permissions view
+                    VStack(spacing: 0) {
+                        if currentPhase == .location {
+                            // Location permission phase
+                            VStack(alignment: .leading, spacing: 24) {
+                                // Header
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("LOCATION ACCESS")
+                                        .font(OPSStyle.Typography.title)
+                                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
                                     
-                                    Text("Shows nearby jobs and enables navigation to job sites. Most useful in 'Always Allow' mode.")
-                                        .font(OPSStyle.Typography.cardBody)
-                                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
                                 }
-                                .padding()
-                                .background(viewModel.shouldUseLightTheme ? Color.white : Color(white: 0.15))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 24)
+                                .padding(.top, 40)
+                                
+                                
+                                Spacer()
+                                
+                                HStack {
+                                    Spacer()
+                                    
+                                    // Location icon and animation
+                                    ZStack{
+                                        // Ripple circles animation
+                                        ForEach(0..<3, id: \.self) { index in
+                                            Circle()
+                                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.2), lineWidth: 1)
+                                                .frame(width: 100 + CGFloat(index * 50), height: 100 + CGFloat(index * 50))
+                                        }
+                                        
+                                        // Location pin
+                                        Image(systemName: "location")
+                                            .font(.system(size: 40, weight: .regular))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    }
+                                    .frame(height: 200)
+                                    
+                                    Spacer()
+                                }
+                                
+                                Spacer()
+                                
+                                // Info box
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        Image(systemName: "info.circle.fill")
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .font(OPSStyle.Typography.body)
+                                        
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            Text("Why we need location access:".uppercased())
+                                                .font(OPSStyle.Typography.cardTitle)
+                                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
+                                            
+                                            Text("• Show nearby job sites on the map".uppercased())
+                                                .font(OPSStyle.Typography.cardBody)
+                                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                                            
+                                            Text("• Navigate to work locations".uppercased())
+                                                .font(OPSStyle.Typography.cardBody)
+                                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                                            
+                                            Text("• Help teammates find you in the field".uppercased())
+                                                .font(OPSStyle.Typography.cardBody)
+                                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                                            
+                                        }
+                                        Spacer()
+                                    }
+                                }
+                                .padding(16)
+                                .background(viewModel.shouldUseLightTheme ? Color.white : Color.clear)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
                                 )
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            }
-                            
-                            // Notification permission
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("NOTIFICATIONS")
-                                    .font(OPSStyle.Typography.cardSubtitle)
-                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
+                                .padding(.horizontal, 24)
                                 
-                                VStack(alignment: .leading, spacing: 12) {
-                                    HStack {
-                                        Image(systemName: "bell.fill")
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .font(OPSStyle.Typography.subtitle)
-                                        
-                                        Text("PUSH NOTIFICATIONS")
-                                            .font(OPSStyle.Typography.cardSubtitle)
-                                            .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : .white)
-                                        
-                                        Spacer()
-                                        
-                                        Button(action: {
-                                            isRequestingNotifications = true
-                                            viewModel.requestNotificationsPermission()
-                                            
-                                            // Check for denied status after a delay
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                                UNUserNotificationCenter.current().getNotificationSettings { settings in
-                                                    DispatchQueue.main.async {
-                                                        if settings.authorizationStatus == .denied {
-                                                            showNotificationDeniedAlert = true
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }) {
-                                            Text(viewModel.isNotificationsPermissionGranted ? "Granted" : "Allow")
-                                                .font(OPSStyle.Typography.caption)
-                                                .padding(.horizontal, 12)
-                                                .padding(.vertical, 6)
-                                                .background(viewModel.isNotificationsPermissionGranted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent)
-                                                .foregroundColor(.white)
-                                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                        }
-                                        .opacity(isRequestingNotifications ? 0.5 : 1)
-                                        .disabled(isRequestingNotifications)
-                                    }
+                                Spacer()
+                                
+                                // Continue button for location
+                                Button(action: {
+                                    isRequestingLocation = true
+                                    viewModel.requestLocationPermission()
                                     
-                                    Text("Get updates about your jobs and team activities. Critical for staying informed about schedule changes.")
-                                        .font(OPSStyle.Typography.cardBody)
-                                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
-                                }
-                                .padding()
-                                .background(viewModel.shouldUseLightTheme ? Color.white : Color(white: 0.15))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
-                                )
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            }
-                            
-                            // Info message
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "info.circle.fill")
+                                    // After requesting permission, move to notifications phase
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            currentPhase = .notifications
+                                        }
+                                        isRequestingLocation = false
+                                        
+                                        // Check if permission was denied
+                                        if viewModel.locationManager.authorizationStatus == .denied ||
+                                            viewModel.locationManager.authorizationStatus == .restricted {
+                                            showLocationDeniedAlert = true
+                                        }
+                                    }
+                                }) {
+                                    HStack {
+                                        Text("CONTINUE")
+                                            .font(OPSStyle.Typography.bodyBold)
+                                            .opacity(isRequestingLocation ? 0 : 1)
+                                        
+                                        if isRequestingLocation {
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                        }
+                                    }
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    .font(OPSStyle.Typography.body)
-                                
-                                Text("You can change these permissions later in your device settings if needed.")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 56)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                    )
+                                }
+                                .padding(.horizontal, 24)
+                                .padding(.bottom, 40)
+                                .disabled(isRequestingLocation)
                             }
-                            .padding(.top, 4)
-                        }
-                        .padding(.horizontal, 24)
-                    }
-                    
-                    // Consolidated flow continue button
-                    StandardContinueButton(
-                        onTap: {
-                            // Store permission status
-                            UserDefaults.standard.set(viewModel.isLocationPermissionGranted, forKey: "location_permission_granted")
-                            UserDefaults.standard.set(viewModel.isNotificationsPermissionGranted, forKey: "notifications_permission_granted")
+                            .transition(.opacity)
+                        } else {
                             
-                            // Proceed to field setup step
-                            viewModel.moveToNextStepV2()
+                            // Notifications permission phase
+                            VStack(alignment: .leading, spacing: 24) {
+                                // Header
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("GET NOTIFIED")
+                                        .font(OPSStyle.Typography.title)
+                                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
+                                    
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 24)
+                                .padding(.top, 40)
+                                
+                                Spacer()
+                                
+                                HStack{
+                                    Spacer()
+                                    // Notification icon and animation
+                                    ZStack {
+                                        // Notification bell
+                                        Image(systemName: "bell")
+                                            .font(.system(size: 40, weight: .regular))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        
+                                        // Notification badge
+                                        Circle()
+                                            .fill(OPSStyle.Colors.errorStatus)
+                                            .frame(width: 20, height: 20)
+                                            .overlay(
+                                                Text("1")
+                                                    .font(OPSStyle.Typography.caption)
+                                                    .foregroundColor(.white)
+                                            )
+                                            .offset(x: 25, y: -25)
+                                    }
+                                    .frame(height: 200)
+                                    
+                                    Spacer()
+                                }
+                                
+                                Spacer()
+                                
+                                // Info box
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        Image(systemName: "info.circle.fill")
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .font(OPSStyle.Typography.body)
+                                        
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            Text("Why we need notifications:".uppercased())
+                                                .font(OPSStyle.Typography.cardTitle)
+                                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
+                                            
+                                            Text("• Job assignments and updates".uppercased())
+                                                .font(OPSStyle.Typography.cardBody)
+                                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                                            
+                                            Text("• Schedule changes and reminders".uppercased())
+                                                .font(OPSStyle.Typography.cardBody)
+                                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                                            
+                                            Text("• Important team messages".uppercased())
+                                                .font(OPSStyle.Typography.cardBody)
+                                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                                            
+                                            
+                                        }
+                                        
+                                        
+                                        Spacer()
+                                    }
+                                }
+                                .padding(16)
+                                .background(viewModel.shouldUseLightTheme ? Color.white : Color.clear)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
+                                )
+                                .padding(.horizontal, 24)
+                                
+                                
+                                Spacer()
+                                
+                                // Continue button for notifications
+                                Button(action: {
+                                    isRequestingNotifications = true
+                                    viewModel.requestNotificationsPermission()
+                                    
+                                    // After requesting permission, proceed to next step
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                        // Store permission status
+                                        UserDefaults.standard.set(viewModel.isLocationPermissionGranted, forKey: "location_permission_granted")
+                                        UserDefaults.standard.set(viewModel.isNotificationsPermissionGranted, forKey: "notifications_permission_granted")
+                                        
+                                        // Proceed to field setup step
+                                        viewModel.moveToNextStepV2()
+                                        isRequestingNotifications = false
+                                        
+                                        // Check if permission was denied
+                                        UNUserNotificationCenter.current().getNotificationSettings { settings in
+                                            DispatchQueue.main.async {
+                                                if settings.authorizationStatus == .denied {
+                                                    showNotificationDeniedAlert = true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }) {
+                                    HStack {
+                                        Text("CONTINUE")
+                                            .font(OPSStyle.Typography.bodyBold)
+                                            .opacity(isRequestingNotifications ? 0 : 1)
+                                        
+                                        if isRequestingNotifications {
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                        }
+                                    }
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 56)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                    )
+                                }
+                                .padding(.horizontal, 24)
+                                .padding(.bottom, 40)
+                                .disabled(isRequestingNotifications)
+                            }
+                            .transition(.opacity)
                         }
-                    )
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 24)
+                    }
                 } else {
                     // Original permissions view
                     // Navigation header with step indicator
@@ -267,9 +378,9 @@ struct PermissionsView: View {
                     HStack(spacing: 4) {
                         ForEach(0..<totalSteps, id: \.self) { step in
                             Rectangle()
-                                .fill(step < currentStepNumber ? 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
+                                .fill(step < currentStepNumber ?
+                                      (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) :
+                                        (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
                                 .frame(height: 4)
                         }
                     }
@@ -333,8 +444,8 @@ struct PermissionsView: View {
                             
                             // Check for denied status after a delay
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                if viewModel.locationManager.authorizationStatus == .denied || 
-                                   viewModel.locationManager.authorizationStatus == .restricted {
+                                if viewModel.locationManager.authorizationStatus == .denied ||
+                                    viewModel.locationManager.authorizationStatus == .restricted {
                                     showLocationDeniedAlert = true
                                 }
                             }

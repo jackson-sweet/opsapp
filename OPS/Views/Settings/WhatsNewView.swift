@@ -38,7 +38,7 @@ struct WhatsNewView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         // Intro text
                         VStack(alignment: .leading, spacing: 12) {
-                        
+                            
                             Text("We're always working to make OPS better for our crews.")
                                 .font(.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -116,8 +116,9 @@ struct WhatsNewView: View {
                         .padding(.top, 32)
                         .padding(.bottom, 40)
                     }
+                    .tabBarPadding() // Add padding for tab bar
                 }
-                .tabBarPadding()
+                
             }
         }
         .navigationBarBackButtonHidden(true)

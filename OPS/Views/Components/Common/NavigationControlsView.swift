@@ -86,7 +86,7 @@ struct NavigationControlsView: View {
                 // Action buttons for active project - at bottom
                 Spacer()
                 actionButtons
-            }
+            }.padding(.bottom, 40)
             
             // Navigation view at top - position by hand
             if isRouting {

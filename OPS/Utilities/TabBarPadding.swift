@@ -16,7 +16,7 @@ struct TabBarPadding: ViewModifier {
     
     func body(content: Content) -> some View {
         content
-            .padding(.bottom, 90 + additionalPadding) // Standard tab bar height + any additional
+            .padding(.bottom, 90 + additionalPadding)// Standard tab bar height + any additional
     }
 }
 

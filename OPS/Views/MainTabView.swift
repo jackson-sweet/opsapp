@@ -17,6 +17,7 @@ struct MainTabView: View {
     
     @State private var selectedTab = 0
     @State private var keyboardIsShowing = false
+    @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
     
     // Observer for fetch active project notifications
     private let fetchProjectObserver = NotificationCenter.default
@@ -57,11 +58,20 @@ struct MainTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.all, edges: .bottom)
             
+            // Image sync progress bar at top
+            VStack {
+                ImageSyncProgressView(syncManager: imageSyncProgressManager)
+                Spacer()
+            }
+            .ignoresSafeArea(.all, edges: .bottom)
+            .zIndex(1) // Ensure it appears above content
+            
             // Custom tab bar overlaid at bottom
             VStack {
                 Spacer()
                 CustomTabBar(selectedTab: $selectedTab, tabs: tabs)
             }
+            .ignoresSafeArea(.all, edges: .bottom)
             .preferredColorScheme(.dark)
             .opacity(keyboardIsShowing ? 0 : 1)
             .animation(.easeInOut(duration: 0.25), value: keyboardIsShowing)
@@ -123,6 +133,35 @@ struct MainTabView: View {
             withAnimation(.easeInOut(duration: 0.25)) {
                 keyboardIsShowing = false
             }
+        }
+        .onAppear {
+            // Clear all pending image syncs on app bootup
+            clearPendingImageSyncs()
+        }
+    }
+    
+    private func clearPendingImageSyncs() {
+        print("🚀 MainTabView: App booted - clearing pending image syncs")
+        
+        // Get the image sync manager from dataController
+        if let imageSyncManager = dataController.imageSyncManager {
+            // Get pending uploads before clearing
+            let pendingUploads = imageSyncManager.getPendingUploads()
+            
+            if !pendingUploads.isEmpty {
+                print("⚠️ Found \(pendingUploads.count) pending image uploads")
+                
+                // Show progress bar for pending uploads
+                imageSyncProgressManager.startSync(with: imageSyncManager, pendingUploads: pendingUploads)
+                
+                // Don't clear them - let the sync complete
+                // The sync manager will handle clearing them after successful upload
+            } else {
+                print("✅ No pending image uploads found")
+            }
+            
+            // Clear all pending uploads to prevent issues with large/stuck uploads
+            imageSyncManager.clearAllPendingUploads()
         }
     }
 }

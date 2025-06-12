@@ -53,13 +53,20 @@ class S3UploadService {
             print("\n📸 Processing image \(index + 1)/\(images.count)")
             print("  - Original size: \(image.size.width)x\(image.size.height)")
             
+            // Resize image if needed to prevent upload issues
+            let processedImage = resizeImageIfNeeded(image)
+            
+            // Use adaptive compression based on image size
+            let compressionQuality = getAdaptiveCompressionQuality(for: processedImage)
+            
             // Compress image
-            guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+            guard let imageData = processedImage.jpegData(compressionQuality: compressionQuality) else {
                 print("❌ Failed to compress image at index \(index)")
                 continue
             }
             
-            print("  - Compressed size: \(imageData.count) bytes (\(imageData.count / 1024)KB)")
+            let sizeInMB = Double(imageData.count) / (1024 * 1024)
+            print("  - Compressed size: \(String(format: "%.2f", sizeInMB)) MB (quality: \(compressionQuality))")
             
             // Generate filename with street address prefix
             let streetPrefix = extractStreetAddress(from: project.address)
@@ -340,6 +347,50 @@ class S3UploadService {
         
         return streetAddress
     }
+    
+    // MARK: - Image Processing Helpers
+    
+    /// Resize image if it exceeds maximum dimensions
+    private func resizeImageIfNeeded(_ image: UIImage) -> UIImage {
+        let maxDimension: CGFloat = 2048 // Maximum width or height
+        
+        guard image.size.width > maxDimension || image.size.height > maxDimension else {
+            return image
+        }
+        
+        let aspectRatio = image.size.width / image.size.height
+        let newSize: CGSize
+        
+        if image.size.width > image.size.height {
+            newSize = CGSize(width: maxDimension, height: maxDimension / aspectRatio)
+        } else {
+            newSize = CGSize(width: maxDimension * aspectRatio, height: maxDimension)
+        }
+        
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+        image.draw(in: CGRect(origin: .zero, size: newSize))
+        let resizedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
+        UIGraphicsEndImageContext()
+        
+        print("📐 Resized image from \(image.size) to \(resizedImage.size)")
+        return resizedImage
+    }
+    
+    /// Get adaptive compression quality based on image size
+    private func getAdaptiveCompressionQuality(for image: UIImage) -> CGFloat {
+        let pixelCount = image.size.width * image.size.height
+        
+        // Higher resolution images get more compression
+        if pixelCount > 4_000_000 { // > 4MP
+            return 0.5
+        } else if pixelCount > 2_000_000 { // > 2MP
+            return 0.6
+        } else if pixelCount > 1_000_000 { // > 1MP
+            return 0.7
+        } else {
+            return 0.8
+        }
+    }
 }
 
 // MARK: - Error Types
@@ -349,6 +400,7 @@ enum S3Error: LocalizedError {
     case deleteFailed
     case invalidURL
     case bubbleAPIFailed
+    case imageConversionFailed
     
     var errorDescription: String? {
         switch self {
@@ -360,6 +412,8 @@ enum S3Error: LocalizedError {
             return "Invalid S3 URL"
         case .bubbleAPIFailed:
             return "OPS Web App upload failed, but database succeeded"
+        case .imageConversionFailed:
+            return "Failed to convert image to JPEG format"
         }
     }
 }

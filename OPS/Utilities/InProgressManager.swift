@@ -279,6 +279,29 @@ class InProgressManager: ObservableObject {
                 }
             }
         }
+        
+        // Update distance for current step
+        if currentStepIndex < validSteps.count {
+            let currentStep = validSteps[currentStepIndex]
+            if let stepCoordinate = currentStep.polyline.coordinate as CLLocationCoordinate2D? {
+                let distanceToStep = userLocation.distance(to: stepCoordinate)
+                
+                // Update the current navigation step with live distance
+                currentNavStep = NavigationStep(
+                    instruction: currentStep.instructions,
+                    distance: formatDistance(distanceToStep),
+                    distanceValue: distanceToStep,
+                    isLastStep: currentStepIndex == validSteps.count - 1
+                )
+            }
+        }
+    }
+    
+    // Helper to format distance
+    private func formatDistance(_ distance: CLLocationDistance) -> String {
+        let formatter = MKDistanceFormatter()
+        formatter.unitStyle = .abbreviated
+        return formatter.string(fromDistance: distance)
     }
     
     func getRouteOverlay() -> MKOverlay? {
@@ -305,6 +328,15 @@ struct NavigationStep: Equatable {
         self.distance = distance
         self.distanceValue = distanceValue
         self.isLastStep = isLastStep
+    }
+}
+
+// Extension for distance calculation
+extension CLLocationCoordinate2D {
+    func distance(to coordinate: CLLocationCoordinate2D) -> CLLocationDistance {
+        let from = CLLocation(latitude: self.latitude, longitude: self.longitude)
+        let to = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        return from.distance(from: to)
     }
 }
 

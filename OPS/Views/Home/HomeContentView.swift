@@ -27,7 +27,7 @@ struct HomeContentView: View {
     @ObservedObject var inProgressManager: InProgressManager
     
     // Location manager to track authorization status
-    @StateObject private var locationManager = LocationManager()
+    @EnvironmentObject private var locationManager: LocationManager
     
     // Callbacks
     let startProject: (Project) -> Void

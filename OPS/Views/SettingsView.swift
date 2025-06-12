@@ -135,7 +135,7 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
-                .frame(minHeight: geometry.size.height) // Ensure content fills scroll view
+                //.frame(minHeight: geometry.size.height) // Ensure content fills scroll view
 
         }
     }

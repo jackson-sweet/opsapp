@@ -19,19 +19,12 @@ struct PermissionsView: View {
     
     // Calculate the current step number based on user type
     private var currentStepNumber: Int {
-        if viewModel.selectedUserType == .employee {
-            return 5 // Employee flow position - after company code
-        } else {
-            return 8 // Company flow position - after team invites (adjusted after removing logo step)
-        }
+        return viewModel.currentStep.stepNumber(for: viewModel.selectedUserType) ?? 5
     }
     
     private var totalSteps: Int {
-        if viewModel.selectedUserType == .employee {
-            return 8 // Employee flow has 8 total steps
-        } else {
-            return 9 // Company flow has 9 total steps (reduced from 10 after removing logo step)
-        }
+        guard let userType = viewModel.selectedUserType else { return 7 }
+        return OnboardingStep.totalSteps(for: userType)
     }
     
     var body: some View {

@@ -16,14 +16,15 @@ struct CustomTabBar: View {
     @State private var iconWidth: CGFloat = 28 // SF Symbols 28pt size
     
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .top) {
             // Tab bar background with dark blur and overlay
+            
             ZStack {
                 BlurView(style: .systemUltraThinMaterialDark)
-                OPSStyle.Colors.cardBackground.opacity(0.8)
+                OPSStyle.Colors.cardBackgroundDark.opacity(0.4)
             }
-            .frame(height: 80)
-            .ignoresSafeArea(.all, edges: .bottom)
+            .frame(height: 100)
+
             
             VStack(spacing: 0) {
                 // Sliding indicator bar - sized to match icon width
@@ -73,7 +74,10 @@ struct CustomTabBar: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.bottom, 16)
             }
+            .padding(.top, 16)
         }
+        
+        
         .onAppear {
             // Set initial position after a brief delay to ensure layout is complete
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

@@ -14,6 +14,7 @@ struct ProjectActionBar: View {
     let project: Project
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var locationManager: LocationManager
     
     // State variables for various sheets and actions
     @State private var showCompleteConfirmation = false
@@ -38,7 +39,7 @@ struct ProjectActionBar: View {
             
             // Semi-transparent overlay
             Color(OPSStyle.Colors.cardBackgroundDark)
-                .opacity(0.3)
+                .opacity(0.4)
                 .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
             
             // Actions with dividers
@@ -137,6 +138,34 @@ struct ProjectActionBar: View {
     
     private func handleAction(_ action: ProjectAction) {
         switch action {
+        case .navigate:
+            // Toggle navigation
+            if InProgressManager.shared.isRouting {
+                // Stop routing
+                InProgressManager.shared.stopRouting()
+                
+                // Post notification to stop route refresh timer
+                NotificationCenter.default.post(
+                    name: Notification.Name("StopRouteRefreshTimer"),
+                    object: nil
+                )
+            } else {
+                // Start routing to project
+                if let coordinate = project.coordinate {
+                    // Get current user location if available
+                    if let userLocation = locationManager.userLocation {
+                        InProgressManager.shared.startRouting(to: coordinate, from: userLocation)
+                    } else {
+                        InProgressManager.shared.startRouting(to: coordinate)
+                    }
+                    
+                    // Post notification to start route refresh timer
+                    NotificationCenter.default.post(
+                        name: Notification.Name("StartRouteRefreshTimer"),
+                        object: nil
+                    )
+                }
+            }
         case .complete:
             // Directly mark the project as completed
             markProjectComplete()
@@ -298,6 +327,7 @@ struct ProjectActionBar: View {
 
 // MARK: - Project Actions Enum
 enum ProjectAction: CaseIterable {
+    case navigate
     case complete
     // case receipt - removed as part of shelving expense functionality
     case details
@@ -305,6 +335,7 @@ enum ProjectAction: CaseIterable {
     
     var iconName: String {
         switch self {
+        case .navigate: return InProgressManager.shared.isRouting ? "location.slash" : "location.fill"
         case .complete: return "checkmark.circle"
         // case .receipt: return "doc.text.viewfinder" - removed
         case .details: return "info.circle" // Project details icon
@@ -314,6 +345,7 @@ enum ProjectAction: CaseIterable {
     
     var label: String {
         switch self {
+        case .navigate: return InProgressManager.shared.isRouting ? "Stop" : "Navigate"
         case .complete: return "Complete"
         // case .receipt: return "Receipt" - removed
         case .details: return "Details"

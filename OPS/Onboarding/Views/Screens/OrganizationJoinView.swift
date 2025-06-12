@@ -18,19 +18,12 @@ struct OrganizationJoinView: View {
     
     // Calculate the current step number based on user type
     private var currentStepNumber: Int {
-        if viewModel.selectedUserType == .employee {
-            return 2 // Employee flow position - after account setup
-        } else {
-            return 2 // This view shouldn't appear for company flow
-        }
+        return viewModel.currentStep.stepNumber(for: viewModel.selectedUserType) ?? 2
     }
     
     private var totalSteps: Int {
-        if viewModel.selectedUserType == .employee {
-            return 8 // Employee flow has 8 total steps
-        } else {
-            return 10 // Company flow has 10 total steps
-        }
+        guard let userType = viewModel.selectedUserType else { return 7 }
+        return OnboardingStep.totalSteps(for: userType)
     }
     
     init(viewModel: OnboardingViewModel, isInConsolidatedFlow: Bool = false) {

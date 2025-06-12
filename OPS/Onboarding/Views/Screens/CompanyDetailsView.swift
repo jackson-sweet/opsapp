@@ -15,13 +15,14 @@ struct CompanyDetailsView: View {
         case age = 2
     }
     
-    // Calculate the current step number
+    // Calculate the current step number based on user type
     private var currentStepNumber: Int {
-        return 6 // Company flow position - after contact
+        return onboardingViewModel.currentStep.stepNumber(for: onboardingViewModel.selectedUserType) ?? 6
     }
     
     private var totalSteps: Int {
-        return 10 // Company flow has 10 total steps
+        guard let userType = onboardingViewModel.selectedUserType else { return 12 }
+        return OnboardingStep.totalSteps(for: userType)
     }
     
     var filteredIndustries: [Industry] {

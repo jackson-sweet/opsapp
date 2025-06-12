@@ -12,7 +12,7 @@ import Network
 
 /// Manager for handling image synchronization between local storage, S3, and Bubble API
 @MainActor
-class ImageSyncManager {
+class ImageSyncManager: ObservableObject {
     // Dependencies
     private let modelContext: ModelContext?
     private let apiService: APIService
@@ -27,7 +27,11 @@ class ImageSyncManager {
     private var pendingUploads: [PendingImageUpload] = []
     
     // Current sync state
-    private var isSyncing = false
+    @Published private var isSyncing = false
+    
+    // Progress tracking
+    @Published var syncProgress: Double = 0
+    @Published var syncingProjectId: String? = nil
     
     /// Initialize the ImageSyncManager with required dependencies
     init(modelContext: ModelContext?, apiService: APIService, connectivityMonitor: ConnectivityMonitor) {
@@ -243,10 +247,20 @@ class ImageSyncManager {
     
     /// Save a single image locally for offline use
     private func saveImageLocally(_ image: UIImage, for project: Project, index: Int) async -> String? {
-        guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+        // Resize image if it's too large
+        let resizedImage = resizeImageIfNeeded(image)
+        
+        // Use adaptive compression based on image size
+        let compressionQuality = getAdaptiveCompressionQuality(for: resizedImage)
+        
+        guard let imageData = resizedImage.jpegData(compressionQuality: compressionQuality) else {
             print("ImageSyncManager: Failed to compress image")
             return nil
         }
+        
+        // Log image size
+        let sizeInMB = Double(imageData.count) / (1024 * 1024)
+        print("📷 Image size after compression: \(String(format: "%.2f", sizeInMB)) MB (quality: \(compressionQuality))")
         
         let timestamp = Date().timeIntervalSince1970
         let filename = "local_project_\(project.id)_\(timestamp)_\(index).jpg"
@@ -529,10 +543,90 @@ class ImageSyncManager {
         
         print("ImageSyncManager: Cleanup complete - removed \(removedCount) image keys, saved ~\(totalSizeSaved / 1_000_000) MB")
     }
+    
+    // MARK: - Public Methods for Progress Tracking
+    
+    /// Clear all pending image syncs
+    func clearAllPendingUploads() {
+        print("🗑️ ImageSyncManager: Clearing all pending uploads")
+        
+        // Clear from memory
+        let count = pendingUploads.count
+        pendingUploads.removeAll()
+        
+        // Clear from UserDefaults
+        UserDefaults.standard.removeObject(forKey: "pendingImageUploads")
+        
+        // Reset sync state
+        isSyncing = false
+        syncProgress = 0
+        syncingProjectId = nil
+        
+        print("✅ ImageSyncManager: Cleared \(count) pending uploads")
+    }
+    
+    /// Get current pending uploads
+    func getPendingUploads() -> [PendingImageUpload] {
+        return pendingUploads
+    }
+    
+    /// Check if there are pending uploads
+    var hasPendingUploads: Bool {
+        return !pendingUploads.isEmpty
+    }
+    
+    /// Get count of pending uploads
+    var pendingUploadCount: Int {
+        return pendingUploads.count
+    }
+    
+    // MARK: - Image Processing Helpers
+    
+    /// Resize image if it exceeds maximum dimensions
+    private func resizeImageIfNeeded(_ image: UIImage) -> UIImage {
+        let maxDimension: CGFloat = 2048 // Maximum width or height
+        
+        guard image.size.width > maxDimension || image.size.height > maxDimension else {
+            return image
+        }
+        
+        let aspectRatio = image.size.width / image.size.height
+        let newSize: CGSize
+        
+        if image.size.width > image.size.height {
+            newSize = CGSize(width: maxDimension, height: maxDimension / aspectRatio)
+        } else {
+            newSize = CGSize(width: maxDimension * aspectRatio, height: maxDimension)
+        }
+        
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+        image.draw(in: CGRect(origin: .zero, size: newSize))
+        let resizedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
+        UIGraphicsEndImageContext()
+        
+        print("📐 Resized image from \(image.size) to \(resizedImage.size)")
+        return resizedImage
+    }
+    
+    /// Get adaptive compression quality based on image size
+    private func getAdaptiveCompressionQuality(for image: UIImage) -> CGFloat {
+        let pixelCount = image.size.width * image.size.height
+        
+        // Higher resolution images get more compression
+        if pixelCount > 4_000_000 { // > 4MP
+            return 0.5
+        } else if pixelCount > 2_000_000 { // > 2MP
+            return 0.6
+        } else if pixelCount > 1_000_000 { // > 1MP
+            return 0.7
+        } else {
+            return 0.8
+        }
+    }
 }
 
 /// Model for a pending image upload
-struct PendingImageUpload: Codable {
+public struct PendingImageUpload: Codable {
     let localURL: String
     let projectId: String
     let companyId: String

@@ -16,15 +16,12 @@ struct AccountSetupView: View {
     
     // Calculate the current step number and total steps based on user type
     private var currentStepNumber: Int {
-        return 1 // First step for both flows
+        return viewModel.currentStep.stepNumber(for: viewModel.selectedUserType) ?? 1
     }
     
     private var totalSteps: Int {
-        if viewModel.selectedUserType == .employee {
-            return 8 // Employee flow has 8 total steps
-        } else {
-            return 10 // Company flow has 10 total steps
-        }
+        guard let userType = viewModel.selectedUserType else { return 7 }
+        return OnboardingStep.totalSteps(for: userType)
     }
     
     var body: some View {

@@ -16,7 +16,7 @@ struct HomeView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @StateObject private var inProgressManager = InProgressManager()
-    @StateObject private var locationManager = LocationManager()
+    @EnvironmentObject private var locationManager: LocationManager
     
     // Track location manager status changes
     @State private var locationStatus: CLAuthorizationStatus = .notDetermined
@@ -31,7 +31,7 @@ struct HomeView: View {
     
     // Route refresh timer
     @State private var routeRefreshTimer: Timer? = nil
-    private let routeRefreshInterval: TimeInterval = 30 // seconds
+    private let routeRefreshInterval: TimeInterval = 3 // seconds - shorter interval for live navigation
     @State private var showFullDirectionsView = false
     
     // Flag to track if user manually stopped routing for this project
@@ -53,6 +53,7 @@ struct HomeView: View {
             stopProject: stopProject,
             getActiveProject: getActiveProject
         )
+        .environmentObject(locationManager)
         .preferredColorScheme(.dark) // Enforce dark mode for the entire view
         // Listen for complete project stop
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("EndNavigation"))) { _ in
@@ -154,6 +155,21 @@ struct HomeView: View {
                 locationManager.requestPermissionIfNeeded(requestAlways: true)
             }
         )
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StopRouting"))) { _ in
+            print("HomeView: Received notification to stop routing")
+            inProgressManager.stopRouting()
+            userStoppedRouting = true
+            stopRouteRefreshTimer()
+            showFullDirectionsView = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartRouteRefreshTimer"))) { _ in
+            print("HomeView: Received notification to start route refresh timer")
+            startRouteRefreshTimer()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StopRouteRefreshTimer"))) { _ in
+            print("HomeView: Received notification to stop route refresh timer")
+            stopRouteRefreshTimer()
+        }
     }
     
     // MARK: - Helper Methods
@@ -254,6 +270,9 @@ struct HomeView: View {
                     inProgressManager.startRouting(to: coordinate)
                 }
                 
+                // Start the route refresh timer for live navigation updates
+                startRouteRefreshTimer()
+                
             case .notDetermined:
                 print("HomeView: Requesting location permission for the first time")
                 
@@ -310,9 +329,8 @@ struct HomeView: View {
             inProgressManager.updateNavigationStep(with: userLocation)
         }
         
-        // DISABLE route refreshing to prevent map recentering during routing
-        print("HomeView: Route refresh disabled to prevent auto-recentering during routing")
-        // inProgressManager.refreshRoute() // COMMENTED OUT
+        // Don't refresh the entire route - just update navigation steps
+        print("HomeView: Updated navigation step based on current location")
     }
     
     private func getActiveProject() -> Project? {

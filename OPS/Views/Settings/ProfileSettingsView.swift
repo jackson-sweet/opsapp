@@ -27,6 +27,9 @@ struct ProfileSettingsView: View {
     @State private var passwordResetSuccess = false
     @State private var refreshID = UUID()
     @State private var showDeleteAccountSheet = false
+    @State private var deleteConfirmationText = ""
+    @State private var isDeletingAccount = false
+    @State private var deleteError: String? = nil
     
     // Track changes for save button
     @State private var originalFirstName: String = ""
@@ -73,7 +76,7 @@ struct ProfileSettingsView: View {
                                 HStack(alignment: .top, spacing: 16) {
                                     // User avatar - updated to match app style
                                     ZStack {
-                                        if let profileURL = user.profileImageURL, 
+                                        if let profileURL = user.profileImageURL,
                                             !profileURL.isEmpty,
                                            let cachedImage = ImageCache.shared.get(forKey: profileURL) {
                                             Image(uiImage: cachedImage)
@@ -208,8 +211,9 @@ struct ProfileSettingsView: View {
                         .padding(.bottom, 40)
                     }
                     .padding(.top, 12)
+                    .tabBarPadding() // Add padding for tab bar
                 }
-                .tabBarPadding() // Add padding for tab bar
+                
             }
             .navigationBarBackButtonHidden(true)
             .swipeBackGesture() // Add swipe-back gesture
@@ -388,6 +392,8 @@ struct ProfileSettingsView: View {
                     Spacer()
                     Button(action: {
                         showDeleteAccountSheet = false
+                        deleteConfirmationText = ""
+                        deleteError = nil
                     }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 20))
@@ -399,34 +405,66 @@ struct ProfileSettingsView: View {
                 .padding(.top, 20)
                 
                 // Icon
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 60))
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .padding(.top, 20)
-                
-                // Title
-                Text("Delete Account")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
-                
-                // Warning message
-                VStack(spacing: 16) {
-                    Text("WARNING")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                    .padding(.top, 10)
+                VStack(spacing: 4){
+                    // Title
+                    Text("DELETE ACCOUNT")
+                        .font(OPSStyle.Typography.title)
+                        .foregroundColor(.white)
                     
-                    Text("Once your account is deleted, it cannot be recovered. All your data, projects, and settings will be permanently removed.")
+                    // Warning message
+                    VStack(spacing: 16) {
+                        Text("PERMANENT ACTION")
+                            .font(OPSStyle.Typography.subtitle)
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                    }
+                    
+                    Spacer()
+                    
+                    Text("This action cannot be undone. All your data, projects, and settings will be permanently deleted.")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
+                        .padding(.horizontal, 20)
                     
-                    Text("To delete your account, please log in to the OPS website and head to your settings.")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                        .padding(.top, 8)
+                    Spacer()
+                    
+                    // Confirmation input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Type \"confirm delete\" to proceed")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        
+                        TextField("", text: $deleteConfirmationText)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(.white)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                            .padding()
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(deleteConfirmationText.lowercased() == "confirm delete" ?
+                                            OPSStyle.Colors.errorStatus :
+                                                OPSStyle.Colors.tertiaryText.opacity(0.3),
+                                            lineWidth: 1)
+                            )
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                    
+                    // Error message
+                    if let error = deleteError {
+                        Text(error)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                    }
                 }
                 
                 Spacer()
@@ -434,25 +472,32 @@ struct ProfileSettingsView: View {
                 // Buttons
                 VStack(spacing: 16) {
                     Button(action: {
-                        if let url = URL(string: "https://opsapp.co") {
-                            UIApplication.shared.open(url)
-                        }
+                        deleteAccount()
                     }) {
-                        HStack {
-                            Image(systemName: "safari")
-                                .font(.system(size: 18))
-                            Text("Open OPS Website")
+                        if isDeletingAccount {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(OPSStyle.Colors.errorStatus)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        } else {
+                            Text("Delete My Account")
                                 .font(OPSStyle.Typography.button)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(OPSStyle.Colors.errorStatus)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(OPSStyle.Colors.primaryAccent)
-                        .cornerRadius(12)
                     }
+                    .disabled(deleteConfirmationText.lowercased() != "confirm delete" || isDeletingAccount)
+                    .opacity(deleteConfirmationText.lowercased() == "confirm delete" && !isDeletingAccount ? 1.0 : 0.6)
                     
                     Button(action: {
                         showDeleteAccountSheet = false
+                        deleteConfirmationText = ""
+                        deleteError = nil
                     }) {
                         Text("Cancel")
                             .font(OPSStyle.Typography.button)
@@ -460,7 +505,7 @@ struct ProfileSettingsView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(12)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }
                 .padding(.horizontal, 40)
@@ -624,6 +669,61 @@ struct ProfileSettingsView: View {
                     saveErrorMessage = "Failed to save profile changes. Please try again."
                     showSaveError = true
                     print("ProfileSettingsView: Failed to save profile changes")
+                }
+            }
+        }
+    }
+    
+    private func deleteAccount() {
+        guard deleteConfirmationText.lowercased() == "confirm delete" else { return }
+        
+        isDeletingAccount = true
+        deleteError = nil
+        
+        Task {
+            do {
+                // Get current user ID
+                guard let userId = dataController.currentUser?.id else {
+                    await MainActor.run {
+                        deleteError = "Unable to find user ID"
+                        isDeletingAccount = false
+                    }
+                    return
+                }
+                
+                print("ProfileSettingsView: Starting account deletion for user: \(userId)")
+                
+                // Call API to delete user
+                let success = await dataController.deleteUserAccount(userId: userId)
+                
+                if success {
+                    print("ProfileSettingsView: Account successfully deleted")
+                    
+                    await MainActor.run {
+                        // Clear all UserDefaults to ensure clean state
+                        if let bundleID = Bundle.main.bundleIdentifier {
+                            UserDefaults.standard.removePersistentDomain(forName: bundleID)
+                        }
+                        UserDefaults.standard.synchronize()
+                        
+                        // The deleteUserAccount already logged out, which cleared auth state
+                        // This will automatically trigger ContentView to show LoginView (signup page)
+                        isDeletingAccount = false
+                        showDeleteAccountSheet = false
+                        
+                        // Dismiss all presented views to ensure clean navigation
+                        dismiss()
+                    }
+                } else {
+                    await MainActor.run {
+                        deleteError = "Failed to delete account. Please try again or contact support."
+                        isDeletingAccount = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    deleteError = error.localizedDescription
+                    isDeletingAccount = false
                 }
             }
         }

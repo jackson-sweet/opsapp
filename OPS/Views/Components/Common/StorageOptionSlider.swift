@@ -106,11 +106,11 @@ struct StorageOptionSlider: View {
                         
                         // Thumb (larger circle)
                         Circle()
-                            //.fill(OPSStyle.Colors.primaryAccent)
+                            .fill(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.Light.cardBackgroundDark)
                             .frame(width: 30, height: 30)
                             .overlay(
                                 Circle()
-                                    .fill(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
+                                    .fill(viewModel.shouldUseLightTheme ? OPSStyle.Colors.primaryText : OPSStyle.Colors.Light.primaryText)
                                     .frame(width: 8, height: 8)
                             )
                             .offset(x: (geometry.size.width / CGFloat(storageOptions.count - 1)) * CGFloat(selectedStorageIndex) - 10)

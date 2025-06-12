@@ -16,11 +16,12 @@ struct CompanyCodeDisplayView: View {
     
     // Calculate the current step number based on user type
     private var currentStepNumber: Int {
-        return 7 // Company flow position - after company details
+        return viewModel.currentStep.stepNumber(for: viewModel.selectedUserType) ?? 7
     }
     
     private var totalSteps: Int {
-        return 10 // Company flow has 10 total steps
+        guard let userType = viewModel.selectedUserType else { return 12 }
+        return OnboardingStep.totalSteps(for: userType)
     }
     
     // Color scheme based on user type

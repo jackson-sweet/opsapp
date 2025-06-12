@@ -8,15 +8,12 @@ struct TeamInvitesView: View {
     
     // Calculate the current step number based on user type
     private var currentStepNumber: Int {
-        return 8 // Company flow position - after company code
+        return onboardingViewModel.currentStep.stepNumber(for: onboardingViewModel.selectedUserType) ?? 8
     }
     
     private var totalSteps: Int {
-        if onboardingViewModel.selectedUserType == .employee {
-            return 8 // Employee flow has 8 total steps
-        } else {
-            return 10 // Company flow has 10 total steps
-        }
+        guard let userType = onboardingViewModel.selectedUserType else { return 12 }
+        return OnboardingStep.totalSteps(for: userType)
     }
     
     var body: some View {

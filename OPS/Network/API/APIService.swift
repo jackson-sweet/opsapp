@@ -64,6 +64,30 @@ class APIService {
         }
     }
     
+    // MARK: - User Management
+    
+    /// Delete a user account
+    /// - Parameter id: The user's ID to delete
+    /// - Returns: Response containing the deleted user ID
+    func deleteUser(id: String) async throws -> DeleteUserResponse {
+        print("🔴 API: Deleting user with ID: \(id)")
+        
+        // Create request body with user parameter
+        let requestBody = ["user": id]
+        let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        // Execute the request to the delete_user endpoint
+        let response: DeleteUserResponse = try await executeRequest(
+            endpoint: "api/1.1/wf/delete_user",
+            method: "POST",
+            body: jsonData,
+            requiresAuth: false  // Bubble workflow endpoints typically don't require auth headers
+        )
+        
+        print("✅ User successfully deleted with ID: \(response.deleted)")
+        return response
+    }
+    
     // MARK: - Core Request Method
 
     func executeRequest<T: Decodable>(
@@ -570,6 +594,11 @@ struct BubbleResponseWrapper<T: Decodable>: Decodable {
 
 // Empty response for endpoints that don't return data
 struct EmptyResponse: Decodable {}
+
+// Response for delete user API call
+struct DeleteUserResponse: Decodable {
+    let deleted: String?
+}
 
 // Helper enum to distinguish between API types
 enum BubbleAPIType {

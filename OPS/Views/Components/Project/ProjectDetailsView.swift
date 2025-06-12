@@ -16,7 +16,7 @@ struct ProjectDetailsView: View {
     @State private var noteText: String
     @State private var originalNoteText: String
     @EnvironmentObject private var dataController: DataController
-    @StateObject private var locationManager = LocationManager()
+    @EnvironmentObject private var locationManager: LocationManager
     @State private var showingPhotoViewer = false
     @State private var selectedPhotoIndex: Int = 0
     @State private var showingImagePicker = false

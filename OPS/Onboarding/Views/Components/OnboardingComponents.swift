@@ -254,26 +254,35 @@ struct UnderlineTextField: View {
     
     var body: some View {
         VStack(spacing: 12) {
-            if isSecure {
-                SecureField(placeholder, text: $text)
-                    .font(OPSStyle.Typography.subtitle)
-                    .disableAutocorrection(disableAutocorrection)
-                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .onChange(of: text) { _, newValue in
-                        onChange?(newValue)
-                    }
-            } else {
-                TextField(placeholder, text: $text)
-                    .font(OPSStyle.Typography.subtitle)
-                    .keyboardType(keyboardType)
-                    .textInputAutocapitalization(autocapitalization)
-                    .disableAutocorrection(disableAutocorrection)
-                    .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .onChange(of: text) { _, newValue in
-                        onChange?(newValue)
-                    }
+            ZStack(alignment: .leading) {
+                // Custom placeholder with proper color
+                if text.isEmpty {
+                    Text(placeholder)
+                        .font(OPSStyle.Typography.subtitle)
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                }
+                
+                if isSecure {
+                    SecureField("", text: $text)
+                        .font(OPSStyle.Typography.subtitle)
+                        .disableAutocorrection(disableAutocorrection)
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .onChange(of: text) { _, newValue in
+                            onChange?(newValue)
+                        }
+                } else {
+                    TextField("", text: $text)
+                        .font(OPSStyle.Typography.subtitle)
+                        .keyboardType(keyboardType)
+                        .textInputAutocapitalization(autocapitalization)
+                        .disableAutocorrection(disableAutocorrection)
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .onChange(of: text) { _, newValue in
+                            onChange?(newValue)
+                        }
+                }
             }
             
             Rectangle()

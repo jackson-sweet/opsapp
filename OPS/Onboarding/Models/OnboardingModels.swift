@@ -402,6 +402,92 @@ enum OnboardingStep: Int, CaseIterable {
         }
     }
     
+    // Computed property to get the correct step number based on user type
+    func stepNumber(for userType: UserType?) -> Int? {
+        guard let userType = userType else { return nil }
+        
+        switch userType {
+        case .employee:
+            // Employee flow step numbers
+            switch self {
+            case .welcome, .userTypeSelection:
+                return nil // Not counted
+            case .accountSetup:
+                return 1
+            case .organizationJoin:
+                return 2
+            case .userDetails:
+                return 3
+            case .companyCode:
+                return 4
+            case .permissions:
+                return 5
+            case .fieldSetup:
+                return 6
+            case .completion:
+                return 7
+            case .welcomeGuide:
+                return nil // Not counted for employees
+            default:
+                return nil // Company-specific steps
+            }
+            
+        case .company:
+            // Company flow step numbers
+            switch self {
+            case .welcome, .userTypeSelection:
+                return nil // Not counted
+            case .accountSetup:
+                return 1
+            case .userDetails:
+                return 2
+            case .companyBasicInfo:
+                return 3
+            case .companyAddress:
+                return 4
+            case .companyContact:
+                return 5
+            case .companyDetails:
+                return 6
+            case .companyCode:
+                return 7
+            case .teamInvites:
+                return 8
+            case .permissions:
+                return 9
+            case .fieldSetup:
+                return 10
+            case .completion:
+                return 11
+            case .welcomeGuide:
+                return 12
+            default:
+                return nil
+            }
+        }
+    }
+    
+    // Total steps for each user type
+    static func totalSteps(for userType: UserType) -> Int {
+        switch userType {
+        case .employee:
+            return 7
+        case .company:
+            return 12
+        }
+    }
+    
+    // Get step indicator string using the computed properties
+    func getStepIndicator(for userType: UserType?) -> String {
+        guard let userType = userType,
+              let stepNumber = self.stepNumber(for: userType) else {
+            return ""
+        }
+        
+        let totalSteps = Self.totalSteps(for: userType)
+        return "Step \(stepNumber) of \(totalSteps)"
+    }
+    
     // Subtitle for each step
     var subtitle: String {
         switch self {

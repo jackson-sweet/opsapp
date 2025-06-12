@@ -15,13 +15,14 @@ struct CompanyCodeInputView: View {
     @State private var showWelcomePhase = false
     @State private var welcomeOpacity = 0.0
     
-    // Calculate the current step number for employee flow
+    // Calculate the current step number based on user type
     private var currentStepNumber: Int {
-        return 4 // Employee flow position - after user details
+        return viewModel.currentStep.stepNumber(for: viewModel.selectedUserType) ?? 4
     }
     
     private var totalSteps: Int {
-        return 8 // Employee flow has 8 total steps
+        guard let userType = viewModel.selectedUserType else { return 7 }
+        return OnboardingStep.totalSteps(for: userType)
     }
     
     // Color scheme based on user type (light for employees)
@@ -137,15 +138,24 @@ struct CompanyCodeInputView: View {
                         
                         // Company code input with larger text
                         VStack(spacing: 12) {
-                            TextField("Company code", text: $viewModel.companyCode)
-                                .font(OPSStyle.Typography.subtitle)
-                                .autocapitalization(.none)
-                                .disableAutocorrection(true)
-                                .foregroundColor(primaryTextColor)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .onChange(of: viewModel.companyCode) { _, _ in
-                                    viewModel.errorMessage = ""
+                            ZStack(alignment: .leading) {
+                                // Custom placeholder with proper color
+                                if viewModel.companyCode.isEmpty {
+                                    Text("Company code")
+                                        .font(OPSStyle.Typography.subtitle)
+                                        .foregroundColor(secondaryTextColor)
                                 }
+                                
+                                TextField("", text: $viewModel.companyCode)
+                                    .font(OPSStyle.Typography.subtitle)
+                                    .autocapitalization(.none)
+                                    .disableAutocorrection(true)
+                                    .foregroundColor(primaryTextColor)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .onChange(of: viewModel.companyCode) { _, _ in
+                                        viewModel.errorMessage = ""
+                                    }
+                            }
                             
                             Rectangle()
                                 .fill(!viewModel.companyCode.isEmpty ? 

@@ -11,7 +11,7 @@ import CoreLocation
 struct MapSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
-    @StateObject private var locationManager = LocationManager()
+    @EnvironmentObject private var locationManager: LocationManager
     
     // Map settings preferences
     @AppStorage("mapAutoZoom") private var mapAutoZoom = true

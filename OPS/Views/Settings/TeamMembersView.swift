@@ -98,8 +98,8 @@ struct TeamMembersView: View {
                             }
                         }
                         .padding(.vertical, 8)
+                        .tabBarPadding() // Add padding for tab bar
                     }
-                    .tabBarPadding()
                 }
             }
         }

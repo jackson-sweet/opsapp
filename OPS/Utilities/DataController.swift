@@ -1543,6 +1543,26 @@ class DataController: ObservableObject {
         }
     }
     
+    /// Delete the current user's account
+    /// - Parameter userId: The ID of the user to delete  
+    /// - Returns: Success boolean
+    @MainActor
+    func deleteUserAccount(userId: String) async -> Bool {
+        do {
+            // Call the API to delete the user account
+            let response = try await apiService.deleteUser(id: userId)
+            print("DataController: User account deleted successfully. Deleted ID: \(response.deleted)")
+            
+            // If successful, clean up local data and log out
+            logout()
+            
+            return true
+        } catch {
+            print("DataController: Error deleting user account: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
     // We're removing the ability to update profile images for now
     // Instead we'll rely on the API to provide profile images
     

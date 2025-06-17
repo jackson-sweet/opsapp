@@ -336,8 +336,9 @@ class OnboardingViewModel: ObservableObject {
                         // Log that we've saved these important credentials
                         print("OnboardingViewModel: Saved email and password to UserDefaults for future API calls")
                         
-                        // Mark the user as authenticated but with onboarding incomplete
-                        UserDefaults.standard.set(true, forKey: "is_authenticated")
+                        // DO NOT mark as authenticated yet - wait until onboarding is complete
+                        // This prevents access to the app with test data
+                        UserDefaults.standard.set(false, forKey: "is_authenticated")
                         UserDefaults.standard.set(false, forKey: "onboarding_completed")
                         
                         // Save the current onboarding step - at this point they've completed account setup

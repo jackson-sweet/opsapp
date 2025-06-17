@@ -12,6 +12,10 @@ import Combine
 
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
+    // MARK: - Preview Detection
+    private var isRunningInPreview: Bool {
+        return ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    }
     // MARK: - Published States
     @Published var isAuthenticated = false
     @Published var currentUser: User?
@@ -1369,15 +1373,16 @@ class DataController: ObservableObject {
             
             if !users.isEmpty {
                 return users
-            } else {
-                // Return sample team members for preview/testing
-                // This is just for UI testing - in a real app, we'd fetch from the API
+            } else if isRunningInPreview {
+                // Return sample team members ONLY for SwiftUI previews
                 let sampleUsers: [User] = [
                     createSampleUser(id: "1", firstName: "John", lastName: "Doe", role: .fieldCrew, companyId: companyId),
                     createSampleUser(id: "2", firstName: "Jane", lastName: "Smith", role: .officeCrew, companyId: companyId),
                     createSampleUser(id: "3", firstName: "Michael", lastName: "Johnson", role: .fieldCrew, companyId: companyId)
                 ]
                 return sampleUsers
+            } else {
+                return []
             }
         } catch {
             print("Error fetching team members: \(error.localizedDescription)")
@@ -1449,8 +1454,8 @@ class DataController: ObservableObject {
                     }
                     return date1 > date2
                 }
-            } else {
-                // Create sample projects for preview/testing
+            } else if isRunningInPreview {
+                // Create sample projects ONLY for SwiftUI previews
                 let now = Date()
                 let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
                 let lastWeek = Calendar.current.date(byAdding: .day, value: -7, to: now)!
@@ -1471,6 +1476,8 @@ class DataController: ObservableObject {
                 }
                 
                 return sampleProjects
+            } else {
+                return []
             }
         } catch {
             print("Error fetching project history: \(error.localizedDescription)")

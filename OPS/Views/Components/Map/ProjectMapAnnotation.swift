@@ -162,8 +162,6 @@ struct ProjectMapAnnotation: View {
         }
         
         // Print detailed debug message to console
-        print("ProjectMapAnnotation: Marker tapped for project: \(project.title) (ID: \(project.id))")
-        print("ProjectMapAnnotation: Popup state is now: \(showPopup ? "showing" : "hidden")")
     }
     
     // Helper function to handle long press gesture
@@ -181,7 +179,6 @@ struct ProjectMapAnnotation: View {
         generator.impactOccurred()
         
         // Print debug message to console
-        print("ProjectMapAnnotation: Marker long-pressed, project: \(project.title)")
     }
 }
 

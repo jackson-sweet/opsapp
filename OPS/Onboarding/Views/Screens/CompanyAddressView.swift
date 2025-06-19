@@ -8,7 +8,6 @@ struct CompanyAddressView: View {
         span: MKCoordinateSpan(latitudeDelta: 50, longitudeDelta: 60)
     )
     @State private var selectedLocation: CLLocationCoordinate2D?
-    var isInConsolidatedFlow: Bool = false
     
     // Calculate the current step number based on user type
     private var currentStepNumber: Int {
@@ -23,13 +22,13 @@ struct CompanyAddressView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color.black.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        onboardingViewModel.previousStep()
+                        onboardingViewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -118,12 +117,12 @@ struct CompanyAddressView: View {
                 StandardContinueButton(
                     isDisabled: !isAddressValid,
                     onTap: {
-                        onboardingViewModel.nextStep()
+                        onboardingViewModel.moveToNextStep()
                     }
                 )
                 
                 Button(action: {
-                    onboardingViewModel.nextStep()
+                    onboardingViewModel.moveToNextStep()
                 }) {
                     Text("Skip for now")
                         .font(OPSStyle.Typography.body)

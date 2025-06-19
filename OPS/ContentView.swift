@@ -17,7 +17,6 @@ struct ContentView: View {
     
     init() {
         // This will run before body is evaluated
-        print("ContentView: Initializing")
     }
     
     // Add a state to track initial loading
@@ -32,14 +31,7 @@ struct ContentView: View {
             } else if !dataController.isAuthenticated {
                 // Show login view with onboarding
                 // The LoginView will handle onboarding presentation
-                if AppConfiguration.UX.useConsolidatedOnboardingFlow {
-                    // Use the new consolidated flow
-                    LoginView()
-                        .environment(\.useConsolidatedOnboarding, true)
-                } else {
-                    // Use the original flow
-                    LoginView()
-                }
+                LoginView()
             } else {
                 // Check if PIN authentication is required
                 // Access the PIN manager directly as @ObservedObject to ensure proper state updates
@@ -54,18 +46,15 @@ struct ContentView: View {
             
             // Allow more time for auth checking to complete
             let isAuthAlreadySet = dataController.isAuthenticated
-            print("ContentView: Initial authentication state: \(isAuthAlreadySet)")
             
             let isAuthenticatedInDefaults = UserDefaults.standard.bool(forKey: "is_authenticated")
             let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
             
-            print("ContentView: UserDefaults auth state - is_authenticated=\(isAuthenticatedInDefaults), onboarding_completed=\(onboardingCompleted)")
             
             // Wait longer to ensure auth check completes
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 // Check for auth state again
                 let finalAuthState = dataController.isAuthenticated
-                print("ContentView: Final authentication state check: \(finalAuthState)")
                 
                 // Check if the user has an account but is in the middle of onboarding
                 let hasUserId = UserDefaults.standard.string(forKey: "user_id") != nil
@@ -73,7 +62,6 @@ struct ContentView: View {
                 
                 if hasUserId && !onboardingCompleted {
                     // Set authentication to false if they created an account but need to complete onboarding
-                    print("ContentView: User has account but needs to complete onboarding")
                     dataController.isAuthenticated = false
                     
                     // Set a flag in UserDefaults to indicate we need to resume onboarding
@@ -88,7 +76,6 @@ struct ContentView: View {
         // Watch for changes to the location denied state
         .onChange(of: locationManager.isLocationDenied) { _, isDenied in
             if isDenied && dataController.isAuthenticated {
-                print("ContentView: Location denied, showing permission view")
                 showLocationPermissionView = true
             }
         }
@@ -100,7 +87,6 @@ struct ContentView: View {
                 locationManager.requestPermissionIfNeeded(requestAlways: true) { isAllowed in
                     if !isAllowed {
                         // Permission is already denied, the overlay should handle showing settings prompt
-                        print("ContentView: Location permission is denied, overlay should show settings prompt")
                     }
                 }
             }
@@ -125,9 +111,6 @@ struct PINGatedView: View {
         self.pinManager = dataController.simplePINManager
         self.appState = appState
         self.locationManager = locationManager
-        print("PINGatedView: Initialized")
-        print("PINGatedView: requiresPIN=\(dataController.simplePINManager.requiresPIN)")
-        print("PINGatedView: isAuthenticated=\(dataController.simplePINManager.isAuthenticated)")
     }
     
     var body: some View {
@@ -141,7 +124,6 @@ struct PINGatedView: View {
                 .onAppear {
                     // Set the appState reference in DataController for cross-component access
                     dataController.appState = appState
-                    print("ContentView: Set appState reference in DataController")
                 }
                 .opacity(pinManager.requiresPIN && !pinManager.isAuthenticated ? 0 : 1)
                 .animation(.easeInOut(duration: 0.3), value: pinManager.isAuthenticated)
@@ -153,10 +135,8 @@ struct PINGatedView: View {
                     .transition(.opacity)
                     .zIndex(1)
                     .onReceive(pinManager.$isAuthenticated) { newValue in
-                        print("PINGatedView: Received isAuthenticated change: \(newValue)")
                     }
                     .onReceive(pinManager.objectWillChange) { _ in
-                        print("PINGatedView: PIN manager objectWillChange fired")
                     }
             }
         }

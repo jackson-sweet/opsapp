@@ -36,7 +36,6 @@ struct SimplePINEntryView: View {
     
     init(pinManager: SimplePINManager) {
         self.pinManager = pinManager
-        print("SimplePINEntryView: Initialized with isAuthenticated=\(pinManager.isAuthenticated), requiresPIN=\(pinManager.requiresPIN)")
     }
     
     var body: some View {
@@ -104,7 +103,6 @@ struct SimplePINEntryView: View {
     }
     
     private func resetPIN() {
-        print("SimplePINEntryView: Resetting PIN and logging out user")
         
         // Remove the stored PIN
         pinManager.removePIN()
@@ -115,16 +113,11 @@ struct SimplePINEntryView: View {
             dataController.logout()
         }
         
-        print("SimplePINEntryView: PIN reset complete, logout initiated")
     }
     
     private func validatePIN() {
-        print("SimplePINEntryView: validatePIN called with PIN: \(enteredPIN)")
-        print("SimplePINEntryView: Current isAuthenticated: \(pinManager.isAuthenticated)")
-        print("SimplePINEntryView: Current requiresPIN: \(pinManager.requiresPIN)")
         
         if pinManager.validatePIN(enteredPIN) {
-            print("SimplePINEntryView: PIN validation successful")
             
             // Success feedback
             pinState = .success
@@ -140,8 +133,6 @@ struct SimplePINEntryView: View {
             
             // Check state after validation
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                print("SimplePINEntryView: After validation - isAuthenticated: \(self.pinManager.isAuthenticated)")
-                print("SimplePINEntryView: After validation - requiresPIN: \(self.pinManager.requiresPIN)")
             }
         } else {
             print("SimplePINEntryView: PIN validation failed")

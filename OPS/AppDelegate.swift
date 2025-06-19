@@ -13,7 +13,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         
-        print("AppDelegate: Application did finish launching with options")
         
         // Register for remote notifications
         // The actual permission request happens elsewhere through the NotificationManager
@@ -28,7 +27,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        print("AppDelegate: Successfully registered for remote notifications with device token")
         
         // Pass device token to the notification manager
         NotificationManager.shared.handleDeviceTokenRegistration(deviceToken: deviceToken)
@@ -61,7 +59,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             UIApplication.shared.registerForRemoteNotifications()
         }
         #else
-        print("AppDelegate: Running in simulator, skipping remote notifications registration")
         #endif
     }
 }

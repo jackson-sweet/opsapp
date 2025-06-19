@@ -16,8 +16,6 @@ struct OnboardingView: View {
     
     // Optional completion handler
     var onComplete: (() -> Void)?
-    // Always use the consolidated flow
-    private let useConsolidatedFlow = true
     
     init(initialStep: OnboardingStep = .welcome, onComplete: (() -> Void)? = nil) {
         // Initialize the view model with the specified step
@@ -59,7 +57,7 @@ struct OnboardingView: View {
     private var consolidatedFlowView: some View {
         VStack(spacing: 0) {
             // Current step view
-            Group {
+            ZStack {
                 switch viewModel.currentStep {
                 case .welcome:
                     WelcomeView(viewModel: viewModel)
@@ -68,13 +66,13 @@ struct OnboardingView: View {
                         .environmentObject(viewModel)
                 case .accountSetup:
                     // Use existing EmailView but configured for consolidated flow
-                    EmailView(viewModel: viewModel, isInConsolidatedFlow: true)
+                    EmailView(viewModel: viewModel)
                 case .organizationJoin:
                     // New organization join view in consolidated flow
-                    OrganizationJoinView(viewModel: viewModel, isInConsolidatedFlow: true)
+                    OrganizationJoinView(viewModel: viewModel)
                 case .userDetails:
-                    // Use existing UserInfoView but configured for consolidated flow
-                    UserInfoView(viewModel: viewModel, isInConsolidatedFlow: false)
+                    // Use existing UserInfoView
+                    UserInfoView(viewModel: viewModel)
                 case .companyCode:
                     // Show different view based on user type
                     if viewModel.selectedUserType == .employee {
@@ -83,10 +81,10 @@ struct OnboardingView: View {
                         CompanyCodeDisplayView(viewModel: viewModel)
                     }
                 case .companyBasicInfo:
-                    CompanyBasicInfoView(isInConsolidatedFlow: true)
+                    CompanyBasicInfoView()
                         .environmentObject(viewModel)
                 case .companyAddress:
-                    CompanyAddressView(isInConsolidatedFlow: true)
+                    CompanyAddressView()
                         .environmentObject(viewModel)
                 case .companyContact:
                     CompanyContactView()
@@ -102,7 +100,7 @@ struct OnboardingView: View {
                         .environmentObject(viewModel)
                 case .permissions:
                     // Use existing PermissionsView but configured for consolidated flow
-                    PermissionsView(viewModel: viewModel, isInConsolidatedFlow: true)
+                    PermissionsView(viewModel: viewModel)
                 case .fieldSetup:
                     // The field setup is genuinely new functionality
                     FieldSetupView(viewModel: viewModel)
@@ -124,7 +122,6 @@ struct OnboardingView: View {
             // This onComplete callback is actually not used anymore
             // The CompletionView calls onboardingViewModel.nextStep() directly
             // which transitions to WelcomeGuideView
-            print("CompleteOnboarding: onComplete callback called (this shouldn't happen)")
         }
         .environmentObject(viewModel)
         .onAppear {
@@ -161,7 +158,6 @@ struct OnboardingView: View {
                         user.email = viewModel.email
                         user.phone = viewModel.phoneNumber
                         user.companyId = companyId
-                        print("Updating existing user: \(user.fullName)")
                     } else {
                         // Create new user
                         user = User(
@@ -175,14 +171,12 @@ struct OnboardingView: View {
                         
                         // Insert new user
                         modelContext.insert(user)
-                        print("Creating new user: \(user.fullName)")
                     }
                     
                     // Save changes
                     await MainActor.run {
                         do {
                             try modelContext.save()
-                            print("User data saved to database: \(user.fullName)")
                             
                             // Set current user in DataController
                             dataController.currentUser = user
@@ -207,8 +201,6 @@ struct OnboardingView: View {
             UserDefaults.standard.set(viewModel.isLocationPermissionGranted, forKey: "location_permission_granted")
             UserDefaults.standard.set(viewModel.isNotificationsPermissionGranted, forKey: "notifications_permission_granted")
             
-            print("OnboardingView: Completion step reached, user data saved")
-            print("OnboardingView: User has company: \(hasCompany)")
             
             // Don't call onComplete yet - wait for welcome guide to finish
         }

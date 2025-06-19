@@ -20,7 +20,7 @@ struct CompletionView: View {
     var body: some View {
         ZStack {
             // Black background
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color.black.ignoresSafeArea()
             
             VStack(spacing: 40) {
                 Spacer()
@@ -58,8 +58,7 @@ struct CompletionView: View {
             
             // Automatically continue to welcome guide after animation
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                print("CompletionView: Automatically moving to welcome guide")
-                onboardingViewModel.nextStep()
+                onboardingViewModel.moveToNextStep()
             }
         }
     }
@@ -71,18 +70,15 @@ struct CompletionView: View {
               onboardingViewModel.selectedUserType == .company,
               let companyId = UserDefaults.standard.string(forKey: "company_id"),
               !companyId.isEmpty else {
-            print("CompletionView: No need to fetch company data")
             return
         }
         
-        print("CompletionView: Fetching company data for ID: \(companyId)")
         companyDataFetched = true
         
         Task {
             do {
                 // Force refresh company data from API
                 try await dataController.forceRefreshCompany(id: companyId)
-                print("CompletionView: Successfully fetched and stored company data")
                 
                 // Company data successfully fetched
             } catch {
@@ -102,7 +98,6 @@ struct CompletionView: View {
         var body: some View {
             VStack {
                 CompletionView {
-                    print("Preview: Completion callback triggered")
                     demoMode.toggle()
                 }
                 

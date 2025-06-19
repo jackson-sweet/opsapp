@@ -17,12 +17,10 @@ class OnboardingCoordinator: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     init() {
-        print("OnboardingCoordinator initialized with currentStep: \(viewModel.currentStep.title)")
         
         // Subscribe to completion state
         viewModel.$currentStep
             .sink { [weak self] step in
-                print("Step changed to: \(step.title)")
                 if step == .completion {
                     // When we reach completion, flag for potential automatic transition
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -49,7 +47,6 @@ class OnboardingCoordinator: ObservableObject {
     
     // Complete onboarding and store user information
     func completeOnboarding() {
-        print("OnboardingCoordinator: Completing onboarding")
         
         // Save onboarding completion status
         userDefaults.set(true, forKey: "onboarding_completed")

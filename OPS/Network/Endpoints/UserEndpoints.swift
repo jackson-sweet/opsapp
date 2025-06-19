@@ -72,8 +72,6 @@ extension APIService {
             "value": companyId
         ]
         
-        print("🔍 Fetching users with company ID: \(companyId)")
-        print("🔍 API URL format should be: ?constraints=[{\"key\":\"Company\",\"constraint_type\":\"equals\",\"value\":\"\(companyId)\"}]")
         
         // Our API service will handle wrapping the constraint in the proper format
         return try await fetchBubbleObjects(

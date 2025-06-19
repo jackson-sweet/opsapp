@@ -93,7 +93,6 @@ class AuthManager {
                 throw AuthError.invalidURL
             }
             
-            print("Attempting login to: \(url.absoluteString)")
             
             // Create request
             var request = URLRequest(url: url)
@@ -106,7 +105,6 @@ class AuthManager {
                 "password": password
             ]
             
-            print("Login payload: \(loginPayload)")
             request.httpBody = try JSONSerialization.data(withJSONObject: loginPayload)
             
             // Send request
@@ -114,7 +112,7 @@ class AuthManager {
             
             // Debug response
             if let responseString = String(data: data, encoding: .utf8) {
-                print("Login response: \(responseString)")
+                print("🔵 Google Login Response: \(responseString)")
             }
             
             // Check HTTP status
@@ -122,7 +120,6 @@ class AuthManager {
                 throw AuthError.invalidResponse
             }
             
-            print("Login HTTP status: \(httpResponse.statusCode)")
             
             // Handle authentication errors
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
@@ -170,7 +167,6 @@ class AuthManager {
                 print("Failed to decode login response: \(error.localizedDescription)")
                 print("Decoding error details: \(error)")
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("Raw response: \(responseString)")
                 }
                 throw AuthError.decodingFailed
             }
@@ -216,7 +212,6 @@ class AuthManager {
                 throw AuthError.invalidURL
             }
             
-            print("Attempting Google login to: \(url.absoluteString)")
             
             // Create request
             var request = URLRequest(url: url)
@@ -232,7 +227,6 @@ class AuthManager {
                 "family_name": familyName ?? ""
             ]
             
-            print("Google login payload: email=\(email), name=\(name)")
             request.httpBody = try JSONSerialization.data(withJSONObject: loginPayload)
             
             // Send request
@@ -240,7 +234,7 @@ class AuthManager {
             
             // Debug response
             if let responseString = String(data: data, encoding: .utf8) {
-                print("Google login response: \(responseString)")
+                print("🔵 Google Login Response: \(responseString)")
             }
             
             // Check HTTP status
@@ -248,7 +242,6 @@ class AuthManager {
                 throw AuthError.invalidResponse
             }
             
-            print("Google login HTTP status: \(httpResponse.statusCode)")
             
             // Handle authentication errors
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
@@ -279,6 +272,12 @@ class AuthManager {
                 if let loginResponse = try? decoder.decode(GoogleLoginResponse.self, from: data),
                    let userData = loginResponse.response?.user {
                     
+                    print("🟢 Successfully parsed Google login wrapped response")
+                    print("   User ID: \(userData.id)")
+                    print("   User Email: \(userData.email ?? "none")")
+                    print("   Company ID: \(userData.company ?? "none")")
+                    print("   Has Company in response: \(loginResponse.response?.company != nil)")
+                    
                     // Store user info
                     self.userId = userData.id
                     keychain.storeUserId(userData.id)
@@ -302,6 +301,12 @@ class AuthManager {
                 }
                 
                 if let directResponse = try? decoder.decode(DirectGoogleLoginResponse.self, from: data) {
+                    print("🟢 Successfully parsed Google login direct response")
+                    print("   User ID: \(directResponse.user.id)")
+                    print("   User Email: \(directResponse.user.email ?? "none")")
+                    print("   Company ID: \(directResponse.user.company ?? "none")")
+                    print("   Has Company object: \(directResponse.company != nil)")
+                    
                     // Store user info
                     self.userId = directResponse.user.id
                     keychain.storeUserId(directResponse.user.id)
@@ -314,13 +319,14 @@ class AuthManager {
                 }
                 
                 // If we can't decode, throw an error
+                print("🔴 Failed to parse Google login response with either format")
                 throw AuthError.decodingFailed
                 
             } catch {
-                print("Failed to decode Google login response: \(error.localizedDescription)")
+                print("🔴 Failed to decode Google login response: \(error.localizedDescription)")
                 print("Decoding error details: \(error)")
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("Raw response: \(responseString)")
+                    print("🔵 Raw response that failed to parse: \(responseString)")
                 }
                 throw AuthError.decodingFailed
             }
@@ -360,7 +366,6 @@ class AuthManager {
             
             // Debug: Print response
             if let responseString = String(data: data, encoding: .utf8) {
-                print("Password reset response: \(responseString)")
             }
             
             // Check HTTP status
@@ -480,7 +485,6 @@ class AuthManager {
                 print("Failed to decode login response: \(error)")
                 // Print the response for debugging
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("Raw response: \(responseString)")
                 }
                 throw AuthError.decodingFailed
             }

@@ -34,7 +34,6 @@ class ImageFileManager {
         if !fileManager.fileExists(atPath: imagesDirectory.path) {
             do {
                 try fileManager.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
-                print("ImageFileManager: Created images directory at \(imagesDirectory.path)")
             } catch {
                 print("ImageFileManager: Error creating directory: \(error.localizedDescription)")
             }
@@ -70,13 +69,11 @@ class ImageFileManager {
         
         // Extract filename from localID (format: "local://project_images/filename.jpg")
         guard localID.hasPrefix("local://project_images/") else {
-            print("ImageFileManager: Invalid local ID format: \(localID)")
             return nil
         }
         
         let components = localID.components(separatedBy: "/")
         guard let filename = components.last else {
-            print("ImageFileManager: Could not extract filename from \(localID)")
             return nil
         }
         
@@ -91,7 +88,6 @@ class ImageFileManager {
         
         do {
             try data.write(to: fileURL)
-            print("ImageFileManager: Saved image to \(fileURL.path)")
             return true
         } catch {
             print("ImageFileManager: Error saving image: \(error.localizedDescription)")
@@ -174,7 +170,6 @@ class ImageFileManager {
         if FileManager.default.fileExists(atPath: fileURL.path) {
             do {
                 try FileManager.default.removeItem(at: fileURL)
-                print("ImageFileManager: Deleted image at \(fileURL.path)")
                 return true
             } catch {
                 print("ImageFileManager: Error deleting image: \(error.localizedDescription)")
@@ -220,7 +215,6 @@ class ImageFileManager {
             if success {
                 // Remove from UserDefaults to free up space
                 UserDefaults.standard.removeObject(forKey: localID)
-                print("ImageFileManager: Successfully migrated \(localID) to file system")
             }
             
             return success
@@ -257,7 +251,6 @@ class ImageFileManager {
                         // Remove from UserDefaults to free up space
                         userDefaults.removeObject(forKey: key)
                         migratedCount += 1
-                        print("ImageFileManager: Successfully migrated remote URL to file system")
                     } else {
                         failedCount += 1
                     }
@@ -282,7 +275,6 @@ class ImageFileManager {
                 }
             }
             
-            print("ImageFileManager: Cleared \(deletedCount) remote image cache files")
         } catch {
             print("ImageFileManager: Error clearing remote cache: \(error.localizedDescription)")
         }

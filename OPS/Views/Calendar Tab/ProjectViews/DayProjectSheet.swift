@@ -64,7 +64,6 @@ struct DayProjectSheet: View {
                                 project: project,
                                 isFirst: index == 0,
                                 onTap: {
-                                    print("DayProjectSheet: Selected project \(project.title)")
                                     // Simply call the selection callback
                                     // This will trigger the sequence in ScheduleView
                                     onProjectSelected(project)

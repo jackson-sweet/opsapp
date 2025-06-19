@@ -60,12 +60,10 @@ class CalendarViewModel: ObservableObject {
             
             // Explicitly trigger day sheet for month view user selections
             if userInitiated && self.viewMode == .month {
-                print("CalendarViewModel: User initiated date selection in month view - showing day sheet")
                 self.shouldShowDaySheet = true
             }
         }
         
-        print("CalendarViewModel: Date selected - \(date), userInitiated: \(userInitiated)")
         
         selectedDate = date
         loadProjectsForDate(date)

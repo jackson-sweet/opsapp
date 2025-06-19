@@ -90,19 +90,16 @@ class DataController: ObservableObject {
     
     @MainActor
     func setModelContext(_ context: ModelContext) {
-        print("Setting model context")
         self.modelContext = context
         
         // Set up in proper sequence to avoid race conditions
         Task {
             // First clean up any duplicate users that might exist
-            print("Running database cleanup")
             await cleanupDuplicateUsers()
             
             // Only after cleanup is done, initialize sync manager if needed
             await MainActor.run {
                 if isAuthenticated {
-                    print("Initializing sync manager after cleanup")
                     initializeSyncManager()
                 }
             }
@@ -136,7 +133,6 @@ class DataController: ObservableObject {
         // Immediately check for pending images after initialization
         if isConnected {
             Task {
-                print("DataController: Checking for pending images after ImageSyncManager initialization")
                 await imageSyncManager?.syncPendingImages()
             }
         }
@@ -155,17 +151,14 @@ class DataController: ObservableObject {
     
     // Method to perform sync on app launch
     func performAppLaunchSync() {
-        print("DataController: performAppLaunchSync called")
         
         // Always check for pending images, regardless of sync settings
         Task {
             // First, sync pending images if we're online
             if isConnected && isAuthenticated {
-                print("DataController: Checking for pending image uploads...")
                 if let imageSyncManager = imageSyncManager {
                     await imageSyncManager.syncPendingImages()
                 } else {
-                    print("DataController: ImageSyncManager not initialized yet, will retry after initialization")
                 }
             }
             
@@ -175,19 +168,16 @@ class DataController: ObservableObject {
             guard syncOnLaunch,
                   isAuthenticated,
                   isConnected else {
-                print("DataController: Skipping full data sync (syncOnLaunch: \(syncOnLaunch), authenticated: \(isAuthenticated), connected: \(isConnected))")
                 return
             }
             
             // Check if we've synced too recently
             if let lastSync = lastSyncTime,
                Date().timeIntervalSince(lastSync) < AppConfiguration.Sync.minimumSyncInterval {
-                print("DataController: Skipping sync - too recent (last sync: \(lastSync))")
                 return
             }
             
             // Trigger full data sync
-            print("DataController: Performing full data sync on app launch")
             await syncManager?.triggerBackgroundSync()
             
             lastSyncTime = Date()
@@ -212,24 +202,20 @@ class DataController: ObservableObject {
         let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
         let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
         
-        print("DataController: Checking auth - is_authenticated=\(isAuthenticated), onboarding_completed=\(onboardingCompleted)")
         
         // Check for incomplete onboarding - user created account but didn't finish onboarding
         if isAuthenticated && !onboardingCompleted {
-            print("DataController: User is authenticated but has not completed onboarding")
             
             // Set flag to resume onboarding where they left off
             UserDefaults.standard.set(true, forKey: "resume_onboarding")
             
             // Important: Do NOT set self.isAuthenticated = true here
             // We want to redirect to the login page with onboarding
-            print("DataController: Will redirect to login with resumed onboarding")
             return
         }
         
         // Normal case: fully authenticated and completed onboarding
         if isAuthenticated && onboardingCompleted {
-            print("DataController: Found is_authenticated=true and onboarding_completed=true")
             
             // Get the user ID if available
             let userId = UserDefaults.standard.string(forKey: "user_id") ?? 
@@ -241,7 +227,6 @@ class DataController: ObservableObject {
             
             if let companyId = companyId {
                 UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
-                print("DataController: Using company ID from UserDefaults: \(companyId)")
             }
             
             // Check onboarding status before setting authentication
@@ -250,10 +235,8 @@ class DataController: ObservableObject {
             // Only set isAuthenticated if onboarding is complete
             if onboardingCompleted {
                 self.isAuthenticated = true
-                print("checkExistingAuth: Onboarding completed, setting isAuthenticated = true")
             } else {
                 self.isAuthenticated = false
-                print("checkExistingAuth: Onboarding not completed, keeping isAuthenticated = false")
             }
             
             // Try to get the user from SwiftData if available
@@ -267,7 +250,6 @@ class DataController: ObservableObject {
                     
                     if let user = users.first {
                         self.currentUser = user
-                        print("DataController: Found user in SwiftData: \(user.fullName)")
                         
                         // Initialize sync manager
                         initializeSyncManager()
@@ -279,7 +261,6 @@ class DataController: ObservableObject {
             }
             
             // Even without a user object, maintain authentication
-            print("DataController: Maintaining authenticated state from UserDefaults flag")
             return
         }
         
@@ -288,12 +269,10 @@ class DataController: ObservableObject {
         if let userId = keychainManager.retrieveUserId(),
            let _ = keychainManager.retrieveToken() {
             
-            print("DataController: Found token in keychain for user ID: \(userId)")
             
             // Validate token expiration
             if let expiration = keychainManager.retrieveTokenExpiration(),
                expiration > Date() {
-                print("DataController: Token is valid until \(expiration)")
                 
                 // Set the authentication flag in UserDefaults to maintain state across app restarts
                 UserDefaults.standard.set(true, forKey: "is_authenticated")
@@ -317,10 +296,8 @@ class DataController: ObservableObject {
                             // Only set isAuthenticated if user has completed onboarding
                             if user.hasCompletedAppOnboarding {
                                 self.isAuthenticated = true
-                                print("checkExistingAuth: User found with completed onboarding")
                             } else {
                                 self.isAuthenticated = false
-                                print("checkExistingAuth: User found but onboarding not completed")
                             }
                             
                             if let companyId = user.companyId {
@@ -331,7 +308,6 @@ class DataController: ObservableObject {
                                 if isConnected {
                                     Task {
                                         do {
-                                            print("Fetching company details on authentication for ID: \(companyId)")
                                             let companyDTO = try await apiService.fetchCompany(id: companyId)
                                             
                                             // Check if company already exists in database
@@ -357,16 +333,13 @@ class DataController: ObservableObject {
                                                 existingCompany.closeHour = companyDTO.closeHour
                                                 existingCompany.lastSyncedAt = Date()
                                                 
-                                                print("Updated existing company on auth: \(existingCompany.name)")
                                             } else {
                                                 // Create new company
                                                 let newCompany = companyDTO.toModel()
                                                 context.insert(newCompany)
-                                                print("Created new company on auth: \(newCompany.name)")
                                             }
                                             
                                             try context.save()
-                                            print("Successfully saved company to database")
                                         } catch {
                                             print("Error fetching/saving company on auth: \(error)")
                                         }
@@ -386,10 +359,8 @@ class DataController: ObservableObject {
                         let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
                         if onboardingCompleted {
                             self.isAuthenticated = true
-                            print("Offline mode: Onboarding completed, allowing access")
                         } else {
                             self.isAuthenticated = false
-                            print("Offline mode: Onboarding not completed, need internet to complete")
                         }
                         
                         // Create a placeholder user
@@ -407,11 +378,9 @@ class DataController: ObservableObject {
                     clearAuthentication()
                 }
             } else {
-                print("DataController: Token has expired")
                 clearAuthentication()
             }
         } else {
-            print("DataController: No token found in keychain")
             clearAuthentication()
         }
     }
@@ -419,8 +388,6 @@ class DataController: ObservableObject {
     @discardableResult
     @MainActor
     func login(username: String, password: String) async -> Bool {
-        print("=== DataController.login START ===")
-        print("Attempting login for username: \(username)")
         
         do {
             // Sign in with the auth manager
@@ -430,7 +397,6 @@ class DataController: ObservableObject {
             keychainManager.storeUsername(username)
             keychainManager.storePassword(password)
             
-            print("Login successful, token obtained")
             
             if let userId = authManager.getUserId() {
                 // Set the authentication flags immediately
@@ -439,7 +405,6 @@ class DataController: ObservableObject {
                 UserDefaults.standard.set(userId, forKey: "user_id")
                 UserDefaults.standard.set(userId, forKey: "currentUserId")
                 
-                print("Stored authentication flags and user ID in UserDefaults")
                 
                 // Fetch user data
                 try await fetchUserFromAPI(userId: userId)
@@ -447,27 +412,24 @@ class DataController: ObservableObject {
                 // Check if user has completed onboarding from server data
                 if let user = currentUser {
                     UserDefaults.standard.set(user.hasCompletedAppOnboarding, forKey: "onboarding_completed")
-                    print("User onboarding status from server: \(user.hasCompletedAppOnboarding)")
-                    print("Current isAuthenticated value: \(isAuthenticated)")
                     
                     // Log what will happen next
                     if !user.hasCompletedAppOnboarding {
-                        print("=== ONBOARDING NEEDED ===")
-                        print("User has NOT completed app onboarding")
-                        print("LoginView should show onboarding overlay")
+                        print("🟡 User needs to complete onboarding")
                     } else {
-                        print("User has completed onboarding, proceeding to main app")
+                        print("🟢 User has completed onboarding")
+                    }
+                    
+                    // Trigger background sync to fetch projects and team members
+                    Task {
+                        await self.syncManager?.triggerBackgroundSync()
                     }
                 }
                 
-                print("=== DataController.login END ===")
-                print("Login was successful, returning true")
-                print("isAuthenticated is set to: \(isAuthenticated)")
                 // Return true because login succeeded, even if onboarding is needed
                 // LoginView will check onboarding status separately
                 return true
             } else {
-                print("No user ID received from authentication response")
                 return false
             }
         } catch {
@@ -482,7 +444,6 @@ class DataController: ObservableObject {
         guard let idToken = googleUser.idToken?.tokenString,
               let email = googleUser.profile?.email,
               let name = googleUser.profile?.name else {
-            print("Missing required Google user data")
             return false
         }
         
@@ -499,33 +460,87 @@ class DataController: ObservableObject {
             let userDTO = loginResult.user
             let companyDTO = loginResult.company
             
+            print("🔵 Google Login - Processing user data")
+            print("   User ID: \(userDTO.id)")
+            print("   Company from login response: \(companyDTO?.id ?? "none")")
+            print("   User's company ID: \(userDTO.company ?? "none")")
+            print("   User type: \(userDTO.userType ?? "none")")
+            
+            // Immediately set user type if available
+            if let userTypeString = userDTO.userType {
+                print("🔵 Setting user type from Google login: \(userTypeString)")
+                // Map Bubble's user type strings to our UserType enum
+                if userTypeString.lowercased() == "company" {
+                    UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+                } else if userTypeString.lowercased() == "employee" {
+                    UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
+                }
+                // Also store the raw value as a backup
+                UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+            }
+            
             // Set authentication flags
             UserDefaults.standard.set(true, forKey: "is_authenticated")
-            UserDefaults.standard.set(true, forKey: "onboarding_completed")
+            // Don't automatically set onboarding_completed for Google login
+            // We need to check if they have a company first
             UserDefaults.standard.set(userDTO.id, forKey: "user_id")
             UserDefaults.standard.set(userDTO.id, forKey: "currentUserId")
             
-            print("Google login successful, received user and company data")
             
             // Fetch and create/update user using existing method
             try await fetchUserFromAPI(userId: userDTO.id)
             
             // If company data was returned, save it in the local database
             if let companyDTO = companyDTO {
-                print("Saving company data from Google login response")
-                
+                print("🟢 Google Login - Company data received in login response")
+                print("   Company ID: \(companyDTO.id)")
+                print("   Company Name: \(companyDTO.companyName ?? "unknown")")
                 // We already fetched company data in fetchUserFromAPI, so we don't need to save it again
                 // The fetchCompanyData method was already called and handled the company save
-                print("Company data already saved during user fetch process")
+            } else {
+                print("🟡 Google Login - No company data in login response")
             }
             
-            return isAuthenticated
+            // Now check if user has completed onboarding based on their data
+            if let user = currentUser {
+                let hasCompany = !(user.companyId ?? "").isEmpty
+                let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
+                
+                print("🔵 Google Login - Onboarding check:")
+                print("   Has company: \(hasCompany)")
+                print("   Has completed app onboarding: \(hasCompletedAppOnboarding)")
+                
+                // Set onboarding completed only if they have both
+                let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding
+                UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
+                
+                // Only set isAuthenticated if they've completed onboarding
+                // Otherwise, return true to indicate login succeeded but don't set isAuthenticated
+                if !needsOnboarding {
+                    self.isAuthenticated = true
+                    
+                    // Trigger background sync to fetch projects and team members
+                    Task {
+                        await self.syncManager?.triggerBackgroundSync()
+                    }
+                } else {
+                    // Even if onboarding is needed, we should still sync company data
+                    // This ensures team members and projects are available
+                    Task {
+                        await self.syncManager?.triggerBackgroundSync()
+                    }
+                }
+                
+                // Return true to indicate login was successful (even if onboarding is needed)
+                return true
+            }
+            
+            return false
         } catch let error as AuthError {
             print("Google login auth error: \(error.localizedDescription)")
             
             // If it's invalid credentials, it means no account exists
             if case .invalidCredentials = error {
-                print("No account found for Google user")
             }
             return false
         } catch {
@@ -545,9 +560,7 @@ class DataController: ObservableObject {
         let descriptor = FetchDescriptor<User>(predicate: #Predicate<User> { $0.id == userId })
         let existingUsers = try context.fetch(descriptor)
         
-        print("Fetching user data for ID: \(userId) from API")
         let userDTO = try await apiService.fetchUser(id: userId)
-        print("Successfully fetched user data from API")
         
         var user: User
         
@@ -555,7 +568,6 @@ class DataController: ObservableObject {
         do {
             if let existingUser = existingUsers.first {
                 // Update existing user instead of creating a new one
-                print("Found existing user with ID \(userId) - updating instead of creating new")
                 user = existingUser
                 
                 // Store existing projects to preserve relationships
@@ -590,12 +602,13 @@ class DataController: ObservableObject {
                 // Handle company ID and fetch company details
                 if let companyId = userDTO.company, !companyId.isEmpty {
                     user.companyId = companyId
+                    print("🔵 User has company ID: \(companyId), fetching company details...")
                     
                     // Fetch and store company details
                     Task {
                         do {
-                            print("Fetching company details for ID: \(companyId)")
                             let companyDTO = try await apiService.fetchCompany(id: companyId)
+                            print("🟢 Successfully fetched company: \(companyDTO.companyName ?? "unknown")")
                             
                             // Check if company already exists in database
                             let companyDescriptor = FetchDescriptor<Company>(
@@ -620,20 +633,19 @@ class DataController: ObservableObject {
                                 existingCompany.closeHour = companyDTO.closeHour
                                 existingCompany.lastSyncedAt = Date()
                                 
-                                print("Updated existing company: \(existingCompany.name)")
                             } else {
                                 // Create new company
                                 let newCompany = companyDTO.toModel()
                                 context.insert(newCompany)
-                                print("Created new company: \(newCompany.name)")
                             }
                             
                             try context.save()
-                            print("Successfully saved company to database")
                         } catch {
-                            print("Error fetching/saving company: \(error)")
+                            print("🔴 Error fetching/saving company: \(error)")
                         }
                     }
+                } else {
+                    print("🟡 User has no company ID in their profile")
                 }
                 
                 // Handle user type
@@ -664,17 +676,14 @@ class DataController: ObservableObject {
                 
                 // Don't overwrite existing project relationships
                 if existingProjects.isEmpty && !user.assignedProjects.isEmpty {
-                    print("Preserving \(user.assignedProjects.count) existing project relationships")
                 }
             } else {
                 // Create new user
-                print("Creating new user with ID \(userId)")
                 user = userDTO.toModel()
                 context.insert(user)
             }
             
             try context.save()
-            print("Successfully saved user to database")
         } catch {
             print("Error saving user: \(error.localizedDescription)")
             throw error
@@ -683,22 +692,31 @@ class DataController: ObservableObject {
         // Update app state with the current user
         self.currentUser = user
         
+        // Store user type in UserDefaults for onboarding flow
+        if let userTypeString = userDTO.userType {
+            print("🔵 Setting user type from API: \(userTypeString)")
+            // Map Bubble's user type strings to our UserType enum
+            if userTypeString.lowercased() == "company" {
+                UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+            } else if userTypeString.lowercased() == "employee" {
+                UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
+            }
+            // Also store the raw value as a backup
+            UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+        }
+        
         // Only set isAuthenticated if user has completed onboarding
         // This ensures LoginView can show onboarding overlay if needed
         if user.hasCompletedAppOnboarding {
             self.isAuthenticated = true
-            print("User has completed app onboarding, setting isAuthenticated = true")
         } else {
             self.isAuthenticated = false
-            print("User has NOT completed app onboarding, keeping isAuthenticated = false to show onboarding")
         }
         
         // Save important IDs to UserDefaults
         if let companyId = user.companyId {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
-            print("Saved company ID to UserDefaults: \(companyId)")
         } else {
-            print("Warning: User has no company ID")
         }
         
         // Set authentication flag for consistency with onboarding flow
@@ -712,15 +730,12 @@ class DataController: ObservableObject {
         // Fetch company data if needed
         if isConnected, let companyId = user.companyId {
             do {
-                print("Fetching company data for ID: \(companyId)")
                 try await fetchCompanyData(companyId: companyId)
-                print("Successfully fetched company data")
             } catch {
                 print("Non-critical error fetching company data: \(error.localizedDescription)")
                 // Continue even if company data fetch fails - don't block authentication
             }
         } else if !isConnected {
-            print("Skipping company data fetch - offline mode")
         }
     }
     
@@ -743,12 +758,10 @@ class DataController: ObservableObject {
                 
                 // Delete the user records
                 for user in users {
-                    print("DataController: Deleting user record for \(user.fullName)")
                     context.delete(user)
                 }
                 
                 try context.save()
-                print("DataController: Successfully cleaned up user database")
             } catch {
                 print("DataController: Error cleaning up user database: \(error.localizedDescription)")
             }
@@ -760,7 +773,6 @@ class DataController: ObservableObject {
     }
     
     private func clearAuthentication() {
-        print("DataController: Clearing authentication state")
         isAuthenticated = false
         currentUser = nil
         
@@ -799,14 +811,12 @@ class DataController: ObservableObject {
         UserDefaults.standard.synchronize()
         
         // Log the cleanup
-        print("DataController: Authentication, PIN, and all user data cleared")
     }
     
     /// Removes sample/test projects from the database
     @MainActor
     func removeSampleProjects() async {
         guard let context = modelContext else {
-            print("Cannot remove sample projects: ModelContext is nil")
             return
         }
         
@@ -831,19 +841,15 @@ class DataController: ObservableObject {
             }
             
             if sampleProjects.isEmpty {
-                print("No sample projects found to remove")
                 return
             }
             
-            print("Found \(sampleProjects.count) sample projects to remove:")
             for project in sampleProjects {
-                print("  - Removing: \(project.title)")
                 context.delete(project)
             }
             
             // Save the changes
             try context.save()
-            print("Successfully removed \(sampleProjects.count) sample projects")
             
         } catch {
             print("Error removing sample projects: \(error.localizedDescription)")
@@ -854,7 +860,6 @@ class DataController: ObservableObject {
     @MainActor
     func cleanupDuplicateUsers() async {
         guard let context = modelContext else { 
-            print("Cannot clean up duplicates: ModelContext is nil")
             return 
         }
         
@@ -876,11 +881,9 @@ class DataController: ObservableObject {
             // Find duplicate users
             let duplicateIDs = usersByID.filter { $0.value.count > 1 }.keys
             if duplicateIDs.isEmpty {
-                print("No duplicate users found")
                 return
             }
             
-            print("Found \(duplicateIDs.count) user IDs with duplicates. Cleaning up...")
             
             // For each set of duplicates, intelligently merge and clean up
             for id in duplicateIDs {
@@ -896,7 +899,6 @@ class DataController: ObservableObject {
                 }
                 
                 let userToKeep = sortedDuplicates[0]
-                print("Keeping most recent user \(userToKeep.fullName) (\(userToKeep.id)) and merging/removing \(duplicates.count - 1) duplicates")
                 
                 // Collect any projects from duplicates to ensure we don't lose relationships
                 var allProjects = Set<Project>(userToKeep.assignedProjects)
@@ -932,7 +934,6 @@ class DataController: ObservableObject {
             // Save all changes in a single transaction
             do {
                 try context.save()
-                print("Cleanup complete - removed duplicate users and preserved relationships")
             } catch {
                 print("Error saving after cleanup: \(error.localizedDescription)")
                 // We should consider a way to recover from this error in a production app
@@ -1011,7 +1012,7 @@ class DataController: ObservableObject {
         // Handle contact information
         company.phone = dto.phone
         company.email = dto.officeEmail
-        company.website = nil // Not in DTO yet
+        company.website = dto.website
         
         // Handle logo
         if let logoImage = dto.logo, let logoUrl = logoImage.url {
@@ -1030,7 +1031,6 @@ class DataController: ObservableObject {
             if adminIds.contains(currentUser.id) {
                 // Update current user's role to admin
                 currentUser.role = .admin
-                print("Updated user role to Admin based on company admin list")
             }
         }
         
@@ -1040,8 +1040,10 @@ class DataController: ObservableObject {
             company.setAdminIds(adminIds)
         }
         
-        // Handle industry, company size, age if needed for display
-        // These are currently not displayed but could be added
+        // Handle company details
+        company.setIndustries(dto.industry ?? [])
+        company.companySize = dto.companySize
+        company.companyAge = dto.companyAge
         
         company.lastSyncedAt = Date()
         company.needsSync = false
@@ -1058,8 +1060,6 @@ class DataController: ObservableObject {
             return
         }
         
-        print("DataController: Synchronizing team members for project \(project.id) - \(project.title)")
-        print("DataController: Project has \(teamMemberIds.count) team member IDs and \(project.teamMembers.count) team member objects")
         
         // Create a set of existing member IDs for quick lookup
         let existingMemberIds = Set(project.teamMembers.map { $0.id })
@@ -1068,11 +1068,9 @@ class DataController: ObservableObject {
         let missingMemberIds = teamMemberIds.filter { !existingMemberIds.contains($0) }
         
         if missingMemberIds.isEmpty {
-            print("DataController: All team members are already linked to the project")
             return
         }
         
-        print("DataController: Found \(missingMemberIds.count) team member IDs that need linking")
         
         // For each missing ID, find or create the User
         for memberId in missingMemberIds {
@@ -1084,7 +1082,6 @@ class DataController: ObservableObject {
                 
                 if let existingUser = existingUsers.first {
                     // User exists - link to project
-                    print("DataController: Linking existing user \(existingUser.fullName) to project")
                     
                     // Add to project's team members if not already there
                     if !project.teamMembers.contains(where: { $0.id == existingUser.id }) {
@@ -1097,7 +1094,6 @@ class DataController: ObservableObject {
                     }
                 } else if isConnected {
                     // User doesn't exist locally but we're online - fetch from API
-                    print("DataController: Fetching user \(memberId) from API")
                     do {
                         let userDTO = try await apiService.fetchUser(id: memberId)
                         
@@ -1110,7 +1106,6 @@ class DataController: ObservableObject {
                         
                         // Insert into database
                         context.insert(newUser)
-                        print("DataController: Created and linked new user \(newUser.fullName) from API")
                     } catch {
                         print("DataController: Failed to fetch user \(memberId) from API: \(error.localizedDescription)")
                         
@@ -1129,11 +1124,9 @@ class DataController: ObservableObject {
                         
                         // Insert into database
                         context.insert(placeholderUser)
-                        print("DataController: Created placeholder user for ID \(memberId)")
                     }
                 } else {
                     // Offline and user doesn't exist - create placeholder
-                    print("DataController: Creating offline placeholder for user \(memberId)")
                     
                     // Create placeholder user until we can fetch real data when online
                     let placeholderUser = User(
@@ -1150,7 +1143,6 @@ class DataController: ObservableObject {
                     
                     // Insert into database
                     context.insert(placeholderUser)
-                    print("DataController: Created offline placeholder for ID \(memberId)")
                 }
             } catch {
                 print("DataController: Error syncing team member \(memberId): \(error.localizedDescription)")
@@ -1160,8 +1152,6 @@ class DataController: ObservableObject {
         // Save changes
         do {
             try context.save()
-            print("DataController: Successfully saved team member relationships")
-            print("DataController: Project now has \(project.teamMembers.count) team member objects")
         } catch {
             print("DataController: Error saving team member relationships: \(error.localizedDescription)")
         }
@@ -1183,20 +1173,17 @@ class DataController: ObservableObject {
                             currentUser?.companyId ??
                             UserDefaults.standard.string(forKey: "currentUserCompanyId")
             
-            print("DEBUG: Filtering projects for company ID: \(companyId ?? "Unknown")")
             
             // Get all projects
             let descriptor = FetchDescriptor<Project>(sortBy: [SortDescriptor(\.startDate)])
             let allProjects = try modelContext.fetch(descriptor)
             
-            print("DEBUG: Found \(allProjects.count) total projects in database")
             
             // First filter by company - this is most important
             var filteredProjects = allProjects.filter { project in
                 return project.companyId == companyId
             }
             
-            print("DEBUG: \(filteredProjects.count) projects match company ID")
             
             // Then filter by date if needed
             if let date = date {
@@ -1206,7 +1193,6 @@ class DataController: ObservableObject {
                     }
                     return Calendar.current.isDate(projectDate, inSameDayAs: date)
                 }
-                print("DEBUG: \(filteredProjects.count) projects match date filter")
             }
             
             // Finally filter by user assignment if needed
@@ -1216,12 +1202,8 @@ class DataController: ObservableObject {
                     // Check both relationship and ID string for belt-and-suspenders reliability
                     return project.teamMembers.contains(where: { $0.id == user.id }) || project.getTeamMemberIds().contains(user.id)
                 }
-                print("DEBUG: Filtering projects for USER ID: \(user.id) (Role: \(user.role.rawValue))")
-                print("DEBUG: \(filteredProjects.count) projects match userID filter")
             } else if let user = user {
-                print("DEBUG: User \(user.id) has role \(user.role.rawValue) - showing all company projects")
             } else {
-                print("DEBUG: No user specified - showing all company projects")
             }
             
             return filteredProjects
@@ -1430,16 +1412,9 @@ class DataController: ObservableObject {
                          userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
         
-        print("Forcing refresh of company data for ID: \(id)")
         
         // Fetch fresh data from API
         let companyDTO = try await apiService.fetchCompany(id: id)
-        print("Successfully fetched company data from API")
-        print("Company DTO data:")
-        print("  - Name: \(companyDTO.companyName ?? "nil")")
-        print("  - Phone: \(companyDTO.phone ?? "nil")")
-        print("  - Email: \(companyDTO.officeEmail ?? "nil")")
-        print("  - Address: \(companyDTO.location?.formattedAddress ?? "nil")")
         
         // Check if we already have this company locally
         let descriptor = FetchDescriptor<Company>(
@@ -1449,18 +1424,15 @@ class DataController: ObservableObject {
         
         if let existingCompany = companies.first {
             // Update existing company
-            print("Updating existing company: \(existingCompany.name)")
             updateCompany(existingCompany, from: companyDTO)
         } else {
             // Create new company
-            print("Creating new company from API data")
             let newCompany = companyDTO.toModel()
             context.insert(newCompany)
         }
         
         // Save changes
         try context.save()
-        print("Company data saved to database")
     }
     
     func appDidBecomeActive() {
@@ -1699,7 +1671,6 @@ class DataController: ObservableObject {
         do {
             // Call the API to delete the user account
             let response = try await apiService.deleteUser(id: userId)
-            print("DataController: User account deleted successfully. Deleted ID: \(response.deleted)")
             
             // If successful, clean up local data and log out
             logout()

@@ -21,7 +21,7 @@ struct TeamInvitesView: View {
             // Navigation header with step indicator
             HStack {
                 Button(action: {
-                    onboardingViewModel.previousStep()
+                    onboardingViewModel.moveToPreviousStep()
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
@@ -183,7 +183,7 @@ struct TeamInvitesView: View {
                 }
                 
                 Button(action: {
-                    onboardingViewModel.nextStep()
+                    onboardingViewModel.moveToNextStep()
                 }) {
                     Text("Skip for now")
                         .font(OPSStyle.Typography.body)
@@ -247,7 +247,7 @@ struct TeamInvitesView: View {
     
     private func sendInvitations() {
         guard hasValidEmails else {
-            onboardingViewModel.nextStep()
+            onboardingViewModel.moveToNextStep()
             return
         }
         
@@ -257,7 +257,7 @@ struct TeamInvitesView: View {
         }
         
         guard !validEmails.isEmpty else {
-            onboardingViewModel.nextStep()
+            onboardingViewModel.moveToNextStep()
             return
         }
         
@@ -270,13 +270,13 @@ struct TeamInvitesView: View {
                 try await onboardingViewModel.sendTeamInvitations()
                 await MainActor.run {
                     isLoading = false
-                    onboardingViewModel.nextStep()
+                    onboardingViewModel.moveToNextStep()
                 }
             } catch {
                 await MainActor.run {
                     isLoading = false
                     // Handle error - could show alert or continue anyway
-                    onboardingViewModel.nextStep()
+                    onboardingViewModel.moveToNextStep()
                 }
             }
         }

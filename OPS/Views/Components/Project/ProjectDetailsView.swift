@@ -36,26 +36,15 @@ struct ProjectDetailsView: View {
         self._originalNoteText = State(initialValue: notes)
         
         // Debug output to help troubleshoot issues
-        print("ProjectDetailsView: Initialized with project ID: \(project.id), title: \(project.title)")
         
         // New debug output for navigation
-        print("ProjectDetailsView: This instance is being initialized. Will display through NavigationLink.")
         
         // Debug project team member information
-        print("PROJECT DEBUG INFO:")
-        print("- Project ID: \(project.id)")
-        print("- Project Title: \(project.title)")
-        print("- Team Member IDs String: \"\(project.teamMemberIdsString)\"")
-        print("- Team Member IDs Array: \(project.getTeamMemberIds())")
-        print("- Team Members Relationship Count: \(project.teamMembers.count)")
         
         if !project.teamMembers.isEmpty {
-            print("- Team Members in relationship:")
             for (index, member) in project.teamMembers.enumerated() {
-                print("  \(index+1). \(member.id) - \(member.firstName) \(member.lastName) (\(member.role.rawValue))")
             }
         } else {
-            print("- No team members in relationship array")
         }
         
         // Convert project to JSON for complete debugging
@@ -77,7 +66,6 @@ struct ProjectDetailsView: View {
             
             let jsonData = try JSONSerialization.data(withJSONObject: projectDict, options: .prettyPrinted)
             if let jsonString = String(data: jsonData, encoding: .utf8) {
-                print("- Project JSON:\n\(jsonString)")
             }
         } catch {
             print("Error converting project to JSON: \(error.localizedDescription)")
@@ -208,7 +196,6 @@ struct ProjectDetailsView: View {
             Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
         }
         .onAppear {
-            print("ProjectDetailsView: View appeared")
             DispatchQueue.main.async {
                 // Make sure appState has our current project set as active
                 if let appState = dataController.appState, appState.activeProject == nil {
@@ -708,11 +695,9 @@ struct ProjectDetailsView: View {
     private func saveNotes() {
         // Use the SyncManager to handle both local saving and API synchronization
         if let syncManager = dataController.syncManager {
-            print("💾 Saving project notes with SyncManager...")
             let success = syncManager.updateProjectNotes(projectId: project.id, notes: noteText)
             
             if success {
-                print("✅ Project notes saved and queued for sync")
                 showSaveNotification()
             } else {
                 print("⚠️ Failed to save project notes using SyncManager, trying fallback")
@@ -724,7 +709,6 @@ struct ProjectDetailsView: View {
                 if let modelContext = dataController.modelContext {
                     do {
                         try modelContext.save()
-                        print("✅ Notes saved locally via fallback method")
                         showSaveNotification()
                     } catch {
                         print("❌ Error saving notes locally: \(error.localizedDescription)")
@@ -732,7 +716,6 @@ struct ProjectDetailsView: View {
                 }
             }
         } else {
-            print("⚠️ SyncManager not available, using direct API call")
             // Fallback if SyncManager is not available
             project.notes = noteText
             project.needsSync = true
@@ -740,14 +723,12 @@ struct ProjectDetailsView: View {
             if let modelContext = dataController.modelContext {
                 do {
                     try modelContext.save()
-                    print("✅ Notes saved locally")
                     showSaveNotification()
                     
                     // Also post notes to API if we're online
                     if dataController.isConnected {
                         Task {
                             do {
-                                print("🔄 Syncing notes directly to API...")
                                 // Call the API endpoint to update notes
                                 try await dataController.apiService.updateProjectNotes(
                                     id: project.id,
@@ -761,14 +742,12 @@ struct ProjectDetailsView: View {
                                     try? modelContext.save()
                                 }
                                 
-                                print("✅ Successfully synced project notes to API")
                             } catch {
                                 print("❌ Error syncing project notes to API: \(error.localizedDescription)")
                                 // Leave needsSync = true so it will be tried again later
                             }
                         }
                     } else {
-                        print("📵 Device offline - notes will sync when connection is restored")
                     }
                 } catch {
                     print("❌ Error saving notes locally: \(error.localizedDescription)")
@@ -812,7 +791,6 @@ struct ProjectDetailsView: View {
         processingImages = true
         
         // Debug log
-        print("Starting to process \(selectedImages.count) images")
         
         Task {
             do {
@@ -824,7 +802,6 @@ struct ProjectDetailsView: View {
                     if !urls.isEmpty {
                         // ImageSyncManager already added the images to the project
                         // We just need to clear the UI state
-                        print("✅ ImageSyncManager successfully processed \(urls.count) images")
                         
                         await MainActor.run {
                             // Clear selected images and hide loading
@@ -832,7 +809,6 @@ struct ProjectDetailsView: View {
                             processingImages = false
                         }
                     } else {
-                        print("⚠️ No valid image URLs were returned from ImageSyncManager")
                         await MainActor.run {
                             processingImages = false
                             showingNetworkError = true
@@ -841,12 +817,10 @@ struct ProjectDetailsView: View {
                     }
                 } else {
                     // Fallback to direct processing if ImageSyncManager is not available
-                    print("⚠️ ImageSyncManager not available, using direct processing")
                     
                     // Process each image
                     for (index, image) in selectedImages.enumerated() {
                         // Debug log
-                        print("Processing image \(index + 1) of \(selectedImages.count)")
                         
                         // Compress image
                         guard let imageData = image.jpegData(compressionQuality: 0.7) else {
@@ -864,7 +838,6 @@ struct ProjectDetailsView: View {
                         // Store the image in file system
                         let success = ImageFileManager.shared.saveImage(data: imageData, localID: localURL)
                         if success {
-                            print("ProjectDetailsView: Stored image data for: \(localURL)")
                             
                             // Add to project's images
                             var currentImages = project.getProjectImages()
@@ -1108,7 +1081,6 @@ struct ZoomablePhotoView: View {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = cachedImage
-                print("ZoomablePhotoView: Using cached image from memory")
             }
             return
         }
@@ -1118,7 +1090,6 @@ struct ZoomablePhotoView: View {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = loadedImage
-                print("ZoomablePhotoView: Successfully loaded image from file system")
                 
                 // Cache in memory for faster access next time
                 ImageCache.shared.set(loadedImage, forKey: url)
@@ -1138,7 +1109,6 @@ struct ZoomablePhotoView: View {
                 DispatchQueue.main.async {
                     self.isLoading = false
                     self.image = loadedImage
-                    print("ZoomablePhotoView: Loaded image from UserDefaults and migrated to file system")
                     
                     // Cache in memory
                     ImageCache.shared.set(loadedImage, forKey: url)
@@ -1157,12 +1127,10 @@ struct ZoomablePhotoView: View {
         
         // If not found locally, try to load from network
         guard let imageURL = URL(string: normalizedURL) else {
-            print("ZoomablePhotoView: Invalid URL: \(normalizedURL)")
             isLoading = false
             return
         }
         
-        print("ZoomablePhotoView: Loading remote image: \(imageURL)")
         
         URLSession.shared.dataTask(with: imageURL) { data, response, error in
             DispatchQueue.main.async {
@@ -1181,7 +1149,6 @@ struct ZoomablePhotoView: View {
                 
                 if let data = data, let loadedImage = UIImage(data: data) {
                     self.image = loadedImage
-                    print("ZoomablePhotoView: Successfully loaded remote image")
                     
                     // Cache the remote image in file system
                     _ = ImageFileManager.shared.saveImage(data: data, localID: normalizedURL)

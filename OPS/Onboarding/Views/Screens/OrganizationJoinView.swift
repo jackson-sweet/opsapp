@@ -9,7 +9,6 @@ import SwiftUI
 
 struct OrganizationJoinView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    @State private var isInConsolidatedFlow: Bool
     
     // Animation states
     @State private var iconScale: CGFloat = 0
@@ -26,9 +25,8 @@ struct OrganizationJoinView: View {
         return OnboardingStep.totalSteps(for: userType)
     }
     
-    init(viewModel: OnboardingViewModel, isInConsolidatedFlow: Bool = false) {
+    init(viewModel: OnboardingViewModel) {
         self.viewModel = viewModel
-        self._isInConsolidatedFlow = State(initialValue: isInConsolidatedFlow)
     }
     
     var body: some View {
@@ -36,7 +34,7 @@ struct OrganizationJoinView: View {
             ZStack {
                 // Background - conditional theming
                 (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
-                    .edgesIgnoringSafeArea(.all)
+                    .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
                     // Navigation header with step indicator
@@ -87,12 +85,7 @@ struct OrganizationJoinView: View {
                     // Continue button
                     StandardContinueButton(
                         onTap: {
-                            print("OrganizationJoinView: Continue button tapped")
-                            if isInConsolidatedFlow {
-                                viewModel.moveToNextStep()
-                            } else {
-                                viewModel.moveToNextStep()
-                            }
+                            viewModel.moveToNextStep()
                         }
                     )
                     .padding(.bottom, 30)
@@ -179,7 +172,7 @@ struct OnboardingStepIndicator: View {
     let dataController = OnboardingPreviewHelpers.createPreviewDataController()
     viewModel.email = "user@example.com"
     
-    return OrganizationJoinView(viewModel: viewModel, isInConsolidatedFlow: true)
+    return OrganizationJoinView(viewModel: viewModel)
         .environmentObject(OnboardingPreviewHelpers.PreviewStyles())
         .environmentObject(dataController)
         .environment(\.colorScheme, .dark)

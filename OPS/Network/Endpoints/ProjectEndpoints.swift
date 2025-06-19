@@ -79,7 +79,6 @@ extension APIService {
         let bodyData = try JSONSerialization.data(withJSONObject: requestData)
         
         // Log the request
-        print("🔷 Sending update_job_status request for project: \(projectId) with status: \(status)")
         
         // Execute the request
         let response: CompleteProjectResponse = try await executeRequest(
@@ -90,15 +89,11 @@ extension APIService {
         )
         
         // Log detailed response for debugging
-        print("✅ Project status update response received:")
         if let result = response.response.result {
-            print("  - result: \(result)")
         }
         if let message = response.response.message {
-            print("  - message: \(message)")
         }
         if let responseStatus = response.response.status {
-            print("  - status: \(responseStatus)")
         }
         
         // Return the status or fallback to the requested status if not available

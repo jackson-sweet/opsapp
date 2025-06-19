@@ -29,13 +29,13 @@ struct FieldSetupView: View {
         ZStack {
             // Background color - conditional theming
             (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
-                .edgesIgnoringSafeArea(.all)
+                .ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        viewModel.previousStep()
+                        viewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")

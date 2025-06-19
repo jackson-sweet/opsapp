@@ -46,15 +46,12 @@ struct ProjectMapView: View {
         
         if isRouting {
             // ROUTING MODE: Center on user location when navigating
-            print("🗺️ idealMapRegion: ROUTING MODE - centering on user location")
             return userLocationRegion()
         } else if isInProjectMode {
             // PROJECT MODE: Center on active project
-            print("🗺️ idealMapRegion: PROJECT MODE - centering on active project")
             return activeProjectRegion()
         } else {
             // DEFAULT MODE: Show all projects + user location
-            print("🗺️ idealMapRegion: DEFAULT MODE - showing all projects + user location")
             return allProjectsRegion()
         }
     }
@@ -63,7 +60,6 @@ struct ProjectMapView: View {
     private var shouldAutoZoom: Bool {
         // Check if auto-center is disabled
         guard mapAutoCenter && mapAutoCenterTime != "off" else { 
-            print("🗺️ shouldAutoZoom: mapAutoCenter=\(mapAutoCenter), mapAutoCenterTime=\(mapAutoCenterTime) -> false")
             return false 
         }
         
@@ -73,7 +69,6 @@ struct ProjectMapView: View {
             let timeoutInterval: TimeInterval = 5.0 // Shorter timeout during navigation
             let timeSinceInteraction = Date().timeIntervalSince(lastUserInteraction)
             let result = timeSinceInteraction >= timeoutInterval
-            print("🗺️ shouldAutoZoom: Routing active, time since interaction=\(String(format: "%.1f", timeSinceInteraction))s -> \(result)")
             return result
         }
         
@@ -88,7 +83,6 @@ struct ProjectMapView: View {
         let timeSinceInteraction = Date().timeIntervalSince(lastUserInteraction)
         let result = timeSinceInteraction >= timeoutInterval
         
-        print("🗺️ shouldAutoZoom: time since interaction=\(String(format: "%.1f", timeSinceInteraction))s, timeout=\(timeoutInterval)s -> \(result)")
         return result
     }
     
@@ -157,27 +151,20 @@ struct ProjectMapView: View {
             
             // Check if we already have location data
             if let userLoc = locationManager.userLocation {
-                print("🗺️ onAppear: User location already available: (\(userLoc.latitude), \(userLoc.longitude))")
                 // Immediately set region if we have location
                 let newRegion = idealMapRegion
                 region = newRegion
-                print("🗺️ onAppear: Set initial region based on existing user location")
             } else {
-                print("🗺️ onAppear: No user location available yet, will wait for location update")
             }
             
             // Also schedule a delayed check in case location comes in slightly later
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                print("🗺️ App launch: Delayed initial zoom check...")
-                print("🗺️ App launch: User location available: \(locationManager.userLocation != nil)")
                 if let userLoc = locationManager.userLocation {
-                    print("🗺️ App launch: User location: (\(userLoc.latitude), \(userLoc.longitude))")
                 }
                 let newRegion = idealMapRegion
                 withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
                     region = newRegion
                 }
-                print("🗺️ App launch: Auto-zoom to ideal region completed")
             }
         }
         .onDisappear {
@@ -187,14 +174,12 @@ struct ProjectMapView: View {
         .onChange(of: InProgressManager.shared.isRouting) { _, isRouting in
             if isRouting {
                 // ROUTING STARTED: NO AUTO-ZOOM - let user position map as they prefer
-                print("🗺️ Routing started: No auto-zoom, user controls map positioning")
                 
                 // Cancel any existing timer during routing
                 autoZoomTimer?.invalidate()
                 autoZoomTimer = nil
             } else {
                 // When routing stops, update to appropriate view
-                print("🗺️ Routing stopped: Updating to appropriate view")
                 updateRegionIfNeeded()
             }
         }
@@ -205,7 +190,6 @@ struct ProjectMapView: View {
             updateRegionIfNeeded()
         }
         .onChange(of: projects.count) { _, newCount in
-            print("🗺️ Projects count changed to: \(newCount)")
             // When projects load for first time, immediately center (ignore timer for data loading)
             if newCount > 0 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -213,26 +197,21 @@ struct ProjectMapView: View {
                     withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
                         region = newRegion
                     }
-                    print("🗺️ Projects loaded: Auto-zoom to show projects")
                 }
             } else {
                 updateRegionIfNeeded()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .locationDidChange)) { _ in
-            print("🗺️ Location changed notification received")
             if let userLoc = locationManager.userLocation {
-                print("🗺️ New user location: (\(userLoc.latitude), \(userLoc.longitude))")
             }
             
             // During routing, NO auto-zoom on location changes - user controls map
             if InProgressManager.shared.isRouting {
-                print("🗺️ Location changed during routing: No auto-zoom, user controls map")
                 // Do nothing during routing - let user position map freely
             } else {
                 // If this is the first location update (no projects loaded yet), immediately center on user
                 if projects.isEmpty && locationManager.userLocation != nil {
-                    print("🗺️ First location update with no projects - centering on user location")
                     let newRegion = idealMapRegion
                     withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
                         region = newRegion
@@ -243,7 +222,6 @@ struct ProjectMapView: View {
             }
         }
         .onChange(of: mapAutoCenter) { _, newValue in
-            print("🗺️ Settings changed: mapAutoCenter = \(newValue)")
             if newValue {
                 // Auto-center was enabled, apply immediately (ignore timer since this is settings change)
                 // NEVER during routing - user has complete control
@@ -252,60 +230,47 @@ struct ProjectMapView: View {
                     withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
                         region = newRegion
                     }
-                    print("🗺️ Applied auto-center immediately after enabling")
                 } else {
-                    print("🗺️ Skipped auto-center during routing - user controls map")
                 }
             } else {
                 // Auto-center was disabled, cancel any pending timers
                 autoZoomTimer?.invalidate()
                 autoZoomTimer = nil
-                print("🗺️ Cancelled auto-zoom timers after disabling auto-center")
             }
         }
         .onChange(of: mapAutoCenterTime) { _, newValue in
-            print("🗺️ Settings changed: mapAutoCenterTime = \(newValue)")
             // NEVER restart timers during routing - user has complete control
             if !InProgressManager.shared.isRouting {
                 // Restart timer with new duration if there's one running
                 if autoZoomTimer != nil {
-                    print("🗺️ Restarting timer with new duration: \(newValue)")
                     startAutoZoomTimer()
                 }
             } else {
-                print("🗺️ Skipped timer restart during routing - user controls map")
             }
             
             // If auto-center time was set to "off", cancel any pending timers
             if newValue == "off" {
                 autoZoomTimer?.invalidate()
                 autoZoomTimer = nil
-                print("🗺️ Cancelled timer because auto-center time set to off")
             }
         }
         .onChange(of: mapZoomLevel) { _, newValue in
-            print("🗺️ Settings changed: mapZoomLevel = \(newValue)")
             // NEVER apply zoom changes during routing - user has complete control
             if !InProgressManager.shared.isRouting {
                 let newRegion = idealMapRegion
                 withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
                     region = newRegion
                 }
-                print("🗺️ Applied new zoom level immediately")
             } else {
-                print("🗺️ Skipped zoom level change during routing - user controls map")
             }
         }
         .onChange(of: map3DBuildings) { _, newValue in
-            print("🗺️ Settings changed: map3DBuildings = \(newValue)")
             // Map appearance will update automatically through MapViewRepresentable
         }
         .onChange(of: mapTrafficDisplay) { _, newValue in
-            print("🗺️ Settings changed: mapTrafficDisplay = \(newValue)")
             // Map appearance will update automatically through MapViewRepresentable
         }
         .onChange(of: mapDefaultType) { _, newValue in
-            print("🗺️ Settings changed: mapDefaultType = \(newValue)")
             // Map appearance will update automatically through MapViewRepresentable
         }
     }
@@ -319,7 +284,6 @@ struct ProjectMapView: View {
             withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
                 region = newRegion
             }
-            print("🗺️ Auto-zoomed to ideal region: \(getRegionDescription(newRegion))")
         } else if userHasMovedMap {
             // User has interacted, start timer for delayed auto-zoom
             startAutoZoomTimer()
@@ -337,13 +301,11 @@ struct ProjectMapView: View {
     private func userInteracted() {
         userHasMovedMap = true
         lastUserInteraction = Date()
-        print("🗺️ User interaction detected")
         
         // NEVER start timer during routing - user has complete control
         if !InProgressManager.shared.isRouting {
             startAutoZoomTimer()
         } else {
-            print("🗺️ Skipped timer start during routing - user controls map")
         }
     }
     
@@ -362,7 +324,6 @@ struct ProjectMapView: View {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
         
-        print("🗺️ Manual recenter to: \(getRegionDescription(idealMapRegion))")
     }
     
     private func startAutoZoomTimer() {
@@ -371,7 +332,6 @@ struct ProjectMapView: View {
         
         // NEVER start timer during routing - user has complete control
         if InProgressManager.shared.isRouting {
-            print("🗺️ Blocked timer start during routing - user controls map")
             return
         }
         
@@ -386,7 +346,6 @@ struct ProjectMapView: View {
         default: timeoutInterval = 10.0
         }
         
-        print("🗺️ Starting auto-zoom timer for \(timeoutInterval) seconds")
         
         autoZoomTimer = Timer.scheduledTimer(withTimeInterval: timeoutInterval, repeats: false) { _ in
             DispatchQueue.main.async {
@@ -398,7 +357,6 @@ struct ProjectMapView: View {
     private func performAutoZoom() {
         // NEVER auto-zoom during routing - user has complete control
         if InProgressManager.shared.isRouting {
-            print("🗺️ Blocked timer auto-zoom during routing - user controls map")
             return
         }
         
@@ -409,7 +367,6 @@ struct ProjectMapView: View {
         withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
             region = newRegion
         }
-        print("🗺️ Timer-triggered auto-zoom to: \(getRegionDescription(newRegion))")
         
         // Reset interaction tracking
         userHasMovedMap = false
@@ -424,7 +381,6 @@ struct ProjectMapView: View {
         }
         
         let span = getSpanForZoomLevel()
-        print("🗺️ userLocationRegion: Using zoom level '\(mapZoomLevel)' -> span: \(span.latitudeDelta)")
         return MKCoordinateRegion(center: userLocation, span: span)
     }
     
@@ -434,7 +390,6 @@ struct ProjectMapView: View {
         }
         
         let span = getSpanForZoomLevel()
-        print("🗺️ activeProjectRegion: Using zoom level '\(mapZoomLevel)' -> span: \(span.latitudeDelta)")
         return MKCoordinateRegion(center: projectCoordinate, span: span)
     }
     
@@ -444,10 +399,7 @@ struct ProjectMapView: View {
         // Add user location if available
         if let userLocation = locationManager.userLocation {
             coordinates.append(userLocation)
-            print("🗺️ allProjectsRegion: Added user location at (\(userLocation.latitude), \(userLocation.longitude))")
         } else {
-            print("🗺️ allProjectsRegion: No user location available - locationManager.userLocation is nil")
-            print("🗺️ allProjectsRegion: Authorization status: \(locationManager.authorizationStatus.rawValue)")
         }
         
         // Add project coordinates
@@ -456,10 +408,8 @@ struct ProjectMapView: View {
                 coordinates.append(coordinate)
             }
         }
-        print("🗺️ allProjectsRegion: Added \(projects.count) projects, total coordinates: \(coordinates.count)")
         
         guard !coordinates.isEmpty else {
-            print("🗺️ allProjectsRegion: No coordinates available, using fallback")
             return fallbackRegion()
         }
         
@@ -492,7 +442,6 @@ struct ProjectMapView: View {
         let latDelta = max(0.01, (maxLat - minLat) * paddingMultiplier)
         let lonDelta = max(0.01, (maxLon - minLon) * paddingMultiplier)
         
-        print("🗺️ allProjectsRegion: Base span: lat=\(String(format: "%.4f", latDelta)), lon=\(String(format: "%.4f", lonDelta))")
         
         let centerLat = (minLat + maxLat) / 2
         let centerLon = (minLon + maxLon) / 2
@@ -506,13 +455,11 @@ struct ProjectMapView: View {
         let expandedLatDelta = latDelta * 1.6 // Expand to account for UI blocking 70% of screen
         let expandedLonDelta = lonDelta * 1.6
         
-        print("🗺️ allProjectsRegion: Expanded span: lat=\(String(format: "%.4f", expandedLatDelta)), lon=\(String(format: "%.4f", expandedLonDelta))")
         
         // Move center up by 15% of the latitude span to better center in viewable area
         let centerAdjustment = expandedLatDelta * 0.15 // Move up 15%
         let adjustedCenterLat = centerLat + centerAdjustment
         
-        print("🗺️ allProjectsRegion: Moved center up 15%: \(String(format: "%.6f", centerAdjustment))")
         
         return MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: adjustedCenterLat, longitude: centerLon),
@@ -649,7 +596,6 @@ struct MapViewRepresentable: UIViewRepresentable {
         if latitudeChanged || longitudeChanged || spanChanged {
             mapView.setRegion(region, animated: true)
             let isRouting = InProgressManager.shared.isRouting
-            print("🗺️ Applied region update (routing: \(isRouting))")
         }
         
         applySettings(to: mapView)
@@ -841,7 +787,6 @@ struct MapViewRepresentable: UIViewRepresentable {
         
         func enableCompassRotation(_ mapView: MKMapView) {
             // NEVER auto-position during routing - user has complete control
-            print("🗺️ enableCompassRotation called - NO auto-positioning during routing")
             mapView.userTrackingMode = .none
             
             // Don't change camera position during routing - user controls map completely

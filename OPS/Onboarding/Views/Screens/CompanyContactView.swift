@@ -6,7 +6,6 @@ struct CompanyContactView: View {
     @State private var phoneNumber = ""
     @State private var emailError: String?
     @State private var phoneError: String?
-    var isInConsolidatedFlow: Bool = false
     
     // Calculate the current step number based on user type
     private var currentStepNumber: Int {
@@ -21,13 +20,13 @@ struct CompanyContactView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color.black.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        onboardingViewModel.previousStep()
+                        onboardingViewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -187,7 +186,7 @@ struct CompanyContactView: View {
                         if validateForm() {
                             onboardingViewModel.companyEmail = email
                             onboardingViewModel.companyPhone = phoneNumber
-                            onboardingViewModel.nextStep()
+                            onboardingViewModel.moveToNextStep()
                         }
                     }
                 )

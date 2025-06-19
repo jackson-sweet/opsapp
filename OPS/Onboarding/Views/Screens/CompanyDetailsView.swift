@@ -39,14 +39,14 @@ struct CompanyDetailsView: View {
         ZStack {
             // Background color - conditional theming
             (onboardingViewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
-                .edgesIgnoringSafeArea(.all)
+                .ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header
                 HStack {
                     Button(action: {
                         if currentPhase == .industry {
-                            onboardingViewModel.previousStep()
+                            onboardingViewModel.moveToPreviousStep()
                         } else {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 currentPhase = CompanyDetailsPhase(rawValue: currentPhase.rawValue - 1) ?? .industry
@@ -123,7 +123,7 @@ struct CompanyDetailsView: View {
                                         do {
                                             try await onboardingViewModel.createCompany()
                                             await MainActor.run {
-                                                onboardingViewModel.nextStep()
+                                                onboardingViewModel.moveToNextStep()
                                             }
                                         } catch {
                                             await MainActor.run {

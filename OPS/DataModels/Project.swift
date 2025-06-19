@@ -87,11 +87,8 @@ final class Project: Identifiable {
     // Accessor for project images
     func getProjectImages() -> [String] {
         let images = projectImagesString.isEmpty ? [] : projectImagesString.components(separatedBy: ",")
-        print("Project[\(id)] - getProjectImages() returning \(images.count) images")
         if images.count > 0 {
-            print("  Image URLs:")
             for (index, url) in images.enumerated() {
-                print("    [\(index)]: \(url)")
             }
         }
         return images
@@ -132,13 +129,6 @@ final class Project: Identifiable {
     
     // Debug method to show project state
     func debugProjectState() {
-        print("Project Debug Info:")
-        print("  - ID: \(id)")
-        print("  - Title: \(title)")
-        print("  - Status: \(status.rawValue)")
-        print("  - Images String: \(projectImagesString)")
-        print("  - Images Count: \(getProjectImages().count)")
-        print("  - Needs Sync: \(needsSync)")
     }
     
     // Computed property for location with validation
@@ -154,7 +144,6 @@ final class Project: Identifiable {
         
         // Check if coordinates are meaningful (not 0,0 which often indicates missing data)
         if abs(validLatitude) < 0.0001 && abs(validLongitude) < 0.0001 {
-            print("⚠️ Project \(id): Invalid coordinates (0,0), likely missing geocoding data")
             return nil
         }
         
@@ -170,7 +159,6 @@ final class Project: Identifiable {
         self.latitude = round(validLatitude * 1_000_000) / 1_000_000
         self.longitude = round(validLongitude * 1_000_000) / 1_000_000
         
-        print("📍 Project \(id): Set coordinates to (\(self.latitude!), \(self.longitude!))")
     }
     
     // Computed property for display status - matches your Bubble status colors

@@ -25,7 +25,6 @@ class OnboardingService {
     func signUpUser(email: String, password: String, userType: UserType) async throws -> SignUpResponse {
         // Use different endpoints based on user type
         let endpoint = userType == .company ? "sign_company_up" : "sign_employee_up"
-        print("OnboardingService: Making API call to \(endpoint)")
         
         // Configure API request
         let url = baseURL.appendingPathComponent("api/1.1/wf/\(endpoint)")
@@ -53,11 +52,7 @@ class OnboardingService {
             }
             
             // Debug log the response
-            print("OnboardingService: API Response - Status: \(httpResponse.statusCode)")
-            print("============ API RESPONSE (Sign Up - \(endpoint)) ============")
             let responseText = String(data: data, encoding: .utf8) ?? "No data"
-            print(responseText)
-            print("===============================================")
             
             // Handle non-success status codes, especially 400
             if httpResponse.statusCode == 400 {
@@ -74,13 +69,10 @@ class OnboardingService {
             let signUpResponse = try JSONDecoder().decode(SignUpResponse.self, from: data)
             
             // For debugging, print the structure of the response
-            print("Response structure: \(Mirror(reflecting: signUpResponse).children.map { "\($0.label ?? "unknown"): \($0.value)" }.joined(separator: ", "))")
             
             if signUpResponse.wasSuccessful {
                 if let userId = signUpResponse.extractedUserId {
-                    print("Signup SUCCESS: User registered successfully with ID: \(userId)")
                 } else {
-                    print("Signup WARNING: Success reported but no user_id found in response!")
                     // Continue anyway, will be handled in the ViewModel
                 }
                 
@@ -121,7 +113,6 @@ class OnboardingService {
     /// - Returns: Join company response with company data
     func joinCompany(email: String, password: String, firstName: String, lastName: String, 
                      phoneNumber: String, companyCode: String) async throws -> JoinCompanyResponse {
-        print("OnboardingService: Making API call to join_company")
         
         // Configure API request
         let url = baseURL.appendingPathComponent("api/1.1/wf/join_company")
@@ -147,9 +138,7 @@ class OnboardingService {
         // Include user_id if available (VERY IMPORTANT)
         if !userId.isEmpty {
             parameters["user_id"] = userId
-            print("Including user_id in company join request: \(userId)")
         } else {
-            print("WARNING: No user_id available for company join request")
         }
         
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
@@ -164,11 +153,7 @@ class OnboardingService {
             }
             
             // Debug log the response
-            print("OnboardingService: Join Company API Response - Status: \(httpResponse.statusCode)")
-            print("============ API RESPONSE (Join Company) ============")
             let responseText = String(data: data, encoding: .utf8) ?? "No data"
-            print(responseText)
-            print("=====================================================")
             
             // Handle non-success status codes, especially 400
             if httpResponse.statusCode == 400 {
@@ -185,26 +170,17 @@ class OnboardingService {
             let joinResponse = try JSONDecoder().decode(JoinCompanyResponse.self, from: data)
             
             // For debugging, print the structure of the response
-            print("Join Company Response structure: \(Mirror(reflecting: joinResponse).children.map { "\($0.label ?? "unknown"): \($0.value)" }.joined(separator: ", "))")
             
             // Print detailed company data for debugging
             if let companyData = joinResponse.extractedCompanyData {
-                print("Extracted company data:")
-                print("  - Company ID: \(companyData.id)")
-                print("  - Company Name: \(companyData.name)")
             } else {
-                print("Could not extract company data from response")
             }
             
             // Try to be flexible with successful responses
             if joinResponse.wasSuccessful {
-                print("Company join SUCCESS! Company data received:")
                 
                 if let companyData = joinResponse.extractedCompanyData {
-                    print("  - Company Name: \(companyData.name)")
-                    print("  - Company ID: \(companyData.id)")
                 } else {
-                    print("  - Company joined successfully but data incomplete")
                 }
                 
                 // Always return the response for successful join
@@ -212,7 +188,6 @@ class OnboardingService {
             } else if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
                 // We received a 200-range status code, so let's consider this a partial success
                 // and let the ViewModel decide how to handle it
-                print("Company join NOTE: HTTP success but couldn't find company data in response")
                 return joinResponse
             } else {
                 // True API failure with error message
@@ -235,6 +210,7 @@ class OnboardingService {
     
     /// Update company information for business owners
     /// - Parameters:
+    ///   - companyId: Existing company ID (if updating existing company)
     ///   - name: Company name
     ///   - email: Company email
     ///   - phone: Company phone (optional)
@@ -247,8 +223,7 @@ class OnboardingService {
     ///   - lastName: User's last name
     ///   - userPhone: User's phone number
     /// - Returns: Company update response
-    func updateCompany(name: String, email: String, phone: String?, industry: String, size: String, age: String, address: String, userId: String, firstName: String, lastName: String, userPhone: String) async throws -> CompanyUpdateResponse {
-        print("OnboardingService: Making API call to update_company")
+    func updateCompany(companyId: String?, name: String, email: String, phone: String?, industry: String, size: String, age: String, address: String, userId: String, firstName: String, lastName: String, userPhone: String) async throws -> CompanyUpdateResponse {
         
         let url = baseURL.appendingPathComponent("api/1.1/wf/update_company")
         
@@ -270,6 +245,14 @@ class OnboardingService {
             "user_phone": userPhone
         ]
         
+        // Include company ID if updating existing company
+        if let companyId = companyId, !companyId.isEmpty {
+            parameters["company_id"] = companyId
+            print("🔵 Updating existing company with ID: \(companyId)")
+        } else {
+            print("🟡 Creating new company (no existing ID provided)")
+        }
+        
         if let phone = phone, !phone.isEmpty {
             parameters["phone"] = phone
         }
@@ -283,12 +266,8 @@ class OnboardingService {
                 throw SignUpError.invalidResponse
             }
             
-            print("Update company HTTP status: \(httpResponse.statusCode)")
             
             if let responseString = String(data: data, encoding: .utf8) {
-                print("============ UPDATE COMPANY RAW RESPONSE ============")
-                print(responseString)
-                print("====================================================")
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {
@@ -297,9 +276,7 @@ class OnboardingService {
             
             // First try to parse as JSON to see structure
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                print("DEBUG: Raw JSON structure:")
                 for (key, value) in json {
-                    print("  - \(key): \(type(of: value)) = \(value)")
                 }
             }
             
@@ -308,18 +285,8 @@ class OnboardingService {
                 let updateResponse = try JSONDecoder().decode(CompanyUpdateResponse.self, from: data)
                 
                 // Debug the parsed response
-                print("DEBUG: Parsed CompanyUpdateResponse")
-                print("  - status: \(updateResponse.status ?? "nil")")
-                print("  - success: \(updateResponse.success ?? "nil")")
-                print("  - company exists: \(updateResponse.extractedCompany != nil)")
                 
                 if let company = updateResponse.extractedCompany {
-                    print("  - company._id: \(company._id ?? "nil")")
-                    print("  - company.id: \(company.id ?? "nil")")
-                    print("  - company.companyId (code): \(company.companyId ?? "nil")")
-                    print("  - company.code: \(company.code ?? "nil")")
-                    print("  - company.companyName: \(company.companyName ?? "nil")")
-                    print("  - company.name: \(company.name ?? "nil")")
                 }
                 
                 return updateResponse
@@ -330,7 +297,6 @@ class OnboardingService {
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     // Create a manual response if we can extract company ID
                     if let companyId = json["company"] as? String {
-                        print("DEBUG: Found company ID directly in response: \(companyId)")
                         
                         // Create a response with just the ID
                         let companyData = CompanyResponseData(
@@ -369,7 +335,6 @@ class OnboardingService {
     ///   - companyId: Company ID to invite them to
     /// - Returns: Invitation response
     func sendInvites(emails: [String], companyId: String) async throws -> InviteResponse {
-        print("OnboardingService: Making API call to send_invite")
         
         let url = baseURL.appendingPathComponent("api/1.1/wf/send_invite")
         
@@ -392,10 +357,8 @@ class OnboardingService {
                 throw SignUpError.invalidResponse
             }
             
-            print("Send invites HTTP status: \(httpResponse.statusCode)")
             
             if let responseString = String(data: data, encoding: .utf8) {
-                print("Send invites response: \(responseString)")
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {

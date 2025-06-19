@@ -31,16 +31,13 @@ struct OnboardingPresenter: View {
         }
         .animation(.easeInOut, value: showOnboarding)
         .onReceive(showOnboardingPublisher) { _ in
-            print("OnboardingPresenter: Received notification to show onboarding")
             showOnboarding = true
         }
         .onReceive(dismissOnboardingPublisher) { _ in
-            print("OnboardingPresenter: Received notification to dismiss onboarding")
             showOnboarding = false
         }
         .onAppear {
             // Debug log to confirm the presenter is loaded
-            print("OnboardingPresenter: View appeared")
         }
     }
 }
@@ -56,13 +53,11 @@ extension View {
     
     /// Trigger the onboarding flow from any view
     func showOnboarding() {
-        print("Showing onboarding via extension method")
         NotificationCenter.default.post(name: Notification.Name("ShowOnboarding"), object: nil)
     }
     
     /// Dismiss the onboarding flow from any view
     func dismissOnboarding() {
-        print("Dismissing onboarding via extension method")
         NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
     }
 }

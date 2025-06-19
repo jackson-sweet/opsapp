@@ -6,9 +6,10 @@
 //
 
 
-// DateHelper.swift
 import Foundation
 
+/// DateHelper provides date formatting utilities for UI display
+/// For API date parsing, see Dateformatter+Bubble.swift
 struct DateHelper {
     static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()

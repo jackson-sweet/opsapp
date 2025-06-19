@@ -53,7 +53,6 @@ struct CompanyTeamMembersListView: View {
     private func fetchTeamMembers() {
         // Use DataController from environment
         guard let syncManager = dataController.syncManager else {
-            print("SyncManager not available")
             return
         }
         

@@ -38,7 +38,6 @@ struct ProjectCarousel: View {
             }
             
             // No manual zoom needed - ProjectMapView automatically tracks selectedIndex
-            print("ProjectCarousel: Swiped to project at index \(newIndex)")
         }
 
     
@@ -65,18 +64,15 @@ struct ProjectCarousel: View {
             },
             onLongPress: {
                 // Re-enable long press to show project details
-                print("ProjectCarousel: Long press detected for project \(project.id)")
                 onLongPress(project)
             }
         )
     }
     
     private func handleCardTap(forIndex index: Int) {
-        print("ProjectCarousel: handleCardTap called for index \(index)")
         
         // Add guard for isInProjectMode to prevent unwanted behavior during project mode
         guard !isInProjectMode else {
-            print("ProjectCarousel: Ignoring tap in project mode")
             return
         }
         
@@ -85,18 +81,15 @@ struct ProjectCarousel: View {
             // Set a guard to avoid interfering with long press
             DispatchQueue.main.async {
                 self.showStartConfirmation.toggle()
-                print("ProjectCarousel: Toggling showStartConfirmation to \(self.showStartConfirmation)")
             }
         } else {
             // Select this card - the only action for a new card
             selectedIndex = index
             // Always hide confirmation when selecting a new card
             showStartConfirmation = false
-            print("ProjectCarousel: Selected new card at index \(index)")
         }
         
         // Debug log to verify behavior
-        print("ProjectCarousel: After tap processing - selectedIndex: \(selectedIndex), showStartConfirmation: \(showStartConfirmation)")
     }
 }
 
@@ -262,16 +255,13 @@ struct ProjectCardView: View {
         }
         // Go back to using standard SwiftUI gesture modifiers
         .onTapGesture {
-            print("Simple tap detected for \(project.title)")
             onTap()
         }
         .onLongPressGesture(minimumDuration: 1.0, pressing: { isPressing in
             // Update the long press state
             isLongPressing = isPressing
-            print("Long press state: \(isPressing ? "started" : "ended") for \(project.title)")
         }, perform: {
             // This is called when the long press is completed
-            print("Long press completed for \(project.title)")
             HapticFeedback.impact(.heavy)
             onLongPress()
         })

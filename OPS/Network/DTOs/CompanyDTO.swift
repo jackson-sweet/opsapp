@@ -29,6 +29,7 @@ struct CompanyDTO: Codable {
     let companyAge: String?
     let employees: [BubbleReference]?
     let admin: [BubbleReference]?
+    let website: String?
     
     
     // Custom coding keys to match Bubble's field names exactly
@@ -50,6 +51,7 @@ struct CompanyDTO: Codable {
         case companyAge = "company_age" // age range of the company. This is used for development data collection. Type string.
         case employees = "Employees" // A list of all the employees in the company. Type is a list of User objects.
         case admin = "Admin" // This is the list of admins in the company. The type is a list of User objects.
+        case website = "website" // Company website URL. Type string.
     }
     
     /// Convert DTO to SwiftData model
@@ -76,6 +78,7 @@ struct CompanyDTO: Codable {
         // Handle contact information
         company.phone = phone
         company.email = officeEmail
+        company.website = website
         
         // Handle logo
         if let logoImage = logo, let logoUrl = logoImage.url {
@@ -103,6 +106,12 @@ struct CompanyDTO: Codable {
             let adminIds = adminRefs.compactMap { $0.stringValue }
             company.adminIdsString = adminIds.joined(separator: ",")
         }
+        
+        // Handle company details
+        company.setIndustries(industry ?? [])
+        company.companySize = companySize
+        company.companyAge = companyAge
+        company.referralMethod = nil // Not in DTO yet
         
         company.lastSyncedAt = Date()
         

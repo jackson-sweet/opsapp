@@ -86,7 +86,6 @@ struct ImagePickerView: View {
                 if let data = try? await newItem?.loadTransferable(type: Data.self),
                    let image = UIImage(data: data) {
                     selectedImage = image
-                    print("ImagePickerView: New image selected with size: \(image.size.width)x\(image.size.height)")
                 }
             }
         }

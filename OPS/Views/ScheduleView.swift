@@ -56,14 +56,12 @@ struct ScheduleView: View {
         }
         // Monitor viewMode changes to handle view transitions
         .onChange(of: viewModel.viewMode) { _, newMode in
-            print("ScheduleView: View mode changed to \(newMode)")
             // Reset any project selection when switching view modes
             selectedProjectID = nil
         }
         // Observe the explicit shouldShowDaySheet flag
         .onChange(of: viewModel.shouldShowDaySheet) { _, shouldShow in
             if shouldShow {
-                print("ScheduleView: Showing day sheet based on viewModel flag")
                 // Show the sheet
                 DispatchQueue.main.async {
                     showDaySheet = true
@@ -79,21 +77,15 @@ struct ScheduleView: View {
         }
         // Show day project sheet
         .sheet(isPresented: $showDaySheet, onDismiss: {
-            print("ScheduleView: Day sheet dismissed, selectedProjectID = \(selectedProjectID ?? "nil")")
-            print("ScheduleView: userInitiatedDateSelection = \(viewModel.userInitiatedDateSelection), shouldShowDaySheet = \(viewModel.shouldShowDaySheet)")
             // If we have a selected project ID, navigate to project details after day sheet is dismissed
             if selectedProjectID != nil {
-                print("ScheduleView: Will navigate to project details after dismissal")
                 // Significant delay to ensure complete dismissal BEFORE showing project details
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-                    print("ScheduleView: NOW showing project details")
                     // First, update the appState to make sure we know we're in details mode
                     if let project = dataController.getProject(id: selectedProjectID!) {
-                        print("ScheduleView: Found project, showing via sheet")
                         // Display using the global sheet
                         appState.viewProjectDetails(project)
                     } else {
-                        print("ScheduleView: Project not found, cannot show details")
                     }
                 }
             }
@@ -104,7 +96,6 @@ struct ScheduleView: View {
                 projects: viewModel.projectsForSelectedDate,
                 onProjectSelected: { project in
                     // Set the selected project ID and dismiss this sheet
-                    print("ScheduleView: Selected project from day sheet: \(project.title)")
                     self.selectedProjectID = project.id
                     self.showDaySheet = false
                 }
@@ -117,20 +108,17 @@ struct ScheduleView: View {
         // Handle direct project selection from the project list
         .onReceive(projectSelectionObserver) { notification in
             if let projectID = notification.userInfo?["projectID"] as? String {
-                print("ScheduleView: Received notification to show project with ID: \(projectID)")
                 
                 // Set the project ID
                 self.selectedProjectID = projectID
                 
                 // Get the project and present it via the sheet
                 if let project = dataController.getProject(id: projectID) {
-                    print("ScheduleView: Found project from notification, showing via sheet")
                     // Just use viewProjectDetails which handles all the necessary state updates
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         appState.viewProjectDetails(project)
                     }
                 } else {
-                    print("ScheduleView: Project not found, cannot show details")
                 }
             } else {
                 print("ScheduleView: ⚠️ ERROR - Notification did not contain a projectID")

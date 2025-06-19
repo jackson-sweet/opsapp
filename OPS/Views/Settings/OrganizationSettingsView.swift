@@ -309,7 +309,6 @@ struct OrganizationSettingsView: View {
         Task {
             // Fetch organization data
             if let companyID = dataController.currentUser?.companyId {
-                print("Loading organization data for company ID: \(companyID)")
                 
                 // Always attempt to fetch fresh data from API when online
                 // This ensures we have the latest company info including address, phone, email
@@ -321,23 +320,15 @@ struct OrganizationSettingsView: View {
                     
                     do {
                         // Force a refresh of company data from the API every time view opens
-                        print("OrganizationSettingsView: Fetching latest company data from API...")
                         try await dataController.forceRefreshCompany(id: companyID)
-                        print("Successfully refreshed company data from API")
                         
                         // Debug: Log what we got from the API
                         if let refreshedCompany = dataController.getCompany(id: companyID) {
-                            print("Company data after refresh:")
-                            print("  - Name: \(refreshedCompany.name)")
-                            print("  - Address: \(refreshedCompany.address ?? "nil")")
-                            print("  - Phone: \(refreshedCompany.phone ?? "nil")")
-                            print("  - Email: \(refreshedCompany.email ?? "nil")")
                         }
                         
                         // Sync company team members if we're online
                         if let company = dataController.getCompany(id: companyID) {
                             await dataController.syncManager?.syncCompanyTeamMembers(company)
-                            print("Triggered team member sync")
                         }
                     } catch {
                         print("Failed to refresh company data from API: \(error.localizedDescription)")
@@ -347,35 +338,27 @@ struct OrganizationSettingsView: View {
                         }
                     }
                 } else {
-                    print("OrganizationSettingsView: Offline - using cached company data")
                 }
                 
                 // Get company from local database (newly refreshed if the API call succeeded)
                 let company = dataController.getCompany(id: companyID)
                 let users = dataController.getTeamMembers(companyId: companyID)
                 
-                print("Loaded company: \(company?.name ?? "nil")")
-                print("Company logo URL: \(company?.logoURL ?? "nil")")
                 if let company = company {
-                    print("Team members count: \(company.teamMembers.count)")
                 }
                 
                 // Load company logo if available
                 if let company = company, let logoURL = company.logoURL, !logoURL.isEmpty {
-                    print("Attempting to load logo from URL: \(logoURL)")
                     
                     // Check if logo is already cached
                     if ImageCache.shared.get(forKey: logoURL) == nil {
                         // Not cached, load from URL
-                        print("Logo not cached, loading from URL...")
                         if await loadImage(from: logoURL) != nil {
-                            print("OrganizationSettingsView: Successfully loaded company logo")
                             // Image is now cached by the loadImage function
                         } else {
                             print("OrganizationSettingsView: Failed to load company logo")
                         }
                     } else {
-                        print("Using cached logo image")
                     }
                 }
                 
@@ -387,20 +370,10 @@ struct OrganizationSettingsView: View {
                     
                     // Debug info
                     if let org = self.organization {
-                        print("Organization set: \(org.name)")
-                        print("Address: \(org.address ?? "nil")")
-                        print("Phone: \(org.phone ?? "nil")")
-                        print("Email: \(org.email ?? "nil")")
-                        print("Logo URL: \(org.logoURL ?? "nil")")
-                        print("Open Hour: \(org.openHour ?? "nil")")
-                        print("Close Hour: \(org.closeHour ?? "nil")")
-                        print("Team members count: \(org.teamMembers.count)")
                     } else {
-                        print("Organization is nil after loading!")
                     }
                 }
             } else {
-                print("No company ID found for current user")
                 await MainActor.run {
                     self.isLoading = false
                 }

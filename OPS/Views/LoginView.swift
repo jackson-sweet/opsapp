@@ -96,7 +96,6 @@ struct LoginView: View {
                             UserDefaults.standard.removeObject(forKey: "is_authenticated")
                             UserDefaults.standard.removeObject(forKey: "user_id")
                             UserDefaults.standard.removeObject(forKey: "user_email")
-                            print("LoginView: Starting fresh onboarding flow")
                             
                             // Show onboarding directly
                             withAnimation(.easeInOut(duration: 0.3)) {
@@ -328,13 +327,10 @@ struct LoginView: View {
                 let startingStep: OnboardingStep = {
                     // If we have authenticated user with data, start from welcome to allow skip logic
                     if dataController.currentUser != nil {
-                        print("LoginView: Starting onboarding with existing user data at welcome step (will skip appropriately)")
                         return .welcome
                     } else if resumeFromCompanyStep {
-                        print("LoginView: Starting onboarding at organization join (resuming)")
                         return .organizationJoin
                     } else {
-                        print("LoginView: Starting onboarding at welcome step (fresh start)")
                         return .welcome
                     }
                 }()
@@ -344,13 +340,11 @@ struct LoginView: View {
                     initialStep: startingStep,
                     onComplete: {
                         // Hide onboarding when complete
-                        print("LoginView: Onboarding complete callback received")
                         showOnboarding = false
                         
                         // Check if the onboarding set authentication flag directly
                         if UserDefaults.standard.bool(forKey: "is_authenticated") {
                             // Force update the dataController authentication state
-                            print("LoginView: Onboarding set is_authenticated=true, updating dataController")
                             DispatchQueue.main.async {
                                 dataController.isAuthenticated = true
                             }
@@ -358,7 +352,6 @@ struct LoginView: View {
                         // Fallback to old behavior if needed
                         else if UserDefaults.standard.bool(forKey: "has_joined_company") {
                             // Attempt to log in again to enter the app
-                            print("LoginView: Falling back to login attempt to authenticate")
                             login()
                         }
                     }
@@ -426,18 +419,20 @@ struct LoginView: View {
                             let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
                             
                             if !hasCompletedOnboarding {
-                                print("Login: User authenticated but needs to complete onboarding")
                             
                             // Try to detect user type from the current user data
                             if let currentUser = dataController.currentUser {
-                                // Determine user type based on role or other indicators
-                                if currentUser.role == .fieldCrew || currentUser.role == .officeCrew {
-                                    UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
-                                    print("Login: Detected user type as employee based on role: \(currentUser.role.displayName)")
-                                } else if currentUser.role == .admin {
-                                    // Admin users might be company owners
-                                    UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
-                                    print("Login: Detected user type as company (admin role)")
+                                // First check if user has explicit userType
+                                if let userType = currentUser.userType {
+                                    UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
+                                } else {
+                                    // Fall back to determining from role
+                                    if currentUser.role == .fieldCrew || currentUser.role == .officeCrew {
+                                        UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
+                                    } else if currentUser.role == .admin {
+                                        // Admin users might be company owners
+                                        UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+                                    }
                                 }
                                 
                                 // Pre-populate user data if available
@@ -510,7 +505,6 @@ struct LoginView: View {
     private func checkResumeOnboarding() {
         // If the resume flag is set, check what step to resume from
         if resumeOnboarding {
-            print("LoginView: Found resume_onboarding=true, preparing to resume flow")
             
             // Check for authentication state
             let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
@@ -519,7 +513,6 @@ struct LoginView: View {
             // If onboarding is already completed but we somehow have the resume flag set,
             // just clear it and let the user proceed to the main app
             if isAuthenticated && onboardingCompleted {
-                print("LoginView: User is already authenticated and onboarding is complete")
                 UserDefaults.standard.set(false, forKey: "resume_onboarding")
                 
                 // Set authentication in DataController
@@ -534,7 +527,6 @@ struct LoginView: View {
             let lastStepRaw = UserDefaults.standard.integer(forKey: "last_onboarding_step_v2")
             
             if hasUserId && isAuthenticated {
-                print("LoginView: User has created account (user_id exists and is_authenticated=true)")
                 
                 // Resume from the appropriate step
                 if lastStepRaw > 0 {
@@ -543,7 +535,6 @@ struct LoginView: View {
                     resumeFromCompanyStep = true
                     
                     // Show onboarding at the appropriate step
-                    print("LoginView: Resuming onboarding at step: \(lastStep.title)")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         self.showOnboarding = true
                     }
@@ -552,7 +543,6 @@ struct LoginView: View {
                     resumeFromCompanyStep = true
                     
                     // Show onboarding starting from organization join
-                    print("LoginView: Resuming onboarding at organization join step")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         self.showOnboarding = true
                     }
@@ -562,54 +552,78 @@ struct LoginView: View {
                 // It will be cleared in CompletionView when onboarding is finished
             } else {
                 // No user ID or not authenticated - this shouldn't happen, but clear the flag
-                print("LoginView: Found resume flag but no user ID or authentication - clearing flag")
                 UserDefaults.standard.set(false, forKey: "resume_onboarding")
             }
         }
     }
     
     private func handleGoogleSignIn() {
-        // Get the root view controller
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
-            errorMessage = "Cannot present Google Sign-In"
-            showError = true
-            return
-        }
-        
         isLoggingIn = true
         errorMessage = nil
         
-        Task {
+        Task { @MainActor in
+            // Get the root view controller on main thread
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let rootViewController = windowScene.windows.first?.rootViewController else {
+                errorMessage = "Cannot present Google Sign-In"
+                showError = true
+                isLoggingIn = false
+                return
+            }
+            
             do {
-                // Perform Google Sign-In
+                // Perform Google Sign-In on main thread
                 let googleUser = try await GoogleSignInManager.shared.signIn(presenting: rootViewController)
                 
                 // Authenticate with Bubble backend
                 let success = await dataController.loginWithGoogle(googleUser: googleUser)
                 
-                await MainActor.run {
-                    isLoggingIn = false
+                isLoggingIn = false
+                
+                if !success {
+                    errorMessage = "No account found. Please sign up with your company first."
+                    showError = true
+                } else {
+                    print("🟢 Google login successful")
                     
-                    if !success {
-                        errorMessage = "No account found. Please sign up with your company first."
-                        showError = true
+                    // Check if the user has completed onboarding
+                    let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
+                    let hasCompany = !(dataController.currentUser?.companyId ?? "").isEmpty
+                    
+                    print("   Has completed onboarding: \(hasCompletedOnboarding)")
+                    print("   Has company: \(hasCompany)")
+                    
+                    if !hasCompletedOnboarding || !hasCompany {
+                        print("🟡 User needs onboarding after Google login")
+                        
+                        // Dismiss keyboard first
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        
+                        // Reset any UI state before showing onboarding
+                        showLoginMode = false
+                        pageScale = 1.0
+                        
+                        // Small delay to ensure UI is reset and keyboard is dismissed
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showOnboarding = true
+                        }
+                    } else {
+                        // Only now set isAuthenticated to trigger the transition
+                        print("🟢 User has completed onboarding, transitioning to main app")
+                        dataController.isAuthenticated = true
                     }
-                    // If successful, DataController will handle updating isAuthenticated
-                    // and ContentView will automatically transition to the main app
                 }
             } catch {
-                await MainActor.run {
-                    isLoggingIn = false
-                    
-                    // Check if it was a cancellation
-                    if let gidError = error as? GIDSignInError, gidError.code == .canceled {
-                        // User canceled, don't show error
-                        print("Google Sign-In canceled by user")
-                    } else {
-                        errorMessage = "Google Sign-In failed: \(error.localizedDescription)"
-                        showError = true
-                    }
+                isLoggingIn = false
+                
+                // Check if it was a cancellation
+                if let gidError = error as? GIDSignInError, gidError.code == .canceled {
+                    // User canceled, don't show error
+                    print("🟡 Google Sign-In canceled by user")
+                } else {
+                    errorMessage = "Google Sign-In failed: \(error.localizedDescription)"
+                    showError = true
+                    print("🔴 Google Sign-In error: \(error)")
                 }
             }
         }

@@ -9,7 +9,6 @@ import SwiftUI
 
 struct EmailView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    var isInConsolidatedFlow: Bool = false
     
     // For confirm password functionality
     @State private var localConfirmPassword: String = ""
@@ -21,11 +20,7 @@ struct EmailView: View {
     }
     
     var canProceed: Bool {
-        if isInConsolidatedFlow {
-            return viewModel.isEmailValid && viewModel.isPasswordValid && passwordsMatch
-        } else {
-            return viewModel.isEmailValid
-        }
+        return viewModel.isEmailValid
     }
     
     // Color scheme based on user type
@@ -48,13 +43,13 @@ struct EmailView: View {
     var body: some View {
         ZStack {
             // Background color
-            backgroundColor.edgesIgnoringSafeArea(.all)
+            backgroundColor.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Top navigation and progress section
                 VStack(spacing: 0) {
                     // Navigation bar with back button and step indicator for consolidated flow
-                    if isInConsolidatedFlow {
+                    if false {
                         HStack {
                             Button(action: {
                                 if currentFieldIndex > 0 {
@@ -62,7 +57,7 @@ struct EmailView: View {
                                         currentFieldIndex -= 1
                                     }
                                 } else {
-                                    viewModel.moveToPreviousStepV2()
+                                    viewModel.moveToPreviousStep()
                                 }
                             }) {
                                 HStack(spacing: 4) {
@@ -98,7 +93,7 @@ struct EmailView: View {
                         .padding(.bottom, 16)
                     }
                 }
-                .padding(.horizontal, isInConsolidatedFlow ? OPSStyle.Layout.spacing3 : 0)
+                .padding(.horizontal, 0)
                 
                 // Main content area - top-justified alignment
                 VStack(spacing: 0) {
@@ -106,7 +101,7 @@ struct EmailView: View {
                     VStack(spacing: 24) {
                         // Header - changes based on current field
                         VStack(alignment: .leading, spacing: 8) {
-                            if isInConsolidatedFlow {
+                            if false {
                                 if currentFieldIndex == 0 {
                                     Text("Create your")
                                         .font(OPSStyle.Typography.title)
@@ -267,7 +262,7 @@ struct EmailView: View {
                 
                 // Bottom button section
                 VStack {
-                    if isInConsolidatedFlow {
+                    if false {
                         StandardContinueButton(
                             isDisabled: viewModel.isLoading ||
                                        (currentFieldIndex == 0 && !viewModel.isEmailValid) ||
@@ -294,7 +289,7 @@ struct EmailView: View {
                                             viewModel.isLoading = false
                                             
                                             if success == true {
-                                                viewModel.moveToNextStepV2()
+                                                viewModel.moveToNextStep()
                                             }
                                         }
                                     }
@@ -317,7 +312,7 @@ struct EmailView: View {
                         )
                     }
                 }
-                .padding(.horizontal, isInConsolidatedFlow ? OPSStyle.Layout.spacing3 : 24)
+                .padding(.horizontal, 24)
                 .padding(.vertical, 20)
                 .background(backgroundColor.opacity(0.7))
             }

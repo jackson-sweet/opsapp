@@ -63,7 +63,6 @@ struct HomeView: View {
         }
         // Listen for navigation stop only (keep project active)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StopRouting"))) { _ in
-            print("HomeView: StopRouting notification received - stopping routing only")
             
             // Stop routing but keep project active
             inProgressManager.stopRouting()
@@ -81,7 +80,6 @@ struct HomeView: View {
             loadTodaysProjects()
             
             // Debug log
-            print("HomeView: onAppear - location status: \(locationStatus.rawValue)")
             
             // Set up periodic route refreshes for navigation
             if appState.isInProjectMode {
@@ -96,7 +94,6 @@ struct HomeView: View {
         // Watch for changes to locationManager's denied state
         .onChange(of: locationManager.isLocationDenied) { _, isDenied in
             if isDenied && (appState.isInProjectMode || showStartConfirmation) {
-                print("HomeView: Location denied status changed to \(isDenied), showing alert")
                 showLocationPermissionView = true
             }
         }
@@ -114,11 +111,9 @@ struct HomeView: View {
                let _ = todaysProjects.first(where: { $0.id == newProjectID }),
                appState.isInProjectMode {
                 
-                print("HomeView: activeProjectID changed and isInProjectMode=true")
                 // No manual zoom logic needed - ProjectMapView handles this automatically
                 
             } else if newProjectID == nil {
-                print("HomeView: activeProjectID cleared, stopping routing")
                 // Stop routing and timer when exiting project mode
                 inProgressManager.stopRouting()
                 stopRouteRefreshTimer()
@@ -127,7 +122,6 @@ struct HomeView: View {
                 // Reset the flag when exiting project mode
                 userStoppedRouting = false
             } else {
-                print("HomeView: activeProjectID changed but isInProjectMode=false")
                 
                 // Reset the flag when changing projects
                 userStoppedRouting = false
@@ -136,7 +130,6 @@ struct HomeView: View {
         .onChange(of: locationManager.authorizationStatus) { _, newStatus in
             // Handle permission changes
             if newStatus == .authorizedWhenInUse || newStatus == .authorizedAlways {
-                print("HomeView: Location permission granted - no automatic routing")
                 // Don't automatically start routing when permission is granted
                 // User must explicitly start navigation
             } else if newStatus == .denied || newStatus == .restricted {
@@ -156,18 +149,15 @@ struct HomeView: View {
             }
         )
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StopRouting"))) { _ in
-            print("HomeView: Received notification to stop routing")
             inProgressManager.stopRouting()
             userStoppedRouting = true
             stopRouteRefreshTimer()
             showFullDirectionsView = false
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartRouteRefreshTimer"))) { _ in
-            print("HomeView: Received notification to start route refresh timer")
             startRouteRefreshTimer()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StopRouteRefreshTimer"))) { _ in
-            print("HomeView: Received notification to stop route refresh timer")
             stopRouteRefreshTimer()
         }
     }
@@ -201,7 +191,6 @@ struct HomeView: View {
     
     private func startProject(_ project: Project) {
         // Enter project mode
-        print("HomeView: Starting project \(project.id)")
         appState.enterProjectMode(projectID: project.id)
         showStartConfirmation = false
         
@@ -216,10 +205,8 @@ struct HomeView: View {
             Task {
                 do {
                     // Use the new API endpoint to start the project
-                    print("HomeView: Updating project status to 'In Progress' via API")
                     let updatedStatus = try await dataController.apiService.startProject(id: project.id)
                     
-                    print("HomeView: Project status updated successfully to: \(updatedStatus)")
                     
                     // Update local status immediately for UI consistency
                     await MainActor.run {
@@ -246,10 +233,8 @@ struct HomeView: View {
         
         // Handle location permissions
         if locationManager.authorizationStatus == .denied || locationManager.authorizationStatus == .restricted {
-            print("HomeView: ⚠️ Location permission already denied, showing permission view immediately")
             showLocationPermissionView = true
         } else if locationManager.authorizationStatus == .notDetermined {
-            print("HomeView: 🆕 Location permission not determined yet, showing permission view")
             showLocationPermissionView = true
         }
         
@@ -260,7 +245,6 @@ struct HomeView: View {
         if let coordinate = project.coordinate {
             switch locationManager.authorizationStatus {
             case .authorizedWhenInUse, .authorizedAlways:
-                print("HomeView: Location permission granted, starting routing")
                 if let userLocation = locationManager.userLocation {
                     inProgressManager.startRouting(to: coordinate, from: userLocation)
                 } else {
@@ -271,16 +255,15 @@ struct HomeView: View {
                 startRouteRefreshTimer()
                 
             case .notDetermined:
-                print("HomeView: Requesting location permission for the first time")
+                break
                 
             case .denied, .restricted:
-                print("HomeView: Location permission denied, alert already shown")
+                break
                 
             @unknown default:
-                print("HomeView: Unknown location authorization status")
+                break
             }
         } else {
-            print("HomeView: Project has no coordinate")
         }
     }
     
@@ -308,13 +291,11 @@ struct HomeView: View {
             RunLoop.main.add(timer, forMode: .common)
         }
         
-        print("HomeView: Started route refresh timer at \(routeRefreshInterval) second intervals")
     }
     
     private func stopRouteRefreshTimer() {
         routeRefreshTimer?.invalidate()
         routeRefreshTimer = nil
-        print("HomeView: Stopped route refresh timer")
     }
     
     private func refreshRouteIfNeeded() {
@@ -327,7 +308,6 @@ struct HomeView: View {
         }
         
         // Don't refresh the entire route - just update navigation steps
-        print("HomeView: Updated navigation step based on current location")
     }
     
     private func getActiveProject() -> Project? {

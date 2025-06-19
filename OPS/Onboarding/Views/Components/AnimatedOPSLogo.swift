@@ -13,7 +13,7 @@ struct AnimatedOPSLogo: View {
     var body: some View {
         ZStack {
             // Dark background
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color.black.ignoresSafeArea()
             
             VStack(spacing: 60) {
                 // OPS Logo - Static display

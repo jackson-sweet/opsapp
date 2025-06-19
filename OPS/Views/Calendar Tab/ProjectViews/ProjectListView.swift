@@ -107,17 +107,14 @@ struct ProjectListView: View {
                 isFirst: index == 0,
                 onTap: {
                     // Print debug info
-                    print("ProjectListView: Tapped project - ID: \(project.id), Title: \(project.title)")
                     
                     // Use the notification approach to be consistent with how we show projects elsewhere
                     // This ensures we're only using one mechanism for showing project details
-                    print("ProjectListView: Preparing to post notification for project: \(project.title) with ID: \(project.id)")
                     
                     // Send only the projectID in the notification to avoid potential issues with sending objects
                     let userInfo: [String: String] = ["projectID": project.id]
                     
                     // Post the notification with just the project ID
-                    print("ProjectListView: Posting notification with project ID: \(project.id)")
                     // Post notification with just the ID
                     NotificationCenter.default.post(
                         name: Notification.Name("ShowCalendarProjectDetails"),

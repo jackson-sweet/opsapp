@@ -49,7 +49,6 @@ struct OPSApp: App {
                 .onAppear {
                     // Check if this is a fresh install
                     if !UserDefaults.standard.bool(forKey: "has_launched_before") {
-                        print("OPSApp: Fresh install detected, clearing any lingering auth data")
                         
                         // Clear all authentication data on fresh install
                         clearAllAuthenticationData()
@@ -67,7 +66,6 @@ struct OPSApp: App {
                     
                     // Sync to Bubble on app launch
                     dataController.performAppLaunchSync()
-                    print("Synced")
                     
                     // Migrate images from UserDefaults to file system
                     Task {
@@ -79,7 +77,6 @@ struct OPSApp: App {
                             ImageFileManager.shared.clearRemoteImageCache()
                             ImageCache.shared.clear() // Also clear memory cache
                             UserDefaults.standard.set(true, forKey: "remote_cache_cleared_v2")
-                            print("Cleared remote image cache to fix duplicate issue")
                         }
                         
                         // Clean up any sample projects (one-time cleanup)
@@ -107,7 +104,6 @@ struct OPSApp: App {
 
 // Function to clear all authentication data on fresh install
 private func clearAllAuthenticationData() {
-    print("OPSApp: Clearing all authentication data for fresh install")
     
     // Clear Keychain data
     let keychainManager = KeychainManager()
@@ -149,7 +145,6 @@ private func clearAllAuthenticationData() {
     // Force synchronize to ensure changes are saved
     UserDefaults.standard.synchronize()
     
-    print("OPSApp: All authentication data cleared")
 }
 
 extension String: @retroactive Identifiable {

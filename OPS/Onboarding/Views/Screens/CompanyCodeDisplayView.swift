@@ -40,13 +40,13 @@ struct CompanyCodeDisplayView: View {
     var body: some View {
         ZStack {
             // Background color
-            backgroundColor.edgesIgnoringSafeArea(.all)
+            backgroundColor.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        viewModel.previousStep()
+                        viewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -213,7 +213,7 @@ struct CompanyCodeDisplayView: View {
                         isDisabled: false,
                         isLoading: false,
                         onTap: {
-                            viewModel.nextStep()
+                            viewModel.moveToNextStep()
                         }
                     )
                 }
@@ -227,19 +227,15 @@ struct CompanyCodeDisplayView: View {
             }
         }
         .onAppear {
-            print("CompanyCodeDisplayView onAppear")
-            print("  - Current viewModel.companyCode: '\(viewModel.companyCode)'")
             
             // If we don't have a company code yet, it should have been set when creating the company
             if viewModel.companyCode.isEmpty {
                 // Try to load from UserDefaults
                 if let savedCode = UserDefaults.standard.string(forKey: "company_code"), !savedCode.isEmpty {
                     viewModel.companyCode = savedCode
-                    print("  - Loaded company_code from UserDefaults: '\(savedCode)'")
                 } else if let companyId = UserDefaults.standard.string(forKey: "company_id"), !companyId.isEmpty {
                     // Fallback to company ID if no code exists
                     viewModel.companyCode = companyId
-                    print("  - Using company_id as fallback: '\(companyId)'")
                 } else {
                     print("  - ERROR: No company code or ID found in UserDefaults")
                 }
@@ -249,10 +245,6 @@ struct CompanyCodeDisplayView: View {
     
     private func getCompanyCode() -> String {
         // Debug logging
-        print("DEBUG getCompanyCode:")
-        print("  - viewModel.companyCode: '\(viewModel.companyCode)'")
-        print("  - UserDefaults company_code: '\(UserDefaults.standard.string(forKey: "company_code") ?? "nil")'")
-        print("  - UserDefaults company_id: '\(UserDefaults.standard.string(forKey: "company_id") ?? "nil")'")
         
         // First check if we have the company code in viewModel
         if !viewModel.companyCode.isEmpty {

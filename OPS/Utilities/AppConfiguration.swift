@@ -80,9 +80,6 @@ struct AppConfiguration {
         /// Prevents multiple rapid taps from causing issues
         static let statusUpdateCooldown: TimeInterval = 2.0
         
-        /// Feature flag for the consolidated onboarding flow
-        static let useConsolidatedOnboardingFlow = true
-        
         /// Collection of quotes to display when there are no projects scheduled
         static let noProjectQuotes = [
             "No projects. GOOD. Time to train, prepare, improve.",

@@ -28,6 +28,12 @@ final class Company {
     var openHour: String?
     var closeHour: String?
     
+    // Company details
+    var industryString: String = ""  // Store as comma-separated string
+    var companySize: String?
+    var companyAge: String?
+    var referralMethod: String?
+    
     // Array storage
     var projectIdsString: String = ""
     var teamIdsString: String = ""
@@ -75,6 +81,14 @@ final class Company {
     
     func setAdminIds(_ ids: [String]) {
         adminIdsString = ids.joined(separator: ",")
+    }
+    
+    func getIndustries() -> [String] {
+        return industryString.isEmpty ? [] : industryString.components(separatedBy: ",")
+    }
+    
+    func setIndustries(_ industries: [String]) {
+        industryString = industries.joined(separator: ",")
     }
     
     // Computed property for location

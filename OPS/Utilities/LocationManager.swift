@@ -44,13 +44,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     func requestPermissionIfNeeded(requestAlways: Bool = true, completion: ((Bool) -> Void)? = nil) {
         // Log current authorization status
-        print("LocationManager: Current authorization status: \(authorizationStatus.rawValue)")
         
         // Different approaches based on status
         switch authorizationStatus {
         case .notDetermined:
             // User hasn't made a decision yet
-            print("LocationManager: Requesting location permission for the first time")
             if requestAlways {
                 locationManager.requestAlwaysAuthorization()
             } else {
@@ -62,14 +60,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         case .denied, .restricted:
             // User has previously denied or is restricted - we should inform the app
             // but can't request again from here (needs UI prompt)
-            print("LocationManager: Permission denied or restricted - need user to enable in Settings")
             // Call completion with false to indicate permission is denied
             completion?(false)
             
         case .authorizedWhenInUse:
             // If we have when-in-use but need always, request it
             if requestAlways {
-                print("LocationManager: Upgrading from when-in-use to always authorization")
                 locationManager.requestAlwaysAuthorization()
             }
             // Start location updates
@@ -78,13 +74,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             
         case .authorizedAlways:
             // We have full permission - just start updates
-            print("LocationManager: Already have always authorization")
             locationManager.startUpdatingLocation()
             completion?(true)
             
         @unknown default:
             // Handle any future authorization status
-            print("LocationManager: Unknown authorization status: \(authorizationStatus.rawValue)")
             if requestAlways {
                 locationManager.requestAlwaysAuthorization()
             } else {
@@ -101,7 +95,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             let newStatus = manager.authorizationStatus
             self.authorizationStatus = newStatus
             
-            print("LocationManager: Authorization changed to: \(self.authorizationStatus.rawValue)")
             
             // Update denied status
             self.isLocationDenied = (newStatus == .denied || newStatus == .restricted)
@@ -115,7 +108,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                     self.locationManager.startUpdatingHeading()
                 }
             } else if newStatus == .denied {
-                print("LocationManager: Permission denied - user needs to enable in Settings")
             }
         }
     }
@@ -136,7 +128,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                     object: nil,
                     userInfo: ["location": location]
                 )
-                print("LocationManager: Significant location change detected")
             }
         }
     }
@@ -174,7 +165,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// This uses much less battery than standard location updates
     func startMonitoringSignificantLocationChanges() {
         if hasSufficientPermission() {
-            print("LocationManager: Starting significant location change monitoring")
             locationManager.startMonitoringSignificantLocationChanges()
             
             // Also start heading updates for navigation
@@ -182,14 +172,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 locationManager.startUpdatingHeading()
             }
         } else {
-            print("LocationManager: Cannot start significant location monitoring - insufficient permissions")
             requestPermissionIfNeeded(requestAlways: true)
         }
     }
     
     /// Stops monitoring for significant location changes
     func stopMonitoringSignificantLocationChanges() {
-        print("LocationManager: Stopping significant location change monitoring")
         locationManager.stopMonitoringSignificantLocationChanges()
         
         // Also stop heading updates

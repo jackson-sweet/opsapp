@@ -132,12 +132,6 @@ struct ProjectTeamView: View {
         }
         .onAppear {
             // Debug log the project team members when this view appears
-            print("ProjectTeamView DEBUG:")
-            print("- Project ID: \(project.id)")
-            print("- Project Title: \(project.title)")
-            print("- Team Member IDs String: \"\(project.teamMemberIdsString)\"")
-            print("- Team Member IDs Array: \(project.getTeamMemberIds().joined(separator: ", "))")
-            print("- Team Members Count: \(project.teamMembers.count)")
             
             // Trigger manual team member sync
             if !teamsRefreshed {
@@ -147,19 +141,13 @@ struct ProjectTeamView: View {
                     
                     // Print updated info after sync
                     await MainActor.run {
-                        print("AFTER SYNC:")
                         
                         // Fetch fresh project from DataController (critical step)
                         if let freshProject = dataController.getProject(id: project.id) {
-                            print("- Retrieved fresh project from DataController")
-                            print("- Team Members Count: \(freshProject.teamMembers.count)")
                             
                             if freshProject.teamMembers.isEmpty {
-                                print("- Still no team members after sync")
-                                print("- Team Member IDs: \(freshProject.getTeamMemberIds())")
                             } else {
                                 for (index, member) in freshProject.teamMembers.enumerated() {
-                                    print("  \(index+1). \(member.id) - \(member.firstName) \(member.lastName)")
                                 }
                             }
                             

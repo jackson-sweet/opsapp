@@ -37,9 +37,6 @@ class PresignedURLUploadService {
     
     /// Upload multiple images using presigned URLs
     func uploadProjectImages(_ images: [UIImage], for project: Project, companyId: String) async throws -> [(url: String, filename: String)] {
-        print("🚀 PresignedURLUploadService: Starting upload of \(images.count) images")
-        print("  - Project: \(project.id) - \(project.title)")
-        print("  - Company ID: \(companyId)")
         
         var uploadedImages: [(url: String, filename: String)] = []
         
@@ -55,11 +52,9 @@ class PresignedURLUploadService {
             }
         }
         
-        print("🔍 Checking for duplicate images. Existing filenames: \(existingFilenames.count)")
         
         // Process each image
         for (index, image) in images.enumerated() {
-            print("\n📸 Processing image \(index + 1)/\(images.count)")
             
             // Resize image if needed
             let processedImage = resizeImageIfNeeded(image)
@@ -74,7 +69,6 @@ class PresignedURLUploadService {
             }
             
             let sizeInMB = Double(imageData.count) / (1024 * 1024)
-            print("  - Compressed size: \(String(format: "%.2f", sizeInMB)) MB (quality: \(compressionQuality))")
             
             // Generate filename with duplicate checking
             let streetPrefix = extractStreetAddress(from: project.address)
@@ -90,14 +84,12 @@ class PresignedURLUploadService {
             } while existingFilenames.contains(filename) && attemptCount < 100
             
             if existingFilenames.contains(filename) {
-                print("⚠️ Warning: Could not generate unique filename after 100 attempts, skipping image")
                 continue
             }
             
             // Add to our tracking set
             existingFilenames.insert(filename)
             
-            print("  - Generated filename: \(filename)")
             
             do {
                 // Step 1: Get presigned URL from Lambda
@@ -115,8 +107,6 @@ class PresignedURLUploadService {
                 
                 // Step 3: Add to results
                 uploadedImages.append((url: presignedResponse.fileUrl, filename: filename))
-                print("✅ Successfully uploaded image \(index + 1)/\(images.count)")
-                print("  - Final URL: \(presignedResponse.fileUrl)")
                 
             } catch {
                 print("❌ Failed to upload image \(index + 1): \(error)")
@@ -124,9 +114,6 @@ class PresignedURLUploadService {
             }
         }
         
-        print("\n📊 Upload Summary:")
-        print("  - Total images: \(images.count)")
-        print("  - Successfully uploaded: \(uploadedImages.count)")
         
         return uploadedImages
     }
@@ -135,8 +122,6 @@ class PresignedURLUploadService {
     
     /// Get presigned URL from Lambda function
     private func getPresignedURL(filename: String, projectId: String, companyId: String) async throws -> PresignedURLResponse {
-        print("🔷 Requesting presigned URL from Lambda")
-        print("  - Filename: \(filename)")
         
         // Create request to Lambda
         let lambdaRequest = PresignedURLRequest(
@@ -158,21 +143,16 @@ class PresignedURLUploadService {
         request.httpBody = requestData
         
         if let bodyString = String(data: requestData, encoding: .utf8) {
-            print("  - Request body: \(bodyString)")
         }
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
-            print("❌ Invalid response from Lambda")
             throw UploadError.invalidResponse
         }
         
-        print("🔶 Lambda Response:")
-        print("  - Status Code: \(httpResponse.statusCode)")
         
         if let responseString = String(data: data, encoding: .utf8) {
-            print("  - Response Body: \(responseString)")
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
@@ -181,16 +161,12 @@ class PresignedURLUploadService {
         }
         
         let presignedResponse = try JSONDecoder().decode(PresignedURLResponse.self, from: data)
-        print("✅ Got presigned URL: \(presignedResponse.uploadUrl)")
         
         return presignedResponse
     }
     
     /// Upload image data to S3 using presigned URL
     private func uploadToPresignedURL(presignedResponse: PresignedURLResponse, imageData: Data) async throws {
-        print("🔷 Uploading to presigned URL")
-        print("  - URL: \(presignedResponse.uploadUrl)")
-        print("  - Image size: \(imageData.count) bytes")
         
         guard let url = URL(string: presignedResponse.uploadUrl) else {
             throw UploadError.invalidURL
@@ -201,7 +177,6 @@ class PresignedURLUploadService {
         // Check if this is a POST with form fields or a simple PUT
         if let fields = presignedResponse.fields, !fields.isEmpty {
             // POST with multipart form data
-            print("  - Using POST with form fields")
             request.httpMethod = "POST"
             
             let boundary = UUID().uuidString
@@ -228,7 +203,6 @@ class PresignedURLUploadService {
             
         } else {
             // Simple PUT request
-            print("  - Using PUT request")
             request.httpMethod = "PUT"
             request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
             request.setValue("\(imageData.count)", forHTTPHeaderField: "Content-Length")
@@ -238,15 +212,11 @@ class PresignedURLUploadService {
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
-            print("❌ Invalid response from S3")
             throw UploadError.invalidResponse
         }
         
-        print("🔶 S3 Response:")
-        print("  - Status Code: \(httpResponse.statusCode)")
         
         if !data.isEmpty, let responseString = String(data: data, encoding: .utf8) {
-            print("  - Response Body: \(responseString)")
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
@@ -254,7 +224,6 @@ class PresignedURLUploadService {
             throw UploadError.s3Error(statusCode: httpResponse.statusCode)
         }
         
-        print("✅ Successfully uploaded to S3")
     }
     
     /// Extract street address for filename prefix
@@ -315,7 +284,6 @@ class PresignedURLUploadService {
         let resizedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
         UIGraphicsEndImageContext()
         
-        print("📐 Resized image from \(image.size) to \(resizedImage.size)")
         return resizedImage
     }
     

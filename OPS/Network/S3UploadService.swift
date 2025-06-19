@@ -27,10 +27,6 @@ class S3UploadService {
     
     /// Upload multiple images to S3 for a project
     func uploadProjectImages(_ images: [UIImage], for project: Project, companyId: String) async throws -> [(url: String, filename: String)] {
-        print("🚀 S3UploadService: Starting upload of \(images.count) images")
-        print("  - Project: \(project.id) - \(project.title)")
-        print("  - Company ID: \(companyId)")
-        print("  - Project Address: \(project.address)")
         
         var uploadedImages: [(url: String, filename: String)] = []
         
@@ -46,12 +42,9 @@ class S3UploadService {
             }
         }
         
-        print("🔍 Checking for duplicate images. Existing filenames: \(existingFilenames.count)")
         
         // Process each image
         for (index, image) in images.enumerated() {
-            print("\n📸 Processing image \(index + 1)/\(images.count)")
-            print("  - Original size: \(image.size.width)x\(image.size.height)")
             
             // Resize image if needed to prevent upload issues
             let processedImage = resizeImageIfNeeded(image)
@@ -66,7 +59,6 @@ class S3UploadService {
             }
             
             let sizeInMB = Double(imageData.count) / (1024 * 1024)
-            print("  - Compressed size: \(String(format: "%.2f", sizeInMB)) MB (quality: \(compressionQuality))")
             
             // Generate filename with street address prefix
             let streetPrefix = extractStreetAddress(from: project.address)
@@ -83,15 +75,12 @@ class S3UploadService {
             } while existingFilenames.contains(filename) && attemptCount < 100
             
             if existingFilenames.contains(filename) {
-                print("⚠️ Warning: Could not generate unique filename after 100 attempts, skipping image")
                 continue
             }
             
             // Add to our tracking set
             existingFilenames.insert(filename)
             
-            print("  - Generated filename: \(filename)")
-            print("  - Street prefix: \(streetPrefix)")
             
             // Upload to S3
             do {
@@ -103,8 +92,6 @@ class S3UploadService {
                 )
                 
                 uploadedImages.append((url: s3URL, filename: filename))
-                print("✅ Successfully uploaded image \(index + 1)/\(images.count)")
-                print("  - S3 URL: \(s3URL)")
             } catch {
                 print("❌ Failed to upload image \(index + 1): \(error)")
                 print("  - Error type: \(type(of: error))")
@@ -113,9 +100,6 @@ class S3UploadService {
             }
         }
         
-        print("\n📊 Upload Summary:")
-        print("  - Total images: \(images.count)")
-        print("  - Successfully uploaded: \(uploadedImages.count)")
         print("  - Failed: \(images.count - uploadedImages.count)")
         
         return uploadedImages
@@ -144,7 +128,6 @@ class S3UploadService {
             throw S3Error.deleteFailed
         }
         
-        print("S3UploadService: Successfully deleted image from S3: \(filename)")
     }
     
     // MARK: - Private Methods
@@ -153,13 +136,6 @@ class S3UploadService {
         let objectKey = "company-\(companyId)/\(projectId)/photos/\(filename)"
         let endpoint = "https://\(bucketName).s3.\(region).amazonaws.com/\(objectKey)"
         
-        print("🔷 S3 Upload Request:")
-        print("  - Endpoint: \(endpoint)")
-        print("  - Object Key: \(objectKey)")
-        print("  - Image Size: \(imageData.count) bytes (\(imageData.count / 1024)KB)")
-        print("  - Company ID: \(companyId)")
-        print("  - Project ID: \(projectId)")
-        print("  - Filename: \(filename)")
         
         var request = URLRequest(url: URL(string: endpoint)!)
         request.httpMethod = "PUT"
@@ -171,14 +147,11 @@ class S3UploadService {
         addAWSAuthHeaders(to: &request, method: "PUT", path: "/\(objectKey)", payload: imageData)
         
         // Log all headers for debugging
-        print("🔷 S3 Request Headers:")
         request.allHTTPHeaderFields?.forEach { key, value in
             if key.lowercased().contains("authorization") {
                 // Partially mask sensitive auth header
                 let masked = value.prefix(30) + "..." + value.suffix(10)
-                print("  - \(key): \(masked)")
             } else {
-                print("  - \(key): \(value)")
             }
         }
         
@@ -190,12 +163,8 @@ class S3UploadService {
                 throw S3Error.uploadFailed
             }
             
-            print("🔶 S3 Response:")
-            print("  - Status Code: \(httpResponse.statusCode)")
-            print("  - Headers: \(httpResponse.allHeaderFields)")
             
             if let responseString = String(data: data, encoding: .utf8), !responseString.isEmpty {
-                print("  - Response Body: \(responseString)")
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {
@@ -206,7 +175,6 @@ class S3UploadService {
                 throw S3Error.uploadFailed
             }
             
-            print("✅ S3 Upload Successful: \(endpoint)")
             return endpoint
             
         } catch {
@@ -216,11 +184,6 @@ class S3UploadService {
     }
     
     private func addAWSAuthHeaders(to request: inout URLRequest, method: String, path: String, payload: Data? = nil) {
-        print("🔐 AWS Authentication Header Generation:")
-        print("  - Method: \(method)")
-        print("  - Path: \(path)")
-        print("  - Bucket: \(bucketName)")
-        print("  - Region: \(region)")
         
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
@@ -229,15 +192,12 @@ class S3UploadService {
         
         let dateStamp = String(dateTime.prefix(8))
         
-        print("  - DateTime: \(dateTime)")
-        print("  - DateStamp: \(dateStamp)")
         
         // Create canonical request
         let canonicalHeaders = "host:\(bucketName).s3.\(region).amazonaws.com\nx-amz-date:\(dateTime)\n"
         let signedHeaders = "host;x-amz-date"
         
         let payloadHash = payload?.sha256Hash() ?? "UNSIGNED-PAYLOAD"
-        print("  - Payload Hash: \(payloadHash)")
         
         let canonicalRequest = """
         \(method)
@@ -248,16 +208,12 @@ class S3UploadService {
         \(payloadHash)
         """
         
-        print("  - Canonical Request:")
-        print("    \(canonicalRequest.replacingOccurrences(of: "\n", with: "\\n"))")
         
         // Create string to sign
         let algorithm = "AWS4-HMAC-SHA256"
         let credentialScope = "\(dateStamp)/\(region)/s3/aws4_request"
         let canonicalRequestHash = canonicalRequest.sha256Hash()
         
-        print("  - Canonical Request Hash: \(canonicalRequestHash)")
-        print("  - Credential Scope: \(credentialScope)")
         
         let stringToSign = """
         \(algorithm)
@@ -266,8 +222,6 @@ class S3UploadService {
         \(canonicalRequestHash)
         """
         
-        print("  - String to Sign:")
-        print("    \(stringToSign.replacingOccurrences(of: "\n", with: "\\n"))")
         
         // Calculate signature
         let signature = calculateSignature(
@@ -277,12 +231,10 @@ class S3UploadService {
             service: "s3"
         )
         
-        print("  - Calculated Signature: \(signature)")
         
         // Create authorization header
         let authorization = "\(algorithm) Credential=\(accessKeyId)/\(credentialScope), SignedHeaders=\(signedHeaders), Signature=\(signature)"
         
-        print("  - Authorization Header: \(authorization.prefix(50))...")
         
         // Set headers
         request.setValue(authorization, forHTTPHeaderField: "Authorization")
@@ -290,7 +242,6 @@ class S3UploadService {
         request.setValue(payloadHash, forHTTPHeaderField: "X-Amz-Content-SHA256")
         request.setValue("\(bucketName).s3.\(region).amazonaws.com", forHTTPHeaderField: "Host")
         
-        print("  - Headers set successfully")
     }
     
     private func calculateSignature(stringToSign: String, dateStamp: String, region: String, service: String) -> String {
@@ -372,7 +323,6 @@ class S3UploadService {
         let resizedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
         UIGraphicsEndImageContext()
         
-        print("📐 Resized image from \(image.size) to \(resizedImage.size)")
         return resizedImage
     }
     

@@ -81,7 +81,6 @@ struct ProjectImageView: View {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = cachedImage
-                print("ProjectImageView: Using cached image from memory")
             }
             return
         }
@@ -91,7 +90,6 @@ struct ProjectImageView: View {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = loadedImage
-                print("ProjectImageView: Successfully loaded image from file system")
                 
                 // Cache in memory for faster access next time
                 ImageCache.shared.set(loadedImage, forKey: urlString)
@@ -111,7 +109,6 @@ struct ProjectImageView: View {
                 DispatchQueue.main.async {
                     self.isLoading = false
                     self.image = loadedImage
-                    print("ProjectImageView: Loaded image from UserDefaults and migrated to file system")
                     
                     // Cache in memory
                     ImageCache.shared.set(loadedImage, forKey: urlString)
@@ -127,13 +124,11 @@ struct ProjectImageView: View {
         }
         
         guard let url = URL(string: normalizedURLString) else {
-            print("ProjectImageView: Invalid URL: \(normalizedURLString)")
             isLoading = false
             loadFailed = true
             return
         }
         
-        print("ProjectImageView: Loading remote image: \(url)")
         
         URLSession.shared.dataTask(with: url) { data, response, error in
             DispatchQueue.main.async {
@@ -154,7 +149,6 @@ struct ProjectImageView: View {
                 
                 if let data = data, let loadedImage = UIImage(data: data) {
                     self.image = loadedImage
-                    print("ProjectImageView: Successfully loaded remote image")
                     
                     // Cache the remote image locally in file system
                     _ = ImageFileManager.shared.saveImage(data: data, localID: normalizedURLString)

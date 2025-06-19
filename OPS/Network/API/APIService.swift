@@ -70,7 +70,6 @@ class APIService {
     /// - Parameter id: The user's ID to delete
     /// - Returns: Response containing the deleted user ID
     func deleteUser(id: String) async throws -> DeleteUserResponse {
-        print("🔴 API: Deleting user with ID: \(id)")
         
         // Create request body with user parameter
         let requestBody = ["user": id]
@@ -84,7 +83,6 @@ class APIService {
             requiresAuth: false  // Bubble workflow endpoints typically don't require auth headers
         )
         
-        print("✅ User successfully deleted with ID: \(response.deleted)")
         return response
     }
     
@@ -131,21 +129,16 @@ class APIService {
         }
         
         // Enhanced request logging
-        print("🔷 API REQUEST: \(method) \(url.absoluteString)")
         
         // Log query parameters and request body for better debugging
         if let queryItems = queryItems, !queryItems.isEmpty {
-            print("🔷 Query Parameters:")
             for item in queryItems {
-                print("  - \(item.name): \(item.value ?? "nil")")
             }
         }
         
         if let body = body, method != "GET" {
             if let bodyString = String(data: body, encoding: .utf8) {
-                print("🔷 Request Body: \(bodyString)")
             } else {
-                print("🔷 Request Body: [Binary data of \(body.count) bytes]")
             }
         }
         
@@ -167,24 +160,20 @@ class APIService {
             
             // Handle HTTP 204 No Content responses (empty body)
             if httpResponse.statusCode == 204 {
-                print("🔶 HTTP 204 No Content - returning EmptyResponse")
                 // For 204 responses, return EmptyResponse without trying to decode
                 if T.self == EmptyResponse.self {
                     return EmptyResponse() as! T
                 } else {
                     // If expecting a different type but got 204, this might be an API issue
-                    print("⚠️ Warning: Expected \(T.self) but got HTTP 204 No Content")
                     throw APIError.decodingFailed
                 }
             }
             
             // Handle empty response bodies (can happen with HTTP 200 for some update operations)
             if data.isEmpty {
-                print("🔶 Empty response body detected")
                 if T.self == EmptyResponse.self {
                     return EmptyResponse() as! T
                 } else {
-                    print("⚠️ Warning: Expected \(T.self) but got empty response body")
                     throw APIError.decodingFailed
                 }
             }
@@ -195,7 +184,6 @@ class APIService {
             // Try to decode the response for other success status codes
             do {
                 let result: T = try decodeResponse(data: data)
-                print("🔶 Decoding successful")
                 return result
             } catch {
                 print("🔴 Decoding failed: \(error)")
@@ -204,14 +192,12 @@ class APIService {
                 if let decodingError = error as? DecodingError {
                     switch decodingError {
                     case .keyNotFound(let key, _):
-                        print("Missing key: \(key)")
+                        break
                     case .typeMismatch(let type, _):
-                        print("Type mismatch for type: \(type)")
+                        break
                     case .dataCorrupted(let context):
-                        print("Data corrupted at path: \(context.codingPath), description: \(context.debugDescription)")
                         // Also check if this is due to an empty response that should be handled
                         if context.debugDescription.contains("Unexpected end of file") {
-                            print("🔍 This appears to be an empty response that should return EmptyResponse")
                             if T.self == EmptyResponse.self {
                                 return EmptyResponse() as! T
                             }
@@ -274,15 +260,12 @@ class APIService {
                    constraints["value"] != nil {
                     // This is a single constraint object that needs to be wrapped in an array
                     constraintsObject = [constraints]
-                    print("🔍 Single constraint detected, wrapping in array for Bubble API format")
                 } else if constraints["and"] != nil || constraints["or"] != nil {
                     // This is already a complex constraint, use as is
                     constraintsObject = constraints
-                    print("🔍 Complex AND/OR constraint detected")
                 } else {
                     // Use as provided
                     constraintsObject = constraints
-                    print("🔍 Using custom constraint format as provided")
                 }
                 
                 // Convert to JSON
@@ -291,24 +274,18 @@ class APIService {
                     queryItems.append(URLQueryItem(name: "constraints", value: jsonString))
                     
                     // Enhanced debug logging
-                    print("🔍 Final Bubble API constraints: \(jsonString)")
                     
                     // Try to pretty print the constraints for better debugging
                     if let prettyData = try? JSONSerialization.data(withJSONObject: constraintsObject, options: [.prettyPrinted]),
                        let prettyString = String(data: prettyData, encoding: .utf8) {
-                        print("🔍 Constraints (formatted):")
-                        print(prettyString)
                     }
                     
                     // Log specific constraint types for debugging
                     if let andConstraints = constraints["and"] as? [[String: Any]] {
-                        print("🔍 Using AND condition with \(andConstraints.count) constraints")
                     } else if let orConstraints = constraints["or"] as? [[String: Any]] {
-                        print("🔍 Using OR condition with \(orConstraints.count) constraints")
                     } else if let key = constraints["key"] as? String, 
                               let constraintType = constraints["constraint_type"] as? String,
                               let value = constraints["value"] {
-                        print("🔍 Direct constraint: \(key) \(constraintType) \(value)")
                     }
                 }
             } catch {
@@ -328,7 +305,6 @@ class APIService {
         )
         
         // Log results
-        print("✅ Received \(wrapper.response.results.count) \(objectType) objects")
         
         return wrapper.response.results
     }
@@ -370,7 +346,6 @@ class APIService {
         }
         
         // Log request details
-        print("🔍 Fetching \(objectType) with array constraints")
         
         // Execute request
         let wrapper: BubbleListResponse<T> = try await executeRequest(
@@ -393,11 +368,24 @@ class APIService {
     ) async throws -> T {
         let endpoint = "api/1.1/obj/\(objectType)/\(id)"
         
+        print("🔵 Fetching \(objectType) with ID: \(id)")
+        
         // Execute the request
         let wrapper: BubbleObjectResponse<T> = try await executeRequest(
             endpoint: endpoint,
             requiresAuth: true  // Changed to true to ensure proper authentication
         )
+        
+        // Log the response for debugging
+        if objectType == BubbleFields.Types.user {
+            print("🟢 User fetch successful")
+            // Try to print company info if it's a user object
+            if let userData = wrapper.response as? UserDTO {
+                print("   User company ID: \(userData.company ?? "none")")
+                print("   User email: \(userData.email ?? "none")")
+                print("   User type: \(userData.userType ?? "none")")
+            }
+        }
         
         return wrapper.response
     }
@@ -554,7 +542,6 @@ class APIService {
         if let responseString = String(data: data, encoding: .utf8) {
             let endpoint = url.lastPathComponent
             
-            print("🔶 API Response from \(endpoint):")
             
             // Try to pretty print JSON for better readability
             if let jsonObject = try? JSONSerialization.jsonObject(with: data),
@@ -565,24 +552,17 @@ class APIService {
                 let maxPreviewLength = 1000
                 if prettyString.count > maxPreviewLength {
                     let preview = prettyString.prefix(maxPreviewLength)
-                    print("\(preview)...")
-                    print("🔶 [Response truncated - full length: \(prettyString.count) chars]")
                 } else {
-                    print(prettyString)
                 }
             } else {
                 // Fallback if pretty printing fails
                 let maxPreviewLength = 500
                 if responseString.count > maxPreviewLength {
                     let preview = responseString.prefix(maxPreviewLength)
-                    print("\(preview)...")
-                    print("🔶 [Response truncated - full length: \(responseString.count) chars]")
                 } else {
-                    print(responseString)
                 }
             }
         } else {
-            print("🔶 Response contains non-text data of \(data.count) bytes")
         }
     }
 }

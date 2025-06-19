@@ -209,13 +209,11 @@ struct ProjectActionBar: View {
         processingImage = true
         
         // Debug log
-        print("ProjectActionBar: Starting to process \(selectedImages.count) images")
         
         Task {
             do {
                 // Use ImageSyncManager if available
                 if let imageSyncManager = dataController.imageSyncManager {
-                    print("ProjectActionBar: Using ImageSyncManager for \(selectedImages.count) images")
                     
                     // Process all images through the ImageSyncManager
                     let urls = await imageSyncManager.saveImages(selectedImages, for: project)
@@ -224,9 +222,7 @@ struct ProjectActionBar: View {
                         // Add URLs to project
                         await MainActor.run {
                             var currentImages = project.getProjectImages()
-                            print("ProjectActionBar: Current images count before: \(currentImages.count)")
                             currentImages.append(contentsOf: urls)
-                            print("ProjectActionBar: Current images count after: \(currentImages.count)")
                             
                             project.setProjectImageURLs(currentImages)
                             project.needsSync = true
@@ -236,7 +232,6 @@ struct ProjectActionBar: View {
                             if let modelContext = dataController.modelContext {
                                 do {
                                     try modelContext.save()
-                                    print("ProjectActionBar: ✅ Saved all images to model context")
                                 } catch {
                                     print("ProjectActionBar: ⚠️ Error saving to model context: \(error.localizedDescription)")
                                 }
@@ -247,19 +242,16 @@ struct ProjectActionBar: View {
                             processingImage = false
                         }
                     } else {
-                        print("ProjectActionBar: ⚠️ No valid image URLs were returned")
                         await MainActor.run {
                             processingImage = false
                         }
                     }
                 } else {
                     // Fallback to direct processing
-                    print("ProjectActionBar: ⚠️ ImageSyncManager not available, using direct processing")
                     
                     // Process each image
                     for (index, image) in selectedImages.enumerated() {
                         // Debug log
-                        print("ProjectActionBar: Processing image \(index + 1) of \(selectedImages.count)")
                         
                         // Compress image
                         guard let imageData = image.jpegData(compressionQuality: 0.7) else {
@@ -277,7 +269,6 @@ struct ProjectActionBar: View {
                         // Store the image in UserDefaults
                         if let imageBase64 = imageData.base64EncodedString() as String? {
                             UserDefaults.standard.set(imageBase64, forKey: localURL)
-                            print("ProjectActionBar: Stored image data for: \(localURL)")
                             
                             // Add to project's images
                             await MainActor.run {
@@ -304,13 +295,11 @@ struct ProjectActionBar: View {
                         if let modelContext = dataController.modelContext {
                             do {
                                 try modelContext.save()
-                                print("ProjectActionBar: ✅ Saved all images to model context")
                             } catch {
                                 print("ProjectActionBar: ⚠️ Error saving to model context: \(error.localizedDescription)")
                             }
                         }
                         
-                        print("ProjectActionBar: ✅ All images processed. Current images: \(project.getProjectImages().count)")
                         selectedImages.removeAll()
                         processingImage = false
                     }

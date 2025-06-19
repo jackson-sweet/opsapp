@@ -101,13 +101,10 @@ struct NavigationControlsView: View {
             }
         }
         .onAppear {
-            print("NavigationControlsView onAppear: isRouting=\(isRouting), currentNavStep=\(currentNavStep?.instruction ?? "nil")")
         }
         .onChange(of: isRouting) { _, newValue in
-            print("NavigationControlsView: isRouting changed to \(newValue)")
         }
         .onChange(of: currentNavStep) { _, newStep in
-            print("NavigationControlsView: currentNavStep changed to \(newStep?.instruction ?? "nil")")
         }
     }
     

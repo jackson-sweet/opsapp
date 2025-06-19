@@ -585,7 +585,6 @@ struct ProjectHistorySettingsView: View {
                 return date1 > date2
             }
             
-            print("ProjectHistorySettingsView: Loaded \(allProjects.count) total projects, \(filtered.count) after filtering")
             
             // In a real app, you would load expenses from the data controller
             // For now, using sample data

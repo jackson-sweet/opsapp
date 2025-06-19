@@ -25,7 +25,6 @@ class AppState: ObservableObject {
     }
     
     func enterProjectMode(projectID: String) {
-        print("AppState: Setting activeProjectID to \(projectID) - STARTING PROJECT")
         self.isViewingDetailsOnly = false // Make sure we're in project mode
         self.activeProjectID = projectID
         
@@ -43,17 +42,14 @@ class AppState: ObservableObject {
     
     // Function to set a project for viewing details
     func viewProjectDetails(_ project: Project) {
-        print("AppState: Setting up project for details view: \(project.id) - DETAILS ONLY MODE")
         
         // IMPORTANT: Make sure we're not already showing this project to avoid sheet flicker
         if self.showProjectDetails && self.activeProject?.id == project.id {
-            print("AppState: Already showing this project, not resetting the sheet")
             return
         }
         
         // Step 1: Reset sheet state if needed to avoid transition conflicts
         if self.showProjectDetails {
-            print("AppState: Sheet is already showing, resetting state first")
             self.showProjectDetails = false
             self.activeProject = nil
             
@@ -70,7 +66,6 @@ class AppState: ObservableObject {
     
     // Helper method to show project details after any needed reset
     private func showProjectDetailsAfterReset(_ project: Project) {
-        print("AppState: Setting up project after reset: \(project.id)")
         
         // First set flags before setting the project to ensure proper order
         self.isViewingDetailsOnly = true
@@ -81,28 +76,23 @@ class AppState: ObservableObject {
         
         // Use a very short delay to ensure UI updates properly
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            print("AppState: Now setting showProjectDetails=true with activeProject=\(String(describing: self.activeProject?.id))")
             self.showProjectDetails = true
         }
     }
     
     func setActiveProject(_ project: Project) {
-        print("AppState: Setting activeProject to \(project.id) - \(project.title), showProjectDetails=\(showProjectDetails)")
         self.activeProjectID = project.id
         
         // Only set activeProject (which triggers sheet) if showProjectDetails is true
         if showProjectDetails {
-            print("AppState: ProjectDetailsView will be shown - setting activeProject")
             self.activeProject = project
         } else {
             // Don't set activeProject, only set ID - prevents sheet from showing
-            print("AppState: ProjectDetailsView will NOT be shown (details disabled)")
             self.activeProject = nil
         }
     }
     
     func exitProjectMode() {
-        print("AppState: Clearing activeProject and activeProjectID")
         self.showProjectDetails = false // Reset the details flag
         self.isViewingDetailsOnly = false // Reset viewing details flag
         self.activeProject = nil
@@ -111,12 +101,10 @@ class AppState: ObservableObject {
     
     // Helper method to dismiss project details without exiting project mode
     func dismissProjectDetails() {
-        print("AppState: Dismissing project details")
         self.showProjectDetails = false
         
         // If we were just viewing details, clear the project ID to exit "details" mode
         if isViewingDetailsOnly {
-            print("AppState: Was in details-only mode, clearing project ID")
             self.isViewingDetailsOnly = false
             self.activeProjectID = nil
             self.activeProject = nil

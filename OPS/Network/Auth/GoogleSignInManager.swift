@@ -22,16 +22,13 @@ class GoogleSignInManager: ObservableObject {
            let plist = NSDictionary(contentsOfFile: path),
            let clientId = plist["CLIENT_ID"] as? String {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientId)
-            print("Google Sign-In configured from GoogleService-Info.plist")
         }
         // Fallback to Info.plist configuration
         else if let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
                 let plist = NSDictionary(contentsOfFile: path),
                 let clientId = plist["GIDClientID"] as? String {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientId)
-            print("Google Sign-In configured from Info.plist")
         } else {
-            print("Warning: Google Sign-In client ID not found in GoogleService-Info.plist or Info.plist")
         }
     }
     
@@ -45,10 +42,6 @@ class GoogleSignInManager: ObservableObject {
             let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: viewController)
             let user = result.user
             
-            print("Google Sign-In successful:")
-            print("  - User ID: \(user.userID ?? "N/A")")
-            print("  - Email: \(user.profile?.email ?? "N/A")")
-            print("  - Name: \(user.profile?.name ?? "N/A")")
             
             isSigningIn = false
             return user
@@ -80,14 +73,12 @@ class GoogleSignInManager: ObservableObject {
     /// Sign out from Google
     func signOut() {
         GIDSignIn.sharedInstance.signOut()
-        print("Google Sign-Out completed")
     }
     
     /// Check if user has previously signed in
     func restorePreviousSignIn() async -> GIDGoogleUser? {
         do {
             let user = try await GIDSignIn.sharedInstance.restorePreviousSignIn()
-            print("Previous Google sign-in restored for: \(user.profile?.email ?? "N/A")")
             return user
         } catch {
             print("No previous Google sign-in to restore")

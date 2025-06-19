@@ -285,14 +285,12 @@ struct PhotoThumbnail: View {
         
         isLoading = true
         
-        print("PhotoThumbnail: Loading image for URL: \(url)")
         
         // First check in-memory cache
         if let cachedImage = ImageCache.shared.get(forKey: url) {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = cachedImage
-                print("PhotoThumbnail: Using cached image from memory for URL: \(url)")
             }
             return
         }
@@ -302,11 +300,9 @@ struct PhotoThumbnail: View {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = loadedImage
-                print("PhotoThumbnail: Successfully loaded image from file system for URL: \(url)")
                 
                 // Cache in memory for faster access next time
                 ImageCache.shared.set(loadedImage, forKey: url)
-                print("PhotoThumbnail: Cached image in memory with key: \(url)")
             }
             return
         }
@@ -323,7 +319,6 @@ struct PhotoThumbnail: View {
                 DispatchQueue.main.async {
                     self.isLoading = false
                     self.image = loadedImage
-                    print("PhotoThumbnail: Loaded image from UserDefaults and migrated to file system")
                     
                     // Cache in memory
                     ImageCache.shared.set(loadedImage, forKey: url)
@@ -342,12 +337,10 @@ struct PhotoThumbnail: View {
         
         // If not found locally, try to load from network
         guard let imageURL = URL(string: normalizedURL) else {
-            print("PhotoThumbnail: Invalid URL: \(normalizedURL)")
             isLoading = false
             return
         }
         
-        print("PhotoThumbnail: Loading remote image: \(imageURL)")
         
         URLSession.shared.dataTask(with: imageURL) { data, response, error in
             DispatchQueue.main.async {
@@ -366,7 +359,6 @@ struct PhotoThumbnail: View {
                 
                 if let data = data, let loadedImage = UIImage(data: data) {
                     self.image = loadedImage
-                    print("PhotoThumbnail: Successfully loaded remote image")
                     
                     // Cache the remote image locally in file system
                     _ = ImageFileManager.shared.saveImage(data: data, localID: normalizedURL)
@@ -481,7 +473,6 @@ struct SinglePhotoView: View {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = cachedImage
-                print("SinglePhotoView: Using cached image from memory")
             }
             return
         }
@@ -491,7 +482,6 @@ struct SinglePhotoView: View {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = loadedImage
-                print("SinglePhotoView: Successfully loaded image from file system")
                 
                 // Cache in memory for faster access next time
                 ImageCache.shared.set(loadedImage, forKey: url)
@@ -511,7 +501,6 @@ struct SinglePhotoView: View {
                 DispatchQueue.main.async {
                     self.isLoading = false
                     self.image = loadedImage
-                    print("SinglePhotoView: Loaded image from UserDefaults and migrated to file system")
                     
                     // Cache in memory
                     ImageCache.shared.set(loadedImage, forKey: url)
@@ -530,12 +519,10 @@ struct SinglePhotoView: View {
         
         // If not found locally, try to load from network
         guard let imageURL = URL(string: normalizedURL) else {
-            print("SinglePhotoView: Invalid URL: \(normalizedURL)")
             isLoading = false
             return
         }
         
-        print("SinglePhotoView: Loading remote image: \(imageURL)")
         
         URLSession.shared.dataTask(with: imageURL) { data, response, error in
             DispatchQueue.main.async {
@@ -554,7 +541,6 @@ struct SinglePhotoView: View {
                 
                 if let data = data, let loadedImage = UIImage(data: data) {
                     self.image = loadedImage
-                    print("SinglePhotoView: Successfully loaded remote image")
                     
                     // Cache the remote image locally in file system
                     _ = ImageFileManager.shared.saveImage(data: data, localID: normalizedURL)
@@ -576,7 +562,6 @@ extension ProjectPhotosGrid {
     private func deletePhoto(_ url: String) {
         // Start a background task for deletion
         Task {
-            print("ProjectPhotosGrid: Deleting photo: \(url)")
             
             // Get current project images
             var currentImages = project.getProjectImages()
@@ -584,23 +569,19 @@ extension ProjectPhotosGrid {
             // Remove the specified image
             if let index = currentImages.firstIndex(of: url) {
                 currentImages.remove(at: index)
-                print("ProjectPhotosGrid: Photo removed from project images array")
                 
                 // Use ImageSyncManager if available
                 if let imageSyncManager = dataController.imageSyncManager {
-                    print("ProjectPhotosGrid: Using ImageSyncManager for deletion")
                     
                     // Delete the image through the ImageSyncManager
                     let success = await imageSyncManager.deleteImage(url, from: project)
                     
                     if success {
-                        print("ProjectPhotosGrid: Successfully deleted image through ImageSyncManager")
                     } else {
                         print("ProjectPhotosGrid: ⚠️ ImageSyncManager failed to delete the image, but we'll update the project anyway")
                     }
                 } else {
                     // Fallback to direct file deletion if ImageSyncManager is not available
-                    print("ProjectPhotosGrid: ⚠️ ImageSyncManager not available, using direct file deletion")
                     
                     // Clean up file storage
                     if url.hasPrefix("local://") {
@@ -623,19 +604,16 @@ extension ProjectPhotosGrid {
                     if let modelContext = dataController.modelContext {
                         do {
                             try modelContext.save()
-                            print("ProjectPhotosGrid: ✅ Successfully deleted photo from project")
                         } catch {
                             print("ProjectPhotosGrid: ⚠️ Error saving changes after deletion: \(error.localizedDescription)")
                         }
                     } else {
-                        print("ProjectPhotosGrid: ⚠️ ModelContext is nil, can't save changes")
                     }
                     
                     // Reset state
                     photoToDelete = nil
                 }
             } else {
-                print("ProjectPhotosGrid: ⚠️ Could not find photo in project images")
             }
         }
     }
@@ -643,19 +621,16 @@ extension ProjectPhotosGrid {
         // Start loading indicator
         processingImage = true
         
-        print("ProjectPhotosGrid: Starting to process image")
         
         Task {
             // Use the ImageSyncManager if available
             if let imageSyncManager = dataController.imageSyncManager {
-                print("ProjectPhotosGrid: Using ImageSyncManager for upload")
                 
                 // Process the image through the ImageSyncManager
                 let urls = await imageSyncManager.saveImages([image], for: project)
                 
                 if let url = urls.first, !url.isEmpty {
                     // ImageSyncManager already added the image to the project
-                    print("ProjectPhotosGrid: ✅ ImageSyncManager successfully uploaded image")
                     
                     await MainActor.run {
                         // Clear selected image and hide loading
@@ -663,7 +638,6 @@ extension ProjectPhotosGrid {
                         processingImage = false
                     }
                 } else {
-                    print("ProjectPhotosGrid: ⚠️ No URL returned from ImageSyncManager")
                     await MainActor.run {
                         processingImage = false
                         showingNetworkError = true
@@ -672,7 +646,6 @@ extension ProjectPhotosGrid {
                 }
             } else {
                 // Fallback to ImageFileManager if ImageSyncManager is not available
-                print("ProjectPhotosGrid: ⚠️ ImageSyncManager not available, using direct file storage")
                 
                 // Compress image for storage
                 guard let imageData = image.jpegData(compressionQuality: 0.7) else {
@@ -692,7 +665,6 @@ extension ProjectPhotosGrid {
                 let success = ImageFileManager.shared.saveImage(data: imageData, localID: localURL)
                 
                 if success {
-                    print("ProjectPhotosGrid: Stored image data with ImageFileManager: \(localURL)")
                     
                     // Add to project's images
                     await MainActor.run {
@@ -706,7 +678,6 @@ extension ProjectPhotosGrid {
                         if let modelContext = dataController.modelContext {
                             do {
                                 try modelContext.save()
-                                print("ProjectPhotosGrid: ✅ Saved to model context successfully")
                             } catch {
                                 print("ProjectPhotosGrid: ⚠️ Error saving to model context: \(error.localizedDescription)")
                             }

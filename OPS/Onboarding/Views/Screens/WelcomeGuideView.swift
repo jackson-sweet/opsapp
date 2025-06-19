@@ -18,7 +18,7 @@ struct WelcomeGuideView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Minimal header with skip

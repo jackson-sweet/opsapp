@@ -18,7 +18,7 @@ struct WelcomeView: View {
         ZStack {
             // Background with subtle gradient
             Color(OPSStyle.Colors.background)
-            .edgesIgnoringSafeArea(.all)
+            .ignoresSafeArea()
             
             VStack(alignment: .leading, spacing: 0) {
                 // Logo in top corner
@@ -46,7 +46,6 @@ struct WelcomeView: View {
                         userDefaults.removeObject(forKey: "user_last_name")
                         userDefaults.removeObject(forKey: "user_phone_number")
                         userDefaults.removeObject(forKey: "company_code")
-                        print("WelcomeView: Cleared all user data before dismissing")
                         
                         // Dismiss onboarding and return to login page
                         NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
@@ -104,16 +103,7 @@ struct WelcomeView: View {
                     // Get Started Button
                     StandardContinueButton(
                         onTap: {
-                            print("WelcomeView: Get Started button tapped")
-                            
-                            // Use the appropriate method for the flow
-                            if AppConfiguration.UX.useConsolidatedOnboardingFlow {
-                                viewModel.moveToNextStepV2()
-                                print("WelcomeView: Moving to next V2 step: \(viewModel.currentStepV2.title)")
-                            } else {
-                                viewModel.moveToNextStep()
-                                print("WelcomeView: Moving to next step: \(viewModel.currentStep.title)")
-                            }
+                            viewModel.moveToNextStep()
                         }
                     )
                     .opacity(buttonOpacity)

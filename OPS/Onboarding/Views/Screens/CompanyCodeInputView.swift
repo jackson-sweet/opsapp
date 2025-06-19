@@ -41,13 +41,13 @@ struct CompanyCodeInputView: View {
     var body: some View {
         ZStack {
             // Background color
-            backgroundColor.edgesIgnoringSafeArea(.all)
+            backgroundColor.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        viewModel.previousStep()
+                        viewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -277,7 +277,6 @@ struct CompanyCodeInputView: View {
                 viewModel.isLoading = false
                 
                 if success {
-                    print("Company join successful! Company: \(viewModel.companyName)")
                     // Store the fact that the user has successfully joined a company
                     UserDefaults.standard.set(true, forKey: "has_joined_company")
                     

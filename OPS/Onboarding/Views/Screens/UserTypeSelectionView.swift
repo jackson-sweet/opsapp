@@ -30,7 +30,7 @@ struct UserTypeSelectionView: View {
     var body: some View {
         ZStack {
             // Background - changes based on selection
-            backgroundColor.edgesIgnoringSafeArea(.all)
+            backgroundColor.ignoresSafeArea()
             
             VStack(spacing: 32) {
                 // Header
@@ -90,7 +90,7 @@ struct UserTypeSelectionView: View {
                     isDisabled: viewModel.selectedUserType == nil,
                     onTap: {
                         if viewModel.selectedUserType != nil {
-                            viewModel.moveToNextStepV2()
+                            viewModel.moveToNextStep()
                         }
                     }
                 )

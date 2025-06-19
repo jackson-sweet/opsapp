@@ -272,7 +272,6 @@ struct SecuritySettingsView: View {
             return
         }
         
-        print("SecuritySettingsView: Requesting password reset for email: \(resetEmail)")
         
         Task {
             let (success, errorMessage) = await dataController.requestPasswordReset(email: resetEmail)
@@ -281,7 +280,6 @@ struct SecuritySettingsView: View {
                 passwordResetInProgress = false
                 
                 if success {
-                    print("SecuritySettingsView: Password reset request successful")
                     passwordResetSuccess = true
                 } else {
                     print("SecuritySettingsView: Password reset request failed: \(errorMessage ?? "Unknown error")")

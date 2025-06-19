@@ -27,27 +27,22 @@ class DeviceHeadingManager: NSObject, ObservableObject {
         
         // Check if heading is available on this device
         if CLLocationManager.headingAvailable() {
-            print("🧭 DeviceHeadingManager: Heading available, starting updates")
             locationManager.startUpdatingHeading()
             isHeadingAvailable = true
         } else {
-            print("🧭 DeviceHeadingManager: Heading not available on this device")
             isHeadingAvailable = false
         }
     }
     
     func startHeadingUpdates() {
         guard CLLocationManager.headingAvailable() else {
-            print("🧭 DeviceHeadingManager: Cannot start heading updates - not available")
             return
         }
         
-        print("🧭 DeviceHeadingManager: Starting heading updates")
         locationManager.startUpdatingHeading()
     }
     
     func stopHeadingUpdates() {
-        print("🧭 DeviceHeadingManager: Stopping heading updates")
         locationManager.stopUpdatingHeading()
     }
     
@@ -67,7 +62,6 @@ extension DeviceHeadingManager: CLLocationManagerDelegate {
         if heading >= 0 {
             DispatchQueue.main.async {
                 self.currentHeading = heading
-                print("🧭 DeviceHeadingManager: Updated heading to \(Int(heading))°")
             }
         }
     }

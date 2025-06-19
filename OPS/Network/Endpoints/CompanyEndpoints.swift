@@ -32,7 +32,6 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of project DTOs
     func fetchCompanyProjects(companyId: String) async throws -> [ProjectDTO] {
-        print("🔷 Fetching all projects for company: \(companyId)")
         
         // Create constraint for company using array format
         let constraints: [[String: Any]] = [

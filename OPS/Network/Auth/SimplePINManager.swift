@@ -22,7 +22,6 @@ class SimplePINManager: ObservableObject {
     func checkPINRequirement() {
         requiresPIN = hasPINEnabled && !storedPIN.isEmpty
         isAuthenticated = !requiresPIN
-        print("SimplePINManager: checkPINRequirement - requiresPIN=\(requiresPIN), isAuthenticated=\(isAuthenticated)")
     }
     
     func setPIN(_ pin: String) {
@@ -34,10 +33,8 @@ class SimplePINManager: ObservableObject {
     func validatePIN(_ pin: String) -> Bool {
         let isValid = pin == storedPIN
         if isValid {
-            print("SimplePINManager: PIN validated successfully, will set isAuthenticated = true after delay")
             // Delay the authentication state change to allow success animation to show
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                print("SimplePINManager: Now setting isAuthenticated = true")
                 self?.isAuthenticated = true
                 self?.objectWillChange.send()
             }

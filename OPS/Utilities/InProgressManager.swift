@@ -26,16 +26,12 @@ class InProgressManager: ObservableObject {
     private var currentStepIndex: Int = 0
     
     func startRouting(to destination: CLLocationCoordinate2D, from userLocation: CLLocationCoordinate2D? = nil) {
-        print("InProgressManager: Starting routing to: \(destination.latitude), \(destination.longitude)")
-        print("InProgressManager: Before setting - isRouting = \(self.isRouting)")
         
         // Make sure routing is initially set to true to show loading state
         self.isRouting = true
-        print("InProgressManager: After setting - isRouting = \(self.isRouting)")
             
         // Publish explicit notification that routing has started
         NotificationCenter.default.post(name: Notification.Name("RoutingStateChanged"), object: nil, userInfo: ["isRouting": true])
-        print("InProgressManager: Posted RoutingStateChanged notification")
         
         let request = MKDirections.Request()
         
@@ -47,11 +43,9 @@ class InProgressManager: ObservableObject {
         
         // Set start location - either user location or default
         if let userLocation = userLocation {
-            print("InProgressManager: Using provided user location: \(userLocation.latitude), \(userLocation.longitude)")
             let sourcePlacemark = MKPlacemark(coordinate: userLocation)
             request.source = MKMapItem(placemark: sourcePlacemark)
         } else {
-            print("InProgressManager: Using current location")
             request.source = MKMapItem.forCurrentLocation()
         }
         
@@ -71,7 +65,6 @@ class InProgressManager: ObservableObject {
                     
                     // Retry after a delay if it's a network issue
                     if (error as NSError).domain == MKErrorDomain {
-                        print("InProgressManager: Will retry routing in 2 seconds")
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                             self.startRouting(to: destination, from: userLocation)
                         }
@@ -80,14 +73,12 @@ class InProgressManager: ObservableObject {
                 }
                 
                 guard let response = response, !response.routes.isEmpty else {
-                    print("InProgressManager: ⚠️ No route found")
                     self.isRouting = false
                     return
                 }
                 
                 // Get the fastest route
                 if let fastestRoute = response.routes.min(by: { $0.expectedTravelTime < $1.expectedTravelTime }) {
-                    print("InProgressManager: Found route with \(fastestRoute.steps.count) steps, ETA: \(fastestRoute.expectedTravelTime/60) min")
                     
                     // Store and process route
                     self.activeRoute = fastestRoute
@@ -102,7 +93,6 @@ class InProgressManager: ObservableObject {
                     )
                 } else if let firstRoute = response.routes.first {
                     // Fallback to first route if we can't determine fastest
-                    print("InProgressManager: Using first available route")
                     self.activeRoute = firstRoute
                     self.processRouteDetails(firstRoute)
                     self.isRouting = true
@@ -120,7 +110,6 @@ class InProgressManager: ObservableObject {
     
     func stopRouting() {
         // Ensure routing state is fully cleared
-        print("InProgressManager: Stopping all routing operations")
         
         // Clear all navigation data
         self.isRouting = false
@@ -142,13 +131,11 @@ class InProgressManager: ObservableObject {
         formatter.unitsStyle = .abbreviated
         formatter.zeroFormattingBehavior = .pad
         let travelTimeFormatted = formatter.string(from: route.expectedTravelTime) ?? "Unknown"
-        print("InProgressManager: Travel time: \(travelTimeFormatted)")
         
         // Format distance
         let distanceFormatter = MKDistanceFormatter()
         distanceFormatter.unitStyle = .abbreviated
         let distance = distanceFormatter.string(fromDistance: route.distance)
-        print("InProgressManager: Distance: \(distance)")
         
         // Process route steps
         let validSteps = route.steps.filter { !$0.instructions.isEmpty }
@@ -233,7 +220,6 @@ class InProgressManager: ObservableObject {
             isLastStep: currentStepIndex == steps.count - 1
         )
         
-        print("InProgressManager: Set navigation step: \(instruction) (\(stepDistance))")
     }
     
     // Helper method to refresh route when needed
@@ -275,7 +261,6 @@ class InProgressManager: ObservableObject {
                 if distance < 50 { // 50 meters threshold
                     currentStepIndex += 1
                     setCurrentNavigationStep(for: validSteps)
-                    print("InProgressManager: Advanced to step \(currentStepIndex)")
                 }
             }
         }

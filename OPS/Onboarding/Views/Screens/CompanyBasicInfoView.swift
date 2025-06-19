@@ -10,7 +10,6 @@ import SwiftUI
 struct CompanyBasicInfoView: View {
     @EnvironmentObject var onboardingViewModel: OnboardingViewModel
     @State private var currentPhase: CompanyInfoPhase = .companyName
-    var isInConsolidatedFlow: Bool = false
     
     enum CompanyInfoPhase: Int, CaseIterable {
         case companyName = 0
@@ -29,13 +28,13 @@ struct CompanyBasicInfoView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color.black.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        onboardingViewModel.previousStep()
+                        onboardingViewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -82,7 +81,7 @@ struct CompanyBasicInfoView: View {
                                 companyName: $onboardingViewModel.companyName,
                                 viewModel: onboardingViewModel,
                                 onContinue: {
-                                    onboardingViewModel.nextStep()
+                                    onboardingViewModel.moveToNextStep()
                                 }
                             )
                         }

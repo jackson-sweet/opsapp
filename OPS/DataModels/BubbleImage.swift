@@ -36,7 +36,6 @@ struct BubbleImage: Codable {
                 self.width = nil
                 self.height = nil
                 
-                print("BubbleImage: Successfully decoded from string URL: \(urlString)")
             } catch {
                 // Try to handle a null value
                 if container.decodeNil() {

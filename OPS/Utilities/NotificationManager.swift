@@ -176,7 +176,6 @@ class NotificationManager: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self.authorizationStatus = settings.authorizationStatus
                 self.isNotificationsEnabled = settings.authorizationStatus == .authorized
-                print("NotificationManager: Authorization status: \(settings.authorizationStatus.rawValue)")
             }
         }
     }
@@ -195,13 +194,11 @@ class NotificationManager: NSObject, ObservableObject {
                 self.isNotificationsEnabled = granted
                 
                 if granted {
-                    print("NotificationManager: Permission granted")
                     // Register for remote notifications if permission is granted
                     DispatchQueue.main.async {
                         UIApplication.shared.registerForRemoteNotifications()
                     }
                 } else {
-                    print("NotificationManager: Permission denied")
                 }
                 
                 completion(granted)
@@ -217,7 +214,6 @@ class NotificationManager: NSObject, ObservableObject {
         if isNotificationsEnabled {
             DispatchQueue.main.async {
                 UIApplication.shared.registerForRemoteNotifications()
-                print("NotificationManager: Registered for remote notifications")
             }
         }
     }
@@ -269,7 +265,6 @@ class NotificationManager: NSObject, ObservableObject {
             if let error = error {
                 print("NotificationManager: Error scheduling notification: \(error.localizedDescription)")
             } else {
-                print("NotificationManager: Successfully scheduled notification with ID: \(identifier)")
             }
         }
         
@@ -314,7 +309,6 @@ class NotificationManager: NSObject, ObservableObject {
             if let error = error {
                 print("NotificationManager: Error scheduling team notification: \(error.localizedDescription)")
             } else {
-                print("NotificationManager: Successfully scheduled team notification with ID: \(identifier)")
             }
         }
         
@@ -374,7 +368,6 @@ class NotificationManager: NSObject, ObservableObject {
             if let error = error {
                 print("NotificationManager: Error scheduling reminder: \(error.localizedDescription)")
             } else {
-                print("NotificationManager: Successfully scheduled reminder for \(dateString)")
             }
         }
         
@@ -384,7 +377,6 @@ class NotificationManager: NSObject, ObservableObject {
     /// Remove a specific notification by ID
     func removeNotification(identifier: String) {
         notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier])
-        print("NotificationManager: Removed notification with ID: \(identifier)")
     }
     
     /// Remove all notifications for a specific project
@@ -402,7 +394,6 @@ class NotificationManager: NSObject, ObservableObject {
             // Remove them if any found
             if !projectNotificationIds.isEmpty {
                 self.notificationCenter.removePendingNotificationRequests(withIdentifiers: projectNotificationIds)
-                print("NotificationManager: Removed \(projectNotificationIds.count) notifications for project: \(projectId)")
             }
         }
     }
@@ -410,7 +401,6 @@ class NotificationManager: NSObject, ObservableObject {
     /// Remove all pending notifications
     func removeAllPendingNotifications() {
         notificationCenter.removeAllPendingNotificationRequests()
-        print("NotificationManager: Removed all pending notifications")
     }
     
     /// Get all pending notifications
@@ -418,7 +408,6 @@ class NotificationManager: NSObject, ObservableObject {
         notificationCenter.getPendingNotificationRequests { requests in
             DispatchQueue.main.async {
                 self.pendingNotifications = requests
-                print("NotificationManager: Found \(requests.count) pending notifications")
             }
         }
     }
@@ -427,7 +416,6 @@ class NotificationManager: NSObject, ObservableObject {
     func handleDeviceTokenRegistration(deviceToken: Data) {
         let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
         let token = tokenParts.joined()
-        print("NotificationManager: Device token: \(token)")
         
         // Store device token in UserDefaults for later use
         UserDefaults.standard.set(token, forKey: "apns_device_token")
@@ -490,7 +478,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             handleProjectNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
             
         default:
-            print("NotificationManager: Received notification with unknown category: \(notification.request.content.categoryIdentifier)")
+            break
         }
         
         completionHandler()
@@ -500,15 +488,12 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     
     private func handleProjectNotificationResponse(userInfo: [AnyHashable: Any], actionIdentifier: String) {
         guard let projectId = userInfo["projectId"] as? String else {
-            print("NotificationManager: Project notification missing projectId in userInfo")
             return
         }
         
-        print("NotificationManager: Handling project notification for project ID: \(projectId)")
         
         switch actionIdentifier {
         case NotificationAction.view.rawValue:
-            print("NotificationManager: User tapped VIEW action for project \(projectId)")
             // Post notification to open project details
             NotificationCenter.default.post(
                 name: Notification.Name("OpenProjectDetails"),
@@ -517,7 +502,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             )
             
         case UNNotificationDefaultActionIdentifier:
-            print("NotificationManager: User tapped notification for project \(projectId)")
             // Post notification to open project details
             NotificationCenter.default.post(
                 name: Notification.Name("OpenProjectDetails"),
@@ -526,21 +510,18 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             )
             
         default:
-            print("NotificationManager: Unhandled action for project notification: \(actionIdentifier)")
+            break
         }
     }
     
     private func handleScheduleNotificationResponse(userInfo: [AnyHashable: Any], actionIdentifier: String) {
         guard let dateString = userInfo["date"] as? String else {
-            print("NotificationManager: Schedule notification missing date in userInfo")
             return
         }
         
-        print("NotificationManager: Handling schedule notification for date: \(dateString)")
         
         switch actionIdentifier {
         case NotificationAction.accept.rawValue:
-            print("NotificationManager: User accepted schedule for \(dateString)")
             // Post notification to acknowledge schedule
             NotificationCenter.default.post(
                 name: Notification.Name("ScheduleAccepted"),
@@ -549,7 +530,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             )
             
         case NotificationAction.decline.rawValue:
-            print("NotificationManager: User declined schedule for \(dateString)")
             // Post notification to decline schedule
             NotificationCenter.default.post(
                 name: Notification.Name("ScheduleDeclined"),
@@ -558,7 +538,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             )
             
         case UNNotificationDefaultActionIdentifier:
-            print("NotificationManager: User tapped notification for schedule on \(dateString)")
             // Post notification to open schedule for the day
             NotificationCenter.default.post(
                 name: Notification.Name("OpenSchedule"),
@@ -567,21 +546,18 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             )
             
         default:
-            print("NotificationManager: Unhandled action for schedule notification: \(actionIdentifier)")
+            break
         }
     }
     
     private func handleTeamNotificationResponse(userInfo: [AnyHashable: Any], actionIdentifier: String) {
         guard let teamMemberId = userInfo["teamMemberId"] as? String else {
-            print("NotificationManager: Team notification missing teamMemberId in userInfo")
             return
         }
         
-        print("NotificationManager: Handling team notification for team member ID: \(teamMemberId)")
         
         switch actionIdentifier {
         case NotificationAction.view.rawValue:
-            print("NotificationManager: User tapped VIEW action for team member \(teamMemberId)")
             // Post notification to open team member details
             NotificationCenter.default.post(
                 name: Notification.Name("OpenTeamMemberDetails"),
@@ -590,7 +566,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             )
             
         case UNNotificationDefaultActionIdentifier:
-            print("NotificationManager: User tapped notification for team member \(teamMemberId)")
             // Post notification to open team member details
             NotificationCenter.default.post(
                 name: Notification.Name("OpenTeamMemberDetails"),
@@ -599,7 +574,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             )
             
         default:
-            print("NotificationManager: Unhandled action for team notification: \(actionIdentifier)")
+            break
         }
     }
 
@@ -618,7 +593,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         
         // Only schedule if the notification date is in the future
         guard notificationDate > Date() else {
-            print("NotificationManager: Advance notice date is in the past, not scheduling")
             return ""
         }
         
@@ -654,7 +628,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             if let error = error {
                 print("NotificationManager: Error scheduling advance notice: \(error.localizedDescription)")
             } else {
-                print("NotificationManager: Successfully scheduled \(daysInAdvance)-day advance notice for project: \(projectId)")
             }
         }
         
@@ -697,7 +670,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             if let error = error {
                 print("NotificationManager: Error scheduling assignment notification: \(error.localizedDescription)")
             } else {
-                print("NotificationManager: Successfully scheduled assignment notification for project: \(projectId)")
             }
         }
         
@@ -750,7 +722,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             if let error = error {
                 print("NotificationManager: Error scheduling update notification: \(error.localizedDescription)")
             } else {
-                print("NotificationManager: Successfully scheduled update notification for project: \(projectId)")
             }
         }
         
@@ -786,7 +757,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             if let error = error {
                 print("NotificationManager: Error scheduling completion notification: \(error.localizedDescription)")
             } else {
-                print("NotificationManager: Successfully scheduled completion notification for project: \(projectId)")
             }
         }
         
@@ -825,7 +795,6 @@ extension NotificationManager {
             if let error = error {
                 print("NotificationManager: Error scheduling location-based notification: \(error.localizedDescription)")
             } else {
-                print("NotificationManager: Successfully scheduled location-based notification for project: \(projectId)")
             }
         }
         
@@ -835,11 +804,9 @@ extension NotificationManager {
     /// Handle significant location changes by checking for nearby projects
     func handleSignificantLocationChange(_ notification: Notification) {
         guard let location = notification.userInfo?["location"] as? CLLocation else {
-            print("NotificationManager: Missing location data in significant location change notification")
             return
         }
         
-        print("NotificationManager: Processing significant location change at \(location.coordinate.latitude), \(location.coordinate.longitude)")
         
         // Here you would:
         // 1. Check if there are any projects near this location

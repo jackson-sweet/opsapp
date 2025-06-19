@@ -32,7 +32,6 @@ func formatPhoneNumber(_ phoneNumber: String) -> String {
 
 struct UserInfoView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    var isInConsolidatedFlow: Bool = false
     @State private var currentPhase: UserInfoPhase = .firstName
     @State private var hasCheckedExistingData = false
     
@@ -65,11 +64,7 @@ struct UserInfoView: View {
                     HStack {
                         Button(action: {
                             if currentPhase == .firstName {
-                                if isInConsolidatedFlow {
-                                    viewModel.moveToPreviousStepV2()
-                                } else {
-                                    viewModel.moveToPreviousStep()
-                                }
+                                viewModel.moveToPreviousStep()
                             } else {
                                 withAnimation(.easeInOut(duration: 0.3)) {
                                     currentPhase = UserInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .firstName
@@ -144,11 +139,7 @@ struct UserInfoView: View {
                                 phoneNumber: $viewModel.phoneNumber,
                                 viewModel: viewModel,
                                 onContinue: {
-                                    if isInConsolidatedFlow {
-                                        viewModel.moveToNextStepV2()
-                                    } else {
-                                        viewModel.moveToNextStep()
-                                    }
+                                    viewModel.moveToNextStep()
                                 }
                             )
                         }
@@ -173,14 +164,9 @@ struct UserInfoView: View {
         
         // Check if all user info already exists
         if !viewModel.firstName.isEmpty && !viewModel.lastName.isEmpty && !viewModel.phoneNumber.isEmpty {
-            print("UserInfoView: All user data already exists, auto-advancing")
             // Automatically move to next step
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if isInConsolidatedFlow {
-                    viewModel.moveToNextStepV2()
-                } else {
-                    viewModel.moveToNextStep()
-                }
+                viewModel.moveToNextStep()
             }
         } else {
             // Set the phase to the first missing field

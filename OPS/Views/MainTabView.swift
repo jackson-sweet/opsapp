@@ -82,18 +82,14 @@ struct MainTabView: View {
         // Add notification handler for project fetching
         .onReceive(fetchProjectObserver) { notification in
             if let projectID = notification.userInfo?["projectID"] as? String {
-                print("MainTabView: Received notification to fetch project: \(projectID)")
                 if let project = dataController.getProject(id: projectID) {
                     // Update app state with the fetched project
                     DispatchQueue.main.async {
-                        print("MainTabView: Found project \(project.id), calling setActiveProject")
                         appState.setActiveProject(project)
                         
                         // Debug to check project mode after setting
-                        print("MainTabView: After setActiveProject - isInProjectMode: \(appState.isInProjectMode), activeProjectID: \(String(describing: appState.activeProjectID)), activeProject: \(String(describing: appState.activeProject?.id))")
                     }
                 } else {
-                    print("MainTabView: Could not find project with ID: \(projectID)")
                 }
             }
         }
@@ -101,12 +97,10 @@ struct MainTabView: View {
         // Add notification handler for showing project details
         .onReceive(showProjectObserver) { notification in
             if let projectID = notification.userInfo?["projectID"] as? String {
-                print("MainTabView: Received notification to show project details: \(projectID)")
                 
                 // Make sure we're on the main thread
                 DispatchQueue.main.async {
                     if let project = dataController.getProject(id: projectID) {
-                        print("MainTabView: Found project to show: \(project.title)")
                         
                         // Set the active project before setting showProjectDetails
                         appState.isViewingDetailsOnly = true
@@ -114,10 +108,8 @@ struct MainTabView: View {
                         appState.activeProject = project
                         
                         // The important part - we set the flag AFTER setting the project
-                        print("MainTabView: Setting showProjectDetails=true")
                         appState.showProjectDetails = true
                     } else {
-                        print("MainTabView: Could not find project with ID: \(projectID)")
                     }
                 }
             }
@@ -141,7 +133,6 @@ struct MainTabView: View {
     }
     
     private func clearPendingImageSyncs() {
-        print("🚀 MainTabView: App booted - clearing pending image syncs")
         
         // Get the image sync manager from dataController
         if let imageSyncManager = dataController.imageSyncManager {
@@ -149,7 +140,6 @@ struct MainTabView: View {
             let pendingUploads = imageSyncManager.getPendingUploads()
             
             if !pendingUploads.isEmpty {
-                print("⚠️ Found \(pendingUploads.count) pending image uploads")
                 
                 // Show progress bar for pending uploads
                 imageSyncProgressManager.startSync(with: imageSyncManager, pendingUploads: pendingUploads)
@@ -157,7 +147,6 @@ struct MainTabView: View {
                 // Don't clear them - let the sync complete
                 // The sync manager will handle clearing them after successful upload
             } else {
-                print("✅ No pending image uploads found")
             }
             
             // Clear all pending uploads to prevent issues with large/stuck uploads

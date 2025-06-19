@@ -177,9 +177,7 @@ struct ProfileSettingsView: View {
                                     placeholder: "Enter your home address"
                                 ) { address, coordinate in
                                     // Optional: Could store coordinates if needed
-                                    print("Selected address: \(address)")
                                     if let coord = coordinate {
-                                        print("Coordinates: \(coord.latitude), \(coord.longitude)")
                                     }
                                 }
                             }
@@ -536,7 +534,6 @@ struct ProfileSettingsView: View {
             return
         }
         
-        print("ProfileSettingsView: Requesting password reset for email: \(resetEmail)")
         
         Task {
             let (success, errorMessage) = await dataController.requestPasswordReset(email: resetEmail)
@@ -545,7 +542,6 @@ struct ProfileSettingsView: View {
                 passwordResetInProgress = false
                 
                 if success {
-                    print("ProfileSettingsView: Password reset request successful")
                     passwordResetSuccess = true
                 } else {
                     print("ProfileSettingsView: Password reset request failed: \(errorMessage ?? "Unknown error")")
@@ -591,21 +587,17 @@ struct ProfileSettingsView: View {
             // Load profile image if available
             if let profileImageURL = user.profileImageURL {
                 Task {
-                    print("ProfileSettingsView: Attempting to load image from URL: \(profileImageURL)")
                     
                     if let _ = ImageCache.shared.get(forKey: profileImageURL) {
-                        print("ProfileSettingsView: Image already in cache")
                         return
                     }
                     
                     if await loadImage(from: profileImageURL) != nil {
-                        print("ProfileSettingsView: Successfully loaded image from URL")
                     } else {
                         print("ProfileSettingsView: Failed to load image from URL")
                     }
                 }
             } else {
-                print("ProfileSettingsView: No profile image URL available")
             }
         }
     }
@@ -647,7 +639,6 @@ struct ProfileSettingsView: View {
     
     private func performSave() {
         Task {
-            print("ProfileSettingsView: Saving profile information")
             
             let success = await dataController.updateUserProfile(
                 firstName: firstName,
@@ -664,7 +655,6 @@ struct ProfileSettingsView: View {
                     originalLastName = lastName
                     originalPhone = phone
                     originalHomeAddress = homeAddress
-                    print("ProfileSettingsView: Successfully saved profile changes")
                 } else {
                     saveErrorMessage = "Failed to save profile changes. Please try again."
                     showSaveError = true
@@ -691,13 +681,11 @@ struct ProfileSettingsView: View {
                     return
                 }
                 
-                print("ProfileSettingsView: Starting account deletion for user: \(userId)")
                 
                 // Call API to delete user
                 let success = await dataController.deleteUserAccount(userId: userId)
                 
                 if success {
-                    print("ProfileSettingsView: Account successfully deleted")
                     
                     await MainActor.run {
                         // Clear all UserDefaults to ensure clean state

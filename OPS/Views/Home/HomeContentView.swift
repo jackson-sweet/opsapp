@@ -65,25 +65,18 @@ struct HomeContentView: View {
                     
                     // Update the selected project index to navigate carousel
                     if selectedProjectIndex != index {
-                        print("HomeContentView: Map marker tapped, updating carousel to index \(index)")
                         selectedProjectIndex = index
                         showStartConfirmation = false
                     } else {
                         // Already selected project was tapped again - show details for 'View Details' button
-                        print("HomeContentView: Map marker for already selected project tapped")
                         
                         // Only toggle if not in project mode
                         if !appState.isInProjectMode {
                             // Check if this is from the View Details button in the popup
                             // If the timestamp is very recent (within 0.8 seconds), treat as View Details button tap
-                            print("🟩🟩🟩 HOME CONTENT VIEW: CHECKING IF VIEW DETAILS WAS TAPPED 🟩🟩🟩")
-                            print("🟩 Project ID: \(project.id)")
-                            print("🟩 Project Title: \(project.title)")
                             
                             if let lastTapped = project.lastTapped {
                                 let timeDiff = abs(lastTapped.timeIntervalSinceNow)
-                                print("🟩 Last tapped time exists: \(lastTapped)")
-                                print("🟩 Time difference: \(timeDiff) seconds")
                                 
                                 // Increased time window to 0.8 seconds to catch more cases
                                 if timeDiff < 0.8 {
@@ -92,14 +85,11 @@ struct HomeContentView: View {
                                     showProjectDetails(project)
                                     return
                                 } else {
-                                    print("🟩 Time difference too large (\(timeDiff) > 0.8), not a View Details tap")
                                 }
                             } else {
-                                print("🟩 No lastTapped timestamp found on project")
                             }
                             
                             // Normal tap - toggle confirmation
-                            print("🟩 Treating as regular pin tap, toggling confirmation")
                             showStartConfirmation.toggle()
                         }
                     }
@@ -187,7 +177,6 @@ struct HomeContentView: View {
                         onStart: startProject,
                         onStop: stopProject,
                         onLongPress: { project in
-                            print("HomeContentView: Long press handler called for project \(project.id)")
                             
                             // EXPLICITLY ensure we don't start the project by turning off confirmation
                             showStartConfirmation = false
@@ -205,20 +194,14 @@ struct HomeContentView: View {
     
     // Helper method to show project details
     private func showProjectDetails(_ project: Project) {
-        print("🟨🟨🟨 HOME CONTENT VIEW: SHOWING PROJECT DETAILS 🟨🟨🟨")
-        print("🟨 Project ID: \(project.id)")
-        print("🟨 Project Title: \(project.title)")
-        print("🟨 Timestamp: \(Date())")
         
         // Make sure confirmation is turned off to avoid state conflicts
         showStartConfirmation = false
         
         // Call AppState's viewProjectDetails method
-        print("🟨 Calling appState.viewProjectDetails...")
         appState.viewProjectDetails(project)
         
         // Log completion
-        print("🟨 Project details view should now be shown")
     }
     
     private var emptyProjectsView: some View {

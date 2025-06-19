@@ -44,14 +44,12 @@ class ImageSyncManager: ObservableObject {
         
         // Load any pending uploads from UserDefaults
         loadPendingUploads()
-        print("📱 ImageSyncManager: Initialized with \(pendingUploads.count) pending uploads")
         
         // Set up connectivity change notifications
         setupConnectivityObserver()
         
         // If we're already connected and have pending uploads, try to sync them
         if connectivityMonitor.isConnected && !pendingUploads.isEmpty {
-            print("📡 ImageSyncManager: Connected on init with pending uploads, scheduling sync")
             Task {
                 // Small delay to ensure everything is initialized
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
@@ -71,44 +69,32 @@ class ImageSyncManager: ObservableObject {
     }
     
     @objc private func connectivityChanged() {
-        print("🌐 ImageSyncManager: Connectivity changed - isConnected: \(connectivityMonitor.isConnected)")
         if connectivityMonitor.isConnected {
-            print("📡 ImageSyncManager: Connectivity restored, initiating image sync")
             Task {
                 await syncPendingImages()
             }
         } else {
-            print("📵 ImageSyncManager: Lost connectivity")
         }
     }
     
     /// Save images using S3 and register them with Bubble
     func saveImages(_ images: [UIImage], for project: Project) async -> [String] {
-        print("\n🎯 ImageSyncManager: saveImages called")
-        print("  - Images to save: \(images.count)")
-        print("  - Project: \(project.id) - \(project.title)")
-        print("  - Company ID: \(project.companyId)")
-        print("  - Network connected: \(connectivityMonitor.isConnected)")
         
         let companyId = project.companyId
         guard !companyId.isEmpty else {
-            print("❌ ImageSyncManager: No company ID for project")
             return []
         }
         
         var savedURLs: [String] = []
         
         if connectivityMonitor.isConnected {
-            print("📡 Online mode - uploading to S3")
             do {
                 // Upload to S3 (using either direct upload or presigned URLs)
                 let s3Results: [(url: String, filename: String)]
                 
                 if usePresignedURLs {
-                    print("  - Using presigned URL method")
                     s3Results = try await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
                 } else {
-                    print("  - Using direct S3 upload method")
                     s3Results = try await s3Service.uploadProjectImages(images, for: project, companyId: companyId)
                 }
                 
@@ -121,15 +107,10 @@ class ImageSyncManager: ObservableObject {
                     "images": imageURLs  // Just an array of URL strings
                 ]
                 
-                print("🔷 Bubble API Request: upload_project_images")
-                print("  - Project ID: \(project.id)")
-                print("  - Images to register: \(imageURLs.count)")
                 for (index, url) in imageURLs.enumerated() {
-                    print("    Image \(index + 1): \(url)")
                 }
                 
                 let uploadURL = URL(string: "\(AppConfiguration.bubbleBaseURL)/api/1.1/wf/upload_project_images")!
-                print("  - URL: \(uploadURL.absoluteString)")
                 
                 var request = URLRequest(url: uploadURL)
                 request.httpMethod = "POST"
@@ -140,15 +121,11 @@ class ImageSyncManager: ObservableObject {
                 request.httpBody = requestBodyData
                 
                 if let bodyString = String(data: requestBodyData, encoding: .utf8) {
-                    print("  - Request Body: \(bodyString)")
                 }
                 
-                print("  - Headers:")
                 request.allHTTPHeaderFields?.forEach { key, value in
                     if key.lowercased() == "authorization" {
-                        print("    - \(key): Bearer [MASKED]")
                     } else {
-                        print("    - \(key): \(value)")
                     }
                 }
                 
@@ -163,12 +140,8 @@ class ImageSyncManager: ObservableObject {
                     throw S3Error.bubbleAPIFailed
                 }
                 
-                print("🔶 Bubble API Response:")
-                print("  - Status Code: \(httpResponse.statusCode)")
-                print("  - Headers: \(httpResponse.allHeaderFields)")
                 
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("  - Response Body: \(responseString)")
                 }
                 
                 guard (200...299).contains(httpResponse.statusCode) else {
@@ -186,14 +159,10 @@ class ImageSyncManager: ObservableObject {
                 // Success - return the S3 URLs
                 savedURLs = s3Results.map { $0.url }
                 
-                print("✅ S3 upload and Bubble registration successful!")
-                print("  - URLs to add to project: \(savedURLs)")
                 
                 // Update project with new image URLs
                 var currentImages = project.getProjectImages()
-                print("  - Current project images: \(currentImages.count)")
                 currentImages.append(contentsOf: savedURLs)
-                print("  - New total images: \(currentImages.count)")
                 
                 project.setProjectImageURLs(currentImages)
                 
@@ -205,15 +174,12 @@ class ImageSyncManager: ObservableObject {
                 if let modelContext = modelContext {
                     do {
                         try modelContext.save()
-                        print("✅ Project updated and saved to local database")
                     } catch {
                         print("❌ Error saving to model context: \(error)")
                     }
                 } else {
-                    print("⚠️ No model context available to save changes")
                 }
                 
-                print("✅ ImageSyncManager: Successfully uploaded \(savedURLs.count) images to S3 and registered with Bubble")
                 
             } catch {
                 print("❌ ImageSyncManager: Error uploading images: \(error)")
@@ -228,19 +194,14 @@ class ImageSyncManager: ObservableObject {
                 }
             }
         } else {
-            print("📵 Offline mode - saving locally")
             // Offline - save locally
             for (index, image) in images.enumerated() {
                 if let localURL = await saveImageLocally(image, for: project, index: index) {
                     savedURLs.append(localURL)
-                    print("  - Saved locally: \(localURL)")
                 }
             }
         }
         
-        print("\n📊 ImageSyncManager Summary:")
-        print("  - Total URLs returned: \(savedURLs.count)")
-        print("  - URLs: \(savedURLs)")
         
         return savedURLs
     }
@@ -260,7 +221,6 @@ class ImageSyncManager: ObservableObject {
         
         // Log image size
         let sizeInMB = Double(imageData.count) / (1024 * 1024)
-        print("📷 Image size after compression: \(String(format: "%.2f", sizeInMB)) MB (quality: \(compressionQuality))")
         
         let timestamp = Date().timeIntervalSince1970
         let filename = "local_project_\(project.id)_\(timestamp)_\(index).jpg"
@@ -269,7 +229,6 @@ class ImageSyncManager: ObservableObject {
         // Store the image in file system
         let success = ImageFileManager.shared.saveImage(data: imageData, localID: localURL)
         if success {
-            print("ImageSyncManager: Stored image data locally for: \(localURL)")
             
             // Create pending upload
             let pendingUpload = PendingImageUpload(
@@ -295,7 +254,6 @@ class ImageSyncManager: ObservableObject {
     
     /// Delete an image from S3, Bubble, and locally
     func deleteImage(_ urlString: String, from project: Project) async -> Bool {
-        print("ImageSyncManager: Deleting image: \(urlString)")
         
         // Check if it's a local URL
         if urlString.starts(with: "local://") {
@@ -306,7 +264,6 @@ class ImageSyncManager: ObservableObject {
             pendingUploads.removeAll { $0.localURL == urlString }
             savePendingUploads()
             
-            print("ImageSyncManager: Deleted local image: \(urlString)")
             return true
         }
         
@@ -314,7 +271,6 @@ class ImageSyncManager: ObservableObject {
         if urlString.contains("s3") && urlString.contains("amazonaws.com") {
             let companyId = project.companyId
             guard !companyId.isEmpty else {
-                print("ImageSyncManager: No company ID for project")
                 return false
             }
             
@@ -343,28 +299,20 @@ class ImageSyncManager: ObservableObject {
     
     /// Sync all pending images to S3 and Bubble
     func syncPendingImages() async {
-        print("\n🔄 ImageSyncManager: syncPendingImages called")
-        print("  - Is syncing: \(isSyncing)")
-        print("  - Is connected: \(connectivityMonitor.isConnected)")
-        print("  - Pending uploads count: \(pendingUploads.count)")
         
         guard !isSyncing, connectivityMonitor.isConnected else { 
             if isSyncing {
-                print("  - Already syncing, skipping")
             }
             if !connectivityMonitor.isConnected {
-                print("  - No network connection, skipping")
             }
             return 
         }
         
         if pendingUploads.isEmpty {
-            print("  - No pending uploads to sync")
             return
         }
         
         isSyncing = true
-        print("📤 Starting sync of \(pendingUploads.count) pending image uploads")
         
         // Group by project for batch uploading
         var uploadsByProject: [String: [PendingImageUpload]] = [:]
@@ -375,29 +323,23 @@ class ImageSyncManager: ObservableObject {
             uploadsByProject[upload.projectId]?.append(upload)
         }
         
-        print("  - Grouped into \(uploadsByProject.count) projects")
         
         // Process each project's uploads
         for (projectId, uploads) in uploadsByProject {
-            print("  - Syncing \(uploads.count) images for project: \(projectId)")
             await syncImagesForProject(projectId: projectId, uploads: uploads)
         }
         
         isSyncing = false
-        print("✅ ImageSyncManager: Completed sync of pending image uploads")
-        print("  - Remaining pending uploads: \(pendingUploads.count)")
     }
     
     /// Sync images for a specific project
     private func syncImagesForProject(projectId: String, uploads: [PendingImageUpload]) async {
         guard let project = getProject(by: projectId) else {
-            print("ImageSyncManager: Could not find project")
             return
         }
         
         let companyId = project.companyId
         guard !companyId.isEmpty else {
-            print("ImageSyncManager: No company ID for project")
             return
         }
         
@@ -410,7 +352,6 @@ class ImageSyncManager: ObservableObject {
         }
         
         guard !images.isEmpty else {
-            print("ImageSyncManager: No valid images to upload")
             return
         }
         
@@ -477,7 +418,6 @@ class ImageSyncManager: ObservableObject {
                 try? modelContext.save()
             }
             
-            print("ImageSyncManager: Successfully synced \(uploads.count) images for project \(projectId)")
             
         } catch {
             print("ImageSyncManager: Error syncing images: \(error.localizedDescription)")
@@ -505,7 +445,6 @@ class ImageSyncManager: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: "pendingImageUploads"),
            let uploads = try? JSONDecoder().decode([PendingImageUpload].self, from: data) {
             pendingUploads = uploads
-            print("ImageSyncManager: Loaded \(uploads.count) pending image uploads")
         }
     }
     
@@ -513,13 +452,11 @@ class ImageSyncManager: ObservableObject {
     private func savePendingUploads() {
         if let data = try? JSONEncoder().encode(pendingUploads) {
             UserDefaults.standard.set(data, forKey: "pendingImageUploads")
-            print("ImageSyncManager: Saved \(pendingUploads.count) pending image uploads")
         }
     }
     
     /// Clean up UserDefaults from image data bloat
     private func cleanupUserDefaultsImageData() {
-        print("ImageSyncManager: Starting UserDefaults cleanup...")
         
         let defaults = UserDefaults.standard
         var removedCount = 0
@@ -541,14 +478,12 @@ class ImageSyncManager: ObservableObject {
             }
         }
         
-        print("ImageSyncManager: Cleanup complete - removed \(removedCount) image keys, saved ~\(totalSizeSaved / 1_000_000) MB")
     }
     
     // MARK: - Public Methods for Progress Tracking
     
     /// Clear all pending image syncs
     func clearAllPendingUploads() {
-        print("🗑️ ImageSyncManager: Clearing all pending uploads")
         
         // Clear from memory
         let count = pendingUploads.count
@@ -562,7 +497,6 @@ class ImageSyncManager: ObservableObject {
         syncProgress = 0
         syncingProjectId = nil
         
-        print("✅ ImageSyncManager: Cleared \(count) pending uploads")
     }
     
     /// Get current pending uploads
@@ -604,7 +538,6 @@ class ImageSyncManager: ObservableObject {
         let resizedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
         UIGraphicsEndImageContext()
         
-        print("📐 Resized image from \(image.size) to \(resizedImage.size)")
         return resizedImage
     }
     

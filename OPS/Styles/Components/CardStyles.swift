@@ -192,7 +192,6 @@ struct CardStyles_Previews: PreviewProvider {
                 
                 // Interactive Card
                 OPSInteractiveCard(action: {
-                    print("Card tapped")
                 }) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Interactive Card")

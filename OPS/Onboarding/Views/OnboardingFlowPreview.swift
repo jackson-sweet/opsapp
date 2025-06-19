@@ -2,202 +2,125 @@
 //  OnboardingFlowPreview.swift
 //  OPS
 //
-//  Created by Jackson Sweet on 2025-05-07.
+//  Created by Jackson Sweet on 2025-11-17.
 //
 
 import SwiftUI
-import SwiftData
 
-// MARK: - Main Preview Navigator
+// MARK: - Complete Onboarding Flow Preview
+/// Shows all screens in sequence based on selected user type and flow
 struct OnboardingFlowPreview: View {
-    @State private var selectedFlow: FlowType = .employee
-    @State private var selectedScreen = 0
-    @State private var showDeviceFrame = false
-    @State private var deviceScale: CGFloat = 0.8
+    @State private var currentFlowType: FlowType = .employeeConsolidated
+    @State private var scale: CGFloat = 0.5
     
     enum FlowType: String, CaseIterable {
-        case employee = "Employee Flow (8 Steps)"
-        case company = "Company Flow (10 Steps)"
-        case original = "Original (11 Steps)"
+        case employeeConsolidated = "Employee"
+        case companyConsolidated = "Company Owner"
+        
+        var displayName: String { rawValue }
     }
     
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header Controls
-            VStack(spacing: 16) {
-                // Flow selector
-                Picker("Flow Type", selection: $selectedFlow) {
-                    ForEach(FlowType.allCases, id: \.self) { flow in
-                        Text(flow.rawValue).tag(flow)
-                    }
-                }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding(.horizontal)
-                
-                // Screen selector
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(currentScreens.enumerated()), id: \.offset) { index, screen in
-                            Button(action: {
-                                selectedScreen = index
-                            }) {
-                                VStack(spacing: 4) {
-                                    Text("\(index + 1)")
-                                        .font(.caption2)
-                                        .foregroundColor(.gray)
-                                    Text(screen.name)
-                                        .font(.caption)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(selectedScreen == index ? 
-                                              Color.blue : Color.gray.opacity(0.2))
-                                )
-                                .foregroundColor(selectedScreen == index ? .white : .primary)
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-                
-                // Device controls
-                HStack {
-                    Toggle("Device Frame", isOn: $showDeviceFrame)
-                    
-                    Spacer()
-                    
-                    Text("Scale: \(Int(deviceScale * 100))%")
-                    Slider(value: $deviceScale, in: 0.5...1.0)
-                        .frame(width: 150)
-                }
-                .padding(.horizontal)
-                .font(.caption)
-            }
-            .padding(.vertical, 12)
-            .background(Color(UIColor.systemGray6))
-            
-            // Preview Area
-            GeometryReader { geometry in
-                ZStack {
-                    // Background
-                    Color.black
-                    
-                    // Device frame container
-                    if showDeviceFrame {
-                        DeviceFrame(scale: deviceScale) {
-                            currentScreenView
-                        }
-                    } else {
-                        currentScreenView
-                            .scaleEffect(deviceScale)
-                    }
-                }
-                .frame(width: geometry.size.width, height: geometry.size.height)
-            }
-        }
-        .preferredColorScheme(.dark)
-    }
-    
-    // Current screens based on selected flow
-    var currentScreens: [(name: String, view: AnyView)] {
-        switch selectedFlow {
-        case .employee:
-            return employeeFlowScreens
-        case .company:
-            return companyFlowScreens
-        case .original:
-            return originalFlowScreens
-        }
-    }
-    
-    // Current screen view
-    @ViewBuilder
-    var currentScreenView: some View {
-        if selectedScreen < currentScreens.count {
-            currentScreens[selectedScreen].view
-                .environmentObject(mockViewModel)
-                .environmentObject(OnboardingPreviewHelpers.createPreviewDataController())
-        }
-    }
-    
-    // Mock view model with sample data
-    var mockViewModel: OnboardingViewModel {
+    // Create mock view models for each flow type
+    private var mockViewModel: OnboardingViewModel {
         let vm = OnboardingViewModel()
-        
-        // Set sample data based on current screen
-        if selectedScreen > 0 {
-            vm.email = "john.doe@example.com"
-            vm.selectedUserType = selectedFlow == .company ? .company : .employee
+        // Configure the view model based on flow type
+        switch currentFlowType {
+        case .employeeConsolidated:
+            vm.selectedUserType = .employee
+        case .companyConsolidated:
+            vm.selectedUserType = .company
         }
-        
-        if selectedScreen > 1 {
-            vm.password = "password123"
-            vm.confirmPassword = "password123"
-            vm.isSignedUp = true
-            vm.userId = "12345"
-        }
-        
-        if selectedScreen > 2 {
-            vm.phoneNumber = "5551234567"
-            vm.isPhoneValid = true
-        }
-        
-        if selectedScreen > 3 {
-            vm.firstName = "John"
-            vm.lastName = "Doe"
-            
-            if selectedFlow == .company {
-                vm.companyName = "OPS Construction Inc"
-                vm.companyEmail = "info@opsconstruction.com"
-                vm.companyPhone = "5559876543"
-            }
-        }
-        
-        if selectedScreen > 4 {
-            if selectedFlow != .company {
-                vm.companyCode = "OPS123"
-                vm.isCompanyJoined = true
-                vm.companyName = "Demo Construction Co." // For welcome phase
-            } else {
-                vm.companyIndustry = .carpentry
-                vm.companySize = .sixToTen
-                vm.companyAge = .fiveToTen
-            }
-        }
-        
+        vm.email = "user@example.com"
+        vm.password = "password123"
+        vm.firstName = "John"
+        vm.lastName = "Doe"
+        vm.phoneNumber = "5551234567"
+        vm.companyName = "Demo Company, Inc."
+        vm.companyCode = "DEMO123"
         return vm
     }
     
-    // Employee flow screens (8 steps total)
-    var employeeFlowScreens: [(name: String, view: AnyView)] {
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Controls
+                VStack(spacing: 16) {
+                    // Flow type selector
+                    Picker("Flow Type", selection: $currentFlowType) {
+                        ForEach(FlowType.allCases, id: \.self) { flow in
+                            Text(flow.displayName).tag(flow)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding(.horizontal)
+                    
+                    // Scale control
+                    HStack {
+                        Text("Scale:")
+                        Slider(value: $scale, in: 0.3...1.0, step: 0.1)
+                        Text("\(Int(scale * 100))%")
+                            .frame(width: 50)
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.vertical)
+                .background(Color.gray.opacity(0.1))
+                
+                // Flow display
+                ScrollView {
+                    VStack(spacing: 24) {
+                        ForEach(Array(currentScreens.enumerated()), id: \.0) { index, screen in
+                            VStack(spacing: 8) {
+                                // Step indicator
+                                HStack {
+                                    Text("Step \(index + 1)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text(screen.name)
+                                        .font(.headline)
+                                    Spacer()
+                                }
+                                .padding(.horizontal)
+                                
+                                // Screen preview
+                                DeviceFrame(scale: scale) {
+                                    screen.view
+                                        .environmentObject(DataController())
+                                }
+                            }
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("Onboarding Flow Preview")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+    
+    // Current screens based on selected flow
+    private var currentScreens: [(name: String, view: AnyView)] {
+        switch currentFlowType {
+        case .employeeConsolidated:
+            return employeeConsolidatedFlowScreens
+        case .companyConsolidated:
+            return companyFlowScreens
+        }
+    }
+    
+    // Employee consolidated flow screens (7 steps)
+    var employeeConsolidatedFlowScreens: [(name: String, view: AnyView)] {
         [
             ("Welcome", AnyView(WelcomeView(viewModel: mockViewModel))),
             ("User Type", AnyView(UserTypeSelectionView().environmentObject(mockViewModel))),
-            ("Account Setup", AnyView(EmailView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
-            ("Organization Join", AnyView(OrganizationJoinView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
-            ("User Details", AnyView(UserInfoView(viewModel: mockViewModel, isInConsolidatedFlow: false))),
+            ("Account Setup", AnyView(EmailView(viewModel: mockViewModel))),
+            ("Organization Join", AnyView(OrganizationJoinView(viewModel: mockViewModel))),
+            ("User Details", AnyView(UserInfoView(viewModel: mockViewModel))),
             ("Company Code", AnyView(CompanyCodeInputView(viewModel: mockViewModel))),
-            ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
+            ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel))),
             ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel))),
             ("Complete", AnyView(CompletionView(onComplete: {}))),
             ("Welcome Guide", AnyView(WelcomeGuideView().environmentObject(mockViewModel)))
-        ]
-    }
-    
-    // Original flow screens (11 steps)
-    var originalFlowScreens: [(name: String, view: AnyView)] {
-        [
-            ("Welcome", AnyView(WelcomeView(viewModel: mockViewModel))),
-            ("Email", AnyView(EmailView(viewModel: mockViewModel))),
-            ("Password", AnyView(PasswordView(viewModel: mockViewModel))),
-            ("User Info", AnyView(UserInfoView(viewModel: mockViewModel))),
-            ("Phone", AnyView(PhoneNumberView(viewModel: mockViewModel))),
-            ("Company Code", AnyView(CompanyCodeInputView(viewModel: mockViewModel))),
-            ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel))),
-            ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel))),
-            ("Complete", AnyView(CompletionView(onComplete: {})))
         ]
     }
     
@@ -206,15 +129,15 @@ struct OnboardingFlowPreview: View {
         [
             ("Welcome", AnyView(WelcomeView(viewModel: mockViewModel))),
             ("User Type", AnyView(UserTypeSelectionView().environmentObject(mockViewModel))),
-            ("Account Setup", AnyView(EmailView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
-            ("User Details", AnyView(UserInfoView(viewModel: mockViewModel, isInConsolidatedFlow: false))),
-            ("Basic Info", AnyView(CompanyBasicInfoView(isInConsolidatedFlow: true).environmentObject(mockViewModel))),
-            ("Address", AnyView(CompanyAddressView(isInConsolidatedFlow: true).environmentObject(mockViewModel))),
+            ("Account Setup", AnyView(EmailView(viewModel: mockViewModel))),
+            ("User Details", AnyView(UserInfoView(viewModel: mockViewModel))),
+            ("Basic Info", AnyView(CompanyBasicInfoView().environmentObject(mockViewModel))),
+            ("Address", AnyView(CompanyAddressView().environmentObject(mockViewModel))),
             ("Contact", AnyView(CompanyContactView().environmentObject(mockViewModel))),
             ("Details", AnyView(CompanyDetailsView().environmentObject(mockViewModel))),
             ("Company Code", AnyView(CompanyCodeDisplayView(viewModel: mockViewModel))),
             ("Team Invites", AnyView(TeamInvitesView().environmentObject(mockViewModel))),
-            ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel, isInConsolidatedFlow: true))),
+            ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel))),
             ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel))),
             ("Complete", AnyView(CompletionView(onComplete: {}))),
             ("Welcome Guide", AnyView(WelcomeGuideView().environmentObject(mockViewModel)))
@@ -227,125 +150,147 @@ struct DeviceFrame<Content: View>: View {
     let scale: CGFloat
     let content: Content
     
-    init(scale: CGFloat, @ViewBuilder content: () -> Content) {
+    init(scale: CGFloat = 0.5, @ViewBuilder content: () -> Content) {
         self.scale = scale
         self.content = content()
     }
     
     var body: some View {
+        let deviceWidth: CGFloat = 390
+        let deviceHeight: CGFloat = 844
+        
         ZStack {
-            // iPhone frame
-            RoundedRectangle(cornerRadius: 40)
-                .strokeBorder(Color.gray, lineWidth: 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 40)
-                        .fill(Color.black)
-                )
+            // Device bezel
+            RoundedRectangle(cornerRadius: 40 * scale)
+                .fill(Color.black)
+                .frame(width: deviceWidth * scale, height: deviceHeight * scale)
                 .overlay(
-                    // Dynamic Island
-                    Capsule()
-                        .frame(width: 120, height: 35)
-                        .foregroundColor(Color.black)
-                        .offset(y: -UIScreen.main.bounds.height / 2 + 60)
+                    RoundedRectangle(cornerRadius: 40 * scale)
+                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                 )
-                .frame(width: 390, height: 844)
-                .scaleEffect(scale)
             
-            // Screen content
-            content
-                .frame(width: 390, height: 844)
-                .clipShape(RoundedRectangle(cornerRadius: 35))
-                .scaleEffect(scale)
+            // Screen area
+            RoundedRectangle(cornerRadius: 35 * scale)
+                .fill(Color.black)
+                .frame(width: (deviceWidth - 20) * scale, height: (deviceHeight - 20) * scale)
+                .overlay(
+                    content
+                        .frame(width: (deviceWidth - 20) * scale, height: (deviceHeight - 20) * scale)
+                        .clipped()
+                        .scaleEffect(scale)
+                        .frame(width: (deviceWidth - 20) * scale, height: (deviceHeight - 20) * scale)
+                )
         }
+        .shadow(radius: 10)
     }
 }
 
-// MARK: - Individual Screen Previews
-struct OnboardingScreenPreviews: PreviewProvider {
-    static var previews: some View {
-        // Main navigator
-        OnboardingFlowPreview()
-            .previewDisplayName("Flow Navigator")
+// MARK: - Individual Screen Preview
+/// Preview wrapper for individual screens
+struct OnboardingScreenPreview<Content: View>: View {
+    let title: String
+    let content: Content
+    @State private var scale: CGFloat = 0.7
+    
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
     }
     
-    static func mockViewModelWithUserType() -> OnboardingViewModel {
-        let vm = OnboardingViewModel()
-        vm.selectedUserType = .employee
-        return vm
-    }
-    
-    static func mockViewModelWithEmail() -> OnboardingViewModel {
-        let vm = OnboardingViewModel()
-        vm.email = "test@"
-        vm.password = "pass"
-        return vm
-    }
-    
-    static func mockViewModelWithPhone() -> OnboardingViewModel {
-        let vm = OnboardingViewModel()
-        vm.phoneNumber = "555123"
-        return vm
-    }
-    
-    static func mockViewModelWithCode() -> OnboardingViewModel {
-        let vm = OnboardingViewModel()
-        vm.companyCode = "OPS"
-        vm.isLoading = false
-        return vm
-    }
-}
-
-// MARK: - Device Size Testing
-struct OnboardingDeviceSizePreview: PreviewProvider {
-    static var previews: some View {
-        Group {
-            // Different device sizes
-            ForEach(["iPhone 15 Pro", "iPhone 15 Pro Max", "iPhone SE (3rd generation)"], id: \.self) { device in
-                OnboardingPresenter()
-                    .environmentObject(OnboardingPreviewHelpers.createPreviewDataController())
-                    .environmentObject(OnboardingViewModel())
-                    .preferredColorScheme(.dark)
-                    .previewDevice(PreviewDevice(rawValue: device))
-                    .previewDisplayName(device)
+    var body: some View {
+        VStack(spacing: 16) {
+            // Title and controls
+            VStack(spacing: 12) {
+                Text(title)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                HStack {
+                    Text("Scale:")
+                    Slider(value: $scale, in: 0.3...1.0, step: 0.1)
+                    Text("\(Int(scale * 100))%")
+                        .frame(width: 50)
+                }
+                .frame(maxWidth: 400)
+            }
+            .padding()
+            .background(Color.gray.opacity(0.1))
+            
+            // Preview
+            ScrollView {
+                DeviceFrame(scale: scale) {
+                    content
+                        .environmentObject(DataController())
+                }
+                .padding()
             }
         }
     }
 }
 
-// MARK: - Preview Provider
-struct OnboardingFlowPreview_Previews: PreviewProvider {
-    static var previews: some View {
-        OnboardingFlowPreview()
-            .preferredColorScheme(.dark)
-    }
-}
-
 // MARK: - State Testing Preview
+/// Interactive preview for testing state management
 struct OnboardingStateTestingPreview: View {
     @StateObject private var viewModel = OnboardingViewModel()
+    @StateObject private var dataController = DataController()
+    @State private var selectedUserType: UserType = .employee
     
     var body: some View {
         VStack {
             // State controls
-            VStack(alignment: .leading, spacing: 12) {
-                Text("State Testing").font(.headline)
-                
-                Toggle("Is Signed Up", isOn: $viewModel.isSignedUp)
-                Toggle("Is Loading", isOn: $viewModel.isLoading)
-                Toggle("Has Error", isOn: .constant(!viewModel.errorMessage.isEmpty))
-                
-                if !viewModel.errorMessage.isEmpty {
-                    Text("Error: \(viewModel.errorMessage)")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
-                
-                HStack {
-                    Text("User Type:")
-                    Picker("Type", selection: $viewModel.selectedUserType) {
-                        Text("None").tag(UserType?.none)
-                        Text("Employee").tag(UserType?.some(.employee))
-                        Text("Company").tag(UserType?.some(.company))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // User type selector
+                    HStack {
+                        Text("User Type:")
+                        Picker("User Type", selection: $selectedUserType) {
+                            Text("Employee").tag(UserType.employee)
+                            Text("Company Owner").tag(UserType.company)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .onChange(of: selectedUserType) { newValue in
+                            viewModel.selectedUserType = newValue
+                        }
+                    }
+                    
+                    // Current step display
+                    HStack {
+                        Text("Current Step:")
+                        Text(String(describing: viewModel.currentStep))
+                            .fontWeight(.semibold)
+                    }
+                    
+                    // Test data
+                    Group {
+                        TextField("Email", text: $viewModel.email)
+                        TextField("First Name", text: $viewModel.firstName)
+                        TextField("Last Name", text: $viewModel.lastName)
+                        TextField("Phone", text: $viewModel.phoneNumber)
+                        TextField("Company Name", text: $viewModel.companyName)
+                        TextField("Company Code", text: $viewModel.companyCode)
+                    }
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    
+                    // Navigation controls
+                    HStack {
+                        Button("Previous") { viewModel.moveToPreviousStep() }
+                        Button("Next") { viewModel.moveToNextStep() }
+                        Button("Reset") {
+                            viewModel.currentStep = .welcome
+                            viewModel.selectedUserType = nil
+                        }
+                    }
+                    
+                    // Step selector
+                    Picker("Jump to Step", selection: $viewModel.currentStep) {
+                        Text("Welcome").tag(OnboardingStep.welcome)
+                        Text("User Type").tag(OnboardingStep.userTypeSelection)
+                        Text("Account Setup").tag(OnboardingStep.accountSetup)
+                        Text("User Details").tag(OnboardingStep.userDetails)
+                        Text("Company Code").tag(OnboardingStep.companyCode)
+                        Text("Permissions").tag(OnboardingStep.permissions)
+                        Text("Field Setup").tag(OnboardingStep.fieldSetup)
+                        Text("Complete").tag(OnboardingStep.completion)
                     }
                     .pickerStyle(SegmentedPickerStyle())
                 }
@@ -354,7 +299,7 @@ struct OnboardingStateTestingPreview: View {
             .background(Color.gray.opacity(0.1))
             
             // Preview current state
-            AccountSetupView(viewModel: viewModel)
+            EmailView(viewModel: viewModel)
                 .preferredColorScheme(.dark)
         }
     }
@@ -364,6 +309,22 @@ struct OnboardingStateTestingPreview: View {
     OnboardingStateTestingPreview()
 }
 
-#Preview("Main Flow") {
+#Preview("Complete Flow") {
     OnboardingFlowPreview()
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Welcome Screen") {
+    OnboardingScreenPreview("Welcome Screen") {
+        WelcomeView(viewModel: OnboardingViewModel())
+            .preferredColorScheme(.dark)
+    }
+}
+
+#Preview("User Type Selection") {
+    OnboardingScreenPreview("User Type Selection") {
+        UserTypeSelectionView()
+            .environmentObject(OnboardingViewModel())
+            .preferredColorScheme(.dark)
+    }
 }

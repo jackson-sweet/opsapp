@@ -204,16 +204,13 @@ struct MapSettingsView: View {
             locationManager.requestPermissionIfNeeded(requestAlways: false)
         }
         .onChange(of: mapAutoCenterTime) { _, newValue in
-            print("🔧 MapSettingsView: mapAutoCenterTime changed to \(newValue)")
             // Force UserDefaults to synchronize immediately
             UserDefaults.standard.synchronize()
         }
         .onChange(of: mapAutoCenter) { _, newValue in
-            print("🔧 MapSettingsView: mapAutoCenter changed to \(newValue)")
             UserDefaults.standard.synchronize()
         }
         .onChange(of: mapZoomLevel) { _, newValue in
-            print("🔧 MapSettingsView: mapZoomLevel changed to \(newValue)")
             UserDefaults.standard.synchronize()
         }
     }

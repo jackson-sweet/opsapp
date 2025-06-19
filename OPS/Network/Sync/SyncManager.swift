@@ -64,7 +64,6 @@ class SyncManager {
         let userDefaults = UserDefaults.standard
         self.preventAutoStatusUpdates = !userDefaults.bool(forKey: "autoStatusUpdates", defaultValue: true)
         
-        print("SyncManager: Initialized with auto status updates \(self.preventAutoStatusUpdates ? "DISABLED" : "ENABLED")")
     }
     
     // MARK: - Public Methods
@@ -72,7 +71,6 @@ class SyncManager {
     /// Sync a user to the API
     func syncUser(_ user: User) async {
         guard !syncInProgress, connectivityMonitor.isConnected else {
-            print("SyncManager: Skipping user sync - either already in progress or offline")
             return
         }
         
@@ -80,7 +78,6 @@ class SyncManager {
         syncStateSubject.send(true)
         
         do {
-            print("SyncManager: Starting sync for user \(user.id)")
             
             // Create user update payload - only include fields that users can edit
             // Include user_id for workflow processing
@@ -108,7 +105,6 @@ class SyncManager {
                 body: jsonData
             )
             
-            print("SyncManager: Successfully synced user \(user.id)")
             
             // Mark as synced
             user.needsSync = false
@@ -127,8 +123,6 @@ class SyncManager {
     
     /// Upload a user's profile image to Bubble
     private func uploadUserProfileImage(_ image: UIImage, for user: User) async {
-        print("🔍 SyncManager: START uploadUserProfileImage for user \(user.id)")
-        print("🔍 SyncManager: Image size: \(image.size.width)x\(image.size.height)")
         
         do {
             // 1. Compress image to a reasonable size
@@ -140,15 +134,12 @@ class SyncManager {
                 return
             }
             
-            print("✅ SyncManager: Successfully compressed image, size: \(imageData.count) bytes")
             
             // 2. Create a unique filename
             let timestamp = Int(Date().timeIntervalSince1970)
             let filename = "profile_\(user.id)_\(timestamp).jpg"
-            print("🔍 SyncManager: Using filename: \(filename)")
             
             // Use simpler multipart form data approach with only the required fields
-            print("🔍 SyncManager: Creating multipart form data with ONLY user_id and image fields")
             
             // Set up the multipart form boundary
             let boundary = "Boundary-\(UUID().uuidString)"
@@ -170,9 +161,6 @@ class SyncManager {
             formData.append("--\(boundary)--\r\n".data(using: .utf8)!)
             
             // Log form data details
-            print("🔍 SyncManager: Created multipart form with boundary: \(boundary)")
-            print("🔍 SyncManager: Total form data size: \(formData.count) bytes")
-            print("🔍 SyncManager: ONLY sending user_id and image fields")
             
             // 7. Create the request with properly formatted URL
             // Make sure URL doesn't have trailing slash issues
@@ -185,18 +173,12 @@ class SyncManager {
             request.httpBody = formData
             
             // Log the full URL and request headers for debugging
-            print("🔍 SyncManager: Full request URL: \(uploadURL)")
-            print("🔍 SyncManager: All request headers:")
             request.allHTTPHeaderFields?.forEach { key, value in
-                print("🔍 SyncManager:   \(key): \(value)")
             }
             
             // 8. Detailed debug logging
-            print("🔍 SyncManager: Created request to URL: \(uploadURL.absoluteString)")
-            print("🔍 SyncManager: Request Content-Type: \(request.value(forHTTPHeaderField: "Content-Type") ?? "none")")
             
             if let formPreview = String(data: formData.prefix(500), encoding: .utf8) {
-                print("🔍 SyncManager: Form data preview (first 500 bytes): \(formPreview)")
             }
             
             // 9. Create a custom session with longer timeouts for field operations
@@ -205,27 +187,22 @@ class SyncManager {
             config.timeoutIntervalForResource = 60.0
             let session = URLSession(configuration: config)
             
-            print("⏳ SyncManager: Sending HTTP request...")
             
             // 10. Execute the request
             let (data, response) = try await session.data(for: request)
             
-            print("✅ SyncManager: Received response from server")
             
             // 11. Validate HTTP response
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ SyncManager: Invalid response type for profile image upload")
                 return
             }
             
             // 12. Complete response logging for both success and failure
             let responseString = String(data: data, encoding: .utf8) ?? "No response body"
-            print("🔍 SyncManager: Profile image upload response (\(httpResponse.statusCode)): \(responseString)")
             
             // If we're getting a 400 error with specific missing parameter message, 
             // let's try an alternative approach
             if httpResponse.statusCode == 400 && responseString.contains("Missing parameter for workflow upload_user_profile_image: parameter image") {
-                print("⚠️ SyncManager: Detected Bubble API parameter issue - trying fallback approach")
                 
                 // Try the fallback approach - some APIs expect a different format
                 let _ = await tryFallbackUpload(user: user, image: image)
@@ -238,18 +215,15 @@ class SyncManager {
                 return
             }
             
-            print("✅ SyncManager: Profile image upload SUCCESS (HTTP \(httpResponse.statusCode))")
             
             // 14. Parse the response to get the uploaded image URL
             // First dump the full response for debugging
-            print("🔍 SyncManager: Full response content: \(responseString)")
             
             // Try to dump as formatted JSON
             if let responseData = responseString.data(using: .utf8),
                let json = try? JSONSerialization.jsonObject(with: responseData),
                let formattedData = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted]),
                let formattedString = String(data: formattedData, encoding: .utf8) {
-                print("🔍 SyncManager: Formatted JSON response:\n\(formattedString)")
             }
             
             // If there's a status field in the response and it's an error, log it
@@ -263,11 +237,9 @@ class SyncManager {
             // Try to parse the response properly based on Bubble API structure
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 // Print all keys for debugging
-                print("🔍 SyncManager: Response JSON root keys: \(json.keys.joined(separator: ", "))")
                 
                 // If response contains 'body' field which often contains error info
                 if let body = json["body"] as? [String: Any] {
-                    print("🔍 SyncManager: Response body: \(body)")
                     if let status = body["status"] as? String, 
                        let message = body["message"] as? String {
                         print("❌ SyncManager: API Error - Status: \(status), Message: \(message)")
@@ -283,7 +255,6 @@ class SyncManager {
                 for key in possibleURLKeys {
                     if let url = json[key] as? String {
                         imageURL = url
-                        print("✅ SyncManager: Found image URL in root '\(key)' field: \(url)")
                         break
                     }
                 }
@@ -291,24 +262,20 @@ class SyncManager {
                 // Format 2: Inside response wrapper
                 if imageURL == nil, let response = json["response"] as? [String: Any] {
                     // Print response keys for debugging
-                    print("🔍 SyncManager: Response wrapper keys: \(response.keys.joined(separator: ", "))")
                     
                     for key in possibleURLKeys {
                         if let url = response[key] as? String {
                             imageURL = url
-                            print("✅ SyncManager: Found image URL in response.\(key): \(url)")
                             break
                         }
                     }
                     
                     // Format 3: Nested user object
                     if imageURL == nil, let userObj = response["user"] as? [String: Any] {
-                        print("🔍 SyncManager: User object keys: \(userObj.keys.joined(separator: ", "))")
                         
                         for key in possibleURLKeys {
                             if let url = userObj[key] as? String {
                                 imageURL = url
-                                print("✅ SyncManager: Found image URL in response.user.\(key): \(url)")
                                 break
                             }
                         }
@@ -329,13 +296,9 @@ class SyncManager {
                 ImageCache.shared.set(image, forKey: imageURL)
                 
                 try modelContext.save()
-                print("✅ SyncManager: Successfully saved profile image URL: \(imageURL)")
             } else {
-                print("⚠️ SyncManager: Could not extract image URL from response")
-                print("⚠️ SyncManager: Full response content: \(responseString)")
             }
             
-            print("✅ SyncManager: Successfully completed profile image upload for user \(user.id)")
             
         } catch {
             print("❌ SyncManager: Error uploading profile image: \(error.localizedDescription)")
@@ -345,7 +308,6 @@ class SyncManager {
     /// Try an alternative approach to upload user profile image to Bubble
     /// This is a fallback method when the primary method fails with specific Bubble API errors
     private func tryFallbackUpload(user: User, image: UIImage) async -> Bool {
-        print("🔄 SyncManager: Trying SIMPLIFIED multipart form data with ONLY user_id and image fields")
         
         do {
             // Compress image again
@@ -387,26 +349,20 @@ class SyncManager {
             
             request.httpBody = body
             
-            print("🔍 FALLBACK: Using ONLY user_id and image fields")
-            print("🔍 FALLBACK: Sending to URL: \(url.absoluteString)")
             
             // Execute the request
             let (data, response) = try await URLSession.shared.data(for: request)
             
             // Check the response
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ FALLBACK: Invalid response type")
                 return false
             }
             
             // Log the response
             let responseString = String(data: data, encoding: .utf8) ?? "No response body"
-            print("🔍 FALLBACK: Response status: \(httpResponse.statusCode)")
-            print("🔍 FALLBACK: Response body: \(responseString)")
             
             // Check if the request was successful
             if (200...299).contains(httpResponse.statusCode) {
-                print("✅ FALLBACK: Image upload successful")
                 
                 // Try to parse the response to get the image URL
                 var imageURL: String? = nil
@@ -419,7 +375,6 @@ class SyncManager {
                     for key in possibleKeys {
                         if let url = json[key] as? String {
                             imageURL = url
-                            print("✅ FALLBACK: Found image URL at root.\(key): \(url)")
                             break
                         }
                     }
@@ -429,7 +384,6 @@ class SyncManager {
                         for key in possibleKeys {
                             if let url = response[key] as? String {
                                 imageURL = url
-                                print("✅ FALLBACK: Found image URL at response.\(key): \(url)")
                                 break
                             }
                         }
@@ -449,7 +403,6 @@ class SyncManager {
                     
                     return true
                 } else {
-                    print("⚠️ FALLBACK: Could not find image URL in response")
                     return false
                 }
             } else {
@@ -465,7 +418,6 @@ class SyncManager {
     /// Trigger background sync with intelligent retry
     func triggerBackgroundSync() {
         guard !syncInProgress, connectivityMonitor.isConnected else {
-            print("SyncManager: Skipping background sync - either already in progress or offline")
             return
         }
         
@@ -476,21 +428,17 @@ class SyncManager {
             do {
                 // First sync users that need sync (always allowed)
                 let userSyncCount = await syncPendingUserChanges()
-                print("SyncManager: Synced \(userSyncCount) user changes")
                 
                 // Then sync high-priority project items (status changes) if auto-updates are enabled
                 var highPriorityCount = 0
                 if !preventAutoStatusUpdates {
                     highPriorityCount = await syncPendingProjectStatusChanges()
-                    print("SyncManager: Synced \(highPriorityCount) high-priority project changes")
                 } else {
-                    print("SyncManager: Skipping project status sync (auto updates disabled)")
                 }
                 
                 // Finally, fetch remote data if we didn't exhaust our sync budget
                 if (userSyncCount + highPriorityCount) < 10 {
                     try await syncProjects()
-                    print("SyncManager: Completed project sync")
                 }
                 
                 syncInProgress = false
@@ -558,16 +506,13 @@ class SyncManager {
             
             // Queue sync if online and either auto-updates are enabled or forceSync is true
             if connectivityMonitor.isConnected && (!preventAutoStatusUpdates || forceSync) {
-                print("SyncManager: Syncing project status - auto updates \(preventAutoStatusUpdates ? "disabled" : "enabled"), force sync: \(forceSync)")
                 
                 // Don't await - allow to happen in background
                 Task {
                     await syncProjectStatus(project)
                 }
             } else if preventAutoStatusUpdates && !forceSync {
-                print("SyncManager: Project status updated locally but not synced (auto updates disabled)")
             } else if !connectivityMonitor.isConnected {
-                print("SyncManager: Project status updated locally but not synced (offline)")
             }
             
             return true
@@ -586,15 +531,12 @@ class SyncManager {
         do {
             let projects = try modelContext.fetch(descriptor)
             guard let project = projects.first else {
-                print("❌ SyncManager: Project with ID \(projectId) not found for notes update")
                 return false
             }
             
-            print("🔄 SyncManager: Updating notes for project: \(project.title) (ID: \(project.id))")
             
             // Check if notes are actually different to avoid unnecessary updates
             if project.notes == notes {
-                print("ℹ️ SyncManager: Notes unchanged, skipping update")
                 return true
             }
             
@@ -605,13 +547,11 @@ class SyncManager {
             
             // Save local changes
             try modelContext.save()
-            print("✅ SyncManager: Project notes saved locally")
             
             // Queue sync if online - do this immediately for notes (user is waiting)
             if connectivityMonitor.isConnected {
                 Task {
                     do {
-                        print("🔄 SyncManager: Syncing notes for project \(project.id) to API")
                         try await apiService.updateProjectNotes(id: project.id, notes: notes)
                         
                         await MainActor.run {
@@ -620,14 +560,12 @@ class SyncManager {
                             try? modelContext.save()
                         }
                         
-                        print("✅ SyncManager: Project notes synced successfully to API")
                     } catch {
                         print("❌ SyncManager: Failed to sync project notes: \(error.localizedDescription)")
                         // Leave needsSync=true to retry later in background sync
                     }
                 }
             } else {
-                print("⚠️ SyncManager: Device offline - notes will sync when connection is restored")
             }
             
             return true
@@ -730,21 +668,15 @@ class SyncManager {
             // Different approach based on the status
             if project.status == .completed {
                 // For completed projects, use the workflow endpoint
-                print("🔄 SyncManager: Using workflow endpoint to complete project \(project.id)")
                 let newStatus = try await apiService.completeProject(projectId: project.id, status: project.status.rawValue)
-                print("✅ SyncManager: Project \(project.id) marked as \(newStatus) using workflow")
             } else {
                 // For other statuses, use the regular update endpoint
-                print("🔄 SyncManager: Using regular API to update project \(project.id) status to \(project.status.rawValue)")
                 try await apiService.updateProjectStatus(id: project.id, status: project.status.rawValue)
-                print("✅ SyncManager: Project \(project.id) status updated to \(project.status.rawValue)")
             }
             
             // Sync notes if they exist
             if let notes = project.notes, !notes.isEmpty {
-                print("🔄 SyncManager: Syncing notes for project \(project.id)")
                 try await apiService.updateProjectNotes(id: project.id, notes: notes)
-                print("✅ SyncManager: Project \(project.id) notes synced")
             }
             
             // Mark as synced if successful
@@ -761,7 +693,6 @@ class SyncManager {
     private func syncPendingProjectStatusChanges() async -> Int {
         // Skip status synchronization if auto-updates are disabled
         if preventAutoStatusUpdates {
-            print("SyncManager: Skipping auto sync of pending project status changes (disabled)")
             return 0
         }
         
@@ -774,7 +705,6 @@ class SyncManager {
             let pendingProjects = try modelContext.fetch(descriptor)
             var successCount = 0
             
-            print("SyncManager: Found \(pendingProjects.count) projects that need syncing")
             
             // Process in batches of 10 to avoid large transaction costs
             for batch in pendingProjects.chunked(into: 10) {
@@ -797,7 +727,6 @@ class SyncManager {
                 try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
             }
             
-            print("SyncManager: Successfully synced \(successCount) of \(pendingProjects.count) projects")
             return successCount
         } catch {
             print("Failed to fetch pending projects: \(error.localizedDescription)")
@@ -809,7 +738,6 @@ class SyncManager {
     private func syncProjects() async throws {
         // Get user ID from the provider closure
         guard let userId = userIdProvider() else {
-            print("Sync skipped: No user ID available")
             return
         }
         
@@ -829,7 +757,6 @@ class SyncManager {
         let companyId = currentUser?.companyId ?? UserDefaults.standard.string(forKey: "currentUserCompanyId")
         
         guard let companyId = companyId else {
-            print("Sync skipped: No company ID available")
             return
         }
         
@@ -838,15 +765,12 @@ class SyncManager {
         // Fetch projects based on user role
         if let user = currentUser, (user.role == UserRole.admin || user.role == UserRole.officeCrew) {
             // Admin and Office Crew get ALL company projects
-            print("🔷 Syncing ALL company projects for \(user.role.rawValue) user: \(userId)")
             remoteProjects = try await apiService.fetchCompanyProjects(companyId: companyId)
         } else {
             // Field Crew only gets assigned projects
-            print("🔷 Syncing assigned projects for Field Crew user: \(userId)")
             remoteProjects = try await apiService.fetchUserProjects(userId: userId)
         }
         
-        print("✅ Fetched \(remoteProjects.count) projects from API")
         
         // Process batches to avoid memory pressure
         for batch in remoteProjects.chunked(into: 20) {
@@ -862,26 +786,22 @@ class SyncManager {
     /// Disable automatic status updates to backend
     func disableAutoStatusUpdates() {
         preventAutoStatusUpdates = true
-        print("SyncManager: Automatic status updates DISABLED")
     }
     
     /// Enable automatic status updates to backend
     func enableAutoStatusUpdates() {
         preventAutoStatusUpdates = false
-        print("SyncManager: Automatic status updates ENABLED")
     }
     
     /// Toggle automatic status updates
     @discardableResult
     func toggleAutoStatusUpdates() -> Bool {
         preventAutoStatusUpdates.toggle()
-        print("SyncManager: Automatic status updates \(preventAutoStatusUpdates ? "DISABLED" : "ENABLED")")
         return !preventAutoStatusUpdates // Return true if enabled, false if disabled
     }
     
     /// Force sync all pending project status changes
     func forceSyncPendingStatusChanges() async -> Int {
-        print("SyncManager: Forcing sync of all pending status changes regardless of auto-update setting")
         return await syncPendingProjectStatusChanges()
     }
     
@@ -929,7 +849,6 @@ class SyncManager {
         })
         
         if !duplicateIds.isEmpty {
-            print("SyncManager: WARNING - Detected duplicate user IDs: \(duplicateIds)")
             
             // Just use the first instance of each user with a duplicate ID
             for user in users {
@@ -957,7 +876,6 @@ class SyncManager {
                 // Only update if not modified locally
                 updateLocalProjectFromRemote(localProject, remoteDTO: remoteDTO)
                 
-                print("Found existing project \(remoteDTO.id), needsSync: \(localProject.needsSync ? "true" : "false")")
                 
                 // Update team members
                 if let teamMembers = remoteDTO.teamMembers {
@@ -1003,7 +921,6 @@ class SyncManager {
             }
         }
         
-        print("SyncManager: Updated project \(project.id) with \(teamMemberIds.count) team member IDs and \(project.teamMembers.count) team member objects")
     }
     
     /// Update a local project with remote data
@@ -1030,7 +947,6 @@ class SyncManager {
             let deletedImages = localImageURLs.subtracting(remoteImageURLs)
             
             if !deletedImages.isEmpty {
-                print("🗑️ Found \(deletedImages.count) images deleted on server for project \(remoteDTO.id)")
                 
                 // Clean up local cache for deleted images
                 for deletedURL in deletedImages {
@@ -1038,18 +954,15 @@ class SyncManager {
                     _ = ImageFileManager.shared.deleteImage(localID: deletedURL)
                     // Remove from memory cache
                     ImageCache.shared.remove(forKey: deletedURL)
-                    print("  - Removed local cache for: \(deletedURL)")
                 }
             }
             
             // Update project with server's image list (handles both additions and deletions)
             localProject.projectImagesString = projectImages.joined(separator: ",")
-            print("🔄 Synced images for project \(remoteDTO.id): \(projectImages.count) images (was \(localImageURLs.count))")
         } else {
             // If projectImages is nil, clear all local images
             let localImages = localProject.getProjectImages()
             if !localImages.isEmpty {
-                print("🗑️ Clearing all \(localImages.count) images for project \(remoteDTO.id) (no images from server)")
                 
                 // Clean up local cache
                 for imageURL in localImages {
@@ -1085,7 +998,6 @@ class SyncManager {
         if !localProject.needsSync || !preventAutoStatusUpdates {
             localProject.status = BubbleFields.JobStatus.toSwiftEnum(remoteDTO.status)
         } else {
-            print("⚠️ SyncManager: Skipping status update for project \(localProject.id) to preserve local changes")
         }
     }
     
@@ -1093,7 +1005,6 @@ class SyncManager {
     /// - Parameter company: The company to fetch team members for
     @MainActor
     func syncCompanyTeamMembers(_ company: Company) async {
-        print("🔄 SyncManager: Starting team member sync for company \(company.name) (ID: \(company.id))")
         
         // Determine which approach to use: company-based or ID-based
         let useCompanyBasedApproach = true // This gives us all users in the company
@@ -1103,32 +1014,23 @@ class SyncManager {
             
             if useCompanyBasedApproach {
                 // Approach 1: Fetch users by company ID (more efficient)
-                print("🔄 SyncManager: Using company-based approach to fetch team members")
-                print("🔄 SyncManager: Company ID being used: \(company.id)")
-                print("🔄 SyncManager: Expected API call format:")
-                print("   https://opsapp.co/version-test/api/1.1/obj/user?constraints=[{\"key\":\"Company\",\"constraint_type\":\"equals\",\"value\":\"\(company.id)\"}]")
                 
                 // Execute the API call with the correct constraint format
                 userDTOs = try await apiService.fetchCompanyUsers(companyId: company.id)
                 
-                print("🔄 SyncManager: Received \(userDTOs.count) team members from API")
                 if !userDTOs.isEmpty {
-                    print("🔄 SyncManager: First team member: \(userDTOs[0].nameFirst ?? "Unknown") \(userDTOs[0].nameLast ?? "Unknown")")
                 }
             } else {
                 // Approach 2: Fetch users by their IDs (more targeted but requires multiple IDs)
                 let teamIds = company.getTeamIds()
                 
                 guard !teamIds.isEmpty else {
-                    print("⚠️ SyncManager: No team IDs found for company \(company.name)")
                     return
                 }
                 
-                print("🔄 SyncManager: Using ID-based approach to fetch \(teamIds.count) team members")
                 userDTOs = try await apiService.fetchUsersByIds(userIds: teamIds)
             }
             
-            print("✅ SyncManager: Successfully fetched \(userDTOs.count) team members from API")
             
             // Clear existing team members to avoid duplicates
             company.teamMembers = []
@@ -1145,12 +1047,9 @@ class SyncManager {
                 teamMember.company = company
                 company.teamMembers.append(teamMember)
                 
-                print("👤 Team member added: \(teamMember.fullName) (\(teamMember.role))")
                 if let email = teamMember.email {
-                    print("   - Email: \(email)")
                 }
                 if let phone = teamMember.phone {
-                    print("   - Phone: \(phone)")
                 }
             }
             
@@ -1161,7 +1060,6 @@ class SyncManager {
             // Save changes to the database
             try modelContext.save()
             
-            print("✅ SyncManager: Successfully saved \(company.teamMembers.count) team members")
         } catch {
             print("❌ SyncManager: Failed to sync team members: \(error.localizedDescription)")
         }

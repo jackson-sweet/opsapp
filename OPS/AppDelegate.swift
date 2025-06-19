@@ -7,6 +7,7 @@
 
 import UIKit
 import UserNotifications
+import GoogleSignIn
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     
@@ -19,6 +20,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         registerForRemoteNotifications()
         
         return true
+    }
+    
+    // Handle URL for Google Sign-In
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+        return GoogleSignInManager.handle(url)
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

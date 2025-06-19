@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2025-06-19
+
+### Added
+- Enhanced location permission handling with completion callbacks
+- Proper handling for denied/restricted permission states with immediate settings prompts
+- Info.plist permission description keys for location and notifications
+- Smart company code skipping logic for employees who already have a company
+
+### Changed
+- LocationManager now supports completion callbacks for permission requests
+- OnboardingViewModel permission methods now properly handle denied/restricted states
+- Permission views show alerts immediately when permissions are denied
+- Back navigation in onboarding now skips company code step for employees with existing companies
+
+### Fixed
+- Location permission dialog not appearing due to missing Info.plist keys
+- Notification permission dialog not appearing due to missing Info.plist key
+- Onboarding flow incorrectly showing company code step for users already in a company
+- Back button navigation from permissions page incorrectly going to company code
+
 ## [1.0.1] - 2025-06-06
 
 ### Added

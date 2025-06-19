@@ -47,6 +47,17 @@ struct OPSApp: App {
                 .environmentObject(dataController)
                 .environmentObject(notificationManager)
                 .onAppear {
+                    // Check if this is a fresh install
+                    if !UserDefaults.standard.bool(forKey: "has_launched_before") {
+                        print("OPSApp: Fresh install detected, clearing any lingering auth data")
+                        
+                        // Clear all authentication data on fresh install
+                        clearAllAuthenticationData()
+                        
+                        // Mark that we've launched before
+                        UserDefaults.standard.set(true, forKey: "has_launched_before")
+                    }
+                    
                     // Set the model context in the data controller
                     let context = sharedModelContainer.mainContext
                     dataController.setModelContext(context)
@@ -93,6 +104,53 @@ struct OPSApp: App {
     }
 }
 
+
+// Function to clear all authentication data on fresh install
+private func clearAllAuthenticationData() {
+    print("OPSApp: Clearing all authentication data for fresh install")
+    
+    // Clear Keychain data
+    let keychainManager = KeychainManager()
+    keychainManager.deleteToken()
+    keychainManager.deleteTokenExpiration()
+    keychainManager.deleteUserId()
+    keychainManager.deleteUsername()
+    keychainManager.deletePassword()
+    
+    // Clear all authentication-related UserDefaults
+    let authKeys = [
+        "is_authenticated",
+        "onboarding_completed", 
+        "resume_onboarding",
+        "last_onboarding_step_v2",
+        "user_id",
+        "currentUserId",
+        "user_email",
+        "user_password",
+        "user_first_name",
+        "user_last_name",
+        "user_phone_number",
+        "company_code",
+        "company_id",
+        "Company Name",
+        "has_joined_company",
+        "currentUserCompanyId",
+        "selected_user_type",
+        "appPIN",
+        "hasPINEnabled",
+        "location_permission_granted",
+        "notifications_permission_granted"
+    ]
+    
+    for key in authKeys {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+    
+    // Force synchronize to ensure changes are saved
+    UserDefaults.standard.synchronize()
+    
+    print("OPSApp: All authentication data cleared")
+}
 
 extension String: @retroactive Identifiable {
     public var id: String { self }

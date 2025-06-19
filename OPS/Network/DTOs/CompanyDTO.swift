@@ -98,8 +98,11 @@ struct CompanyDTO: Codable {
             company.teamIdsString = teamIds.joined(separator: ",")
         }
         
-        // Note: industry, companySize, companyAge, employees, and admin are not stored in the Company model
-        // If needed, these should be added to the Company model first
+        // Handle admin list
+        if let adminRefs = admin {
+            let adminIds = adminRefs.compactMap { $0.stringValue }
+            company.adminIdsString = adminIds.joined(separator: ",")
+        }
         
         company.lastSyncedAt = Date()
         

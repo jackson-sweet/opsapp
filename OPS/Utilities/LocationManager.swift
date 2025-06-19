@@ -42,7 +42,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         self.isLocationDenied = (authorizationStatus == .denied || authorizationStatus == .restricted)
     }
     
-    func requestPermissionIfNeeded(requestAlways: Bool = true) {
+    func requestPermissionIfNeeded(requestAlways: Bool = true, completion: ((Bool) -> Void)? = nil) {
         // Log current authorization status
         print("LocationManager: Current authorization status: \(authorizationStatus.rawValue)")
         
@@ -56,11 +56,15 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             } else {
                 locationManager.requestWhenInUseAuthorization()
             }
+            // Permission result will come through delegate callback
+            completion?(true)
             
         case .denied, .restricted:
             // User has previously denied or is restricted - we should inform the app
             // but can't request again from here (needs UI prompt)
             print("LocationManager: Permission denied or restricted - need user to enable in Settings")
+            // Call completion with false to indicate permission is denied
+            completion?(false)
             
         case .authorizedWhenInUse:
             // If we have when-in-use but need always, request it
@@ -70,11 +74,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
             // Start location updates
             locationManager.startUpdatingLocation()
+            completion?(true)
             
         case .authorizedAlways:
             // We have full permission - just start updates
             print("LocationManager: Already have always authorization")
             locationManager.startUpdatingLocation()
+            completion?(true)
             
         @unknown default:
             // Handle any future authorization status
@@ -84,6 +90,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             } else {
                 locationManager.requestWhenInUseAuthorization()
             }
+            completion?(true)
         }
     }
     

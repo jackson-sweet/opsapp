@@ -1,7 +1,7 @@
 # OPS App - Current State & MVP Status
 
-**Last Updated**: June 6, 2025  
-**Current Completion**: 93-95% MVP Ready  
+**Last Updated**: June 19, 2025  
+**Current Completion**: 95-97% MVP Ready  
 **Target Release**: June 1, 2025 (LAUNCHED)
 
 ## Executive Summary
@@ -96,10 +96,17 @@ Comprehensive settings implementation with 13+ screens:
 - **Bug Reporting**: Implemented dedicated ReportIssueView for user feedback
 - **Centralized Configuration**: Moved What's New features to AppConfiguration
 
-### Onboarding Improvements (June 6)
+### Onboarding Improvements (June 6-19)
 - **Role-Based Welcome**: Different welcome messages for employees vs crew leads
 - **Simplified Flow**: Removed company logo upload requirement
-- **Permission Handling**: Added error alerts when permissions are denied
+- **Enhanced Permission Handling**: 
+  - Added immediate alerts when permissions are denied/restricted
+  - LocationManager supports completion callbacks for permission results
+  - Direct navigation to Settings when permissions need to be changed
+- **Smart Navigation**: 
+  - Company code step automatically skipped for employees with existing company
+  - Back navigation intelligently skips company code when appropriate
+- **Info.plist Updates**: Added all required permission description keys
 - **Completion Animation**: Simplified to clean fade-in effect
 
 ### UI Refinements

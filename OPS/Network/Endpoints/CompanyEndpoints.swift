@@ -32,9 +32,20 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of project DTOs
     func fetchCompanyProjects(companyId: String) async throws -> [ProjectDTO] {
-        return try await fetchBubbleObjects(
+        print("🔷 Fetching all projects for company: \(companyId)")
+        
+        // Create constraint for company using array format
+        let constraints: [[String: Any]] = [
+            [
+                "key": BubbleFields.Project.company,
+                "constraint_type": "equals",
+                "value": companyId
+            ]
+        ]
+        
+        return try await fetchBubbleObjectsWithArrayConstraints(
             objectType: BubbleFields.Types.project,
-            constraints: companyConstraint(companyId: companyId),
+            constraints: constraints,
             sortField: BubbleFields.Project.startDate
         )
     }

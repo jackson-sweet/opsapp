@@ -7,8 +7,8 @@ The onboarding system provides a comprehensive flow for user registration and in
 1. User welcome and introduction
 2. Phone number collection and verification
 3. Email and password creation
-4. Company association via company code
-5. Permission requests (location)
+4. Company association via company code (intelligently skipped for users already in a company)
+5. Permission requests (location and notifications) with proper denied/restricted state handling
 6. Account creation via Bubble API
 
 ## Architecture
@@ -96,9 +96,22 @@ To customize the appearance:
 - Modify individual screen views for specific layouts
 - Update `OPSStyle.swift` for global color themes
 
+## Key Features
+
+### Smart Navigation
+- **Company Code Skip Logic**: The flow automatically skips the company code step for employees who already have a company
+- **Intelligent Back Navigation**: Back button properly skips company code when navigating from permissions if user already has a company
+- **Permission Completion Callbacks**: LocationManager supports completion handlers to immediately respond to permission denials
+
+### Permission Handling
+- **Immediate Feedback**: When permissions are denied, alerts appear immediately with "Open Settings" options
+- **Denied/Restricted States**: Proper handling of both denied and restricted permission states
+- **Settings Integration**: Direct navigation to app settings when permissions need to be changed
+
 ## Notes for Future Developers
 
 - The phone verification flow is currently simulated (doesn't send real SMS codes)
 - For production, connect real SMS verification service
 - Company code validation could be enhanced with real-time company lookup
 - Consider adding analytics events at key onboarding steps
+- Ensure Info.plist contains all required permission description keys for location and notifications

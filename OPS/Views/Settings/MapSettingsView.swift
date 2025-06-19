@@ -329,14 +329,14 @@ struct MapSettingsView: View {
     
     private func handleLocationAction() {
         switch locationManager.authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse, .denied, .restricted:
+        case .authorizedAlways, .authorizedWhenInUse, .restricted:
             // Open app settings
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
-        case .notDetermined:
+        case .denied, .notDetermined:
             // Request permission
-            locationManager.requestPermissionIfNeeded(requestAlways: false)
+            locationManager.requestPermissionIfNeeded(requestAlways: true)
         @unknown default:
             // Open settings as fallback
             if let url = URL(string: UIApplication.openSettingsURLString) {

@@ -155,11 +155,8 @@ class CalendarViewModel: ObservableObject {
             
             // For other dates, get the count from DataController
             if let dataController = dataController {
-                // Filter by current user to match what's shown when day is tapped
-                let count = dataController.getProjects(
-                    for: date,
-                    assignedTo: dataController.currentUser
-                ).count
+                // Get projects based on user role
+                let count = dataController.getProjectsForCurrentUser(for: date).count
                 
                 // Cache the result
                 projectCountCache[dateKey] = count
@@ -187,11 +184,8 @@ class CalendarViewModel: ObservableObject {
         
         isLoading = true
         
-        // Get projects for the selected date that are assigned to the current user
-        let projects = dataController.getProjects(
-            for: date,
-            assignedTo: dataController.currentUser
-        )
+        // Get projects for the selected date based on user role
+        let projects = dataController.getProjectsForCurrentUser(for: date)
         
         self.projectsForSelectedDate = projects
         self.isLoading = false

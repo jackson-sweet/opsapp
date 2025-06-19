@@ -96,7 +96,6 @@ struct CompanyBasicInfoView: View {
             }
         }
         .dismissKeyboardOnTap()
-        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }
 

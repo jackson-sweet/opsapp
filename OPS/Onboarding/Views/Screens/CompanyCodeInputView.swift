@@ -240,7 +240,6 @@ struct CompanyCodeInputView: View {
             }
         }
         .dismissKeyboardOnTap()
-        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
     
     private func joinCompany() {

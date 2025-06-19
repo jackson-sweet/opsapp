@@ -154,7 +154,6 @@ struct CompanyDetailsView: View {
             }
         }
         .dismissKeyboardOnTap()
-        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }
 

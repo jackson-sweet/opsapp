@@ -46,9 +46,11 @@ The OPS (Operational Project System) app is a field-optimized project management
 ## Key Features
 
 1. **Authentication & Onboarding**
-   - Step-based user onboarding flow
+   - Step-based user onboarding flow with smart navigation
    - Secure credential storage
-   - Company code verification
+   - Company code verification (automatically skipped for users with existing company)
+   - Enhanced permission handling with completion callbacks
+   - Immediate alerts for denied/restricted permissions
 
 2. **Project Management**
    - Project status tracking
@@ -97,6 +99,22 @@ The OPS (Operational Project System) app is a field-optimized project management
 - Keep view components small and focused
 - Extract complex subviews into separate components
 - Use preview providers for all UI components
+
+### Permission Handling Best Practices
+- **Use Completion Callbacks**: When requesting permissions, always provide completion handlers for immediate response
+- **Handle All States**: Check for `.denied`, `.restricted`, `.notDetermined`, and `.authorized` states
+- **Show Immediate Feedback**: Display alerts immediately when permissions are denied
+- **Provide Settings Navigation**: Include "Open Settings" options in denial alerts
+- **Info.plist Keys**: Always ensure required usage description keys are present
+- **Example Pattern**:
+  ```swift
+  locationManager.requestPermissionIfNeeded { isAllowed in
+      if !isAllowed {
+          // Show settings prompt immediately
+          showLocationDeniedAlert = true
+      }
+  }
+  ```
 
 ### Error Handling
 - Add appropriate error handling to new code

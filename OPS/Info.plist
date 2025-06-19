@@ -15,5 +15,24 @@
 		<string>Mohave-SemiBold.ttf</string>
 		<string>Mohave-SemiBoldItalic.ttf</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.748032911358-3a66h9ie5o4l7g41ec42d6fq4k4erqgb</string>
+			</array>
+		</dict>
+	</array>
+	<key>GIDClientID</key>
+	<string>748032911358-3a66h9ie5o4l7g41ec42d6fq4k4erqgb.apps.googleusercontent.com</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>OPS needs location access to help you navigate to projects and track your work. This allows your teammates to coordinate with you in the field.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>OPS needs location access to show nearby job sites and navigate to work locations.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>OPS needs continuous location access to track your work locations and help teammates find you in the field, even when the app is in the background.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>OPS needs notification access to keep you updated about schedule changes, job assignments, and important team messages.</string>
 </dict>
 </plist>

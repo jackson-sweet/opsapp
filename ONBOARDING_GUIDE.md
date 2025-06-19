@@ -23,7 +23,7 @@ The OPS app onboarding flow has been streamlined from 11 steps to 7 steps, focus
 1. Welcome
 2. Account Setup (Email/Password)
 3. User Details (Name/Phone)
-4. Company Code
+4. Company Code (skipped for employees who already have a company)
 5. Consolidated Permissions
 6. Field Setup
 7. Completion
@@ -99,6 +99,14 @@ New screens combine related steps for a more efficient flow:
 - **UserDetailsView**: Combines name and phone fields
 - **ConsolidatedPermissionsView**: Presents all permissions together
 - **FieldSetupView**: New screen for offline setup and initial sync
+
+#### 4. Smart Navigation
+The onboarding flow includes intelligent navigation that adapts to user state:
+
+- **Company Code Skip Logic**: Employees who already have a company automatically skip the company code step
+- **Back Navigation**: The back button intelligently skips the company code step when appropriate
+- **Permission Handling**: Denied/restricted permissions show immediate prompts to open Settings
+- **Completion Callbacks**: LocationManager supports callbacks to handle permission results immediately
 
 ## UI Enhancements
 
@@ -216,7 +224,8 @@ struct ContentView: View {
 
 3. **Permission Handling**
    - Accept all permissions
-   - Decline specific permissions
+   - Decline specific permissions (shows immediate settings prompt)
+   - Handle denied/restricted states with settings navigation
    - Change permissions later
 
 4. **State Preservation**

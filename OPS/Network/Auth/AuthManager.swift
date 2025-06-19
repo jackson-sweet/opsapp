@@ -6,6 +6,13 @@
 //
 
 import Foundation
+import GoogleSignIn
+
+/// Structure to hold Google login response with user and company
+struct GoogleLoginResult {
+    let user: UserDTO
+    let company: CompanyDTO?
+}
 
 /// Handles all authentication with the Bubble backend
 class AuthManager {
@@ -184,6 +191,143 @@ class AuthManager {
         keychain.deleteUserId()
         keychain.deleteUsername()
         keychain.deletePassword()
+        
+        // Also sign out from Google if applicable
+        GoogleSignInManager.shared.signOut()
+    }
+    
+    /// Sign in with Google ID token
+    /// - Parameters:
+    ///   - idToken: Google ID token
+    ///   - email: User's email from Google
+    ///   - name: User's full name
+    ///   - givenName: User's first name
+    ///   - familyName: User's last name
+    /// - Returns: GoogleLoginResult containing user and company data from Bubble
+    /// - Throws: AuthError if authentication fails
+    func signInWithGoogle(idToken: String, email: String, name: String, givenName: String?, familyName: String?) async throws -> GoogleLoginResult {
+        do {
+            // Ensure the baseURL doesn't end with a slash
+            let baseURLString = baseURL.absoluteString.trimmingCharacters(in: ["/"])
+            
+            // Construct the Google login endpoint URL
+            let fullURLString = baseURLString + "/api/1.1/wf/login_google"
+            guard let url = URL(string: fullURLString) else {
+                throw AuthError.invalidURL
+            }
+            
+            print("Attempting Google login to: \(url.absoluteString)")
+            
+            // Create request
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            // Create login payload
+            let loginPayload: [String: String] = [
+                "id_token": idToken,
+                "email": email,
+                "name": name,
+                "given_name": givenName ?? "",
+                "family_name": familyName ?? ""
+            ]
+            
+            print("Google login payload: email=\(email), name=\(name)")
+            request.httpBody = try JSONSerialization.data(withJSONObject: loginPayload)
+            
+            // Send request
+            let (data, response) = try await session.data(for: request)
+            
+            // Debug response
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("Google login response: \(responseString)")
+            }
+            
+            // Check HTTP status
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AuthError.invalidResponse
+            }
+            
+            print("Google login HTTP status: \(httpResponse.statusCode)")
+            
+            // Handle authentication errors
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw AuthError.invalidCredentials
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw AuthError.serverError(httpResponse.statusCode)
+            }
+            
+            // Parse response - expecting a user object
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            
+            do {
+                // Try to decode the response with both user and company
+                struct GoogleLoginResponse: Decodable {
+                    let status: String?
+                    let response: ResponseData?
+                    
+                    struct ResponseData: Decodable {
+                        let user: UserDTO?
+                        let company: CompanyDTO?
+                    }
+                }
+                
+                // First try the wrapped response format
+                if let loginResponse = try? decoder.decode(GoogleLoginResponse.self, from: data),
+                   let userData = loginResponse.response?.user {
+                    
+                    // Store user info
+                    self.userId = userData.id
+                    keychain.storeUserId(userData.id)
+                    
+                    // Store email as username for consistency
+                    keychain.storeUsername(email)
+                    
+                    // For Google Sign-In, we don't get a separate API token
+                    // The authentication is handled by the Google ID token
+                    
+                    return GoogleLoginResult(
+                        user: userData,
+                        company: loginResponse.response?.company
+                    )
+                }
+                
+                // Try direct format with user and company at root level
+                struct DirectGoogleLoginResponse: Decodable {
+                    let user: UserDTO
+                    let company: CompanyDTO?
+                }
+                
+                if let directResponse = try? decoder.decode(DirectGoogleLoginResponse.self, from: data) {
+                    // Store user info
+                    self.userId = directResponse.user.id
+                    keychain.storeUserId(directResponse.user.id)
+                    keychain.storeUsername(email)
+                    
+                    return GoogleLoginResult(
+                        user: directResponse.user,
+                        company: directResponse.company
+                    )
+                }
+                
+                // If we can't decode, throw an error
+                throw AuthError.decodingFailed
+                
+            } catch {
+                print("Failed to decode Google login response: \(error.localizedDescription)")
+                print("Decoding error details: \(error)")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("Raw response: \(responseString)")
+                }
+                throw AuthError.decodingFailed
+            }
+        } catch {
+            print("Google login error details: \(error)")
+            throw error
+        }
     }
     
     /// Request a password reset email for the specified email address

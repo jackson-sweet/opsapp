@@ -813,9 +813,40 @@ class SyncManager {
             return
         }
         
-        // Now using the optimized function to fetch only projects where user is a team member
-        print("Syncing projects for user ID: \(userId)")
-        let remoteProjects = try await apiService.fetchUserProjects(userId: userId)
+        // Get current user to check role
+        let currentUser: User? = await MainActor.run {
+            // Find current user in context
+            let descriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { $0.id == userId }
+            )
+            if let user = try? modelContext.fetch(descriptor).first {
+                return user
+            }
+            return nil
+        }
+        
+        // Get company ID for the user
+        let companyId = currentUser?.companyId ?? UserDefaults.standard.string(forKey: "currentUserCompanyId")
+        
+        guard let companyId = companyId else {
+            print("Sync skipped: No company ID available")
+            return
+        }
+        
+        var remoteProjects: [ProjectDTO] = []
+        
+        // Fetch projects based on user role
+        if let user = currentUser, (user.role == UserRole.admin || user.role == UserRole.officeCrew) {
+            // Admin and Office Crew get ALL company projects
+            print("🔷 Syncing ALL company projects for \(user.role.rawValue) user: \(userId)")
+            remoteProjects = try await apiService.fetchCompanyProjects(companyId: companyId)
+        } else {
+            // Field Crew only gets assigned projects
+            print("🔷 Syncing assigned projects for Field Crew user: \(userId)")
+            remoteProjects = try await apiService.fetchUserProjects(userId: userId)
+        }
+        
+        print("✅ Fetched \(remoteProjects.count) projects from API")
         
         // Process batches to avoid memory pressure
         for batch in remoteProjects.chunked(into: 20) {
@@ -1102,9 +1133,15 @@ class SyncManager {
             // Clear existing team members to avoid duplicates
             company.teamMembers = []
             
+            // Get admin IDs from company if available
+            let adminIds = company.getAdminIds()
+            
             // Create TeamMember objects from the DTOs
             for userDTO in userDTOs {
-                let teamMember = TeamMember.fromUserDTO(userDTO)
+                // Check if this user is an admin
+                let isAdmin = adminIds.contains(userDTO.id)
+                
+                let teamMember = TeamMember.fromUserDTO(userDTO, isAdmin: isAdmin)
                 teamMember.company = company
                 company.teamMembers.append(teamMember)
                 

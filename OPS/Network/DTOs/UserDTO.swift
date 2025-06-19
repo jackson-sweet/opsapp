@@ -18,6 +18,7 @@ struct UserDTO: Codable {
     let phone: String?
     let userColor: String?
     let devPermission: Bool?
+    let hasCompletedAppOnboarding: Bool?
     let authentication: Authentication?
     
     // Authentication information
@@ -50,13 +51,19 @@ struct UserDTO: Codable {
         case phone = "Phone" // The user's contact phone number.
         case userColor = "User Color" // The user's unique color in HEX.
         case devPermission = "Dev Permission" // Bool indicating if user has dev permission for testing features.
+        case hasCompletedAppOnboarding = "hasCompletedAppOnboarding" // Bool indicating if user has completed app onboarding.
     }
     
     /// Convert DTO to SwiftData model
     func toModel() -> User {
-        // Extract the role from Bubble's employee type
+        // Extract the role from Bubble's user type and employee type
         let role: UserRole
-        if let employeeTypeString = employeeType {
+        
+        // Check if user is an Admin based on User Type
+        if userType == BubbleFields.UserType.admin {
+            role = .admin
+        } else if let employeeTypeString = employeeType {
+            // Otherwise use Employee Type
             role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
         } else {
             // Default to field crew if no role specified
@@ -91,6 +98,7 @@ struct UserDTO: Codable {
         // Handle new fields
         user.userColor = userColor
         user.devPermission = devPermission ?? false
+        user.hasCompletedAppOnboarding = hasCompletedAppOnboarding ?? false
         
         // Handle phone number if available
         if let phoneNumber = phone {

@@ -34,6 +34,7 @@ struct UserInfoView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     var isInConsolidatedFlow: Bool = false
     @State private var currentPhase: UserInfoPhase = .firstName
+    @State private var hasCheckedExistingData = false
     
     enum UserInfoPhase: Int, CaseIterable {
         case firstName = 0
@@ -55,7 +56,7 @@ struct UserInfoView: View {
         ZStack {
             // Background color - conditional theming
             (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
-                .edgesIgnoringSafeArea(.all)
+                .ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Top navigation and progress section
@@ -161,7 +162,36 @@ struct UserInfoView: View {
             }
         }
         .dismissKeyboardOnTap()
-        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .onAppear {
+            checkAndSkipIfDataExists()
+        }
+    }
+    
+    private func checkAndSkipIfDataExists() {
+        guard !hasCheckedExistingData else { return }
+        hasCheckedExistingData = true
+        
+        // Check if all user info already exists
+        if !viewModel.firstName.isEmpty && !viewModel.lastName.isEmpty && !viewModel.phoneNumber.isEmpty {
+            print("UserInfoView: All user data already exists, auto-advancing")
+            // Automatically move to next step
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if isInConsolidatedFlow {
+                    viewModel.moveToNextStepV2()
+                } else {
+                    viewModel.moveToNextStep()
+                }
+            }
+        } else {
+            // Set the phase to the first missing field
+            if viewModel.firstName.isEmpty {
+                currentPhase = .firstName
+            } else if viewModel.lastName.isEmpty {
+                currentPhase = .lastName
+            } else if viewModel.phoneNumber.isEmpty {
+                currentPhase = .phoneNumber
+            }
+        }
     }
 }
 
@@ -197,10 +227,6 @@ struct FirstNamePhaseView: View {
                     .foregroundColor(primaryTextColor)
                     .padding(.bottom, 12)
                 
-                Text("This will be used for your profile so your team can recognize you.")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(secondaryTextColor)
-                    .lineSpacing(4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 30)
@@ -253,10 +279,6 @@ struct LastNamePhaseView: View {
                     .foregroundColor(primaryTextColor)
                     .padding(.bottom, 12)
                 
-                Text("This completes your profile name for team identification.")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(secondaryTextColor)
-                    .lineSpacing(4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 30)
@@ -314,7 +336,7 @@ struct PhoneNumberPhaseView: View {
                     .foregroundColor(primaryTextColor)
                     .padding(.bottom, 12)
                 
-                Text("We'll use this to send you project updates and notifications.")
+                Text("This will be used to update your team contact information.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(secondaryTextColor)
                     .lineSpacing(4)

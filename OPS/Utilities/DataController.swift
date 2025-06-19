@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import SwiftData
 import Combine
+import GoogleSignIn
 
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
@@ -243,8 +244,17 @@ class DataController: ObservableObject {
                 print("DataController: Using company ID from UserDefaults: \(companyId)")
             }
             
-            // Set authentication state
-            self.isAuthenticated = true
+            // Check onboarding status before setting authentication
+            let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
+            
+            // Only set isAuthenticated if onboarding is complete
+            if onboardingCompleted {
+                self.isAuthenticated = true
+                print("checkExistingAuth: Onboarding completed, setting isAuthenticated = true")
+            } else {
+                self.isAuthenticated = false
+                print("checkExistingAuth: Onboarding not completed, keeping isAuthenticated = false")
+            }
             
             // Try to get the user from SwiftData if available
             if let userId = userId, let context = modelContext {
@@ -303,7 +313,15 @@ class DataController: ObservableObject {
                         
                         if let user = users.first {
                             self.currentUser = user
-                            self.isAuthenticated = true
+                            
+                            // Only set isAuthenticated if user has completed onboarding
+                            if user.hasCompletedAppOnboarding {
+                                self.isAuthenticated = true
+                                print("checkExistingAuth: User found with completed onboarding")
+                            } else {
+                                self.isAuthenticated = false
+                                print("checkExistingAuth: User found but onboarding not completed")
+                            }
                             
                             if let companyId = user.companyId {
                                 UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
@@ -364,8 +382,15 @@ class DataController: ObservableObject {
                     if isConnected {
                         try await fetchUserFromAPI(userId: userId)
                     } else {
-                        // Even without internet, set authenticated if we have a valid token
-                        self.isAuthenticated = true
+                        // Even without internet, check onboarding status
+                        let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
+                        if onboardingCompleted {
+                            self.isAuthenticated = true
+                            print("Offline mode: Onboarding completed, allowing access")
+                        } else {
+                            self.isAuthenticated = false
+                            print("Offline mode: Onboarding not completed, need internet to complete")
+                        }
                         
                         // Create a placeholder user
                         let placeholderUser = User(id: userId, firstName: "User", lastName: "", role: .fieldCrew, companyId: "")
@@ -394,6 +419,9 @@ class DataController: ObservableObject {
     @discardableResult
     @MainActor
     func login(username: String, password: String) async -> Bool {
+        print("=== DataController.login START ===")
+        print("Attempting login for username: \(username)")
+        
         do {
             // Sign in with the auth manager
             let _ = try await authManager.signIn(username: username, password: password)
@@ -407,7 +435,7 @@ class DataController: ObservableObject {
             if let userId = authManager.getUserId() {
                 // Set the authentication flags immediately
                 UserDefaults.standard.set(true, forKey: "is_authenticated")
-                UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                // Don't automatically set onboarding_completed - we'll check from server
                 UserDefaults.standard.set(userId, forKey: "user_id")
                 UserDefaults.standard.set(userId, forKey: "currentUserId")
                 
@@ -415,13 +443,93 @@ class DataController: ObservableObject {
                 
                 // Fetch user data
                 try await fetchUserFromAPI(userId: userId)
-                return isAuthenticated
+                
+                // Check if user has completed onboarding from server data
+                if let user = currentUser {
+                    UserDefaults.standard.set(user.hasCompletedAppOnboarding, forKey: "onboarding_completed")
+                    print("User onboarding status from server: \(user.hasCompletedAppOnboarding)")
+                    print("Current isAuthenticated value: \(isAuthenticated)")
+                    
+                    // Log what will happen next
+                    if !user.hasCompletedAppOnboarding {
+                        print("=== ONBOARDING NEEDED ===")
+                        print("User has NOT completed app onboarding")
+                        print("LoginView should show onboarding overlay")
+                    } else {
+                        print("User has completed onboarding, proceeding to main app")
+                    }
+                }
+                
+                print("=== DataController.login END ===")
+                print("Login was successful, returning true")
+                print("isAuthenticated is set to: \(isAuthenticated)")
+                // Return true because login succeeded, even if onboarding is needed
+                // LoginView will check onboarding status separately
+                return true
             } else {
                 print("No user ID received from authentication response")
                 return false
             }
         } catch {
             print("Login failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    /// Google login
+    @MainActor
+    func loginWithGoogle(googleUser: GIDGoogleUser) async -> Bool {
+        guard let idToken = googleUser.idToken?.tokenString,
+              let email = googleUser.profile?.email,
+              let name = googleUser.profile?.name else {
+            print("Missing required Google user data")
+            return false
+        }
+        
+        do {
+            // Attempt Google login with Bubble
+            let loginResult = try await authManager.signInWithGoogle(
+                idToken: idToken,
+                email: email,
+                name: name,
+                givenName: googleUser.profile?.givenName,
+                familyName: googleUser.profile?.familyName
+            )
+            
+            let userDTO = loginResult.user
+            let companyDTO = loginResult.company
+            
+            // Set authentication flags
+            UserDefaults.standard.set(true, forKey: "is_authenticated")
+            UserDefaults.standard.set(true, forKey: "onboarding_completed")
+            UserDefaults.standard.set(userDTO.id, forKey: "user_id")
+            UserDefaults.standard.set(userDTO.id, forKey: "currentUserId")
+            
+            print("Google login successful, received user and company data")
+            
+            // Fetch and create/update user using existing method
+            try await fetchUserFromAPI(userId: userDTO.id)
+            
+            // If company data was returned, save it in the local database
+            if let companyDTO = companyDTO {
+                print("Saving company data from Google login response")
+                
+                // We already fetched company data in fetchUserFromAPI, so we don't need to save it again
+                // The fetchCompanyData method was already called and handled the company save
+                print("Company data already saved during user fetch process")
+            }
+            
+            return isAuthenticated
+        } catch let error as AuthError {
+            print("Google login auth error: \(error.localizedDescription)")
+            
+            // If it's invalid credentials, it means no account exists
+            if case .invalidCredentials = error {
+                print("No account found for Google user")
+            }
+            return false
+        } catch {
+            print("Google login failed: \(error.localizedDescription)")
             return false
         }
     }
@@ -467,6 +575,11 @@ class DataController: ObservableObject {
                 // Handle profile image URL
                 if let avatarUrl = userDTO.avatar {
                     user.profileImageURL = avatarUrl
+                }
+                
+                // Handle phone number
+                if let phone = userDTO.phone {
+                    user.phone = phone
                 }
                 
                 // Handle role based on employee type
@@ -533,8 +646,12 @@ class DataController: ObservableObject {
                     user.homeAddress = address.formattedAddress
                 }
                 
+                // Update phone if available in DTO
+                if let phone = userDTO.phone {
+                    user.phone = phone
+                }
+                
                 // We don't have these fields in the DTO currently
-                // user.phone = userDTO.phone ?? user.phone 
                 // user.latitude = userDTO.latitude ?? user.latitude
                 // user.longitude = userDTO.longitude ?? user.longitude
                 // user.locationName = userDTO.locationName ?? user.locationName
@@ -565,7 +682,16 @@ class DataController: ObservableObject {
         
         // Update app state with the current user
         self.currentUser = user
-        self.isAuthenticated = true
+        
+        // Only set isAuthenticated if user has completed onboarding
+        // This ensures LoginView can show onboarding overlay if needed
+        if user.hasCompletedAppOnboarding {
+            self.isAuthenticated = true
+            print("User has completed app onboarding, setting isAuthenticated = true")
+        } else {
+            self.isAuthenticated = false
+            print("User has NOT completed app onboarding, keeping isAuthenticated = false to show onboarding")
+        }
         
         // Save important IDs to UserDefaults
         if let companyId = user.companyId {
@@ -908,6 +1034,12 @@ class DataController: ObservableObject {
             }
         }
         
+        // Handle admin list
+        if let adminRefs = dto.admin {
+            let adminIds = adminRefs.compactMap { $0.stringValue }
+            company.setAdminIds(adminIds)
+        }
+        
         // Handle industry, company size, age if needed for display
         // These are currently not displayed but could be added
         
@@ -1040,7 +1172,7 @@ class DataController: ObservableObject {
     /// Gets projects with flexible filtering options
     /// - Parameters:
     ///   - date: Optional date to filter projects scheduled for that day
-    ///   - user: Optional user to filter projects assigned to them
+    ///   - user: Optional user to filter projects assigned to them (pass nil for Admin/Office to see all)
     /// - Returns: Filtered array of projects
     func getProjects(for date: Date? = nil, assignedTo user: User? = nil) -> [Project] {
         guard let modelContext = modelContext else { return [] }
@@ -1078,30 +1210,39 @@ class DataController: ObservableObject {
             }
             
             // Finally filter by user assignment if needed
-            if let user = user {
+            // Admin and Office Crew users see all projects
+            if let user = user, user.role != .admin && user.role != .officeCrew {
                 filteredProjects = filteredProjects.filter { project in
                     // Check both relationship and ID string for belt-and-suspenders reliability
-                    print("Team Member ID String")
-                    print(project.teamMemberIdsString)
-                    
-                    print("Get TeamMember IDS")
-                    print(project.getTeamMemberIds())
-                    
                     return project.teamMembers.contains(where: { $0.id == user.id }) || project.getTeamMemberIds().contains(user.id)
                 }
-                print("DEBUG: Filtering projects for USER ID: \(user.id)")
+                print("DEBUG: Filtering projects for USER ID: \(user.id) (Role: \(user.role.rawValue))")
                 print("DEBUG: \(filteredProjects.count) projects match userID filter")
-            }
-            
-            // Log what we're actually returning
-            for project in filteredProjects {
-                print("DEBUG: Returning project: \(project.title), company: \(project.companyId), date: \(project.startDate?.description ?? "nil")")
+            } else if let user = user {
+                print("DEBUG: User \(user.id) has role \(user.role.rawValue) - showing all company projects")
+            } else {
+                print("DEBUG: No user specified - showing all company projects")
             }
             
             return filteredProjects
         } catch {
             print("Failed to fetch projects: \(error.localizedDescription)")
             return []
+        }
+    }
+    
+    /// Helper method to get projects for the current user based on their role
+    /// - Parameter date: Optional date to filter projects
+    /// - Returns: Projects appropriate for the user's role
+    func getProjectsForCurrentUser(for date: Date? = nil) -> [Project] {
+        guard let user = currentUser else { return [] }
+        
+        // For Admin and Office Crew, pass nil to see all company projects
+        if user.role == .admin || user.role == .officeCrew {
+            return getProjects(for: date, assignedTo: nil)
+        } else {
+            // For Field Crew, pass the user to filter by assignment
+            return getProjects(for: date, assignedTo: user)
         }
     }
     

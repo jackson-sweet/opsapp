@@ -180,11 +180,8 @@ struct HomeView: View {
         Task {
             let today = Calendar.current.startOfDay(for: Date())
             
-            // Get projects for today that are assigned to the current user
-            let userProjects = dataController.getProjects(
-                for: today,
-                assignedTo: dataController.currentUser
-            )
+            // Get projects for today based on user role
+            let userProjects = dataController.getProjectsForCurrentUser(for: today)
             
             await MainActor.run {
                 self.todaysProjects = userProjects

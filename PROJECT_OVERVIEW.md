@@ -47,8 +47,10 @@ OPS (Operational Project System) is a specialized project management app built s
 
 ### Features
 1. **Authentication & Onboarding**
-   - Step-based user onboarding flow
+   - Step-based user onboarding flow with intelligent navigation
    - Secure credential storage
+   - Enhanced permission handling with immediate feedback for denied states
+   - Smart company code skipping for users with existing companies
 
 2. **Project Management**
    - Project status tracking (RFQ, Estimated, Accepted, In Progress, etc.)

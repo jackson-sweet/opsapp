@@ -14,43 +14,69 @@ struct TeamMemberListView: View {
     var userMembers: [User]? = nil
     var teamMembers: [TeamMember]? = nil
     @Environment(\.openURL) private var openURL
+    @EnvironmentObject private var dataController: DataController
+    
+    private var isEmpty: Bool {
+        (userMembers?.isEmpty ?? true) && (teamMembers?.isEmpty ?? true)
+    }
+    
+    private var currentUserId: String? {
+        dataController.currentUser?.id
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header
-            Text("TEAM MEMBERS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.bottom, 4)
+            headerView
             
-            if (userMembers?.isEmpty ?? true) && (teamMembers?.isEmpty ?? true) {
-                // Empty state
-                Text("No team members assigned")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                    .padding(.vertical, 8)
+            if isEmpty {
+                emptyStateView
             } else {
-                // Team member list - prioritize TeamMember model if available
-                if let teamMembers = teamMembers, !teamMembers.isEmpty {
-                    ForEach(teamMembers, id: \.id) { member in
-                        TeamMemberRowV2(teamMember: member)
-                    }
-                } else if let userMembers = userMembers {
-                    ForEach(userMembers) { member in
-                        TeamMemberRowV1(user: member)
-                    }
-                }
+                memberListView
             }
         }
         .padding()
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
+    
+    private var headerView: some View {
+        Text("TEAM MEMBERS")
+            .font(OPSStyle.Typography.captionBold)
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .padding(.bottom, 4)
+    }
+    
+    private var emptyStateView: some View {
+        Text("No team members assigned")
+            .font(OPSStyle.Typography.body)
+            .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
+            .padding(.vertical, 8)
+    }
+    
+    @ViewBuilder
+    private var memberListView: some View {
+        if let teamMembers = teamMembers, !teamMembers.isEmpty {
+            ForEach(teamMembers, id: \.id) { member in
+                TeamMemberRowV2(
+                    teamMember: member,
+                    isCurrentUser: member.id == currentUserId
+                )
+            }
+        } else if let userMembers = userMembers {
+            ForEach(userMembers) { member in
+                TeamMemberRowV1(
+                    user: member,
+                    isCurrentUser: member.id == currentUserId
+                )
+            }
+        }
+    }
 }
 
 // MARK: - Legacy support for User model
 struct TeamMemberRowV1: View {
     let user: User
+    let isCurrentUser: Bool
     @Environment(\.openURL) private var openURL
     
     var body: some View {
@@ -78,9 +104,17 @@ struct TeamMemberRowV1: View {
             
             // User details
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(user.firstName) \(user.lastName)")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                HStack(spacing: 6) {
+                    Text("\(user.firstName) \(user.lastName)")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    if isCurrentUser {
+                        Text("(Me)")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
                 
                 Text(user.role.rawValue)
                     .font(OPSStyle.Typography.smallCaption)
@@ -110,6 +144,7 @@ struct TeamMemberRowV1: View {
 // MARK: - New version for TeamMember model
 struct TeamMemberRowV2: View {
     let teamMember: TeamMember
+    let isCurrentUser: Bool
     @State private var profileImage: Image?
     @State private var isLoadingImage = false
     @Environment(\.openURL) private var openURL
@@ -138,9 +173,17 @@ struct TeamMemberRowV2: View {
             
             // Details
             VStack(alignment: .leading, spacing: 4) {
-                Text(teamMember.fullName)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                HStack(spacing: 6) {
+                    Text(teamMember.fullName)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    if isCurrentUser {
+                        Text("(Me)")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
                 
                 Text(teamMember.role)
                     .font(OPSStyle.Typography.smallCaption)

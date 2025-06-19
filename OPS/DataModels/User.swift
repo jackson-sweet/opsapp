@@ -31,6 +31,7 @@ final class User {
     var isActive: Bool?
     var userColor: String?  // User's unique color in HEX
     var devPermission: Bool = false  // Dev permission for testing features
+    var hasCompletedAppOnboarding: Bool = false  // Track if user has completed onboarding
     
     // Fixed relationship with proper inverse that matches Project's declaration
     @Relationship(deleteRule: .noAction, inverse: \Project.teamMembers)

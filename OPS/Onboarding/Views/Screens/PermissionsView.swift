@@ -168,19 +168,21 @@ struct PermissionsView: View {
                                 // Continue button for location
                                 Button(action: {
                                     isRequestingLocation = true
-                                    viewModel.requestLocationPermission()
-                                    
-                                    // After requesting permission, move to notifications phase
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                        withAnimation(.easeInOut(duration: 0.3)) {
-                                            currentPhase = .notifications
-                                        }
-                                        isRequestingLocation = false
-                                        
-                                        // Check if permission was denied
-                                        if viewModel.locationManager.authorizationStatus == .denied ||
-                                            viewModel.locationManager.authorizationStatus == .restricted {
-                                            showLocationDeniedAlert = true
+                                    viewModel.requestLocationPermission { isAllowed in
+                                        // Check immediately if permission was denied
+                                        if !isAllowed {
+                                            DispatchQueue.main.async {
+                                                showLocationDeniedAlert = true
+                                                isRequestingLocation = false
+                                            }
+                                        } else {
+                                            // Permission granted or still pending, move to next phase after delay
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                                withAnimation(.easeInOut(duration: 0.3)) {
+                                                    currentPhase = .notifications
+                                                }
+                                                isRequestingLocation = false
+                                            }
                                         }
                                     }
                                 }) {
@@ -439,14 +441,13 @@ struct PermissionsView: View {
                         // Buttons
                         Button(action: {
                             print("PermissionsView: Allow location access button tapped")
-                            // Request location permission
-                            viewModel.requestLocationPermission()
-                            
-                            // Check for denied status after a delay
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                if viewModel.locationManager.authorizationStatus == .denied ||
-                                    viewModel.locationManager.authorizationStatus == .restricted {
-                                    showLocationDeniedAlert = true
+                            // Request location permission with completion handler
+                            viewModel.requestLocationPermission { isAllowed in
+                                if !isAllowed {
+                                    // Permission was denied, show alert immediately
+                                    DispatchQueue.main.async {
+                                        showLocationDeniedAlert = true
+                                    }
                                 }
                             }
                         }) {

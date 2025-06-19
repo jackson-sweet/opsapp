@@ -14,7 +14,17 @@ import UserNotifications
 
 class OnboardingViewModel: ObservableObject {
     // Reference to DataController for database operations
-    var dataController: DataController?
+    var dataController: DataController? {
+        didSet {
+            // When dataController is set, populate user data if available
+            if let user = dataController?.currentUser {
+                populateFromUser(user)
+                
+                // After populating, check if we need to skip to a specific step
+                checkAndSkipToAppropriateStep()
+            }
+        }
+    }
     
     // Current step in the onboarding process
     @Published var currentStep: OnboardingStep = .welcome
@@ -81,8 +91,16 @@ class OnboardingViewModel: ObservableObject {
         // Check if we're resuming onboarding
         let isResuming = UserDefaults.standard.bool(forKey: "resume_onboarding")
         
-        // If resuming, load any saved user data
-        if isResuming {
+        // Check if user is already authenticated (existing user logging in)
+        let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
+        let hasUserId = UserDefaults.standard.string(forKey: "user_id") != nil
+        let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
+        
+        // IMPORTANT: Don't clear data for existing users who are authenticated but haven't completed onboarding
+        let shouldLoadExistingData = isResuming || (isAuthenticated && hasUserId && !hasCompletedOnboarding)
+        
+        // Load any existing user data (for both resuming and authenticated users)
+        if shouldLoadExistingData {
             // Load email, password and user ID
             self.email = UserDefaults.standard.string(forKey: "user_email") ?? ""
             self.password = UserDefaults.standard.string(forKey: "user_password") ?? ""
@@ -108,6 +126,19 @@ class OnboardingViewModel: ObservableObject {
                let userType = UserType(rawValue: userTypeRaw) {
                 self.selectedUserType = userType
                 print("OnboardingViewModel: Loaded saved user type: \(userType.rawValue)")
+            } else if let userTypeRaw = UserDefaults.standard.string(forKey: "user_type") {
+                // Try to load from the alternate key used after onboarding completion
+                if let userType = UserType(rawValue: userTypeRaw) {
+                    self.selectedUserType = userType
+                    print("OnboardingViewModel: Loaded user type from user_type key: \(userType.rawValue)")
+                }
+            }
+            
+            // If we still don't have a user type but have company info, infer it
+            if selectedUserType == nil && isCompanyJoined {
+                // Default to employee if they're joining an existing company
+                self.selectedUserType = .employee
+                print("OnboardingViewModel: Inferred user type as employee based on company join")
             }
             
             // Load the last saved step if available
@@ -117,10 +148,14 @@ class OnboardingViewModel: ObservableObject {
                 print("OnboardingViewModel: Resuming at saved step: \(savedStep.title)")
             }
             
-            print("OnboardingViewModel: Initialized with resumed data - User ID: \(userId), Email: \(email)")
-        } else {
-            // Not resuming - make sure we start with clean state
+            print("OnboardingViewModel: Initialized with existing data - User ID: \(userId), Email: \(email), Authenticated: \(isAuthenticated)")
+        } else if !isAuthenticated {
+            // Only clear data if this is truly a new signup (not authenticated at all)
+            print("OnboardingViewModel: Starting fresh onboarding flow - no authentication found")
             clearUserData()
+        } else {
+            // Authenticated user with completed onboarding shouldn't be here
+            print("OnboardingViewModel: WARNING - Authenticated user with completed onboarding in onboarding flow")
         }
         
         // Check current permission states
@@ -154,6 +189,123 @@ class OnboardingViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "company_code")
         
         print("OnboardingViewModel: Cleared all user data for new onboarding flow")
+    }
+    
+    // Populate data from an existing user
+    func populateFromUser(_ user: User) {
+        print("OnboardingViewModel: Populating data from existing user")
+        
+        // Set user type based on role
+        if user.role == .fieldCrew || user.role == .officeCrew {
+            self.selectedUserType = .employee
+            print("OnboardingViewModel: Set user type to employee based on role: \(user.role.displayName)")
+        } else if user.role == .admin {
+            // Admin might be company owner, but check if they have a company
+            if let companyId = user.companyId, !companyId.isEmpty {
+                // If admin has a company, they might be an employee admin
+                self.selectedUserType = .employee
+            } else {
+                self.selectedUserType = .company
+            }
+            print("OnboardingViewModel: Set user type based on admin role")
+        }
+        
+        // Populate basic info
+        if !user.firstName.isEmpty {
+            self.firstName = user.firstName
+            UserDefaults.standard.set(user.firstName, forKey: "user_first_name")
+        }
+        if !user.lastName.isEmpty {
+            self.lastName = user.lastName
+            UserDefaults.standard.set(user.lastName, forKey: "user_last_name")
+        }
+        if let phone = user.phone, !phone.isEmpty {
+            self.phoneNumber = phone
+            UserDefaults.standard.set(phone, forKey: "user_phone_number")
+        }
+        if let email = user.email, !email.isEmpty {
+            self.email = email
+            UserDefaults.standard.set(email, forKey: "user_email")
+        }
+        
+        // Set company info
+        if let companyId = user.companyId, !companyId.isEmpty {
+            self.isCompanyJoined = true
+            UserDefaults.standard.set(true, forKey: "has_joined_company")
+            UserDefaults.standard.set(companyId, forKey: "company_id")
+            
+            // Get company name from UserDefaults if available
+            if let savedCompanyName = UserDefaults.standard.string(forKey: "Company Name"), !savedCompanyName.isEmpty {
+                self.companyName = savedCompanyName
+            }
+        }
+        
+        // Mark as signed up
+        self.isSignedUp = true
+        self.userId = user.id
+        UserDefaults.standard.set(user.id, forKey: "user_id")
+        
+        print("OnboardingViewModel: Data populated - Name: \(firstName) \(lastName), Company: \(isCompanyJoined), Type: \(selectedUserType?.rawValue ?? "none")")
+    }
+    
+    // Check and skip to the appropriate step based on existing data
+    private func checkAndSkipToAppropriateStep() {
+        print("OnboardingViewModel: Checking what step to skip to based on existing data")
+        
+        // If we're at welcome and have data, determine the right step
+        if currentStep == .welcome {
+            // Check what data we have to determine where to skip
+            if selectedUserType == nil {
+                // No user type - start from user type selection
+                print("OnboardingViewModel: No user type set, will start from user type selection")
+                return
+            }
+            
+            if !isSignedUp || userId.isEmpty {
+                // User type known but not signed up - skip to account setup
+                DispatchQueue.main.async {
+                    self.currentStep = .accountSetup
+                    print("OnboardingViewModel: Skipping to account setup (user type known but not signed up)")
+                }
+                return
+            }
+            
+            if firstName.isEmpty || lastName.isEmpty || phoneNumber.isEmpty {
+                // Signed up but missing personal info - skip to user details
+                DispatchQueue.main.async {
+                    self.currentStep = .userDetails
+                    print("OnboardingViewModel: Skipping to user details (missing personal info)")
+                }
+                return
+            }
+            
+            if selectedUserType == .employee && !isCompanyJoined {
+                // Employee without company - skip to company code
+                DispatchQueue.main.async {
+                    self.currentStep = .companyCode
+                    print("OnboardingViewModel: Skipping to company code (employee without company)")
+                }
+                return
+            }
+            
+            if selectedUserType == .company && !isCompanyJoined {
+                // Company owner without company setup - skip to company basic info
+                DispatchQueue.main.async {
+                    self.currentStep = .companyBasicInfo
+                    print("OnboardingViewModel: Skipping to company basic info (company owner without company)")
+                }
+                return
+            }
+            
+            // If everything is complete, skip to permissions
+            if isCompanyJoined {
+                DispatchQueue.main.async {
+                    self.currentStep = .permissions
+                    print("OnboardingViewModel: Skipping to permissions (all data complete)")
+                }
+                return
+            }
+        }
     }
     
     // Check current permission states
@@ -552,7 +704,7 @@ class OnboardingViewModel: ObservableObject {
     }
     
     // Request location permission
-    func requestLocationPermission() {
+    func requestLocationPermission(completion: ((Bool) -> Void)? = nil) {
         print("OnboardingViewModel: Requesting location permission")
         
         // Check current status first
@@ -565,11 +717,31 @@ class OnboardingViewModel: ObservableObject {
                 self.isLocationPermissionGranted = true
             }
             UserDefaults.standard.set(true, forKey: "location_permission_granted")
+            completion?(true)
             return
         }
         
-        // Request permission
-        locationManager.requestPermissionIfNeeded(requestAlways: true)
+        // If denied or restricted, call completion with false
+        if currentStatus == .denied || currentStatus == .restricted {
+            DispatchQueue.main.async {
+                self.isLocationPermissionGranted = false
+            }
+            UserDefaults.standard.set(false, forKey: "location_permission_granted")
+            completion?(false)
+            return
+        }
+        
+        // Request permission with completion handler
+        locationManager.requestPermissionIfNeeded(requestAlways: true) { [weak self] isAllowed in
+            if !isAllowed {
+                // Permission was denied, call completion
+                DispatchQueue.main.async {
+                    self?.isLocationPermissionGranted = false
+                    UserDefaults.standard.set(false, forKey: "location_permission_granted")
+                    completion?(false)
+                }
+            }
+        }
         
         // Observe authorization changes
         locationManager.$authorizationStatus
@@ -580,6 +752,13 @@ class OnboardingViewModel: ObservableObject {
                     
                     // Store permission status in UserDefaults
                     UserDefaults.standard.set(self?.isLocationPermissionGranted ?? false, forKey: "location_permission_granted")
+                    
+                    // Call completion if status changed to denied/restricted
+                    if status == .denied || status == .restricted {
+                        completion?(false)
+                    } else if status == .authorizedAlways || status == .authorizedWhenInUse {
+                        completion?(true)
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -642,33 +821,122 @@ class OnboardingViewModel: ObservableObject {
     func moveToNextStepV2() {
         print("OnboardingViewModel: Moving from step: \(currentStep.title) (raw: \(currentStep.rawValue))")
         
-        // Special handling for resuming onboarding
-        let isResuming = UserDefaults.standard.bool(forKey: "resume_onboarding")
+        // Special handling for resuming onboarding or existing users
+        let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
         
-        if isResuming && currentStep == .welcome {
-            // When resuming, check if we can skip directly to a later step based on what's already done
+        // Check if we can skip certain steps based on existing data
+        if currentStep == .welcome {
+            // When starting, check if we can skip directly to a later step based on what's already done
             
-            // If user is already signed up, skip account setup
-            if isSignedUp && !userId.isEmpty {
-                print("OnboardingViewModel: User already signed up, skipping to organization join")
+            // If user type is already known, skip user type selection
+            if selectedUserType != nil {
+                print("OnboardingViewModel: User type already known: \(selectedUserType!.rawValue), skipping type selection")
                 
-                // Go directly to organization join step
-                let skipToStep = OnboardingStep.organizationJoin
-                
-                // Save the step to UserDefaults
-                UserDefaults.standard.set(skipToStep.rawValue, forKey: "last_onboarding_step_v2")
-                
-                DispatchQueue.main.async {
-                    self.currentStep = skipToStep
-                    print("OnboardingViewModel: ✅ SKIPPED to: \(self.currentStep.title) (raw: \(self.currentStep.rawValue))")
+                // If user is already signed up, skip account setup too
+                if isSignedUp && !userId.isEmpty {
+                    print("OnboardingViewModel: User already signed up, checking what to skip to")
+                    
+                    // If user already has personal info, skip to the appropriate step
+                    if !firstName.isEmpty && !lastName.isEmpty && !phoneNumber.isEmpty {
+                        print("OnboardingViewModel: User info already complete")
+                        
+                        // For employees, go to company code if not joined
+                        if selectedUserType == .employee && !isCompanyJoined {
+                            let skipToStep = OnboardingStep.companyCode
+                            DispatchQueue.main.async {
+                                self.currentStep = skipToStep
+                                print("OnboardingViewModel: ✅ SKIPPED to: \(self.currentStep.title)")
+                            }
+                            return
+                        }
+                        
+                        // If company is joined, go to permissions
+                        if isCompanyJoined {
+                            let skipToStep = OnboardingStep.permissions
+                            DispatchQueue.main.async {
+                                self.currentStep = skipToStep
+                                print("OnboardingViewModel: ✅ SKIPPED to: \(self.currentStep.title)")
+                            }
+                            return
+                        }
+                    } else {
+                        // Skip to user details if account exists but no personal info
+                        let skipToStep = OnboardingStep.userDetails
+                        DispatchQueue.main.async {
+                            self.currentStep = skipToStep
+                            print("OnboardingViewModel: ✅ SKIPPED to: \(self.currentStep.title)")
+                        }
+                        return
+                    }
+                } else {
+                    // Skip to account setup if user type is known but not signed up
+                    let skipToStep = OnboardingStep.accountSetup
+                    DispatchQueue.main.async {
+                        self.currentStep = skipToStep
+                        print("OnboardingViewModel: ✅ SKIPPED to: \(self.currentStep.title)")
+                    }
+                    return
                 }
-                return
             }
         }
         
+        // Skip user type selection if already known
+        if currentStep == .userTypeSelection && selectedUserType != nil {
+            print("OnboardingViewModel: User type already set, skipping type selection")
+            // Continue to account setup
+            DispatchQueue.main.async {
+                self.currentStep = .accountSetup
+                print("OnboardingViewModel: ✅ SKIPPED user type selection")
+            }
+            return
+        }
+        
+        // Skip account setup if already authenticated
+        if currentStep == .accountSetup && isSignedUp && isAuthenticated {
+            print("OnboardingViewModel: Already authenticated, skipping account setup")
+            // Move to the appropriate next step based on user type
+            let nextStep = selectedUserType == .employee ? OnboardingStep.organizationJoin : OnboardingStep.userDetails
+            DispatchQueue.main.async {
+                self.currentStep = nextStep
+                print("OnboardingViewModel: ✅ SKIPPED account setup to: \(self.currentStep.title)")
+            }
+            return
+        }
+        
+        // Skip user details if already have the information
+        if currentStep == .userDetails && !firstName.isEmpty && !lastName.isEmpty && !phoneNumber.isEmpty {
+            print("OnboardingViewModel: User details already complete, skipping")
+            // Check if company is already joined before deciding next step
+            let nextStep: OnboardingStep
+            if selectedUserType == .employee {
+                if isCompanyJoined {
+                    // Skip to permissions if already have a company
+                    nextStep = .permissions
+                    print("OnboardingViewModel: Employee already has company, skipping to permissions")
+                } else {
+                    // Go to company code if no company yet
+                    nextStep = .companyCode
+                }
+            } else {
+                // Company owner flow
+                nextStep = .companyBasicInfo
+            }
+            DispatchQueue.main.async {
+                self.currentStep = nextStep
+                print("OnboardingViewModel: ✅ SKIPPED user details to: \(self.currentStep.title)")
+            }
+            return
+        }
+        
         // Normal flow - get the next step
-        if let nextStep = currentStep.nextStep(userType: selectedUserType) {
+        if var nextStep = currentStep.nextStep(userType: selectedUserType) {
             print("OnboardingViewModel: Found next step: \(nextStep.title) (raw: \(nextStep.rawValue))")
+            
+            // Special check: if the next step is company code but user already has a company, skip to permissions
+            if nextStep == .companyCode && selectedUserType == .employee && isCompanyJoined {
+                nextStep = .permissions
+                print("OnboardingViewModel: Employee already has company, changing next step from companyCode to permissions")
+            }
             
             // Save the step to UserDefaults for potential resume later
             UserDefaults.standard.set(nextStep.rawValue, forKey: "last_onboarding_step_v2")
@@ -711,8 +979,18 @@ class OnboardingViewModel: ObservableObject {
             return
         }
         
-        if let prevStep = currentStep.previousStep(userType: selectedUserType) {
+        if var prevStep = currentStep.previousStep(userType: selectedUserType) {
             print("OnboardingViewModel: Found previous step: \(prevStep.title) (raw: \(prevStep.rawValue))")
+            
+            // Special handling: if going back to company code but user already has a company, skip it
+            if prevStep == .companyCode && selectedUserType == .employee && isCompanyJoined {
+                print("OnboardingViewModel: Employee already has company, skipping company code when going back")
+                // Go back one more step to user details
+                if let skipStep = prevStep.previousStep(userType: selectedUserType) {
+                    prevStep = skipStep
+                    print("OnboardingViewModel: Changed previous step to: \(prevStep.title)")
+                }
+            }
             
             // Save the step to UserDefaults for potential resume later
             UserDefaults.standard.set(prevStep.rawValue, forKey: "last_onboarding_step_v2")
@@ -879,6 +1157,28 @@ class OnboardingViewModel: ObservableObject {
         UserDefaults.standard.set(true, forKey: "is_authenticated")
         
         print("OnboardingViewModel: Onboarding completed successfully, setting is_authenticated = true")
+        
+        // Update the server with onboarding completion status
+        if let userId = UserDefaults.standard.string(forKey: "user_id"),
+           let dataController = dataController {
+            Task {
+                do {
+                    let updateData = ["hasCompletedAppOnboarding": true]
+                    try await dataController.apiService.updateUser(id: userId, userData: updateData)
+                    print("Successfully updated server with onboarding completion status")
+                    
+                    // Update the local user model
+                    await MainActor.run {
+                        if let user = dataController.currentUser {
+                            user.hasCompletedAppOnboarding = true
+                        }
+                    }
+                } catch {
+                    print("Failed to update server with onboarding status: \(error)")
+                    // Continue anyway - we don't want to block the user
+                }
+            }
+        }
         
         // Update DataController if available
         if let dataController = dataController {

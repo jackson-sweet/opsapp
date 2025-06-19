@@ -323,7 +323,6 @@ struct EmailView: View {
             }
         }
         .dismissKeyboardOnTap()
-        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }
 

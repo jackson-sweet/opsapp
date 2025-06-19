@@ -97,7 +97,12 @@ struct ContentView: View {
             isPresented: $showLocationPermissionView,
             locationManager: locationManager,
             onRequestPermission: {
-                locationManager.requestPermissionIfNeeded(requestAlways: true)
+                locationManager.requestPermissionIfNeeded(requestAlways: true) { isAllowed in
+                    if !isAllowed {
+                        // Permission is already denied, the overlay should handle showing settings prompt
+                        print("ContentView: Location permission is denied, overlay should show settings prompt")
+                    }
+                }
             }
         )
     }

@@ -31,6 +31,7 @@ final class Company {
     // Array storage
     var projectIdsString: String = ""
     var teamIdsString: String = ""
+    var adminIdsString: String = ""
     
     // Relationship to team members
     @Relationship(deleteRule: .cascade)
@@ -66,6 +67,14 @@ final class Company {
     
     func setTeamIds(_ ids: [String]) {
         teamIdsString = ids.joined(separator: ",")
+    }
+    
+    func getAdminIds() -> [String] {
+        return adminIdsString.isEmpty ? [] : adminIdsString.components(separatedBy: ",")
+    }
+    
+    func setAdminIds(_ ids: [String]) {
+        adminIdsString = ids.joined(separator: ",")
     }
     
     // Computed property for location

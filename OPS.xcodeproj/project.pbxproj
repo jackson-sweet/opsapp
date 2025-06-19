@@ -436,20 +436,23 @@
 				INFOPLIST_FILE = OPS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OPS;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "OPS needs your location to navigate you to job sites.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "OPS needs location access to help you navigate to projects and track your work. This allows your teammates to coordinate with you in the field.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "OPS needs continuous location access to track your work locations and help teammates find you in the field, even when the app is in the background.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OPS needs location access to show nearby job sites and navigate to work locations.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -478,20 +481,23 @@
 				INFOPLIST_FILE = OPS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OPS;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "OPS needs your location to navigate you to job sites.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "OPS needs location access to help you navigate to projects and track your work. This allows your teammates to coordinate with you in the field.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "OPS needs continuous location access to track your work locations and help teammates find you in the field, even when the app is in the background.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OPS needs location access to show nearby job sites and navigate to work locations.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

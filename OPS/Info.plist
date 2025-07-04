@@ -15,8 +15,6 @@
 	<string>748032911358-3a66h9ie5o4l7g41ec42d6fq4k4erqgb.apps.googleusercontent.com</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>OPS needs notification access to keep you updated about schedule changes, job assignments, and important team messages.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>OPS needs access to your camera so you can take site pictures and upload them to projects.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>BebasNeue-Regular.ttf</string>

@@ -259,7 +259,7 @@ struct UnderlineTextField: View {
                 if text.isEmpty {
                     Text(placeholder)
                         .font(OPSStyle.Typography.subtitle)
-                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText.opacity(0.5))
                 }
                 
                 if isSecure {

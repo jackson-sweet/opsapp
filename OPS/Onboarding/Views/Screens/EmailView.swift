@@ -49,7 +49,7 @@ struct EmailView: View {
                 // Top navigation and progress section
                 VStack(spacing: 0) {
                     // Navigation bar with back button and step indicator for consolidated flow
-                    if false {
+                    if true {
                         HStack {
                             Button(action: {
                                 if currentFieldIndex > 0 {
@@ -84,7 +84,8 @@ struct EmailView: View {
                         
                         // Step indicator bars
                         HStack(spacing: 4) {
-                            ForEach(0..<6) { step in
+                            let totalSteps = viewModel.selectedUserType == .employee ? 6 : 11
+                            ForEach(0..<totalSteps) { step in
                                 Rectangle()
                                     .fill(step == 0 ? OPSStyle.Colors.primaryAccent : secondaryTextColor.opacity(0.4))
                                     .frame(height: 4)
@@ -93,7 +94,7 @@ struct EmailView: View {
                         .padding(.bottom, 16)
                     }
                 }
-                .padding(.horizontal, 0)
+                .padding(.horizontal, 24)
                 
                 // Main content area - top-justified alignment
                 VStack(spacing: 0) {
@@ -101,7 +102,7 @@ struct EmailView: View {
                     VStack(spacing: 24) {
                         // Header - changes based on current field
                         VStack(alignment: .leading, spacing: 8) {
-                            if false {
+                            if true {
                                 if currentFieldIndex == 0 {
                                     Text("Create your")
                                         .font(OPSStyle.Typography.title)
@@ -262,7 +263,7 @@ struct EmailView: View {
                 
                 // Bottom button section
                 VStack {
-                    if false {
+                    if true {
                         StandardContinueButton(
                             isDisabled: viewModel.isLoading ||
                                        (currentFieldIndex == 0 && !viewModel.isEmailValid) ||

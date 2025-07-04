@@ -11,11 +11,11 @@ struct TabBarBackground: View {
     var body: some View {
         ZStack {
             // Blur effect
-            BlurView(style: .systemThinMaterialDark)
+            BlurView(style: .systemUltraThinMaterialDark)
             
             // Semi-transparent overlay
             Color(OPSStyle.Colors.cardBackgroundDark)
-                .opacity(0.3)
+                .opacity(0.5)
         }
         .frame(height: 96)
         .edgesIgnoringSafeArea(.bottom)

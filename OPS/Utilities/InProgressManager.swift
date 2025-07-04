@@ -12,8 +12,10 @@ import MapKit
 
 /// Manages the in-progress state of projects, including routing
 class InProgressManager: ObservableObject {
-    // Shared instance for app-wide access
-    static let shared = InProgressManager()
+    // Shared instance for app-wide access - create lazily to avoid initialization issues
+    static let shared: InProgressManager = {
+        return InProgressManager()
+    }()
     
     @Published var isRouting = false
     @Published var routeDirections: [String] = []
@@ -21,6 +23,8 @@ class InProgressManager: ObservableObject {
     @Published var routeDistance: String?
     @Published var currentNavStep: NavigationStep?
     @Published var activeRoute: MKRoute?
+    @Published var remainingSteps: [NavigationStep] = []
+    @Published var distanceToNextStep: CLLocationDistance = 0
     
     // Current step index in the route
     private var currentStepIndex: Int = 0
@@ -53,6 +57,13 @@ class InProgressManager: ObservableObject {
         request.transportType = .automobile
         request.requestsAlternateRoutes = true // Request alternatives for better options
         
+        // Validate request before creating directions
+        guard request.source != nil && request.destination != nil else {
+            // print("InProgressManager: ⚠️ Invalid request - source or destination is nil")
+            self.isRouting = false
+            return
+        }
+        
         // Calculate route
         let directions = MKDirections(request: request)
         directions.calculate { [weak self] response, error in
@@ -60,7 +71,7 @@ class InProgressManager: ObservableObject {
             
             DispatchQueue.main.async {
                 if let error = error {
-                    print("InProgressManager: ⚠️ Routing error: \(error.localizedDescription)")
+                    // print("InProgressManager: ⚠️ Routing error: \(error.localizedDescription)")
                     self.isRouting = false
                     
                     // Retry after a delay if it's a network issue
@@ -124,7 +135,7 @@ class InProgressManager: ObservableObject {
         NotificationCenter.default.post(name: Notification.Name("RoutingStateChanged"), object: nil, userInfo: ["isRouting": false])
     }
     
-    private func processRouteDetails(_ route: MKRoute) {
+    func processRouteDetails(_ route: MKRoute) {
         // Format the expected travel time
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = [.hour, .minute]
@@ -180,6 +191,7 @@ class InProgressManager: ObservableObject {
         // Set the current navigation step if we have valid steps
         if !validSteps.isEmpty {
             setCurrentNavigationStep(for: validSteps)
+            updateRemainingSteps(from: validSteps)
         } else {
             // Fallback if no steps available
             currentNavStep = NavigationStep(
@@ -188,6 +200,7 @@ class InProgressManager: ObservableObject {
                 distanceValue: route.distance,
                 isLastStep: true
             )
+            remainingSteps = [currentNavStep!]
         }
     }
     
@@ -261,7 +274,11 @@ class InProgressManager: ObservableObject {
                 if distance < 50 { // 50 meters threshold
                     currentStepIndex += 1
                     setCurrentNavigationStep(for: validSteps)
+                    updateRemainingSteps(from: validSteps)
                 }
+                
+                // Update distance to next step
+                distanceToNextStep = distance
             }
         }
         
@@ -272,12 +289,17 @@ class InProgressManager: ObservableObject {
                 let distanceToStep = userLocation.distance(to: stepCoordinate)
                 
                 // Update the current navigation step with live distance
-                currentNavStep = NavigationStep(
+                let newNavStep = NavigationStep(
                     instruction: currentStep.instructions,
                     distance: formatDistance(distanceToStep),
                     distanceValue: distanceToStep,
                     isLastStep: currentStepIndex == validSteps.count - 1
                 )
+                
+                // Only update if actually changed to trigger UI updates
+                if currentNavStep != newNavStep {
+                    currentNavStep = newNavStep
+                }
             }
         }
     }
@@ -326,6 +348,30 @@ extension CLLocationCoordinate2D {
 }
 
 // Extension to get coordinates from a polyline (for refreshing routes and map centering)
+// Helper to update remaining steps
+extension InProgressManager {
+    private func updateRemainingSteps(from steps: [MKRoute.Step]) {
+        let distanceFormatter = MKDistanceFormatter()
+        distanceFormatter.unitStyle = .abbreviated
+        
+        remainingSteps = steps.dropFirst(currentStepIndex).compactMap { step in
+            guard !step.instructions.isEmpty else { return nil }
+            
+            var instruction = step.instructions
+            if instruction.contains("Project Site") {
+                instruction = instruction.replacingOccurrences(of: "Project Site", with: "the project site")
+            }
+            
+            return NavigationStep(
+                instruction: instruction,
+                distance: distanceFormatter.string(fromDistance: step.distance),
+                distanceValue: step.distance,
+                isLastStep: step == steps.last
+            )
+        }
+    }
+}
+
 extension MKPolyline {
     // Using a different name to avoid conflict with MKAnnotation.coordinate
     func getDestinationCoordinate() -> CLLocationCoordinate2D? {

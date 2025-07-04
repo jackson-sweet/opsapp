@@ -441,6 +441,9 @@ class SyncManager {
                     try await syncProjects()
                 }
                 
+                // Schedule notifications for future projects after sync
+                await NotificationManager.shared.scheduleNotificationsForAllProjects(using: modelContext)
+                
                 syncInProgress = false
                 syncStateSubject.send(false)
             } catch {

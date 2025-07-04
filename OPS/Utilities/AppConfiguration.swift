@@ -178,13 +178,19 @@ struct AppConfiguration {
                         icon: "calendar.badge.plus",
                         title: "Calendar Request System",
                         description: "Long press on calendar dates to request days off or schedule changes",
-                        status: .comingSoon
+                        status: .inDevelopment
                     ),
                     FeatureItem(
                         icon: "cloud.sun.rain",
                         title: "Weather Integration",
                         description: "Choose weather source in settings, mark jobs as weather dependent, get rain warnings",
-                        status: .planned
+                        status: .inDevelopment
+                    ),
+                    FeatureItem(
+                        icon: "applewatch.watchface",
+                        title: "Apple Watch",
+                        description: "Access OPS on Apple Watch to view project notes and details.",
+                        status: .inDevelopment
                     )
                 ]
             ),
@@ -202,13 +208,13 @@ struct AppConfiguration {
                         icon: "chart.line.uptrend.xyaxis",
                         title: "Work Analytics",
                         description: "Track days worked, hours logged, jobs completed per hour, and productivity trends",
-                        status: .comingSoon
+                        status: .inDevelopment
                     ),
                     FeatureItem(
                         icon: "chart.line.uptrend.xyaxis",
                         title: "Project Analytics",
                         description: "Track project completion times, team productivity, and trends",
-                        status: .planned
+                        status: .inDevelopment
                     )
                 ]
             ),
@@ -232,7 +238,7 @@ struct AppConfiguration {
                         icon: "message",
                         title: "In-App Messaging",
                         description: "Message team members directly within the app with project context",
-                        status: .comingSoon
+                        status: .planned
                     ),
                     FeatureItem(
                         icon: "person.crop.circle.badge.checkmark",
@@ -244,7 +250,7 @@ struct AppConfiguration {
                         icon: "bell.badge",
                         title: "Project Note Notifications",
                         description: "Get notified when teammates update project notes",
-                        status: .comingSoon
+                        status: .inDevelopment
                     )
                 ]
             ),
@@ -256,7 +262,7 @@ struct AppConfiguration {
                         icon: "receipt",
                         title: "Expense Tracking",
                         description: "Detailed expense tracking and submission functionality",
-                        status: .comingSoon
+                        status: .inDevelopment
                     ),
                     FeatureItem(
                         icon: "checkmark.shield",
@@ -268,7 +274,7 @@ struct AppConfiguration {
                         icon: "person.circle",
                         title: "Client Portal",
                         description: "Allow clients to log in, see their projects and create RFQs.",
-                        status: .comingSoon
+                        status: .planned
                     )
                 ]
             ),
@@ -281,12 +287,6 @@ struct AppConfiguration {
                         title: "AI Quoting System",
                         description: "Upload price sheets and project drawings for AI-powered quotes",
                         status: .planned
-                    ),
-                    FeatureItem(
-                        icon: "eyedropper.halffull",
-                        title: "Smart UI Colors",
-                        description: "Extract colors from company logo for personalized UI themes",
-                        status: .planned
                     )
                 ]
             ),
@@ -296,9 +296,9 @@ struct AppConfiguration {
                 features: [
                     FeatureItem(
                         icon: "arrow.triangle.2.circlepath",
-                        title: "Multiple Project Visits",
-                        description: "Track and schedule multiple visits to the same project with new 'visit' data type",
-                        status: .comingSoon
+                        title: "Multiple Project Tasks",
+                        description: "Track and schedule multiple visits to the same project with new 'TASK' data type",
+                        status: .inDevelopment
                     ),
                     FeatureItem(
                         icon: "doc.text",
@@ -316,25 +316,19 @@ struct AppConfiguration {
                         icon: "car",
                         title: "Apple CarPlay",
                         description: "Access OPS safely while driving with CarPlay integration",
-                        status: .inDevelopment
+                        status: .comingSoon
                     ),
                     FeatureItem(
                         icon: "applewatch.watchface",
                         title: "Apple Watch",
                         description: "Access OPS on Apple Watch to view project notes and details.",
-                        status: .inDevelopment
-                    )
-                ]
-            ),
-            FeatureCategory(
-                name: "Merch & Kit",
-                icon: "tag",
-                features: [
-                    FeatureItem(
-                        icon: "tshirt",
-                        title: "OPS Merchandise",
-                        description: "Limited edition OPS apparel.",
                         status: .comingSoon
+                    ),
+                    FeatureItem(
+                        icon: "books.vertical",
+                        title: "Quickbooks Integration",
+                        description: "Integrate with Quickbooks to import client information and invoices.",
+                        status: .planned
                     )
                 ]
             )

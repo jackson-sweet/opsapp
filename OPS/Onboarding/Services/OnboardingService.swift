@@ -42,6 +42,15 @@ class OnboardingService {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
         
+        // DEBUG: Log the request
+        print("\n🔵 SIGNUP API REQUEST:")
+        print("Endpoint: \(endpoint)")
+        print("URL: \(url.absoluteString)")
+        print("Parameters sent:")
+        print("  - email: \(email)")
+        print("  - password: [REDACTED]")
+        print("  - userType: \(userType.rawValue)")
+        
         do {
             // Execute network request
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -69,6 +78,10 @@ class OnboardingService {
             let signUpResponse = try JSONDecoder().decode(SignUpResponse.self, from: data)
             
             // For debugging, print the structure of the response
+            print("\n🟡 SIGNUP - Decoded Response:")
+            print("  - wasSuccessful: \(signUpResponse.wasSuccessful)")
+            print("  - user_id: \(signUpResponse.extractedUserId ?? "nil")")
+            print("  - error_message: \(signUpResponse.error_message ?? "nil")")
             
             if signUpResponse.wasSuccessful {
                 if let userId = signUpResponse.extractedUserId {
@@ -139,7 +152,19 @@ class OnboardingService {
         if !userId.isEmpty {
             parameters["user_id"] = userId
         } else {
+            print("\n⚠️ WARNING: No user_id available for join_company call!")
         }
+        
+        // DEBUG: Log the request
+        print("\n🔵 JOIN COMPANY API REQUEST:")
+        print("URL: \(url.absoluteString)")
+        print("Parameters sent:")
+        print("  - user_id: \(parameters["user_id"] ?? "NOT PROVIDED")")
+        print("  - user_email: \(email)")
+        print("  - name_first: \(firstName)")
+        print("  - name_last: \(lastName)")
+        print("  - phone: \(phoneNumber)")
+        print("  - company_code: \(companyCode)")
         
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
         
@@ -170,6 +195,11 @@ class OnboardingService {
             let joinResponse = try JSONDecoder().decode(JoinCompanyResponse.self, from: data)
             
             // For debugging, print the structure of the response
+            print("\n🟢 JOIN COMPANY API RESPONSE:")
+            print("Status Code: \(httpResponse.statusCode)")
+            print("Raw Response: \(responseText)")
+            print("\n🟡 JOIN COMPANY - Decoded Response:")
+            print("  - wasSuccessful: \(joinResponse.wasSuccessful)")
             
             // Print detailed company data for debugging
             if let companyData = joinResponse.extractedCompanyData {
@@ -259,6 +289,20 @@ class OnboardingService {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
         
+        // DEBUG: Log the complete request
+        print("\n🔵 UPDATE COMPANY API REQUEST:")
+        print("URL: \(url.absoluteString)")
+        print("Parameters sent:")
+        for (key, value) in parameters {
+            if key == "user" {
+                print("  - \(key): '\(value)' \(userId.isEmpty ? "(EMPTY STRING!)" : "")")
+            } else if key == "user_phone" || key == "name_first" || key == "name_last" {
+                print("  - \(key): \(value)")
+            } else {
+                print("  - \(key): \(value)")
+            }
+        }
+        
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             
@@ -268,6 +312,9 @@ class OnboardingService {
             
             
             if let responseString = String(data: data, encoding: .utf8) {
+                print("\n🟢 UPDATE COMPANY API RESPONSE:")
+                print("Status Code: \(httpResponse.statusCode)")
+                print("Raw Response: \(responseString)")
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {

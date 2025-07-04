@@ -2,11 +2,13 @@
 
 ## Overview
 
-OPS (Operational Project System) is a specialized iOS app built for trade workers to manage projects and crews in the field. The app prioritizes reliability, simplicity, and offline functionality.
+OPS (Operational Project System) is a specialized iOS app built for trade workers to manage projects and crews in the field. The app prioritizes reliability, simplicity, and offline functionality. Built "by trades, for trades," OPS transforms how field crews manage their daily operations.
 
 **Status**: LAUNCHED ✅  
-**Version**: 1.0  
-**Platform**: iOS 17+
+**Version**: 1.0.2  
+**Platform**: iOS 17+  
+**Architecture**: 200+ Swift files implementing comprehensive field management
+**Backend**: Bubble.io with AWS S3 for media storage
 
 ## Key Documentation
 
@@ -35,60 +37,97 @@ OPS (Operational Project System) is a specialized iOS app built for trade worker
 ### Prerequisites
 - Xcode 15+
 - iOS 17+ device or simulator
-- Bubble.io account (for backend)
+- Bubble.io account (for backend API)
 - AWS account (for S3 image storage)
+- Google Cloud Console account (for Google Sign-In)
 
 ### Setup
 1. Clone the repository
 2. Open `OPS.xcodeproj` in Xcode
 3. Update configuration in `AppConfiguration.swift`:
    - Bubble API endpoints
-   - AWS credentials (temporary in `S3UploadService.swift`)
-4. Build and run on device/simulator
+   - API keys
+4. Configure AWS credentials in `S3UploadService.swift` (temporary solution)
+5. Set up Google Sign-In:
+   - Add your `GoogleService-Info.plist`
+   - Update URL schemes in Info.plist
+6. Build and run on device/simulator
 
 ## Architecture
 
 ### Core Stack
-- **UI Framework**: SwiftUI
-- **Data Persistence**: SwiftData
-- **Backend**: Bubble.io REST API
-- **Image Storage**: AWS S3
-- **Authentication**: Keychain Services
+- **UI Framework**: SwiftUI with UIKit integrations
+- **Data Persistence**: SwiftData (iOS 17+) with offline-first design
+- **Backend**: Bubble.io REST API with rate limiting
+- **Image Storage**: AWS S3 with multi-tier caching system
+- **Authentication**: Keychain Services + Google OAuth 2.0
+- **Navigation**: MapKit with turn-by-turn directions
+- **Permissions**: Enhanced handling with completion callbacks
+- **Real-time Updates**: Combine framework for reactive programming
 
 ### Design Patterns
 - **Architecture**: MVVM (Model-View-ViewModel)
-- **Navigation**: Coordinator pattern for onboarding
-- **Networking**: Async/await with proper error handling
-- **Storage**: Offline-first with background sync
+- **Navigation**: Coordinator pattern for onboarding, tab-based for main app
+- **Networking**: Async/await with retry logic and rate limiting
+- **Storage**: Offline-first with prioritized background sync
+- **State Management**: ObservableObject with @Published properties
+- **Dependency Injection**: Environment objects for shared services
 
 ## Key Features
 
 ### Field-First Design
-- Dark theme optimized for outdoor visibility
-- Large touch targets (44pt+) for glove operation
-- Offline functionality with automatic sync
-- Battery-efficient operation
+- Dark theme optimized for outdoor visibility (7:1 contrast ratios)
+- Large touch targets (44pt minimum, 60pt preferred) for glove operation
+- Full offline functionality with automatic sync when connected
+- Battery-efficient operation with minimal background processing
+- 30-second network timeouts for poor connectivity
+- Intelligent sync prioritization based on data importance
 
 ### Core Functionality
-1. **Project Management** - Status tracking from RFQ to completion
-2. **Team Coordination** - Role-based permissions and assignments
-3. **Image Documentation** - Capture and sync project photos
-4. **Calendar Integration** - Schedule visualization and planning
-5. **Offline Operation** - Full functionality without connectivity
+1. **Project Management** 
+   - Six-stage status workflow (RFQ → Estimated → Accepted → In Progress → Completed → Closed)
+   - Real-time start/stop tracking
+   - Rich project details with client information
+   
+2. **Team Coordination** 
+   - Three role types: Field Crew, Office Crew, Admin
+   - Contact integration for quick communication
+   - Smart team member assignment
+   
+3. **Image Documentation** 
+   - Offline capture with local storage
+   - Automatic S3 upload with compression
+   - Multi-tier caching system
+   - Bidirectional deletion sync
+   
+4. **Calendar Integration** 
+   - Month, week, and day views
+   - Project count indicators
+   - Smart navigation with date picker
+   
+5. **Offline Operation** 
+   - SwiftData persistence for all features
+   - Queue-based sync with retry logic
+   - Conflict resolution preserving local changes
 
 ### Security
-- PIN-based app protection
-- Secure token storage in Keychain
-- Admin role auto-detection
-- Encrypted data transmission
+- Multi-layer authentication (Standard login, Google OAuth, PIN protection)
+- Secure token storage in iOS Keychain with auto-renewal
+- Role-based access control throughout the app
+- Admin role auto-detection from company settings
+- Encrypted HTTPS data transmission
+- Background session management with PIN reset
 
 ## Development Guidelines
 
 ### Code Standards
-- Use OPS typography system (NO system fonts)
-- Follow OPSStyle for all UI components
-- Maintain offline-first architecture
-- Test with gloves and in sunlight
+- Use OPS typography system (Mohave, Kosugi - NO system fonts)
+- Follow OPSStyle for all UI components with consistent spacing
+- Maintain offline-first architecture in all features
+- Test with gloves and in sunlight for field readability
+- Minimum 44pt touch targets for all interactive elements
+- Handle all error states with user-friendly messages
+- Implement proper loading states for all async operations
 
 ### Git Workflow
 - Feature branches from main
@@ -97,12 +136,29 @@ OPS (Operational Project System) is a specialized iOS app built for trade worker
 - Regular rebasing to avoid conflicts
 
 ### Testing Requirements
-- Manual testing on real devices
-- Offline scenario validation
-- Performance testing on older devices
-- Field condition simulation
+- Manual testing on real devices (iPhone 12 or newer)
+- Offline scenario validation (airplane mode testing)
+- Performance testing on 3-year-old devices
+- Field condition simulation:
+  - Bright sunlight readability
+  - Glove operation accuracy
+  - Poor network connectivity
+  - Low battery scenarios
+- Permission handling edge cases
+- Sync conflict resolution
 
 ## Support
+
+### Current Features (v1.0.2)
+- ✅ Complete authentication system with Google Sign-In
+- ✅ Comprehensive onboarding flow with smart navigation
+- ✅ Full project management with offline sync
+- ✅ Advanced calendar with multiple view modes
+- ✅ 13+ settings screens for complete customization
+- ✅ Team management with role-based permissions
+- ✅ Image system with S3 integration
+- ✅ Live navigation with turn-by-turn directions
+- ✅ Enhanced permission handling with user guidance
 
 ### Documentation
 See the documentation files listed above for detailed information on specific topics.

@@ -422,17 +422,27 @@ struct LoginView: View {
                             
                             // Try to detect user type from the current user data
                             if let currentUser = dataController.currentUser {
-                                // First check if user has explicit userType
-                                if let userType = currentUser.userType {
-                                    UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
-                                } else {
-                                    // Fall back to determining from role
-                                    if currentUser.role == .fieldCrew || currentUser.role == .officeCrew {
-                                        UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
-                                    } else if currentUser.role == .admin {
-                                        // Admin users might be company owners
-                                        UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+                                // Only update user type if it's not already saved
+                                let savedUserType = UserDefaults.standard.string(forKey: "selected_user_type")
+                                
+                                if savedUserType == nil {
+                                    // First check if user has explicit userType
+                                    if let userType = currentUser.userType {
+                                        UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
+                                        print("🔵 LoginView: Set user type from user model: \(userType.rawValue)")
+                                    } else {
+                                        // Fall back to determining from role
+                                        if currentUser.role == .fieldCrew || currentUser.role == .officeCrew {
+                                            UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
+                                            print("🔵 LoginView: Defaulted to employee based on role")
+                                        } else if currentUser.role == .admin {
+                                            // Admin users might be company owners
+                                            UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+                                            print("🔵 LoginView: Defaulted to company based on admin role")
+                                        }
                                     }
+                                } else {
+                                    print("🔵 LoginView: User type already saved as: \(savedUserType)")
                                 }
                                 
                                 // Pre-populate user data if available

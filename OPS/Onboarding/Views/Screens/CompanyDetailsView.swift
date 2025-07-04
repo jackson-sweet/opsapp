@@ -74,6 +74,7 @@ struct CompanyDetailsView: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
+                .padding(.horizontal, 24)
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
@@ -84,6 +85,7 @@ struct CompanyDetailsView: View {
                     }
                 }
                 .padding(.bottom, 16)
+                .padding(.horizontal, 24)
                 
                 // Content area with phases - top-justified
                 VStack(spacing: 0) {

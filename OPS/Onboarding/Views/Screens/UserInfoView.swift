@@ -64,7 +64,10 @@ struct UserInfoView: View {
                     HStack {
                         Button(action: {
                             if currentPhase == .firstName {
-                                viewModel.moveToPreviousStep()
+                                // Don't allow going back if user is already signed up
+                                if !viewModel.isSignedUp {
+                                    viewModel.moveToPreviousStep()
+                                }
                             } else {
                                 withAnimation(.easeInOut(duration: 0.3)) {
                                     currentPhase = UserInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .firstName
@@ -79,6 +82,8 @@ struct UserInfoView: View {
                             }
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
+                        .opacity(currentPhase == .firstName && viewModel.isSignedUp ? 0 : 1)
+                        .disabled(currentPhase == .firstName && viewModel.isSignedUp)
                         
                         Spacer()
                         Spacer()

@@ -136,11 +136,11 @@ struct TeamInvitesView: View {
                                 .foregroundColor(Color("TextPrimary"))
                         }
                         
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("• Team members will receive an email invitation")
-                            Text("• They'll download the OPS app and create their account")
-                            Text("• Once they join, they'll appear in your team dashboard")
-                            Text("• You can always invite more members later from settings")
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Team members will receive an email invite")
+                            Text("They will download the app and create account")
+                            Text("They will join using your company code")
+                            Text("You can invite members later from settings")
                         }
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(Color("TextSecondary"))

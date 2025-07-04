@@ -139,7 +139,7 @@ struct WelcomeGuidePage {
     static let employeePages: [WelcomeGuidePage] = [
         WelcomeGuidePage(
             title: "YOUR PROJECTS.",
-            description: "See assigned jobs.\nMark projects complete.\nAdd and reference photos from the field.",
+            description: "See assigned jobs.\nMark projects complete.\nAdd photos and notes from the field.",
             iconName: "",
             features: []
         ),
@@ -166,14 +166,14 @@ struct WelcomeGuidePage {
             features: []
         ),
         WelcomeGuidePage(
-            title: "FULL CONTROL COMING",
-            description: "V2 update brings project creation, crew management, advanced scheduling.",
+            title: "TAKE CONTROL.",
+            description: "Use the OPS website to create, assign and schedule.\nUse the mobile app to add photos, notes and track progress.\nEverything you need.\nNothing you don't.",
             iconName: "",
             features: []
         ),
         WelcomeGuidePage(
-            title: "FIELD-READY.",
-            description: "Works offline.\nUpdates sync upon reconnection.\nEverything you need.\nNothing you don't.",
+            title: "VERSION 2 IS COMING.",
+            description: "V2 update brings in-app project creation, crew management, advanced scheduling and more.",
             iconName: "",
             features: []
         )

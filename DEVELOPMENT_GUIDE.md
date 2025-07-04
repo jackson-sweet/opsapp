@@ -1,30 +1,43 @@
 # OPS App - Development Guide
 
+**Last Updated**: July 03, 2025  
+**Version**: 1.0.2
+
 ## Project Overview
 
 The OPS (Operational Project System) app is a field-optimized project management tool for trade workers. It focuses on reliability, simplicity, and functionality in challenging job site conditions.
 
 ### Core Architecture
-- **Platform**: iOS app using SwiftUI
-- **Pattern**: MVVM (Model-View-ViewModel)
-- **Local Storage**: SwiftData
-- **Backend**: Bubble.io API
-- **UI Design**: Dark theme optimized for outdoor visibility
-- **Typography**: Custom fonts (Mohave, Kosugi, Bebas Neue)
-- **Network Strategy**: Offline-first with background synchronization
+- **Platform**: iOS 17+ app using SwiftUI with UIKit integrations
+- **Pattern**: MVVM (Model-View-ViewModel) with Coordinator pattern for complex flows
+- **Local Storage**: SwiftData (iOS 17+) with offline-first design
+- **Backend**: Bubble.io REST API with rate limiting
+- **UI Design**: Dark theme optimized for outdoor visibility (7:1 contrast ratios)
+- **Typography**: Custom fonts (Mohave, Kosugi, Bebas Neue) - NO system fonts
+- **Network Strategy**: Offline-first with prioritized background synchronization
+- **Authentication**: Multi-method (Standard, Google OAuth 2.0, PIN protection)
 
 ## Component Structure
 
 ### Data Layer
 - **Models**: SwiftData models for `User`, `Project`, `Company`, `TeamMember`
-- **Controller**: `DataController.swift` manages data operations
-- **Sync**: `SyncManager.swift` handles data synchronization with Bubble
+- **DTOs**: Data Transfer Objects for clean API communication with Bubble
+- **Controller**: `DataController.swift` orchestrates all data operations and services
+- **Sync**: `SyncManager.swift` handles bidirectional data synchronization
+- **Image Sync**: `ImageSyncManager.swift` manages S3 uploads and Bubble registration
 
 ### Network Layer
-- **API Service**: `APIService.swift` for communication with Bubble
-- **Endpoints**: Organized by entity (Projects, Users, Companies)
-- **Authentication**: `AuthManager.swift` handles login, token management
+- **API Service**: `APIService.swift` centralized Bubble API communication
+  - Rate limiting (0.5s minimum between requests)
+  - 30-second timeout for field conditions
+  - Automatic retry with exponential backoff
+- **Endpoints**: RESTful API organized by entity (Projects, Users, Companies)
+- **Authentication**: `AuthManager.swift` handles multiple auth methods
+  - Standard username/password
+  - Google Sign-In OAuth
+  - Token auto-renewal with 5-minute buffer
 - **Security**: `KeychainManager.swift` for secure credential storage
+- **Services**: S3UploadService, PresignedURLUploadService for image uploads
 
 ### UI Components
 - **Common UI**: Headers, cards, navigation elements
@@ -141,50 +154,46 @@ The OPS (Operational Project System) app is a field-optimized project management
 - **Update Flow**: ImageSyncManager is single source of truth for all image operations
 - See `IMAGE_HANDLING.md` for complete documentation
 
-## Remaining MVP Tasks
+## Post-MVP Enhancements
 
-1. **Authentication Flow**
-   - Complete user authentication flow testing
-   - Test edge cases for login/logout
+### Currently Implemented (MVP Complete)
+✅ Authentication with Google Sign-In and PIN security  
+✅ Complete onboarding flow for employees and company owners  
+✅ Full project management with offline sync  
+✅ Image handling with S3 integration  
+✅ Team management with role-based permissions  
+✅ Calendar with multiple view modes  
+✅ Settings suite with 13+ screens  
+✅ Feature voting system (+1 implementation)  
 
-2. **Data Synchronization**
-   - Finalize offline/online sync functionality
-   - Test multiple device synchronization
+### Future Enhancements
 
-3. **User Onboarding**
-   - Complete all onboarding screens
-   - Test onboarding flow on different devices
+1. **Enhanced Communication**
+   - In-app messaging between team members
+   - Voice notes for project updates
+   - Real-time team member location tracking
 
-4. **Image Handling**
-   - Complete image upload and storage implementation
-   - Test image synchronization with spotty connectivity
+2. **Advanced Features**
+   - Biometric authentication (Face ID/Touch ID)
+   - Advanced reporting and analytics
+   - Platform expansion (iPad, Apple Watch, CarPlay)
+   - Client portal access
+   - QuickBooks integration
 
-5. **Project Status Updates**
-   - Test project status updates across all states
-   - Verify status change APIs work as expected
+3. **Testing & Performance**
+   - Automated testing for critical paths
+   - Performance optimization for large datasets
+   - Load testing with 1000+ projects
 
-6. **Feature Request System**
-   - **+1 Voting Implementation**: Users can vote on upcoming features
-   - **Feature Standardization**: Features are normalized before counting (e.g., "Dark Mode", "dark mode", "Dark mode" all count as the same feature)
-   - **Vote Storage**: Uses UserDefaults to track user votes per device
-   - **UI Pattern**: Expandable categories with vote buttons showing current count
+4. **Push Notifications**
+   - Real-time project status updates
+   - Team assignment notifications
+   - Location-based reminders
 
-7. **Push Notifications**
-   - Implement push notification registration
-   - Add handling for project status update notifications
-   - Create user preferences for notification types
-
-8. **Testing**
-   - Add automated testing for critical paths
-   - Perform field testing in real-world conditions
-
-9. **Performance**
-   - Optimize performance for large data sets
-   - Test app with realistic data volumes
-
-10. **App Store Preparation**
-   - Create app store screenshots and metadata
-   - Prepare privacy policy and terms of service
+5. **Security Enhancements**
+   - Remove hardcoded AWS credentials
+   - Implement certificate pinning
+   - Add audit logging
 
 ## Development Workflow
 

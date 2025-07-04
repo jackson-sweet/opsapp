@@ -16,6 +16,7 @@ struct CompletionView: View {
     @State private var logoOpacity: Double = 0
     @State private var textOpacity: Double = 0
     @State private var companyDataFetched = false
+    @State private var projectsSynced = false
     
     var body: some View {
         ZStack {
@@ -43,6 +44,7 @@ struct CompletionView: View {
         }
         .onAppear {
             fetchCompanyDataIfNeeded()
+            syncProjectsIfNeeded()
             
             // Start animation sequence
             withAnimation(.easeIn(duration: 0.8)) {
@@ -85,6 +87,38 @@ struct CompletionView: View {
                 print("CompletionView: Error fetching company data: \(error.localizedDescription)")
                 // Don't block the user from continuing even if fetch fails
                 // They can still proceed and data will be fetched on next app launch
+            }
+        }
+    }
+    
+    // Sync projects for all users
+    private func syncProjectsIfNeeded() {
+        guard !projectsSynced,
+              let companyId = UserDefaults.standard.string(forKey: "company_id"),
+              !companyId.isEmpty else {
+            print("CompletionView: Cannot sync projects - no company ID found")
+            return
+        }
+        
+        projectsSynced = true
+        
+        Task {
+            do {
+                // Trigger a sync to fetch projects from the server
+                if let syncManager = dataController.syncManager {
+                    print("CompletionView: Triggering project sync for company: \(companyId)")
+                    await syncManager.triggerBackgroundSync()
+                    
+                    // Wait a bit for sync to complete
+                    try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                    
+                    print("CompletionView: Project sync triggered successfully")
+                } else {
+                    print("CompletionView: Sync manager not available yet")
+                }
+            } catch {
+                print("CompletionView: Error syncing projects: \(error.localizedDescription)")
+                // Don't block the user from continuing
             }
         }
     }

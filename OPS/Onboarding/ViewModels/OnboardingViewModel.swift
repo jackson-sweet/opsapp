@@ -23,6 +23,12 @@ class OnboardingViewModel: ObservableObject {
                 // After populating, check if we need to skip to a specific step
                 checkAndSkipToAppropriateStep()
             }
+            
+            // Also ensure user type is loaded if not already set
+            if selectedUserType == nil {
+                selectedUserType = Self.loadStoredUserType()
+                print("🔵 Loaded user type in dataController didSet: \(selectedUserType?.rawValue ?? "nil")")
+            }
         }
     }
     
@@ -33,7 +39,7 @@ class OnboardingViewModel: ObservableObject {
     @Published var selectedUserType: UserType? {
         didSet {
             if let userType = selectedUserType {
-                UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
+                // Don't save to UserDefaults immediately - wait until after signup
                 print("🔵 OnboardingViewModel: User type changed to \(userType.rawValue)")
             }
         }
@@ -111,6 +117,11 @@ class OnboardingViewModel: ObservableObject {
             self.password = UserDefaults.standard.string(forKey: "user_password") ?? ""
             self.userId = UserDefaults.standard.string(forKey: "user_id") ?? ""
             
+            print("\n🔍 OnboardingViewModel init (shouldLoadExistingData = true):")
+            print("  - Loaded userId: '\(self.userId)'")
+            print("  - userId is empty: \(self.userId.isEmpty)")
+            print("  - email: \(self.email)")
+            
             // Mark as signed up if we have a valid user ID
             self.isSignedUp = !self.userId.isEmpty && !self.email.isEmpty
             
@@ -172,6 +183,7 @@ class OnboardingViewModel: ObservableObject {
             self.userId = ""
             self.isSignedUp = false
             self.isCompanyJoined = false
+            self.selectedUserType = nil
         }
         
         // Clear data from UserDefaults (only onboarding-specific fields)
@@ -493,10 +505,19 @@ class OnboardingViewModel: ObservableObject {
                         UserDefaults.standard.set(userIdValue, forKey: "user_id")
                         
                         // Print detailed success information for debugging
+                        print("\n✅ SIGNUP SUCCESS - userId stored:")
+                        print("  - userId instance variable: '\(userId)'")
+                        print("  - UserDefaults user_id: '\(UserDefaults.standard.string(forKey: "user_id") ?? "nil")'")
                         
                         // Store email and password in UserDefaults for later (crucial for API calls)
                         UserDefaults.standard.set(email, forKey: "user_email")
                         UserDefaults.standard.set(password, forKey: "user_password")
+                        
+                        // Save user type now that signup is successful
+                        if let userType = selectedUserType {
+                            UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
+                            print("🔵 Saved user type to UserDefaults after successful signup: \(userType.rawValue)")
+                        }
                         
                         // Log that we've saved these important credentials
                         
@@ -634,6 +655,66 @@ class OnboardingViewModel: ObservableObject {
                         // Store company data in UserDefaults
                         UserDefaults.standard.set(companyData.name, forKey: "Company Name")
                         UserDefaults.standard.set(companyData.id, forKey: "company_id")
+                        
+                        // Also store Company object in SwiftData for employees
+                        if let modelContext = dataController?.modelContext {
+                            var companyObject: Company
+                            
+                            // Check if we have the full CompanyDTO in the response
+                            if let fullCompanyDTO = response.company {
+                                // Use the full company DTO to create/update the model
+                                companyObject = fullCompanyDTO.toModel()
+                                
+                                // Check if company already exists in database
+                                let companyId = companyObject.id
+                                let descriptor = FetchDescriptor<Company>(
+                                    predicate: #Predicate<Company> { $0.id == companyId }
+                                )
+                                if let existingCompanies = try? modelContext.fetch(descriptor),
+                                   let existing = existingCompanies.first {
+                                    // Copy properties to existing object instead of inserting new
+                                    existing.name = companyObject.name
+                                    existing.address = companyObject.address
+                                    existing.phone = companyObject.phone
+                                    existing.email = companyObject.email
+                                    existing.website = companyObject.website
+                                    existing.companyDescription = companyObject.companyDescription
+                                    existing.industryString = companyObject.industryString
+                                    existing.companySize = companyObject.companySize
+                                    existing.companyAge = companyObject.companyAge
+                                    existing.projectIdsString = companyObject.projectIdsString
+                                    existing.teamIdsString = companyObject.teamIdsString
+                                    existing.adminIdsString = companyObject.adminIdsString
+                                    existing.lastSyncedAt = Date()
+                                    companyObject = existing
+                                } else {
+                                    // Insert new company
+                                    modelContext.insert(companyObject)
+                                }
+                            } else {
+                                // Fallback: create basic company with limited data
+                                let companyDataId = companyData.id
+                                let descriptor = FetchDescriptor<Company>(
+                                    predicate: #Predicate<Company> { $0.id == companyDataId }
+                                )
+                                let existingCompanies = try? modelContext.fetch(descriptor)
+                                
+                                if let existing = existingCompanies?.first {
+                                    // Update existing company
+                                    companyObject = existing
+                                } else {
+                                    // Create new company
+                                    companyObject = Company(id: companyData.id, name: companyData.name)
+                                    modelContext.insert(companyObject)
+                                }
+                                
+                                // Update company name
+                                companyObject.name = companyData.name
+                            }
+                            
+                            // Save to database
+                            try? modelContext.save()
+                        }
                     } else {
                         // Use a default company name if we couldn't extract it
                         companyName = "Your Company"
@@ -850,6 +931,8 @@ class OnboardingViewModel: ObservableObject {
     
     // Move to the next step in the flow
     func moveToNextStep() {
+        print("🔵 moveToNextStep called from step: \(currentStep)")
+        print("🔵 selectedUserType: \(selectedUserType?.rawValue ?? "nil")")
         
         // Special handling for resuming onboarding or existing users
         let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
@@ -946,19 +1029,25 @@ class OnboardingViewModel: ObservableObject {
         
         // Normal flow - get the next step
         if var nextStep = currentStep.nextStep(userType: selectedUserType) {
+            print("🔵 Next step determined: \(nextStep)")
+            print("🔵 Current step: \(currentStep), User type: \(selectedUserType?.rawValue ?? "nil")")
             
             // Special check: if the next step is company code but user already has a company, skip to permissions
+            // Only apply this logic for employees, not company owners
             if nextStep == .companyCode && selectedUserType == .employee && isCompanyJoined {
+                print("🔵 Skipping company code for employee with company")
                 nextStep = .permissions
             }
             
             // Save the step to UserDefaults for potential resume later
             UserDefaults.standard.set(nextStep.rawValue, forKey: "last_onboarding_step_v2")
             
+            print("🔵 Moving to step: \(nextStep)")
             DispatchQueue.main.async {
                 self.currentStep = nextStep
             }
         } else {
+            print("⚠️ No next step available from \(currentStep) for user type \(selectedUserType?.rawValue ?? "nil")")
         }
     }
     
@@ -1048,6 +1137,14 @@ class OnboardingViewModel: ObservableObject {
             // Get existing company ID if available
             let existingCompanyId = UserDefaults.standard.string(forKey: "company_id")
             
+            // DEBUG: Log what userId we're sending
+            print("\n🔍 OnboardingViewModel - updateCompany:")
+            print("  - userId from instance variable: '\(userId)'")
+            print("  - userId is empty: \(userId.isEmpty)")
+            print("  - firstName: \(firstName)")
+            print("  - lastName: \(lastName)")
+            print("  - existingCompanyId: \(existingCompanyId ?? "nil")")
+            
             let response = try await onboardingService.updateCompany(
                 companyId: existingCompanyId,
                 name: companyName,
@@ -1075,6 +1172,43 @@ class OnboardingViewModel: ObservableObject {
                     // Store company ID first
                     if let companyId = company.extractedId, !companyId.isEmpty {
                         UserDefaults.standard.set(companyId, forKey: "company_id")
+                        
+                        // Create or update Company object in SwiftData
+                        if let modelContext = dataController?.modelContext {
+                            // Check if company already exists
+                            let descriptor = FetchDescriptor<Company>(
+                                predicate: #Predicate<Company> { $0.id == companyId }
+                            )
+                            let existingCompanies = try? modelContext.fetch(descriptor)
+                            
+                            var companyObject: Company
+                            if let existing = existingCompanies?.first {
+                                // Update existing company
+                                companyObject = existing
+                            } else {
+                                // Create new company
+                                companyObject = Company(id: companyId, name: companyName)
+                                modelContext.insert(companyObject)
+                            }
+                            
+                            // Update company properties from response
+                            companyObject.name = company.extractedName ?? companyName
+                            companyObject.email = company.officeEmail ?? company.email ?? companyEmail
+                            companyObject.phone = company.phone ?? companyPhone
+                            companyObject.address = companyAddress
+                            companyObject.companySize = company.companySize ?? company.size ?? companySize?.rawValue
+                            companyObject.companyAge = company.companyAge ?? company.age ?? companyAge?.rawValue
+                            
+                            // Set industries
+                            if let industries = company.industry {
+                                companyObject.setIndustries(industries)
+                            } else if let industry = companyIndustry {
+                                companyObject.setIndustries([industry.rawValue])
+                            }
+                            
+                            // Save to database
+                            try? modelContext.save()
+                        }
                     }
                     
                     // Store company code - prefer the actual code field if available

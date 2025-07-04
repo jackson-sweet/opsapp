@@ -84,6 +84,11 @@ struct OPSApp: App {
                             await dataController.removeSampleProjects()
                             UserDefaults.standard.set(true, forKey: "sample_projects_cleaned")
                         }
+                        
+                        // Schedule notifications for future projects
+                        if let modelContext = dataController.modelContext {
+                            await notificationManager.scheduleNotificationsForAllProjects(using: modelContext)
+                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in

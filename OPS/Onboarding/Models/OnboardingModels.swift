@@ -415,17 +415,17 @@ enum OnboardingStep: Int, CaseIterable {
             case .accountSetup:
                 return 1
             case .organizationJoin:
-                return 2
+                return nil // Not counted as a step
             case .userDetails:
-                return 3
+                return 2
             case .companyCode:
-                return 4
+                return 3
             case .permissions:
-                return 5
+                return 4
             case .fieldSetup:
-                return 6
+                return 5
             case .completion:
-                return 7
+                return 6
             case .welcomeGuide:
                 return nil // Not counted for employees
             default:
@@ -439,6 +439,8 @@ enum OnboardingStep: Int, CaseIterable {
                 return nil // Not counted
             case .accountSetup:
                 return 1
+            case .organizationJoin:
+                return nil // Not counted
             case .userDetails:
                 return 2
             case .companyBasicInfo:
@@ -460,7 +462,7 @@ enum OnboardingStep: Int, CaseIterable {
             case .completion:
                 return 11
             case .welcomeGuide:
-                return 12
+                return nil // Not counted
             default:
                 return nil
             }
@@ -471,9 +473,9 @@ enum OnboardingStep: Int, CaseIterable {
     static func totalSteps(for userType: UserType) -> Int {
         switch userType {
         case .employee:
-            return 7
+            return 6
         case .company:
-            return 12
+            return 11
         }
     }
     
@@ -526,22 +528,15 @@ enum OnboardingStep: Int, CaseIterable {
     
     // Get the next step in the flow
     func nextStep(userType: UserType? = nil) -> OnboardingStep? {
+        print("🔵 OnboardingStep.nextStep called - current: \(self), userType: \(userType?.rawValue ?? "nil")")
         switch self {
         case .welcome:
             return .userTypeSelection
         case .userTypeSelection:
             return .accountSetup
         case .accountSetup:
-            // Branch based on user type
-            if let userType = userType {
-                switch userType {
-                case .employee:
-                    return .organizationJoin
-                case .company:
-                    return .userDetails
-                }
-            }
-            return .organizationJoin // Default to employee flow
+            // Both user types should see the organization join (account created) screen
+            return .organizationJoin
         case .organizationJoin:
             return .userDetails
         case .userDetails:
@@ -555,8 +550,6 @@ enum OnboardingStep: Int, CaseIterable {
                 }
             }
             return .companyCode // Default to employee flow
-        case .companyCode:
-            return .permissions
         case .companyBasicInfo:
             return .companyAddress
         case .companyAddress:
@@ -569,9 +562,11 @@ enum OnboardingStep: Int, CaseIterable {
         case .companyCode:
             // For business owners, show team invites after company code
             if let userType = userType, userType == .company {
+                print("🔵 OnboardingStep.nextStep - companyCode -> teamInvites (user type is company)")
                 return .teamInvites
             }
             // For employees, go to permissions
+            print("🔵 OnboardingStep.nextStep - companyCode -> permissions (user type is \(userType?.rawValue ?? "nil"))")
             return .permissions
         case .teamInvites:
             return .permissions

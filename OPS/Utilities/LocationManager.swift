@@ -19,8 +19,17 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let locationManager = CLLocationManager()
     @Published var authorizationStatus: CLAuthorizationStatus
     @Published var userLocation: CLLocationCoordinate2D?
+    @Published var currentLocation: CLLocation?  // Full location with course data
     @Published var isLocationDenied: Bool = false
     @Published var deviceHeading: CLLocationDirection = 0.0
+    @Published var userCourse: CLLocationDirection = -1.0  // GPS course when moving
+    
+    // Track if updates are already started to prevent multiple calls
+    private var isUpdatingLocation = false
+    private var isUpdatingHeading = false
+    
+    // Track if permission has been requested this session
+    private var hasRequestedPermissionThisSession = false
     
     override init() {
         // Initialize with the current status
@@ -28,14 +37,16 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         super.init()
         
-        // Configure manager
+        // Configure manager with optimized settings to prevent excessive API calls
         locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.distanceFilter = 10
+        locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters  // Good accuracy without excessive updates
+        locationManager.distanceFilter = 10  // Update every 10 meters to reduce API calls
+        locationManager.activityType = .automotiveNavigation  // Optimize for driving
+        locationManager.pausesLocationUpdatesAutomatically = true  // Allow iOS to optimize battery/performance
         
-        // Enable heading updates for compass tracking
+        // Enable heading updates with reasonable filter
         if CLLocationManager.headingAvailable() {
-            locationManager.headingFilter = 5.0 // Update every 5 degrees
+            locationManager.headingFilter = 5.0 // Only update for 5+ degree changes
         }
         
         // Set initial denied state
@@ -43,7 +54,14 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func requestPermissionIfNeeded(requestAlways: Bool = true, completion: ((Bool) -> Void)? = nil) {
-        // Log current authorization status
+        // Skip if already requested this session and we have permission
+        if hasRequestedPermissionThisSession && hasSufficientPermission() {
+            completion?(true)
+            return
+        }
+        
+        // Mark that we've requested permission this session
+        hasRequestedPermissionThisSession = true
         
         // Different approaches based on status
         switch authorizationStatus {
@@ -68,13 +86,19 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             if requestAlways {
                 locationManager.requestAlwaysAuthorization()
             }
-            // Start location updates
-            locationManager.startUpdatingLocation()
+            // Start location updates only if not already updating
+            if !isUpdatingLocation {
+                locationManager.startUpdatingLocation()
+                isUpdatingLocation = true
+            }
             completion?(true)
             
         case .authorizedAlways:
-            // We have full permission - just start updates
-            locationManager.startUpdatingLocation()
+            // We have full permission - just start updates only if not already updating
+            if !isUpdatingLocation {
+                locationManager.startUpdatingLocation()
+                isUpdatingLocation = true
+            }
             completion?(true)
             
         @unknown default:
@@ -100,14 +124,21 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             self.isLocationDenied = (newStatus == .denied || newStatus == .restricted)
             
             if newStatus == .authorizedWhenInUse || newStatus == .authorizedAlways {
-                // Start location updates when authorized
-                self.locationManager.startUpdatingLocation()
+                // Start location updates when authorized only if not already updating
+                if !self.isUpdatingLocation {
+                    self.locationManager.startUpdatingLocation()
+                    self.isUpdatingLocation = true
+                }
                 
-                // Start heading updates if available
-                if CLLocationManager.headingAvailable() {
+                // Start heading updates if available and not already updating
+                if CLLocationManager.headingAvailable() && !self.isUpdatingHeading {
                     self.locationManager.startUpdatingHeading()
+                    self.isUpdatingHeading = true
                 }
             } else if newStatus == .denied {
+                // Stop updates if denied
+                self.isUpdatingLocation = false
+                self.isUpdatingHeading = false
             }
         }
     }
@@ -116,9 +147,20 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard let location = locations.last else { return }
         
         DispatchQueue.main.async {
+            // Update coordinate for compatibility
             self.userLocation = location.coordinate
+            
+            // Store full location for course data
+            self.currentLocation = location
+            
+            // Update course if valid (course is -1 when invalid)
+            if location.course >= 0 {
+                self.userCourse = location.course
+            }
+            
             // Post a notification that the location has changed
-            NotificationCenter.default.post(name: .locationDidChange, object: nil)
+            NotificationCenter.default.post(name: .locationDidChange, object: nil, 
+                                          userInfo: ["location": location])
             
             // Check if this is from significant location change monitoring
             if manager.monitoredRegions.isEmpty && !manager.location!.timestamp.timeIntervalSinceNow.isZero {
@@ -167,9 +209,10 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if hasSufficientPermission() {
             locationManager.startMonitoringSignificantLocationChanges()
             
-            // Also start heading updates for navigation
-            if CLLocationManager.headingAvailable() {
+            // Also start heading updates for navigation if not already updating
+            if CLLocationManager.headingAvailable() && !isUpdatingHeading {
                 locationManager.startUpdatingHeading()
+                isUpdatingHeading = true
             }
         } else {
             requestPermissionIfNeeded(requestAlways: true)
@@ -182,6 +225,47 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         // Also stop heading updates
         locationManager.stopUpdatingHeading()
+        isUpdatingHeading = false
+    }
+    
+    /// Stop all location updates
+    func stopLocationUpdates() {
+        if isUpdatingLocation {
+            locationManager.stopUpdatingLocation()
+            isUpdatingLocation = false
+        }
+        if isUpdatingHeading {
+            locationManager.stopUpdatingHeading()
+            isUpdatingHeading = false
+        }
+    }
+    
+    /// Enable high accuracy mode for navigation
+    func enableNavigationMode() {
+        print("📍 Enabling navigation mode with higher accuracy")
+        locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        locationManager.distanceFilter = 5  // More frequent updates during navigation
+        locationManager.headingFilter = 3.0 // More responsive heading during navigation
+        
+        // Restart updates if already running to apply new settings
+        if isUpdatingLocation {
+            locationManager.stopUpdatingLocation()
+            locationManager.startUpdatingLocation()
+        }
+    }
+    
+    /// Return to normal accuracy mode
+    func disableNavigationMode() {
+        print("📍 Disabling navigation mode, returning to normal accuracy")
+        locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        locationManager.distanceFilter = 10
+        locationManager.headingFilter = 5.0
+        
+        // Restart updates if already running to apply new settings
+        if isUpdatingLocation {
+            locationManager.stopUpdatingLocation()
+            locationManager.startUpdatingLocation()
+        }
     }
 }
 

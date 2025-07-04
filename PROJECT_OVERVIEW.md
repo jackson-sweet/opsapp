@@ -1,13 +1,19 @@
 # OPS App - Project Overview
 
+**Last Updated**: July 03, 2025  
+**Version**: 1.0.2  
+**Status**: Production
+
 ## App Purpose
-OPS (Operational Project System) is a specialized project management app built specifically for trade workers. It focuses on providing reliable, field-first functionality that works in challenging job site conditions with minimal complexity.
+OPS (Operational Project System) is a specialized project management app built specifically for trade workers. It focuses on providing reliable, field-first functionality that works in challenging job site conditions with minimal complexity. The app has been designed "by trades, for trades" with every feature optimized for real-world field operations.
 
 ## Architecture
-- **Platform**: iOS app using SwiftUI
-- **Pattern**: MVVM (Model-View-ViewModel)
-- **Data Storage**: SwiftData for local persistence
-- **Backend Integration**: Bubble.io API for remote data
+- **Platform**: iOS 17+ app using SwiftUI with UIKit integrations
+- **Pattern**: MVVM (Model-View-ViewModel) with Coordinator pattern for complex flows
+- **Data Storage**: SwiftData for local persistence with offline-first design
+- **Backend Integration**: Bubble.io REST API for remote data
+- **Image Storage**: AWS S3 with local FileManager caching
+- **Authentication**: Multi-method (Standard, Google OAuth, PIN protection)
 
 ## Core Components
 
@@ -17,18 +23,28 @@ OPS (Operational Project System) is a specialized project management app built s
 - **Main UI**: `MainTabView.swift` - Tab-based navigation when authenticated
 
 ### Data Layer
-- **Models**: SwiftData models for `User`, `Project`, `Company`
-- **Controller**: `DataController.swift` manages data operations
-- **Sync**: Offline-first architecture with background synchronization
-  - `SyncManager.swift` handles data synchronization with Bubble backend
-  - `ImageSyncManager.swift` for offline image handling
-  - `ConnectivityMonitor.swift` tracks network availability
+- **Models**: SwiftData models for `User`, `Project`, `Company`, `TeamMember`
+- **Controller**: `DataController.swift` orchestrates all data operations and services
+- **Sync**: Sophisticated offline-first architecture with prioritized background synchronization
+  - `SyncManager.swift` handles bidirectional data sync with conflict resolution
+  - `ImageSyncManager.swift` manages S3 uploads and Bubble registration
+  - `ConnectivityMonitor.swift` provides real-time network status
+  - Smart sync with chunked processing (20 projects at a time)
+  - 3-tier priority system for sync operations
 
 ### Network Layer
-- **API Service**: `APIService.swift` for communication with Bubble backend
-- **Endpoints**: Organized by entity (Projects, Users, Companies)
-- **Authentication**: `AuthManager.swift` handles login, token management
+- **API Service**: `APIService.swift` centralized Bubble API communication
+  - Rate limiting (0.5s minimum between requests)
+  - Automatic retry with exponential backoff
+  - 30-second timeout for field conditions
+  - Comprehensive error handling
+- **Endpoints**: RESTful API organized by entity (Projects, Users, Companies)
+- **Authentication**: `AuthManager.swift` manages multiple auth methods
+  - Standard username/password login
+  - Google Sign-In OAuth integration
+  - Token auto-renewal with 5-minute buffer
 - **Security**: `KeychainManager.swift` for secure credential storage
+- **DTOs**: Data Transfer Objects for clean API communication
 
 ### UI Components
 - Organized by functionality:
@@ -45,38 +61,95 @@ OPS (Operational Project System) is a specialized project management app built s
     - Project count badges in day cells
     - Today's date highlighting with blue text
 
-### Features
-1. **Authentication & Onboarding**
-   - Step-based user onboarding flow with intelligent navigation
-   - Secure credential storage
-   - Enhanced permission handling with immediate feedback for denied states
-   - Smart company code skipping for users with existing companies
+### Core Features (200+ Swift files)
 
-2. **Project Management**
-   - Project status tracking (RFQ, Estimated, Accepted, In Progress, etc.)
-   - Calendar/schedule visualization
-   - Project details and documentation
+1. **Authentication & Onboarding (20 dedicated files)**
+   - Coordinator-based onboarding flow with intelligent navigation
+   - Multi-step setup: Welcome → User Type → Company Setup → Permissions → Completion
+   - Enhanced permission handling with completion callbacks
+   - Smart navigation (skips company code for existing members)
+   - Role-based welcome messages
+   - Google Sign-In integration
+   - PIN security system
+
+2. **Project Management (Core Feature)**
+   - Comprehensive status workflow: RFQ → Estimated → Accepted → In Progress → Completed → Closed
+   - Real-time project tracking with start/stop functionality
+   - Team member assignment with role-based permissions
+   - Rich project details: client info, location, notes, images
+   - Offline-first with automatic sync when connected
+   - Priority-based sync system
 
 3. **Field Operations**
-   - Offline capability for use in areas with poor connectivity
-   - Location services for project mapping
-   - Image capture and annotation
+   - Full offline functionality with SwiftData persistence
+   - Advanced location services:
+     - Live navigation with turn-by-turn directions
+     - Project location mapping with stable pins
+     - Route tracking and updates
+     - Permission handling with clear UI feedback
+   - Image management:
+     - Offline capture with local storage
+     - Automatic S3 upload when connected
+     - Multi-tier caching (S3 → Local Files → Memory)
+     - Duplicate prevention with SHA256 hashing
 
 4. **Team Coordination**
-   - Team member assignment and tracking
-   - Permission-based access
+   - Comprehensive team member management
+   - Three role types: Field Crew, Office Crew, Admin
+   - Contact integration (phone, email, address)
+   - Permission-based feature access
+   - Lightweight TeamMember model for efficient display
+   - Real-time sync of team changes
 
-5. **Image Management**
-   - Multi-tier storage (S3, local files, memory cache)
-   - Offline capture with automatic sync
-   - AWS S3 integration for cloud storage
-   - Bubble.io registration for project association
-   - Automatic migration from legacy UserDefaults storage
-   - **Recent Fixes**:
-     - Deletion sync from web to iOS
-     - SHA256 cache keys prevent duplicate display
-     - Unique filename generation prevents overwrites
-     - Single source of truth for image updates
+5. **Image Management System**
+   - **Storage Architecture**:
+     - AWS S3 for cloud storage
+     - Local FileManager for offline access
+     - Memory cache for performance
+   - **Smart Features**:
+     - Offline capture with "local://" URL scheme
+     - Automatic compression and resizing
+     - Queue-based upload management
+     - Presigned URL support
+   - **Recent Improvements**:
+     - Bidirectional deletion sync
+     - SHA256-based deduplication
+     - Unique filename generation
+     - Migration from UserDefaults
+     - Single source of truth pattern
+
+6. **Calendar & Scheduling**
+   - Three view modes: Month grid, Week list, Day detail
+   - Project count indicators on calendar days
+   - Snapping scroll behavior for smooth navigation
+   - Today highlighting with blue accent
+   - Smart date picker with popover presentation
+   - Project filtering by date
+
+7. **Settings & Configuration (13+ screens)**
+   - Profile management with home address
+   - Organization settings with company details
+   - Notification preferences by project type
+   - Map settings for navigation options
+   - Security settings with PIN management
+   - Data storage controls with cache management
+   - Project/Expense history views
+   - "What We're Working On" feature voting
+   - Bug reporting functionality
+
+## File Structure & Organization
+
+### Swift Files Distribution (200+ total)
+- **Views**: 90+ files - Comprehensive UI implementation
+- **Onboarding**: 25+ files - Complete user setup system with coordinator pattern
+- **Network**: 20+ files - API and sync infrastructure
+- **Utilities**: 20+ files - Helpers and managers
+- **Styles**: 15+ files - Design system components
+- **Data Models**: 10+ files - Core business objects with DTOs
+- **Services**: 8+ files - Service layer architecture
+- **View Models**: 5+ files - Business logic separation
+- **Configuration**: 5+ files - App settings and constants
+- **Core App**: 3 files - App lifecycle management
 
 ## Technical Details
 
@@ -91,9 +164,19 @@ OPS (Operational Project System) is a specialized project management app built s
   - Layout constants (including larger touch targets for field use)
 
 ### Sync Strategy
-- Background synchronization at defined intervals
-- Prioritized sync for critical data
-- Image storage with FileManager (migrated from UserDefaults)
+- **Intelligent Background Sync**:
+  - Triggered by connectivity changes
+  - Respects user preferences (auto-update toggle)
+  - Priority-based queue (1-3, highest first)
+  - Chunked processing for memory efficiency
+- **Conflict Resolution**:
+  - Local changes preserved until explicit sync
+  - Smart deduplication for users
+  - Relationship maintenance during sync
+- **Image Sync**:
+  - Queue-based upload management
+  - Automatic retry on failure
+  - Progress tracking and UI feedback
 
 ### Configuration
 - Centralized app configuration in `AppConfiguration.swift`
@@ -106,18 +189,73 @@ The codebase reflects the OPS brand values:
 - **No Unnecessary Complexity**: Focused feature set, streamlined workflows
 - **Built By Trades, For Trades**: Field-optimized UX decisions throughout
 
-## Current Development
-- Enhanced calendar with week view and improved navigation
-- Refined settings UI with "What we're working on" section
-- Improved form components with standardized styling
-- Tab bar keyboard handling for better UX
-- Native swipe-back gesture support
+## Performance & Optimization
 
-## Recent Improvements
-- Added reusable `SegmentedControl` component for consistent UI
-- Implemented `TabBarPadding` modifier for content layout
-- Created `AddressAutocompleteField` with MapKit integration
-- Fixed map pin drift issues with proper anchor points
-- Enhanced calendar with snapping week view and project counts
-- Updated all UI components to use OPS fonts (no system fonts)
-- Refined button styling to use borders instead of filled backgrounds
+### Current Metrics
+- **App Launch**: <3 seconds on 3-year-old devices
+- **Memory Usage**: Optimized with image caching limits
+- **Offline Storage**: Efficient SwiftData schema
+- **Network**: Rate-limited API calls, chunked sync
+- **Battery**: Dark theme, minimal background processing
+
+### Field-Tested Features
+- **Glove Operation**: All touch targets 44pt+
+- **Sunlight Readability**: High contrast dark theme
+- **Offline Reliability**: Full functionality without connection
+- **Error Recovery**: Graceful handling with clear feedback
+- **Data Integrity**: Transaction-based updates
+
+## Security Implementation
+
+### Multi-Layer Security
+1. **Authentication**: Token-based with auto-renewal
+2. **Storage**: Keychain for credentials, encrypted SwiftData
+3. **Network**: HTTPS only, certificate pinning ready
+4. **Access**: Role-based permissions throughout
+5. **Session**: Background PIN reset, token expiration
+
+## Future Architecture Considerations
+
+### Planned Improvements
+- Modularization of large view files
+- Enhanced test coverage
+- Performance monitoring integration
+- Advanced caching strategies
+- Widget support preparation
+
+## Recent Major Updates (v1.0.2)
+
+### Onboarding Bug Fixes (July 3)
+- Fixed user type persistence before signup completion
+- Resolved team invite navigation for company owners
+- Ensured company/project data loads during onboarding
+- Disabled back navigation after account creation
+- Fixed account created screen display
+- Corrected step numbering for different user types
+
+### Permission System Overhaul
+- Enhanced LocationManager with completion callbacks
+- Immediate alerts for denied/restricted permissions
+- Direct navigation to Settings app when needed
+- All required Info.plist keys added
+
+### Onboarding Refinements
+- Smart company code skipping for existing members
+- Role-based welcome messages
+- Simplified completion animation
+- Improved back navigation logic
+
+### UI/UX Enhancements
+- Location disabled overlay on maps
+- Standardized SettingsToggle component
+- Redesigned project action bar with blur effect
+- Bug reporting functionality
+- Consistent empty state messaging
+
+### Component Library
+- `SegmentedControl`: Reusable picker with OPS styling
+- `TabBarPadding`: Consistent 90pt bottom spacing
+- `AddressAutocompleteField`: MapKit-powered address search
+- `ContactDetailSheet`: Unified contact display
+- `ImagePicker`: Camera/gallery integration
+- `ProjectActionBar`: Standardized project controls

@@ -15,7 +15,7 @@ struct HomeView: View {
     
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
-    @StateObject private var inProgressManager = InProgressManager()
+    @StateObject private var inProgressManager = InProgressManager.shared
     @EnvironmentObject private var locationManager: LocationManager
     
     // Track location manager status changes
@@ -160,6 +160,24 @@ struct HomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StopRouteRefreshTimer"))) { _ in
             stopRouteRefreshTimer()
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartProjectFromMap"))) { notification in
+            if let project = notification.userInfo?["project"] as? Project {
+                print("🟢 HomeView: Received StartProjectFromMap for: \(project.title)")
+                // Find and select the project
+                if let index = todaysProjects.firstIndex(where: { $0.id == project.id }) {
+                    selectedProjectIndex = index
+                    // Start the project
+                    startProject(project)
+                }
+            }
+        }
+        .onAppear {
+            loadTodaysProjects()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Reload projects when app returns to foreground
+            loadTodaysProjects()
+        }
     }
     
     // MARK: - Helper Methods
@@ -190,9 +208,14 @@ struct HomeView: View {
     }
     
     private func startProject(_ project: Project) {
+        print("🟢 HomeView: startProject called for: \(project.title)")
+        
         // Enter project mode
         appState.enterProjectMode(projectID: project.id)
         showStartConfirmation = false
+        
+        // Cancel any pending notifications for this project since it's starting
+        NotificationManager.shared.cancelProjectNotifications(projectId: project.id)
         
         // Reset the user stopped routing flag for new project
         userStoppedRouting = false
@@ -243,27 +266,38 @@ struct HomeView: View {
         
         // Start routing if we have coordinates and permissions
         if let coordinate = project.coordinate {
+            print("🟢 HomeView: Project has coordinates, checking location permissions...")
+            print("🟢 HomeView: Location authorization status: \(locationManager.authorizationStatus)")
+            
             switch locationManager.authorizationStatus {
             case .authorizedWhenInUse, .authorizedAlways:
-                if let userLocation = locationManager.userLocation {
-                    inProgressManager.startRouting(to: coordinate, from: userLocation)
-                } else {
-                    inProgressManager.startRouting(to: coordinate)
-                }
+                print("🟢 HomeView: Location authorized, starting routing...")
+                
+                // Post notification to start navigation in the new map
+                NotificationCenter.default.post(
+                    name: Notification.Name("StartNavigation"),
+                    object: nil,
+                    userInfo: ["projectId": project.id]
+                )
+                
+                // The new map will handle starting InProgressManager routing for consistency
                 
                 // Start the route refresh timer for live navigation updates
                 startRouteRefreshTimer()
                 
             case .notDetermined:
+                print("⚠️ HomeView: Location permission not determined")
                 break
                 
             case .denied, .restricted:
+                print("⚠️ HomeView: Location permission denied or restricted")
                 break
                 
             @unknown default:
                 break
             }
         } else {
+            print("⚠️ HomeView: Project has no coordinates")
         }
     }
     

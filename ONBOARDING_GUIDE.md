@@ -1,75 +1,88 @@
 # OPS App - Onboarding Implementation Guide
 
+**Last Updated**: July 03, 2025  
+**Version**: 1.0.2
+
 ## Overview
 
-The OPS app onboarding flow has been streamlined from 11 steps to 7 steps, focusing on field-optimized design. This guide explains both flows and their implementation.
+The OPS app onboarding provides different flows for employees vs company owners, with intelligent navigation and robust error handling. The system uses a coordinator pattern for complex flow management.
 
 ## Onboarding Flows
 
-### Original Flow (11 steps)
-1. Welcome
-2. Email
-3. Password
-4. Account Created
-5. Organization Join
-6. User Info (First/Last Name)
-7. Phone Number
-8. Company Code
-9. Welcome to Company
-10. Permissions
-11. Completion
+### Employee Flow (6 steps)
+1. **Welcome** → User Type Selection → Account Setup (email/password)
+2. **Organization Join** (account created confirmation)
+3. **User Details** (first name, last name, phone)
+4. **Company Code** (enter code to join company)
+5. **Permissions** (location and notifications)
+6. **Field Setup** → **Completion**
 
-### Consolidated Flow (7 steps)
-1. Welcome
-2. Account Setup (Email/Password)
-3. User Details (Name/Phone)
-4. Company Code (skipped for employees who already have a company)
-5. Consolidated Permissions
-6. Field Setup
-7. Completion
+### Company Owner Flow (11 steps)
+1. **Welcome** → User Type Selection → Account Setup (email/password)
+2. **Organization Join** (account created confirmation)
+3. **User Details** (personal information)
+4. **Company Basic Info** (name and logo - optional)
+5. **Company Address** (location with map)
+6. **Company Contact** (email and phone)
+7. **Company Details** (industry, size, age)
+8. **Company Code** (display generated code)
+9. **Team Invites** (invite team members)
+10. **Permissions** (location and notifications)
+11. **Field Setup** → **Completion**
 
 ## Implementation Details
 
-### Feature Flag System
-Toggle between flows using the feature flag in `AppConfiguration.swift`:
-
-```swift
-struct UX {
-    // Use the new consolidated onboarding flow
-    static let useConsolidatedOnboardingFlow = true
-}
-```
+### Key Features
+- **Adaptive Theming**: Light theme for employees, dark theme for company owners
+- **Smart Navigation**: Automatically skips completed steps when resuming
+- **Step Indicators**: Progress tracking with accurate step counts
+- **Data Persistence**: All form data saved progressively in UserDefaults
+- **Error Recovery**: Robust handling of API failures with clear messaging
+- **Permission Handling**: Immediate alerts for denied permissions with Settings navigation
 
 ### Core Components
 
 #### 1. OnboardingViewModel
-The view model manages state and navigation for both onboarding flows:
+The view model manages state and navigation for the onboarding flow:
 
 ```swift
 class OnboardingViewModel: ObservableObject {
-    // Original flow steps
+    // Current step management
     @Published var currentStep: OnboardingStep = .welcome
-    
-    // New flow steps
-    @Published var currentStepV2: OnboardingStepV2 = .welcome
+    @Published var selectedUserType: UserType?
     
     // User input fields
     @Published var email = ""
     @Published var password = ""
     @Published var firstName = ""
     @Published var lastName = ""
-    @Published var phone = ""
+    @Published var phoneNumber = ""
     @Published var companyCode = ""
     
-    // Navigation methods
-    func nextStep()
-    func previousStep()
+    // Company fields (for owners)
+    @Published var companyName = ""
+    @Published var companyAddress = ""
+    @Published var companyEmail = ""
+    @Published var companyPhone = ""
+    @Published var companyIndustry: Industry?
+    @Published var companySize: CompanySize?
+    @Published var companyAge: CompanyAge?
+    @Published var teamInviteEmails: [String] = []
     
-    // Validation methods
-    func validateEmail() -> Bool
-    func validatePassword() -> Bool
-    func validateUserInfo() -> Bool
-    func validateCompanyCode() -> Bool
+    // State management
+    @Published var isSignedUp = false
+    @Published var isCompanyJoined = false
+    @Published var userId = ""
+    
+    // Navigation methods
+    func moveToNextStep()
+    func moveToPreviousStep()
+    
+    // API methods
+    func submitEmailPasswordSignUp() async throws -> Bool
+    func createCompany() async throws
+    func joinCompany() async throws -> Bool
+    func sendTeamInvitations() async throws
 }
 ```
 
@@ -92,13 +105,25 @@ class OnboardingCoordinator {
 }
 ```
 
-#### 3. Consolidated Screens
-New screens combine related steps for a more efficient flow:
+#### 3. Key Screens
 
-- **AccountSetupView**: Combines email and password in a single form
-- **UserDetailsView**: Combines name and phone fields
-- **ConsolidatedPermissionsView**: Presents all permissions together
-- **FieldSetupView**: New screen for offline setup and initial sync
+**Common Screens (Both Flows)**:
+- **WelcomeView**: Initial screen with app branding
+- **UserTypeSelectionView**: Choose between Employee/Company Owner
+- **EmailView**: Account creation with email/password
+- **OrganizationJoinView**: Account created confirmation
+- **UserInfoView**: Personal details collection
+- **PermissionsView**: Location and notification permissions
+- **FieldSetupView**: Offline data preparation
+- **CompletionView**: Animated completion before welcome guide
+
+**Company Owner Specific**:
+- **CompanyBasicInfoView**: Company name and optional logo
+- **CompanyAddressView**: Location with map integration
+- **CompanyContactView**: Business contact details
+- **CompanyDetailsView**: Industry, size, and age selection
+- **CompanyCodeDisplayView**: Shows generated company code
+- **TeamInvitesView**: Email invitations for team members
 
 #### 4. Smart Navigation
 The onboarding flow includes intelligent navigation that adapts to user state:
@@ -287,19 +312,18 @@ All user data is preserved regardless of which flow is used:
    - Offline mode toggle with clear indicators
    - Bandwidth usage controls for limited data plans
 
-## Implementation Recommendations
+## Recent Bug Fixes (v1.0.2)
 
-1. **Visual Refinements**
-   - Increase text size slightly for better field visibility
-   - Add subtle animation to form transitions
-   - Improve error message visibility
+### Fixed Issues
+1. **User Type Persistence**: User type is now only saved after successful signup
+2. **Team Invite Navigation**: Removed duplicate switch case that skipped team invites
+3. **Company Data Loading**: Company objects properly stored in SwiftData during onboarding
+4. **Back Navigation**: Disabled back button after account creation to prevent re-signup
+5. **Account Created Screen**: Fixed navigation to show for all user types
+6. **Step Numbering**: Corrected step calculations for accurate progress display
 
-2. **Flow Optimizations**
-   - Add skip options for non-essential steps
-   - Allow later completion of some fields
-   - Streamline permission explanation language
-
-3. **Technical Improvements**
-   - Prefetch company data during email verification
-   - Implement parallel validation where possible
-   - Improve keyboard handling on form fields
+### Implementation Notes
+- User type stored in `selected_user_type` key in UserDefaults
+- Company data synced using `createCompany()` and `joinCompany()` methods
+- SwiftData integration ensures offline access to company information
+- Navigation logic in `OnboardingModels.swift` uses enum-based flow control

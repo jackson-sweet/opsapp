@@ -10,6 +10,7 @@ import UserNotifications
 import UIKit
 import Combine
 import CoreLocation
+import SwiftData
 
 /// Notification categories for different types of notifications
 enum NotificationCategory: String {
@@ -609,10 +610,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             "daysInAdvance": daysInAdvance
         ]
         
-        // Create date components for 8:00 AM on the notification date
+        // Get user's preferred notification time
+        let hour = UserDefaults.standard.integer(forKey: "advanceNoticeHour")
+        let minute = UserDefaults.standard.integer(forKey: "advanceNoticeMinute")
+        
+        // Use user preference or default to 8:00 AM
         var dateComponents = Calendar.current.dateComponents([.year, .month, .day], from: notificationDate)
-        dateComponents.hour = 8
-        dateComponents.minute = 0
+        dateComponents.hour = hour > 0 ? hour : 8
+        dateComponents.minute = minute
         
         // Create trigger
         let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
@@ -822,6 +827,113 @@ extension NotificationManager {
         //         )
         //     }
         // }
+    }
+}
+
+// MARK: - Bulk Operations for Project Notifications
+extension NotificationManager {
+    
+    /// Schedule notifications for all future projects based on user preferences
+    func scheduleNotificationsForAllProjects(using modelContext: ModelContext) async {
+        // First, clear all existing project notifications
+        await cancelAllProjectNotifications()
+        
+        // Check if user wants advance notifications
+        guard UserDefaults.standard.bool(forKey: "notifyProjectAdvance") else {
+            print("📵 Project advance notifications are disabled")
+            return
+        }
+        
+        do {
+            // Fetch all projects and filter for future start dates
+            let now = Date()
+            let descriptor = FetchDescriptor<Project>(
+                sortBy: [SortDescriptor(\.startDate)]
+            )
+            
+            let allProjects = try modelContext.fetch(descriptor)
+            
+            // Filter for projects with future start dates
+            let futureProjects = allProjects.filter { project in
+                guard let startDate = project.startDate else { return false }
+                return startDate > now
+            }
+            
+            print("📅 Found \(futureProjects.count) future projects to schedule notifications for")
+            
+            // Get user's advance notice preferences
+            let advanceDays = getAdvanceNoticeDays()
+            
+            // Schedule notifications for each project
+            for project in futureProjects {
+                for daysBefore in advanceDays {
+                    scheduleProjectAdvanceNotice(
+                        project: project,
+                        daysBefore: daysBefore
+                    )
+                }
+            }
+            
+            print("✅ Scheduled \(futureProjects.count * advanceDays.count) notifications")
+            
+        } catch {
+            print("❌ Failed to schedule project notifications: \(error)")
+        }
+    }
+    
+    /// Get the user's configured advance notice days
+    private func getAdvanceNoticeDays() -> [Int] {
+        return [
+            UserDefaults.standard.integer(forKey: "advanceNoticeDays1"),
+            UserDefaults.standard.integer(forKey: "advanceNoticeDays2"),
+            UserDefaults.standard.integer(forKey: "advanceNoticeDays3")
+        ].filter { $0 > 0 }
+    }
+    
+    /// Cancel all project-related notifications
+    func cancelAllProjectNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        let requests = await center.pendingNotificationRequests()
+        
+        // Find all project notification IDs
+        let projectNotificationIds = requests.filter { request in
+            // Check if it's a project notification by category or user info
+            request.content.categoryIdentifier == "PROJECT" ||
+            request.content.categoryIdentifier == "PROJECT_ADVANCE_NOTIFICATION" ||
+            request.content.userInfo["projectId"] != nil
+        }.map { $0.identifier }
+        
+        if !projectNotificationIds.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: projectNotificationIds)
+            print("🗑️ Cancelled \(projectNotificationIds.count) project notifications")
+        }
+    }
+    
+    /// Cancel notifications for a specific project
+    func cancelProjectNotifications(projectId: String) {
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let idsToRemove = requests
+                .filter { $0.content.userInfo["projectId"] as? String == projectId }
+                .map { $0.identifier }
+            
+            if !idsToRemove.isEmpty {
+                UNUserNotificationCenter.current()
+                    .removePendingNotificationRequests(withIdentifiers: idsToRemove)
+                print("🗑️ Cancelled \(idsToRemove.count) notifications for project \(projectId)")
+            }
+        }
+    }
+    
+    /// Convenience method to schedule advance notice for a project
+    func scheduleProjectAdvanceNotice(project: Project, daysBefore: Int) {
+        guard let startDate = project.startDate else { return }
+        
+        _ = scheduleProjectAdvanceNotice(
+            projectId: project.id,
+            projectTitle: project.title,
+            startDate: startDate,
+            daysInAdvance: daysBefore
+        )
     }
 }
 

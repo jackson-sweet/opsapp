@@ -173,7 +173,7 @@ struct AppInfoCard: View {
             
             // Version info
             VStack(alignment: .trailing, spacing: 2) {
-                Text("Version 1.0.0")
+                Text("[ VERSION \(AppConfiguration.AppInfo.version.uppercased()) ]")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 

@@ -21,8 +21,61 @@ struct NotificationSettingsView: View {
     // Advance notice settings
     @AppStorage("notifyProjectAdvance") private var notifyProjectAdvance = true
     @AppStorage("advanceNoticeDays1") private var advanceNoticeDays1 = 1
-    @AppStorage("advanceNoticeDays2") private var advanceNoticeDays2 = 2
-    @AppStorage("advanceNoticeDays3") private var advanceNoticeDays3 = 7
+    @AppStorage("advanceNoticeDays2") private var advanceNoticeDays2 = 0  // Default to None
+    @AppStorage("advanceNoticeDays3") private var advanceNoticeDays3 = 0  // Default to None
+    @AppStorage("advanceNoticeHour") private var advanceNoticeHour = 8
+    @AppStorage("advanceNoticeMinute") private var advanceNoticeMinute = 0
+    
+    // Computed property for the notification time
+    private var notificationTime: Date {
+        get {
+            var components = DateComponents()
+            components.hour = advanceNoticeHour
+            components.minute = advanceNoticeMinute
+            return Calendar.current.date(from: components) ?? Date()
+        }
+        set {
+            let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+            advanceNoticeHour = components.hour ?? 8
+            advanceNoticeMinute = components.minute ?? 0
+        }
+    }
+    
+    // Computed property for reminder summary text
+    private var reminderSummaryText: String {
+        var activeDays: [Int] = []
+        
+        // Always include first day
+        activeDays.append(advanceNoticeDays1)
+        
+        // Include second and third if not "None" (0)
+        if advanceNoticeDays2 > 0 {
+            activeDays.append(advanceNoticeDays2)
+        }
+        if advanceNoticeDays3 > 0 {
+            activeDays.append(advanceNoticeDays3)
+        }
+        
+        // Format the days
+        let dayText: String
+        switch activeDays.count {
+        case 1:
+            dayText = "\(activeDays[0]) day\(activeDays[0] == 1 ? "" : "s") before"
+        case 2:
+            dayText = "\(activeDays[0]) & \(activeDays[1]) days before"
+        case 3:
+            dayText = "\(activeDays[0]), \(activeDays[1]) & \(activeDays[2]) days before"
+        default:
+            dayText = "No reminders set"
+        }
+        
+        // Format time for display
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        let timeString = formatter.string(from: notificationTime)
+        
+        return "\(dayText) at \(timeString)"
+    }
     
     var body: some View {
         ZStack {
@@ -176,23 +229,71 @@ struct NotificationSettingsView: View {
                     description: "Get notified before projects start",
                     isOn: $notifyProjectAdvance
                 )
+                .onChange(of: notifyProjectAdvance) { _, newValue in
+                    if newValue {
+                        // Enabled - schedule notifications
+                        rescheduleAllNotifications()
+                    } else {
+                        // Disabled - cancel all project notifications
+                        Task {
+                            await notificationManager.cancelAllProjectNotifications()
+                        }
+                    }
+                }
             }
             
-            // Day Selectors
+            // Day Selectors and Time
             if notifyProjectAdvance {
                 SettingsCard(title: "REMINDER SCHEDULE") {
                     VStack(spacing: 12) {
                         HStack(spacing: 12) {
-                            DaySelector(value: $advanceNoticeDays1, label: "First")
-                            DaySelector(value: $advanceNoticeDays2, label: "Second")
-                            DaySelector(value: $advanceNoticeDays3, label: "Third")
+                            DaySelector(value: $advanceNoticeDays1, label: "First", allowNone: false)
+                                .onChange(of: advanceNoticeDays1) { _, _ in
+                                    rescheduleAllNotifications()
+                                }
+                            DaySelector(value: $advanceNoticeDays2, label: "Second", allowNone: true)
+                                .onChange(of: advanceNoticeDays2) { _, _ in
+                                    rescheduleAllNotifications()
+                                }
+                            DaySelector(value: $advanceNoticeDays3, label: "Third", allowNone: true)
+                                .onChange(of: advanceNoticeDays3) { _, _ in
+                                    rescheduleAllNotifications()
+                                }
                         }
                         
-                        Text("\(advanceNoticeDays1), \(advanceNoticeDays2) & \(advanceNoticeDays3) days before")
+                        Text(reminderSummaryText)
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(maxWidth: .infinity)
                             .padding(.top, 8)
+                    }
+                }
+                
+                // Time Picker
+                SettingsCard(title: "NOTIFICATION TIME") {
+                    HStack {
+                        Text("Send reminders at")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        
+                        Spacer()
+                        
+                        // Use a simple DatePicker with custom styling
+                        DatePicker("", selection: Binding(
+                            get: { self.notificationTime },
+                            set: { newValue in
+                                let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+                                self.advanceNoticeHour = components.hour ?? 8
+                                self.advanceNoticeMinute = components.minute ?? 0
+                                self.rescheduleAllNotifications()
+                            }
+                        ), displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                        .colorScheme(.dark)
+                        .accentColor(OPSStyle.Colors.primaryAccent)
+                        .scaleEffect(0.9)
+                        .frame(height: 36)
                     }
                 }
             }
@@ -235,12 +336,27 @@ struct NotificationSettingsView: View {
     // MARK: - Helper Components
     
     private func sendTestNotification() {
+        // Schedule a test notification for 5 seconds from now
+        let testDate = Date().addingTimeInterval(5)
+        
+        // Format the time for display
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        let timeString = formatter.string(from: notificationTime)
+        
         _ = notificationManager.scheduleProjectNotification(
             projectId: "test",
             title: "OPS Test Notification",
-            body: "Your notifications are working! You'll receive updates about your projects.",
-            date: nil
+            body: "Your notifications are working! Advance reminders will be sent at \(timeString).",
+            date: testDate
         )
+    }
+    
+    private func rescheduleAllNotifications() {
+        Task {
+            guard let modelContext = dataController.modelContext else { return }
+            await notificationManager.scheduleNotificationsForAllProjects(using: modelContext)
+        }
     }
 }
 
@@ -249,11 +365,33 @@ struct NotificationSettingsView: View {
 struct DaySelector: View {
     @Binding var value: Int
     let label: String
-    private let options = [1, 2, 3, 5, 7, 14]
+    let allowNone: Bool
+    
+    private let dayOptions = [1, 2, 3, 5, 7, 14]
+    
+    init(value: Binding<Int>, label: String, allowNone: Bool = false) {
+        self._value = value
+        self.label = label
+        self.allowNone = allowNone
+    }
     
     var body: some View {
         Menu {
-            ForEach(options, id: \.self) { day in
+            if allowNone {
+                Button {
+                    value = 0
+                } label: {
+                    if value == 0 {
+                        Label("None", systemImage: "checkmark")
+                    } else {
+                        Text("None")
+                    }
+                }
+                
+                Divider()
+            }
+            
+            ForEach(dayOptions, id: \.self) { day in
                 Button {
                     value = day
                 } label: {
@@ -271,13 +409,19 @@ struct DaySelector: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
                 HStack(spacing: 4) {
-                    Text("\(value)")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
-                    
-                    Text("DAYS")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    if value == 0 {
+                        Text("NONE")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    } else {
+                        Text("\(value)")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.white)
+                        
+                        Text("DAYS")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
                     
                     Image(systemName: "chevron.down")
                         .font(.system(size: 10))

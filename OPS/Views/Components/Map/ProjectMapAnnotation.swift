@@ -8,6 +8,36 @@
 import SwiftUI
 import MapKit
 
+// Temporary popup for old map compatibility
+struct OldProjectMarkerPopup: View {
+    let project: Project
+    var onTap: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(project.title)
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+            
+            Text(project.clientName)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            
+            Button(action: onTap) {
+                Text("View Details")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(OPSStyle.Colors.cardBackground)
+                .shadow(radius: 4)
+        )
+    }
+}
+
 // Using SF Symbols instead of custom shape markers
 
 // Custom annotation view for SwiftUI MapKit integration
@@ -98,8 +128,8 @@ struct ProjectMapAnnotation: View {
             
             // Show popup when showPopup is true, regardless of selection state
             if showPopup {
-                // Pass the onTap directly without wrapping
-                ProjectMarkerPopup(project: project, onTap: onTap)
+                // Use the old ProjectMarkerPopup implementation for the old map
+                OldProjectMarkerPopup(project: project, onTap: onTap)
                     .offset(y: circleSize * 2.5) // Significantly increased offset to position popup much lower
                     .allowsHitTesting(true) // CRITICAL: Make sure hit testing is allowed!
                     .zIndex(9999) // Super high zIndex to make sure it's on top

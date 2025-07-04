@@ -67,8 +67,26 @@ class AppState: ObservableObject {
     // Helper method to show project details after any needed reset
     private func showProjectDetailsAfterReset(_ project: Project) {
         
-        // First set flags before setting the project to ensure proper order
-        self.isViewingDetailsOnly = true
+        // Check if we're already in project mode for this project
+        let wasInProjectMode = self.activeProjectID == project.id && !self.isViewingDetailsOnly
+        
+        // Check if we're in project mode for a different project
+        let isInProjectModeForDifferentProject = self.activeProjectID != nil && 
+                                                 self.activeProjectID != project.id && 
+                                                 !self.isViewingDetailsOnly
+        
+        // If we're in project mode for a different project, don't change activeProjectID
+        if isInProjectModeForDifferentProject {
+            // Just show the details without changing the active project
+            self.activeProject = project
+            self.showProjectDetails = true
+            return
+        }
+        
+        // Only set isViewingDetailsOnly if we're not already in project mode for this project
+        if !wasInProjectMode {
+            self.isViewingDetailsOnly = true
+        }
         
         // Set active project ID and project object BEFORE showing the sheet
         self.activeProjectID = project.id
@@ -103,14 +121,25 @@ class AppState: ObservableObject {
     func dismissProjectDetails() {
         self.showProjectDetails = false
         
-        // If we were just viewing details, clear the project ID to exit "details" mode
-        if isViewingDetailsOnly {
+        // Store the current active project ID if we're in project mode
+        let currentActiveProjectID = self.isInProjectMode ? self.activeProjectID : nil
+        
+        // Clear the displayed project
+        self.activeProject = nil
+        
+        // If we were just viewing details and there's no active project mode, clear everything
+        if isViewingDetailsOnly && currentActiveProjectID == nil {
             self.isViewingDetailsOnly = false
             self.activeProjectID = nil
-            self.activeProject = nil
-        } else {
-            // Otherwise, just close the sheet while keeping active project
-            self.activeProject = nil
+        }
+        // If we were viewing details of a different project while in project mode, restore the active project
+        else if currentActiveProjectID != nil && self.activeProjectID != currentActiveProjectID {
+            self.activeProjectID = currentActiveProjectID
+            self.isViewingDetailsOnly = false
+        }
+        // If we were viewing details of the same project we're working on, keep project mode
+        else if !isViewingDetailsOnly {
+            // Keep activeProjectID as is - we're still in project mode
         }
     }
 }

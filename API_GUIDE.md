@@ -1,5 +1,8 @@
 # OPS App - API Integration Guide
 
+**Last Updated**: July 03, 2025  
+**Version**: 1.0.2
+
 ## Bubble.io API Integration
 
 ### API Configuration
@@ -10,9 +13,10 @@
 
 ### Authentication
 - All API calls use `APIService` for centralized request handling
-- Authentication is managed through `AuthManager`
+- Authentication is managed through `AuthManager` with multi-method support
 - Secure token storage in Keychain via `KeychainManager`
-- API Calls do not require authentication
+- Token auto-renewal with 5-minute buffer before expiration
+- Fallback to API token when user authentication fails
 
 ### Response Structure
 Bubble.io uses specific response formats:
@@ -48,16 +52,19 @@ Bubble.io uses specific response formats:
 ### Core Models with Field Mappings
 
 #### Project
-- `id`: Bubble unique identifier
+- `id`: Bubble unique identifier (_id)
 - `title` → Bubble: `Project Name`
 - `clientName` → Bubble: `Client Name`
-- `address` → Bubble: `Address` (complex object)
+- `clientEmail` → Bubble: `Client Email`
+- `clientPhone` → Bubble: `Client Phone`
+- `address` → Bubble: `Address` (BubbleAddress object)
 - `startDate` → Bubble: `Start Date`
 - `endDate` → Bubble: `Completion`
 - `status` → Bubble: `Status`
 - `notes` → Bubble: `Team Notes`
-- `teamMemberIds` → Bubble: `Team Members` (array)
-- `projectImages` → Bubble: `Project Images` (array)
+- `teamMemberIds` → Bubble: `Team Members` (array of BubbleReference)
+- `projectImages` → Bubble: `Project Images` (array of strings)
+- `companyId` → Bubble: `Company` (BubbleReference)
 
 #### User
 - `id`: Bubble unique identifier 
@@ -104,7 +111,55 @@ enum Status: String {
 #### Bubble Fields
 Central mapping of field names in `BubbleFields.swift` for consistent reference.
 
+## API Service Features
+
+### Rate Limiting
+- Minimum 0.5 seconds between API requests
+- Automatic queuing of rapid requests
+- Prevents API overload and improves reliability
+
+### Network Resilience
+- 30-second timeout for field conditions
+- Automatic retry with exponential backoff
+- Waits for connectivity before attempting requests
+- Comprehensive error handling and logging
+
 ## API Endpoints
+
+### Authentication Endpoints
+
+#### Sign Up (Company Owner)
+```swift
+POST /api/1.1/wf/sign_company_up
+Body: {
+    "email": String,
+    "password": String,
+    "userType": "company"
+}
+```
+
+#### Sign Up (Employee)
+```swift
+POST /api/1.1/wf/sign_employee_up
+Body: {
+    "email": String,
+    "password": String,
+    "userType": "employee"
+}
+```
+
+#### Join Company
+```swift
+POST /api/1.1/wf/join_company
+Body: {
+    "email": String,
+    "password": String,
+    "firstName": String,
+    "lastName": String,
+    "phoneNumber": String,
+    "companyCode": String
+}
+```
 
 ### Project Endpoints
 

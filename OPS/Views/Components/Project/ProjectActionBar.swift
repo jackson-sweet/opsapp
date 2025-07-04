@@ -15,6 +15,7 @@ struct ProjectActionBar: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var locationManager: LocationManager
+    @ObservedObject private var inProgressManager = InProgressManager.shared
     
     // State variables for various sheets and actions
     @State private var showCompleteConfirmation = false
@@ -34,12 +35,12 @@ struct ProjectActionBar: View {
         // Blurred background similar to tab bar
         ZStack {
             // Blur effect
-            BlurView(style: .systemThinMaterialDark)
+            BlurView(style: .systemUltraThinMaterialDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
             
             // Semi-transparent overlay
             Color(OPSStyle.Colors.cardBackgroundDark)
-                .opacity(0.4)
+                .opacity(0.5)
                 .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
             
             // Actions with dividers
@@ -49,18 +50,22 @@ struct ProjectActionBar: View {
                     Button(action: {
                         handleAction(action)
                     }) {
-                        VStack(spacing: 4) {
-                            Image(systemName: action.iconName)
+                    
+                        
+                        VStack(spacing: 8) {
+                            Image(systemName: action.iconName(isRouting: inProgressManager.isRouting))
                                 .font(.system(size: 24))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             
-                            Text(action.label.uppercased())
-                                .font(OPSStyle.Typography.smallCaption)
+                            Text(action.label(isRouting: inProgressManager.isRouting).uppercased())
+                                .font(OPSStyle.Typography.smallButton)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 60)
-                    }
+                        .padding(4)
+                   
+                         }
                     .buttonStyle(PlainButtonStyle())
                     
                     // Vertical divider between buttons (not after last one)
@@ -71,11 +76,11 @@ struct ProjectActionBar: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            //.padding(.horizontal, 24)
         }
         .frame(height: 80)
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 12)
         .contentMargins(.bottom, 90)
         // Complete Project Confirmation
         .alert(isPresented: $showCompleteConfirmation) {
@@ -141,8 +146,15 @@ struct ProjectActionBar: View {
         case .navigate:
             // Toggle navigation
             if InProgressManager.shared.isRouting {
+                print("🔴 ProjectActionBar: Stopping navigation")
                 // Stop routing
                 InProgressManager.shared.stopRouting()
+                
+                // Post notification to stop navigation in the new map
+                NotificationCenter.default.post(
+                    name: Notification.Name("StopNavigation"),
+                    object: nil
+                )
                 
                 // Post notification to stop route refresh timer
                 NotificationCenter.default.post(
@@ -150,14 +162,16 @@ struct ProjectActionBar: View {
                     object: nil
                 )
             } else {
+                print("🟢 ProjectActionBar: Starting navigation")
                 // Start routing to project
-                if let coordinate = project.coordinate {
-                    // Get current user location if available
-                    if let userLocation = locationManager.userLocation {
-                        InProgressManager.shared.startRouting(to: coordinate, from: userLocation)
-                    } else {
-                        InProgressManager.shared.startRouting(to: coordinate)
-                    }
+                if project.coordinate != nil {
+                    // Post notification to start navigation in the new map
+                    // The map will handle starting InProgressManager for consistency
+                    NotificationCenter.default.post(
+                        name: Notification.Name("StartNavigation"),
+                        object: nil,
+                        userInfo: ["projectId": project.id]
+                    )
                     
                     // Post notification to start route refresh timer
                     NotificationCenter.default.post(
@@ -322,9 +336,13 @@ enum ProjectAction: CaseIterable {
     case details
     case photo
     
-    var iconName: String {
+    static func allCases(isRouting: Bool) -> [ProjectAction] {
+        return self.allCases
+    }
+    
+    func iconName(isRouting: Bool) -> String {
         switch self {
-        case .navigate: return InProgressManager.shared.isRouting ? "location.slash" : "location.fill"
+        case .navigate: return isRouting ? "location.slash" : "location"
         case .complete: return "checkmark.circle"
         // case .receipt: return "doc.text.viewfinder" - removed
         case .details: return "info.circle" // Project details icon
@@ -332,9 +350,9 @@ enum ProjectAction: CaseIterable {
         }
     }
     
-    var label: String {
+    func label(isRouting: Bool) -> String {
         switch self {
-        case .navigate: return InProgressManager.shared.isRouting ? "Stop" : "Navigate"
+        case .navigate: return isRouting ? "Stop" : "Navigate"
         case .complete: return "Complete"
         // case .receipt: return "Receipt" - removed
         case .details: return "Details"

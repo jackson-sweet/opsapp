@@ -28,6 +28,7 @@ struct HomeContentView: View {
     
     // Location manager to track authorization status
     @EnvironmentObject private var locationManager: LocationManager
+    @EnvironmentObject private var dataController: DataController
     
     // Callbacks
     let startProject: (Project) -> Void
@@ -44,6 +45,9 @@ struct HomeContentView: View {
             
             // 3. UI content overlay
             contentOverlay
+            // Add padding when navigation header is showing
+            .padding(.top, inProgressManager.isRouting ? 160 : 0)
+            .animation(.easeInOut(duration: 0.5), value: inProgressManager.isRouting)
             
             // 4. Loading overlay
             if isLoading {
@@ -54,55 +58,78 @@ struct HomeContentView: View {
     
     // MARK: - View Components
     
+    // Always use new map implementation
+    private let useNewMap = true
+    
     private var mapLayer: some View {
         ZStack {
-            ProjectMapView(
+            // New map implementation with safety wrapper
+            SafeMapContainer(
                 projects: todaysProjects,
-                selectedIndex: $selectedProjectIndex,
-                onTapMarker: { index in
-                    // Get the project that was tapped
-                    guard let project = todaysProjects[safe: index] else { return }
-                    
-                    // Update the selected project index to navigate carousel
-                    if selectedProjectIndex != index {
+                selectedIndex: selectedProjectIndex,
+                onProjectSelected: { project in
+                    print("🟢 HomeContentView: onProjectSelected called for: \(project.title)")
+                    // Find project index
+                    if let index = todaysProjects.firstIndex(where: { $0.id == project.id }) {
+                        print("🟢 HomeContentView: Found project at index \(index)")
                         selectedProjectIndex = index
+                        // Reset confirmation when selecting via map
                         showStartConfirmation = false
-                    } else {
-                        // Already selected project was tapped again - show details for 'View Details' button
-                        
-                        // Only toggle if not in project mode
-                        if !appState.isInProjectMode {
-                            // Check if this is from the View Details button in the popup
-                            // If the timestamp is very recent (within 0.8 seconds), treat as View Details button tap
-                            
-                            if let lastTapped = project.lastTapped {
-                                let timeDiff = abs(lastTapped.timeIntervalSinceNow)
+                        print("🟢 HomeContentView: showStartConfirmation = \(showStartConfirmation)")
+                    }
+                },
+                onNavigationStarted: { project in
+                    print("🟢 HomeContentView: onNavigationStarted called for project: \(project.title)")
+                    
+                    // Don't immediately enter project mode - let navigation start first
+                    // Just update the project status and prepare for navigation
+                    showStartConfirmation = false
+                    
+                    // Update project status to 'in progress' without entering project mode yet
+                    if project.status != .inProgress {
+                        Task {
+                            do {
+                                // Use the new API endpoint to start the project
+                                let updatedStatus = try await dataController.apiService.startProject(id: project.id)
                                 
-                                // Increased time window to 0.8 seconds to catch more cases
-                                if timeDiff < 0.8 {
-                                    print("🟩🟩🟩 DETECTED VIEW DETAILS BUTTON TAP! Showing project details 🟩🟩🟩")
-                                    // This is a tap on View Details - show project details
-                                    showProjectDetails(project)
-                                    return
-                                } else {
+                                // Update local status immediately for UI consistency
+                                await MainActor.run {
+                                    project.status = .inProgress
+                                    project.needsSync = false
+                                    project.lastSyncedAt = Date()
+                                    
+                                    // Save to model context
+                                    if let modelContext = dataController.modelContext {
+                                        try? modelContext.save()
+                                    }
                                 }
-                            } else {
+                            } catch {
+                                print("⚠️ API call failed: \(error.localizedDescription)")
+                                dataController.syncManager.updateProjectStatus(
+                                    projectId: project.id,
+                                    status: .inProgress,
+                                    forceSync: true
+                                )
                             }
-                            
-                            // Normal tap - toggle confirmation
-                            showStartConfirmation.toggle()
                         }
                     }
                     
-                    // Update last tapped time to track View Details button taps
-                    project.lastTapped = Date()
-                    
-                    // No manual zoom needed - ProjectMapView handles map marker taps automatically
+                    // Delay entering project mode to allow navigation to start
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        print("🟢 HomeContentView: Now entering project mode")
+                        // Now enter project mode after navigation has started
+                        appState.enterProjectMode(projectID: project.id)
+                        
+                        // For the old system, we also need to start routing
+                        if let coordinate = project.coordinate,
+                           let userLocation = locationManager.userLocation {
+                            print("🟢 HomeContentView: Starting routing...")
+                            inProgressManager.startRouting(to: coordinate, from: userLocation)
+                        }
+                    }
                 },
-                routeOverlay: inProgressManager.activeRoute?.polyline,
-                isInProjectMode: appState.isInProjectMode
+                appState: appState
             )
-            // No manual zoom handling needed - ProjectMapView handles all map state automatically
             
             // Semi-transparent dark overlay - using clear since we have gradient overlay
             Color.clear
@@ -116,10 +143,14 @@ struct HomeContentView: View {
     private var gradientOverlay: some View {
         VStack(spacing: 0) {
             // Top gradient overlay
+            Color(.black)
+                .frame(height: 80)
+            
             LinearGradient(
-                colors: [Color.black.opacity(1), Color.black.opacity(0)]
-                , startPoint: .top
-                , endPoint: .bottom)
+                colors: [Color.black.opacity(1), Color.black.opacity(0)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
             .frame(height: 300)
             
             Spacer()
@@ -139,18 +170,12 @@ struct HomeContentView: View {
             
             Spacer()
             
-            // Navigation controls with tab bar padding
-            NavigationControlsView(
-                isRouting: inProgressManager.isRouting,
-                currentNavStep: inProgressManager.currentNavStep,
-                showFullDirectionsView: $showFullDirectionsView,
-                routeDirections: inProgressManager.routeDirections,
-                estimatedArrival: inProgressManager.estimatedArrival,
-                routeDistance: inProgressManager.routeDistance,
-                isInProjectMode: appState.isInProjectMode,
-                activeProject: getActiveProject()
-            )
-            .padding(.bottom, 90) // Add padding for tab bar
+            // Show project action bar when in project mode
+            if appState.isInProjectMode, let project = getActiveProject() {
+                ProjectActionBar(project: project)
+                    //.padding(.horizontal, 24)
+                    .padding(.bottom, 120) // Add padding for tab bar
+            }
         }
     }
     
@@ -158,10 +183,19 @@ struct HomeContentView: View {
         Group {
             if appState.isInProjectMode {
                 ProjectHeader(project: getActiveProject())
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .move(edge: .top).combined(with: .opacity)
+                    ))
             } else {
                 AppHeader(headerType: .home)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .move(edge: .top).combined(with: .opacity)
+                    ))
             }
         }
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: appState.isInProjectMode)
     }
     
     private var projectCarouselView: some View {
@@ -228,8 +262,9 @@ struct HomeContentView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .position(x: geometry.size.width / 2, y: geometry.size.height / 4) // Center the card
             .contentShape(Rectangle()) // Make entire card tappable
+            .frame(width: 362, height: 85)
         }
-        .frame(minHeight: 85) // Set minimum height for the container
+        .frame(height: 190) // Set height for the container
     }
     
     private var loadingOverlay: some View {
@@ -262,6 +297,92 @@ struct HomeContentView: View {
     
     // MARK: - Helper Methods
     // All map zoom/region logic has been moved to ProjectMapView for centralized state management
+    
+    // MARK: - Navigation Info View
+    private var navigationInfoView: some View {
+        VStack(spacing: 0) {
+            // Progress and arrival info
+            HStack {
+                // Time remaining
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TIME")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    if let travelTime = inProgressManager.activeRoute?.expectedTravelTime {
+                        Text(formatTime(travelTime))
+                            .font(OPSStyle.Typography.title)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    } else {
+                        Text("--")
+                            .font(OPSStyle.Typography.title)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                }
+                
+                Spacer()
+                
+                // Distance remaining
+                VStack(alignment: .center, spacing: 4) {
+                    Text("DISTANCE")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    if let distance = inProgressManager.activeRoute?.distance {
+                        Text(formatDistance(distance))
+                            .font(OPSStyle.Typography.title)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    } else {
+                        Text("--")
+                            .font(OPSStyle.Typography.title)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                }
+                
+                Spacer()
+                
+                // Arrival time
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("ARRIVAL")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    if let arrival = inProgressManager.estimatedArrival {
+                        Text(arrival.components(separatedBy: " ").first ?? arrival)
+                            .font(OPSStyle.Typography.title)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    } else {
+                        Text("--:--")
+                            .font(OPSStyle.Typography.title)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                }
+            }
+            .padding()
+        }
+    }
+    
+    // MARK: - Helper Methods for Navigation Info
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let hours = Int(seconds) / 3600
+        let minutes = Int(seconds) % 3600 / 60
+        
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes) min"
+        }
+    }
+    
+    private func formatDistance(_ distance: CLLocationDistance) -> String {
+        if distance < 100 {
+            return String(format: "%.0f m", distance)
+        } else if distance < 1000 {
+            return String(format: "%.0f m", (distance / 10).rounded() * 10)
+        } else {
+            return String(format: "%.1f km", distance / 1000)
+        }
+    }
     
     // MARK: - Location Disabled Overlay
     private var locationDisabledOverlay: some View {

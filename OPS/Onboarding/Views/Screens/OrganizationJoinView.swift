@@ -53,25 +53,14 @@ struct OrganizationJoinView: View {
                     .padding(.bottom, 8)
                     .padding(.horizontal, 24)
                     
-                    // Step indicator bars
-                    HStack(spacing: 4) {
-                        ForEach(0..<totalSteps, id: \.self) { step in
-                            Rectangle()
-                                .fill(step < currentStepNumber ? 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
-                                .frame(height: 4)
-                        }
-                    }
-                    .padding(.bottom, 16)
-                    .padding(.horizontal, 24)
+                    // Don't show step indicator on this screen since it's not counted as a step
                     
                     // Fixed VStack instead of ScrollView since this content should fit on screen
                     VStack(spacing: 0) {
                         // Header
                         OnboardingHeaderView(
-                            title: "Account Created.".uppercased(),
-                            subtitle: "Now let's connect you with your organization.",
+                            title: "Account Created".uppercased(),
+                            subtitle: "Now let's get your profile set up.",
                             isLightTheme: viewModel.shouldUseLightTheme
                         )
                         .padding(.bottom, 20)

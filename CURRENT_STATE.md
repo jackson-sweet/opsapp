@@ -1,8 +1,9 @@
 # OPS App - Current State & MVP Status
 
-**Last Updated**: June 19, 2025  
-**Current Completion**: 95-97% MVP Ready  
-**Target Release**: June 1, 2025 (LAUNCHED)
+**Last Updated**: July 03, 2025  
+**Current Version**: 1.0.2  
+**Current Completion**: 97-98% MVP Ready  
+**Status**: LAUNCHED ✅ (June 1, 2025)
 
 ## Executive Summary
 
@@ -11,11 +12,12 @@ The OPS (Operational Project System) app has achieved production-grade quality w
 ## Architecture Overview
 
 ### Technology Stack
-- **Platform**: iOS 17+ (SwiftUI)
-- **Architecture**: MVVM (Model-View-ViewModel)
+- **Platform**: iOS 17+ (SwiftUI, UIKit for specific integrations)
+- **Architecture**: MVVM (Model-View-ViewModel) with Coordinator pattern for onboarding
 - **Data Persistence**: SwiftData with offline-first approach
-- **Backend**: Bubble.io API integration
-- **Authentication**: Secure token-based auth with Keychain storage
+- **Backend**: Bubble.io REST API integration
+- **Authentication**: Multi-method auth (Standard login, Google Sign-In, PIN protection)
+- **Storage**: AWS S3 for images, Keychain for credentials, FileManager for local cache
 - **Design**: Dark theme optimized for outdoor visibility
 - **Typography**: Custom fonts (Mohave, Kosugi, Bebas Neue) - NO system fonts
 
@@ -24,16 +26,22 @@ The OPS (Operational Project System) app has achieved production-grade quality w
 - **Text sizes**: Minimum 16pt, prefer 18-20pt for important information
 - **Contrast ratios**: Minimum 7:1 for normal text, 4.5:1 for large text
 - **Offline storage**: Cache all data needed for current day's work
-- **Sync strategy**: Queue changes locally, sync opportunistically
+- **Sync strategy**: Queue changes locally, sync opportunistically with prioritization
+- **Network resilience**: 30-second timeouts, automatic retry with exponential backoff
+- **Rate limiting**: 0.5-second minimum between API requests
+- **Image optimization**: Automatic resizing and compression for upload
 
 ## Core Features Implemented ✅
 
 ### 1. Authentication & Security (100% Complete)
-- **PIN Security System**: 4-digit entry with visual/haptic feedback
-- **Secure Authentication**: KeychainManager for token storage
+- **Multi-Auth Support**: Standard login, Google Sign-In OAuth integration
+- **PIN Security System**: 4-digit entry with visual/haptic feedback, reset capability
+- **Secure Storage**: KeychainManager for credentials, token auto-renewal
 - **Profile Management**: Editable user details with home address
-- **Company Code System**: For joining organizations
+- **Company Code System**: For joining organizations, smart skipping for existing members
 - **Admin Role**: Auto-detection from company admin list
+- **Session Management**: Background PIN reset, token expiration handling
+- **Onboarding Fixes**: Resolved user type caching, team invite navigation, and signup flow issues
 
 ### 2. Project Management (100% Complete)
 - **Full CRUD Operations**: Create, read, update, delete projects
@@ -81,12 +89,24 @@ Comprehensive settings implementation with 13+ screens:
 - **Permission-Based**: Role determines feature access
 
 ### 8. Map & Navigation (100% Complete)
-- **Project Visualization**: Custom map annotations
-- **Turn-by-Turn**: Apple Maps integration
-- **Stable Positioning**: Fixed pin drift issues
-- **Location Services**: Permission handling and tracking
+- **Project Visualization**: Custom map annotations with stable anchoring
+- **Turn-by-Turn**: Apple Maps integration with route display
+- **Live Navigation**: Real-time route updates and tracking
+- **Location Services**: Enhanced permission handling with completion callbacks
+- **Offline Support**: Map caching for previously viewed areas
+- **Permission UI**: Clear overlay when location disabled with settings link
 
-## Recent Improvements (May-June 2025)
+## Recent Improvements (May-July 2025)
+
+### Onboarding Bug Fixes (July 3)
+- **User Type Persistence**: Fixed issue where user type was cached before signup completion
+- **Team Invite Navigation**: Resolved duplicate switch case preventing team invite page display
+- **Company Data Loading**: Ensured company and project data loads during onboarding
+- **Back Navigation**: Disabled back button after account creation to prevent re-signup attempts
+- **Account Created Screen**: Fixed navigation to show confirmation screen for all users
+- **Step Numbering**: Corrected step indicators and total count for each user type
+
+## Previous Improvements (May-June 2025)
 
 ### UI/UX Enhancements (June 6)
 - **Location Services Overlay**: Added clear messaging when location is disabled during routing
@@ -97,6 +117,7 @@ Comprehensive settings implementation with 13+ screens:
 - **Centralized Configuration**: Moved What's New features to AppConfiguration
 
 ### Onboarding Improvements (June 6-19)
+- **Enhanced Architecture**: Coordinator pattern for complex navigation flow
 - **Role-Based Welcome**: Different welcome messages for employees vs crew leads
 - **Simplified Flow**: Removed company logo upload requirement
 - **Enhanced Permission Handling**: 
@@ -130,6 +151,8 @@ Comprehensive settings implementation with 13+ screens:
 1. **iOS Version**: Requires iOS 17+ (may limit initial user base)
 2. **Phone Verification**: Currently using simulated SMS (needs real API)
 3. **Image Bandwidth**: Sync can be heavy on cellular data
+4. **Temporary AWS Credentials**: S3 credentials hardcoded in S3UploadService (needs secure configuration)
+5. **Build Number**: Hardcoded in project settings (needs CI/CD integration)
 
 ## Production Readiness Assessment
 
@@ -147,6 +170,30 @@ Comprehensive settings implementation with 13+ screens:
 - **Professional Polish**: Custom design system, smooth animations
 - **Data Integrity**: Robust sync system preventing data loss
 - **Performance**: Fast, responsive, optimized for field conditions
+
+## Technical Architecture Details
+
+### Data Models (SwiftData)
+- **User**: Profile data, role management, location tracking
+- **Project**: Core entity with status workflow, team assignments, image attachments
+- **Company**: Organization data with team member relationships
+- **TeamMember**: Lightweight model for efficient team display
+
+### Service Layer
+- **DataController**: Main orchestrator for all data operations
+- **APIService**: Centralized Bubble API communication
+- **AuthManager**: Authentication flow management
+- **SyncManager**: Bidirectional data synchronization
+- **ImageSyncManager**: S3 upload and Bubble registration
+- **ConnectivityMonitor**: Real-time network status tracking
+- **LocationManager**: Permission handling and coordinate updates
+- **NotificationManager**: Push notification and local alerts
+
+### UI Components
+- **74 View files**: Complete UI implementation
+- **20 Onboarding screens**: Comprehensive user setup flow
+- **14 Style components**: Consistent design system
+- **Reusable components**: SegmentedControl, AddressAutocompleteField, ContactDetailSheet
 
 ## Post-Launch Roadmap (V2 Features)
 

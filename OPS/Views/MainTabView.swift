@@ -9,6 +9,7 @@
 // MainTabView.swift
 import SwiftUI
 import Combine
+import MapKit
 
 struct MainTabView: View {
     @EnvironmentObject private var dataController: DataController
@@ -18,6 +19,7 @@ struct MainTabView: View {
     @State private var selectedTab = 0
     @State private var keyboardIsShowing = false
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
+    @ObservedObject private var inProgressManager = InProgressManager.shared
     
     // Observer for fetch active project notifications
     private let fetchProjectObserver = NotificationCenter.default
@@ -26,6 +28,10 @@ struct MainTabView: View {
     // Observer for showing project details
     private let showProjectObserver = NotificationCenter.default
         .publisher(for: Notification.Name("ShowProjectDetailsRequest"))
+    
+    // Observer for navigating to map view
+    private let navigateToMapObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("NavigateToMapView"))
     
     // Keyboard observers
     private let keyboardWillShow = NotificationCenter.default
@@ -42,21 +48,51 @@ struct MainTabView: View {
     
     var body: some View {
         ZStack {
-            // Main content views - fill entire screen
-            Group {
-                switch selectedTab {
-                case 0:
+            // Main content structure
+            if selectedTab == 0 {
+                // Home tab - header overlays content
+                ZStack {
+                    // Main content views - full screen
                     HomeView()
-                case 1:
-                    ScheduleView()
-                case 2:
-                    SettingsView()
-                default:
-                    HomeView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .ignoresSafeArea(.all, edges: .bottom)
+                       
+                    
+                    // Persistent navigation header overlay
+                    VStack {
+                        PersistentNavigationHeader(selectedTab: selectedTab)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            .animation(.easeInOut(duration: 0.3), value: inProgressManager.isRouting)
+                            .zIndex(100) // Keep on top
+                        Spacer()
+                    }
+                }
+            } else {
+                // Other tabs - header overlays content
+                ZStack {
+                    // Main content views - full screen
+                    Group {
+                        switch selectedTab {
+                        case 1:
+                            ScheduleView()
+                        case 2:
+                            SettingsView()
+                        default:
+                            HomeView()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea(.all, edges: .bottom)
+                    
+                    // Persistent navigation header overlay
+                    VStack {
+                        PersistentNavigationHeader(selectedTab: selectedTab)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: inProgressManager.isRouting)
+                            .zIndex(100) // Keep on top
+                        Spacer()
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea(.all, edges: .bottom)
             
             // Image sync progress bar at top
             VStack {
@@ -112,6 +148,13 @@ struct MainTabView: View {
                     } else {
                     }
                 }
+            }
+        }
+        
+        // Handle navigation to map view
+        .onReceive(navigateToMapObserver) { _ in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selectedTab = 0 // Switch to home/map tab
             }
         }
         

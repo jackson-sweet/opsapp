@@ -36,7 +36,7 @@ struct SplashLoadingView: View {
                 Spacer()
                 
                 // Version info
-                Text("v1.0.0")
+                Text("[ VERSION \(AppConfiguration.AppInfo.version.uppercased()) ]")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                     .padding(.bottom, OPSStyle.Layout.spacing3)

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2025-07-03
+
+### Fixed
+- User type being cached before signup completion, causing persistence on logout
+- Team invite page being skipped for company owners due to duplicate switch case
+- Company and project data not loading properly during onboarding
+- Back navigation from UserInfoView after account creation allowing re-signup attempts
+- Account created screen not showing after successful signup
+- Step numbering and total steps incorrect for different user types
+
+### Technical Updates
+- Comprehensive codebase analysis and documentation update
+- Updated all markdown documentation to reflect current architecture
+- Documented complete file structure (200+ Swift files)
+- Added detailed service layer documentation
+- Enhanced security implementation details
+- Updated data model documentation with DTO patterns
+
+### Known Issues
+- AWS credentials temporarily hardcoded in S3UploadService
+- Build number hardcoded in project settings
+- Phone verification using simulated SMS
+
 ## [1.0.2] - 2025-06-19
 
 ### Added

@@ -67,6 +67,6 @@ extension DeviceHeadingManager: CLLocationManagerDelegate {
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("🧭 DeviceHeadingManager: Failed with error: \(error.localizedDescription)")
+        // print("🧭 DeviceHeadingManager: Failed with error: \(error.localizedDescription)")
     }
 }

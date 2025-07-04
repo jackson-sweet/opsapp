@@ -303,7 +303,7 @@ struct LoginView: View {
                 Spacer()
                 
                 // Version info
-                Text(AppConfiguration.AppInfo.displayVersion)
+                Text("[ VERSION \(AppConfiguration.AppInfo.version.uppercased()) ]")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                     .padding(.bottom, 20)

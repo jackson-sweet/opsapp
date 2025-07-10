@@ -330,6 +330,10 @@ struct OrganizationSettingsView: View {
                         if let company = dataController.getCompany(id: companyID) {
                             await dataController.syncManager?.syncCompanyTeamMembers(company)
                         }
+                        
+                        // Also force sync projects when opening organization settings
+                        // This ensures projects are loaded if they weren't during login
+                        await dataController.syncManager?.forceSyncProjects()
                     } catch {
                         print("Failed to refresh company data from API: \(error.localizedDescription)")
                         // Continue with local data even if API refresh fails

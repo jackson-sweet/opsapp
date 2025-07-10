@@ -33,12 +33,13 @@ class GoogleSignInManager: ObservableObject {
     }
     
     /// Sign in with Google
+    @MainActor
     func signIn(presenting viewController: UIViewController) async throws -> GIDGoogleUser {
         isSigningIn = true
         errorMessage = nil
         
         do {
-            // Perform Google Sign-In
+            // Perform Google Sign-In - ensure it's on main thread
             let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: viewController)
             let user = result.user
             

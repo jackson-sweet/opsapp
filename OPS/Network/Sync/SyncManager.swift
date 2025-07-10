@@ -416,38 +416,56 @@ class SyncManager {
     }
     
     /// Trigger background sync with intelligent retry
-    func triggerBackgroundSync() {
+    /// - Parameter forceProjectSync: If true, always sync projects regardless of sync budget
+    func triggerBackgroundSync(forceProjectSync: Bool = false) {
         guard !syncInProgress, connectivityMonitor.isConnected else {
+            if syncInProgress {
+                print("🟡 SyncManager: Sync already in progress, skipping")
+            } else if !connectivityMonitor.isConnected {
+                print("🟡 SyncManager: No internet connection, skipping sync")
+            }
             return
         }
         
+        print("🔵 SyncManager: Starting background sync (forceProjectSync: \(forceProjectSync))")
         syncInProgress = true
         syncStateSubject.send(true)
         
         Task {
             do {
                 // First sync users that need sync (always allowed)
+                print("🔵 SyncManager: Syncing pending user changes...")
                 let userSyncCount = await syncPendingUserChanges()
+                print("🔵 SyncManager: Synced \(userSyncCount) users")
                 
                 // Then sync high-priority project items (status changes) if auto-updates are enabled
                 var highPriorityCount = 0
                 if !preventAutoStatusUpdates {
+                    print("🔵 SyncManager: Syncing pending project status changes...")
                     highPriorityCount = await syncPendingProjectStatusChanges()
+                    print("🔵 SyncManager: Synced \(highPriorityCount) project status changes")
                 } else {
+                    print("🟡 SyncManager: Auto status updates disabled, skipping project status sync")
                 }
                 
-                // Finally, fetch remote data if we didn't exhaust our sync budget
-                if (userSyncCount + highPriorityCount) < 10 {
+                // Finally, fetch remote data if we didn't exhaust our sync budget OR if forced
+                if forceProjectSync || (userSyncCount + highPriorityCount) < 10 {
+                    print("🔵 SyncManager: Fetching remote projects...")
                     try await syncProjects()
+                    print("🟢 SyncManager: Project sync completed")
+                } else {
+                    print("🟡 SyncManager: Sync budget exhausted, skipping project fetch")
                 }
                 
                 // Schedule notifications for future projects after sync
+                print("🔵 SyncManager: Scheduling project notifications...")
                 await NotificationManager.shared.scheduleNotificationsForAllProjects(using: modelContext)
                 
                 syncInProgress = false
                 syncStateSubject.send(false)
+                print("🟢 SyncManager: Background sync completed")
             } catch {
-                print("SyncManager: Background sync failed: \(error.localizedDescription)")
+                print("🔴 SyncManager: Background sync failed: \(error.localizedDescription)")
                 syncInProgress = false
                 syncStateSubject.send(false)
             }
@@ -737,12 +755,28 @@ class SyncManager {
         }
     }
     
+    /// Force sync projects immediately, bypassing sync budget
+    func forceSyncProjects() async {
+        print("🔵 SyncManager: Force syncing projects...")
+        do {
+            try await syncProjects()
+            print("🟢 SyncManager: Force project sync completed")
+        } catch {
+            print("🔴 SyncManager: Force project sync failed: \(error.localizedDescription)")
+        }
+    }
+    
     /// Sync projects between local storage and backend
     private func syncProjects() async throws {
+        print("🔵 SyncManager: Starting project sync...")
+        
         // Get user ID from the provider closure
         guard let userId = userIdProvider() else {
+            print("🔴 SyncManager: No user ID available from provider")
             return
         }
+        
+        print("🔵 SyncManager: User ID: \(userId)")
         
         // Get current user to check role
         let currentUser: User? = await MainActor.run {
@@ -760,20 +794,27 @@ class SyncManager {
         let companyId = currentUser?.companyId ?? UserDefaults.standard.string(forKey: "currentUserCompanyId")
         
         guard let companyId = companyId else {
+            print("🔴 SyncManager: No company ID available for user")
             return
         }
+        
+        print("🔵 SyncManager: Company ID: \(companyId)")
+        print("🔵 SyncManager: User role: \(currentUser?.role.displayName ?? "unknown")")
         
         var remoteProjects: [ProjectDTO] = []
         
         // Fetch projects based on user role
         if let user = currentUser, (user.role == UserRole.admin || user.role == UserRole.officeCrew) {
             // Admin and Office Crew get ALL company projects
+            print("🔵 SyncManager: Fetching ALL company projects (admin/office role)")
             remoteProjects = try await apiService.fetchCompanyProjects(companyId: companyId)
         } else {
             // Field Crew only gets assigned projects
+            print("🔵 SyncManager: Fetching user's assigned projects (field crew role)")
             remoteProjects = try await apiService.fetchUserProjects(userId: userId)
         }
         
+        print("🟢 SyncManager: Fetched \(remoteProjects.count) projects from API")
         
         // Process batches to avoid memory pressure
         for batch in remoteProjects.chunked(into: 20) {

@@ -112,7 +112,9 @@ class DataController: ObservableObject {
         
         // Create user ID provider closure that returns the current user's ID
         let userIdProvider = { [weak self] in
-            return self?.currentUser?.id
+            let userId = self?.currentUser?.id
+            print("🔵 DataController: userIdProvider called, returning userId: \(userId ?? "nil")")
+            return userId
         }
         
         // Initialize the standard sync manager
@@ -418,11 +420,7 @@ class DataController: ObservableObject {
                         print("🟡 User needs to complete onboarding")
                     } else {
                         print("🟢 User has completed onboarding")
-                    }
-                    
-                    // Trigger background sync to fetch projects and team members
-                    Task {
-                        await self.syncManager?.triggerBackgroundSync()
+                        // Projects sync already triggered in fetchUserFromAPI after company fetch
                     }
                 }
                 
@@ -495,6 +493,18 @@ class DataController: ObservableObject {
                 print("🟢 Google Login - Company data received in login response")
                 print("   Company ID: \(companyDTO.id)")
                 print("   Company Name: \(companyDTO.companyName ?? "unknown")")
+                
+                // Check if user is admin from the login response
+                if let adminRefs = companyDTO.admin {
+                    let adminIds = adminRefs.compactMap { $0.stringValue }
+                    print("🔵 Google Login - Company admin list: \(adminIds)")
+                    
+                    if adminIds.contains(userDTO.id), let user = currentUser {
+                        print("🔵 Google Login - User is admin, updating role immediately")
+                        user.role = .admin
+                        try? modelContext?.save()
+                    }
+                }
                 // We already fetched company data in fetchUserFromAPI, so we don't need to save it again
                 // The fetchCompanyData method was already called and handled the company save
             } else {
@@ -518,17 +528,10 @@ class DataController: ObservableObject {
                 // Otherwise, return true to indicate login succeeded but don't set isAuthenticated
                 if !needsOnboarding {
                     self.isAuthenticated = true
-                    
-                    // Trigger background sync to fetch projects and team members
-                    Task {
-                        await self.syncManager?.triggerBackgroundSync()
-                    }
+                    // Projects sync already triggered in fetchUserFromAPI after company fetch
                 } else {
-                    // Even if onboarding is needed, we should still sync company data
-                    // This ensures team members and projects are available
-                    Task {
-                        await self.syncManager?.triggerBackgroundSync()
-                    }
+                    // Onboarding is needed - sync will happen in fetchUserFromAPI
+                    print("🟡 User needs onboarding - sync already triggered in fetchUserFromAPI")
                 }
                 
                 // Return true to indicate login was successful (even if onboarding is needed)
@@ -597,53 +600,18 @@ class DataController: ObservableObject {
                 // Handle role based on employee type
                 if let employeeTypeString = userDTO.employeeType {
                     user.role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
+                } else {
+                    // If no employee type is set, default to field crew
+                    // This will be corrected when company data is fetched
+                    user.role = .fieldCrew
+                    print("🟡 No employee type in user data, defaulting to field crew")
                 }
                 
-                // Handle company ID and fetch company details
+                // Handle company ID
                 if let companyId = userDTO.company, !companyId.isEmpty {
                     user.companyId = companyId
-                    print("🔵 User has company ID: \(companyId), fetching company details...")
-                    
-                    // Fetch and store company details
-                    Task {
-                        do {
-                            let companyDTO = try await apiService.fetchCompany(id: companyId)
-                            print("🟢 Successfully fetched company: \(companyDTO.companyName ?? "unknown")")
-                            
-                            // Check if company already exists in database
-                            let companyDescriptor = FetchDescriptor<Company>(
-                                predicate: #Predicate<Company> { $0.id == companyId }
-                            )
-                            let existingCompanies = try context.fetch(companyDescriptor)
-                            
-                            if let existingCompany = existingCompanies.first {
-                                // Update existing company
-                                existingCompany.name = companyDTO.companyName ?? existingCompany.name
-                                existingCompany.externalId = companyDTO.companyID
-                                existingCompany.phone = companyDTO.phone
-                                existingCompany.email = companyDTO.officeEmail
-                                
-                                if let loc = companyDTO.location {
-                                    existingCompany.address = loc.formattedAddress
-                                    existingCompany.latitude = loc.lat
-                                    existingCompany.longitude = loc.lng
-                                }
-                                
-                                existingCompany.openHour = companyDTO.openHour
-                                existingCompany.closeHour = companyDTO.closeHour
-                                existingCompany.lastSyncedAt = Date()
-                                
-                            } else {
-                                // Create new company
-                                let newCompany = companyDTO.toModel()
-                                context.insert(newCompany)
-                            }
-                            
-                            try context.save()
-                        } catch {
-                            print("🔴 Error fetching/saving company: \(error)")
-                        }
-                    }
+                    print("🔵 User has company ID: \(companyId)")
+                    // Company will be fetched below after sync manager is initialized
                 } else {
                     print("🟡 User has no company ID in their profile")
                 }
@@ -724,18 +692,35 @@ class DataController: ObservableObject {
         
         UserDefaults.standard.set(user.id, forKey: "currentUserId")
         
-        // Initialize sync managers
+        // Initialize sync managers first
         initializeSyncManager()
         
         // Fetch company data if needed
         if isConnected, let companyId = user.companyId {
             do {
+                print("🔵 Fetching company data for companyId: \(companyId)")
                 try await fetchCompanyData(companyId: companyId)
+                print("🟢 Company data fetched successfully")
+                
+                // After fetching company data, the user's role may have been updated to admin
+                // Log the updated role
+                print("🔵 User role after company fetch: \(user.role.displayName)")
+                
+                // Now that we have company data, trigger a full sync to get projects
+                // Force project sync on login to ensure user gets their projects
+                print("🔵 Triggering background sync to fetch projects (forced)...")
+                await syncManager?.triggerBackgroundSync(forceProjectSync: true)
+                print("🟢 Background sync triggered")
             } catch {
-                print("Non-critical error fetching company data: \(error.localizedDescription)")
+                print("🔴 Non-critical error fetching company data: \(error.localizedDescription)")
                 // Continue even if company data fetch fails - don't block authentication
+                // But still try to sync what we can, forcing project sync
+                await syncManager?.triggerBackgroundSync(forceProjectSync: true)
             }
         } else if !isConnected {
+            print("🟡 Offline - skipping company fetch")
+        } else {
+            print("🟡 No company ID - skipping company fetch")
         }
     }
     
@@ -1028,10 +1013,22 @@ class DataController: ObservableObject {
            let adminRefs = dto.admin {
             // Check if current user's ID is in the admin list
             let adminIds = adminRefs.compactMap { $0.stringValue }
+            print("🔵 Company admin list: \(adminIds)")
+            print("🔵 Current user ID: \(currentUser.id)")
+            
             if adminIds.contains(currentUser.id) {
+                print("🔵 User is in company admin list, updating role to admin")
                 // Update current user's role to admin
                 currentUser.role = .admin
+                // Save the context immediately to ensure role update is persisted
+                try? modelContext?.save()
+            } else {
+                print("🔵 User is not in company admin list, keeping role as \(currentUser.role.displayName)")
             }
+        } else {
+            print("🟡 Cannot check admin status - missing data")
+            print("   Current user: \(currentUser?.id ?? "nil")")
+            print("   Admin refs: \(dto.admin?.count ?? 0)")
         }
         
         // Handle admin list

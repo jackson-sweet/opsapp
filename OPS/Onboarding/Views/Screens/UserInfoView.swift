@@ -318,11 +318,11 @@ struct PhoneNumberPhaseView: View {
         VStack(spacing: 24) {
             // Header
             VStack(alignment: .leading, spacing: 8) {
-                Text("YOUR PHONE")
+                Text("PHONE")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(primaryTextColor)
                 
-                Text("NUMBER?")
+                Text("NUMBER")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(primaryTextColor)
                     .padding(.bottom, 12)

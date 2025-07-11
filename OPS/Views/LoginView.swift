@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import GoogleSignIn
+import AuthenticationServices
 
 struct LoginView: View {
     @EnvironmentObject private var dataController: DataController
@@ -154,7 +155,7 @@ struct LoginView: View {
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
                 } else {
                     // Login form (once Sign In is selected)
-                    VStack(alignment: .leading, spacing: 32) {
+                    VStack(alignment: .leading, spacing: 20) {
                         // Back button
                         Button(action: {
                             // Dismiss keyboard
@@ -180,13 +181,12 @@ struct LoginView: View {
                             }
                             .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        .padding(.bottom, 8)
                         
                         // Form title
                         Text("Enter your credentials")
                             .font(OPSStyle.Typography.title.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.bottom, 24)
+                            .padding(.bottom, 16)
                         
                         // Username field with floating label design
                         VStack(alignment: .leading, spacing: 6) {
@@ -209,7 +209,7 @@ struct LoginView: View {
                                     }
                                 )
                         }
-                        .padding(.bottom, 20)
+                        .padding(.bottom, 12)
                         
                         // Password field with floating label design
                         VStack(alignment: .leading, spacing: 6) {
@@ -263,7 +263,7 @@ struct LoginView: View {
                             )
                         }
                         .disabled(isLoggingIn || username.isEmpty || password.isEmpty)
-                        .padding(.top, 36)
+                        .padding(.top, 20)
                         
                         // Forgot password link
                         Button(action: {
@@ -272,7 +272,7 @@ struct LoginView: View {
                             Text("Forgot password?")
                                 .font(OPSStyle.Typography.button)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.top, 16)
+                                .padding(.top, 12)
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
                         
@@ -291,10 +291,14 @@ struct LoginView: View {
                                 .frame(height: 1)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.3))
                         }
-                        .padding(.vertical, 24)
+                        .padding(.vertical, 16)
                         
                         // Google Sign-In button
                         GoogleSignInButton(onSignIn: handleGoogleSignIn)
+                            .frame(height: OPSStyle.Layout.touchTargetStandard)
+                        
+                        // Apple Sign-In button
+                        AppleSignInButton(onSignIn: handleAppleSignIn)
                             .frame(height: OPSStyle.Layout.touchTargetStandard)
                     }
                     .transition(.opacity.combined(with: .move(edge: .leading)))
@@ -567,6 +571,82 @@ struct LoginView: View {
         }
     }
     
+    private func handleAppleSignIn() {
+        isLoggingIn = true
+        errorMessage = nil
+        
+        Task { @MainActor in
+            // Get the key window for presentation
+            guard let window = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap({ $0.windows })
+                .first(where: { $0.isKeyWindow }) else {
+                errorMessage = "Cannot present Apple Sign-In"
+                showError = true
+                isLoggingIn = false
+                return
+            }
+            
+            do {
+                // Perform Apple Sign-In
+                let appleResult = try await AppleSignInManager.shared.signIn(presenting: window)
+                
+                // Authenticate with Bubble backend
+                let success = await dataController.loginWithApple(appleResult: appleResult)
+                
+                isLoggingIn = false
+                
+                if !success {
+                    errorMessage = "No account found. Please sign up with your company first."
+                    showError = true
+                } else {
+                    print("🟢 Apple login successful")
+                    
+                    // Check if the user has completed onboarding
+                    let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
+                    let hasCompany = !(dataController.currentUser?.companyId ?? "").isEmpty
+                    let hasUserType = dataController.currentUser?.userType != nil
+                    
+                    print("   Has completed onboarding: \(hasCompletedOnboarding)")
+                    print("   Has company: \(hasCompany)")
+                    print("   Has user type: \(hasUserType)")
+                    
+                    if !hasCompletedOnboarding || !hasCompany || !hasUserType {
+                        print("🟡 User needs onboarding after Apple login")
+                        
+                        // Dismiss keyboard first
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        
+                        // Reset any UI state before showing onboarding
+                        showLoginMode = false
+                        pageScale = 1.0
+                        
+                        // Small delay to ensure UI is reset and keyboard is dismissed
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showOnboarding = true
+                        }
+                    } else {
+                        // Only now set isAuthenticated to trigger the transition
+                        print("🟢 User has completed onboarding, transitioning to main app")
+                        dataController.isAuthenticated = true
+                    }
+                }
+            } catch {
+                isLoggingIn = false
+                
+                // Check if it was a cancellation
+                if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+                    // User canceled, don't show error
+                    print("🟡 Apple Sign-In canceled by user")
+                } else {
+                    errorMessage = "Apple Sign-In failed: \(error.localizedDescription)"
+                    showError = true
+                    print("🔴 Apple Sign-In error: \(error)")
+                }
+            }
+        }
+    }
+    
     private func handleGoogleSignIn() {
         isLoggingIn = true
         errorMessage = nil
@@ -656,6 +736,33 @@ struct GoogleSignInButton: View {
 
                 
                 Text("Continue with Google")
+                    .font(OPSStyle.Typography.button)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: OPSStyle.Layout.touchTargetStandard)
+            .background(Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.tertiaryText, lineWidth: 1)
+            )
+        }
+    }
+}
+
+// Custom Apple Sign-In button that matches OPS styling
+struct AppleSignInButton: View {
+    let onSignIn: () -> Void
+    
+    var body: some View {
+        Button(action: onSignIn) {
+            HStack(spacing: 12) {
+                // Apple logo
+                Image(systemName: "apple.logo")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("Continue with Apple")
                     .font(OPSStyle.Typography.button)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }

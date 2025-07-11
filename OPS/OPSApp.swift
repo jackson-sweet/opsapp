@@ -137,6 +137,9 @@ private func clearAllAuthenticationData() {
         "has_joined_company",
         "currentUserCompanyId",
         "selected_user_type",
+        "user_type",  // This was missing!
+        "user_type_raw",  // Also add this for completeness
+        "apple_user_identifier",  // And this
         "appPIN",
         "hasPINEnabled",
         "location_permission_granted",

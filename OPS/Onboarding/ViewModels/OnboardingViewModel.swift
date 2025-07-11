@@ -121,9 +121,10 @@ class OnboardingViewModel: ObservableObject {
             print("  - Loaded userId: '\(self.userId)'")
             print("  - userId is empty: \(self.userId.isEmpty)")
             print("  - email: \(self.email)")
+            print("  - isAuthenticated: \(isAuthenticated)")
             
-            // Mark as signed up if we have a valid user ID
-            self.isSignedUp = !self.userId.isEmpty && !self.email.isEmpty
+            // Mark as signed up if we have a valid user ID OR if authenticated
+            self.isSignedUp = (!self.userId.isEmpty && !self.email.isEmpty) || isAuthenticated
             
             // Load personal information if available
             self.firstName = UserDefaults.standard.string(forKey: "user_first_name") ?? ""
@@ -311,10 +312,30 @@ class OnboardingViewModel: ObservableObject {
                 return
             }
             
+            // Check if this is an authenticated user (e.g., from Apple Sign-In)
+            let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
+            
             if !isSignedUp || userId.isEmpty {
                 // User type known but not signed up - skip to account setup
-                DispatchQueue.main.async {
-                    self.currentStep = .accountSetup
+                // UNLESS they're already authenticated (Apple Sign-In case)
+                if isAuthenticated && !email.isEmpty {
+                    // Show account created screen briefly (organizationJoin is the "Account Created" screen)
+                    DispatchQueue.main.async {
+                        self.currentStep = .organizationJoin
+                    }
+                    // Auto-advance after a short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        // Skip to appropriate next step based on user type
+                        if self.selectedUserType == .employee {
+                            self.currentStep = self.firstName.isEmpty || self.lastName.isEmpty || self.phoneNumber.isEmpty ? .userDetails : .companyCode
+                        } else {
+                            self.currentStep = .userDetails
+                        }
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        self.currentStep = .accountSetup
+                    }
                 }
                 return
             }
@@ -604,25 +625,22 @@ class OnboardingViewModel: ObservableObject {
             return false
         }
         
-        // Ensure we have email and password
-        guard !email.isEmpty else {
+        // Ensure we have the user ID - this is now the critical piece
+        let currentUserId = userId.isEmpty ? UserDefaults.standard.string(forKey: "user_id") ?? "" : userId
+        guard !currentUserId.isEmpty else {
             await MainActor.run {
-                errorMessage = "Email is required"
+                errorMessage = "User ID is missing. Please restart the onboarding process."
+                print("🔴 ERROR: No user ID available for join_company")
             }
             return false
         }
         
-        // Handle missing password (try to get from UserDefaults)
-        if password.isEmpty {
-            if let savedPassword = UserDefaults.standard.string(forKey: "user_password"), !savedPassword.isEmpty {
-                await MainActor.run {
-                    password = savedPassword
-                }
-            } else {
-                await MainActor.run {
-                    errorMessage = "Password is missing. Please restart the onboarding process."
-                }
-                return false
+        print("🔵 Using user ID for join_company: \(currentUserId)")
+        
+        // Update the userId property if we loaded it from UserDefaults
+        if userId.isEmpty && !currentUserId.isEmpty {
+            await MainActor.run {
+                self.userId = currentUserId
             }
         }
         
@@ -631,10 +649,9 @@ class OnboardingViewModel: ObservableObject {
         
         
         do {
-            // Make the API call with all user details
+            // Make the API call with user ID and details
             let response = try await onboardingService.joinCompany(
-                email: email,
-                password: password,
+                userId: currentUserId,
                 firstName: firstName,
                 lastName: lastName,
                 phoneNumber: formattedPhone,
@@ -988,18 +1005,35 @@ class OnboardingViewModel: ObservableObject {
         
         // Skip user type selection if already known
         if currentStep == .userTypeSelection && selectedUserType != nil {
-            // Continue to account setup
-            DispatchQueue.main.async {
-                self.currentStep = .accountSetup
+            // Check if user is already authenticated (e.g., from Apple Sign-In)
+            if isSignedUp && isAuthenticated {
+                // Show the account created screen briefly before moving to next step (organizationJoin is the "Account Created" screen)
+                DispatchQueue.main.async {
+                    self.currentStep = .organizationJoin
+                }
+                // Auto-advance after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    let nextStep = self.selectedUserType == .employee ? OnboardingStep.userDetails : OnboardingStep.userDetails
+                    self.currentStep = nextStep
+                }
+            } else {
+                // Continue to account setup if not authenticated
+                DispatchQueue.main.async {
+                    self.currentStep = .accountSetup
+                }
             }
             return
         }
         
         // Skip account setup if already authenticated
         if currentStep == .accountSetup && isSignedUp && isAuthenticated {
-            // Move to the appropriate next step based on user type
-            let nextStep = selectedUserType == .employee ? OnboardingStep.organizationJoin : OnboardingStep.userDetails
+            // Show the account created screen briefly before moving to next step (organizationJoin is the "Account Created" screen)
             DispatchQueue.main.async {
+                self.currentStep = .organizationJoin
+            }
+            // Auto-advance after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                let nextStep = self.selectedUserType == .employee ? OnboardingStep.userDetails : OnboardingStep.userDetails
                 self.currentStep = nextStep
             }
             return
@@ -1305,20 +1339,33 @@ class OnboardingViewModel: ObservableObject {
     }
     
     func logoutAndReturnToLogin() {
+        print("🔵 OnboardingViewModel: User tapped sign out during onboarding")
         
-        // Clear all user data and reset onboarding state
-        clearUserData()
-        
-        // Clear authentication and onboarding state
-        UserDefaults.standard.removeObject(forKey: "is_authenticated")
-        UserDefaults.standard.removeObject(forKey: "user_id")
-        UserDefaults.standard.removeObject(forKey: "resume_onboarding")
-        UserDefaults.standard.removeObject(forKey: "onboarding_completed")
-        UserDefaults.standard.removeObject(forKey: "company_id")
-        UserDefaults.standard.removeObject(forKey: "Company Name")
-        UserDefaults.standard.removeObject(forKey: "has_joined_company")
-        UserDefaults.standard.removeObject(forKey: "company_created")
-        UserDefaults.standard.removeObject(forKey: "user_type")
+        // Use DataController's logout method to properly clean everything
+        if let dataController = dataController {
+            Task { @MainActor in
+                dataController.logout()
+            }
+        } else {
+            // Fallback if no DataController - manually clear critical data
+            clearUserData()
+            
+            // Clear all stored user type data
+            UserDefaults.standard.removeObject(forKey: "selected_user_type")
+            UserDefaults.standard.removeObject(forKey: "user_type_raw")
+            UserDefaults.standard.removeObject(forKey: "apple_user_identifier")
+            
+            // Clear authentication and onboarding state
+            UserDefaults.standard.removeObject(forKey: "is_authenticated")
+            UserDefaults.standard.removeObject(forKey: "user_id")
+            UserDefaults.standard.removeObject(forKey: "resume_onboarding")
+            UserDefaults.standard.removeObject(forKey: "onboarding_completed")
+            UserDefaults.standard.removeObject(forKey: "company_id")
+            UserDefaults.standard.removeObject(forKey: "Company Name")
+            UserDefaults.standard.removeObject(forKey: "has_joined_company")
+            UserDefaults.standard.removeObject(forKey: "company_created")
+            UserDefaults.standard.removeObject(forKey: "user_type")
+        }
         
         // Reset all view model properties
         DispatchQueue.main.async {
@@ -1339,7 +1386,6 @@ class OnboardingViewModel: ObservableObject {
             self.companyAge = nil
             self.teamInviteEmails = []
         }
-        
         
         // Dismiss onboarding and return to login
         NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)

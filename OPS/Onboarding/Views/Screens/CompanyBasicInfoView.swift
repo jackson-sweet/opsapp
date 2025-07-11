@@ -113,7 +113,7 @@ struct CompanyNamePhaseView: View {
         VStack(spacing: 32) {
             // Header
             VStack(alignment: .leading, spacing: 8) {
-                Text("LET'S START WITH YOUR")
+                Text("LET'S WRITE DOWN YOUR")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(.white)
                 
@@ -122,7 +122,7 @@ struct CompanyNamePhaseView: View {
                     .foregroundColor(.white)
                     .padding(.bottom, 12)
                 
-                Text("This information will be visible to your team members and helps identify your company.")
+                Text("This information will be visible to your team members and organization.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)

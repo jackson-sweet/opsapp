@@ -249,21 +249,15 @@ struct CompanyCodeInputView: View {
             return
         }
         
-        guard !viewModel.email.isEmpty else {
-            viewModel.errorMessage = "Email is missing. Please restart the onboarding process."
+        // Check for user ID instead of email/password
+        let userId = viewModel.userId.isEmpty ? UserDefaults.standard.string(forKey: "user_id") ?? "" : viewModel.userId
+        guard !userId.isEmpty else {
+            viewModel.errorMessage = "User ID is missing. Please restart the onboarding process."
+            print("🔴 ERROR: No user ID available in CompanyCodeInputView")
             return
         }
         
-        guard !viewModel.password.isEmpty else {
-            // Try to retrieve password from UserDefaults
-            if let savedPassword = UserDefaults.standard.string(forKey: "user_password"), !savedPassword.isEmpty {
-                viewModel.password = savedPassword
-            } else {
-                viewModel.errorMessage = "Password is missing. Please restart the onboarding process."
-                return
-            }
-            return
-        }
+        print("🔵 CompanyCodeInputView: User ID is available: \(userId)")
         
         // Set loading state
         viewModel.isLoading = true

@@ -115,16 +115,15 @@ class OnboardingService {
         }
     }
     
-    /// Join a company with all user details
+    /// Join a company with user ID and details
     /// - Parameters:
-    ///   - email: User's email
-    ///   - password: User's password
+    ///   - userId: User's unique ID from Bubble
     ///   - firstName: User's first name
     ///   - lastName: User's last name
     ///   - phoneNumber: User's phone number
     ///   - companyCode: Company code to join
     /// - Returns: Join company response with company data
-    func joinCompany(email: String, password: String, firstName: String, lastName: String, 
+    func joinCompany(userId: String, firstName: String, lastName: String, 
                      phoneNumber: String, companyCode: String) async throws -> JoinCompanyResponse {
         
         // Configure API request
@@ -135,32 +134,20 @@ class OnboardingService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
         
-        // Get stored user_id if available
-        let userId = UserDefaults.standard.string(forKey: "user_id") ?? ""
-        
-        // Create request body with all user parameters
-        var parameters: [String: String] = [
-            "user_email": email,
-            "user_password": password,
+        // Create request body with user ID as primary identifier
+        let parameters: [String: String] = [
+            "user": userId,  // Using 'user' field as you specified
             "name_first": firstName,
             "name_last": lastName,
             "phone": phoneNumber,
             "company_code": companyCode
         ]
         
-        // Include user_id if available (VERY IMPORTANT)
-        if !userId.isEmpty {
-            parameters["user_id"] = userId
-        } else {
-            print("\n⚠️ WARNING: No user_id available for join_company call!")
-        }
-        
         // DEBUG: Log the request
         print("\n🔵 JOIN COMPANY API REQUEST:")
         print("URL: \(url.absoluteString)")
         print("Parameters sent:")
-        print("  - user_id: \(parameters["user_id"] ?? "NOT PROVIDED")")
-        print("  - user_email: \(email)")
+        print("  - user: \(userId)")
         print("  - name_first: \(firstName)")
         print("  - name_last: \(lastName)")
         print("  - phone: \(phoneNumber)")

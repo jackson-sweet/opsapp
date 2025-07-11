@@ -436,6 +436,95 @@ class DataController: ObservableObject {
         }
     }
     
+    /// Apple login
+    @MainActor
+    func loginWithApple(appleResult: AppleSignInManager.AppleSignInResult) async -> Bool {
+        do {
+            // Attempt Apple login with Bubble
+            let loginResult = try await authManager.signInWithApple(
+                identityToken: appleResult.identityToken,
+                userIdentifier: appleResult.userIdentifier,
+                email: appleResult.email,
+                givenName: appleResult.givenName,
+                familyName: appleResult.familyName
+            )
+            
+            let userDTO = loginResult.user
+            
+            print("🔵 Apple Login - Processing user data")
+            print("   User ID: \(userDTO.id)")
+            print("   User email: \(userDTO.email ?? "none")")
+            print("   User type: \(userDTO.userType ?? "none")")
+            print("   Has company: \(!(userDTO.company ?? "").isEmpty)")
+            print("   Has completed onboarding: \(userDTO.hasCompletedAppOnboarding)")
+            
+            // Store Apple user identifier for future logins
+            UserDefaults.standard.set(appleResult.userIdentifier, forKey: "apple_user_identifier")
+            
+            // Set authentication flags
+            UserDefaults.standard.set(true, forKey: "is_authenticated")
+            UserDefaults.standard.set(userDTO.id, forKey: "user_id")
+            UserDefaults.standard.set(userDTO.id, forKey: "currentUserId")
+            
+            // Store user type if available
+            if let userTypeString = userDTO.userType {
+                print("🔵 Setting user type from Apple login: \(userTypeString)")
+                if userTypeString.lowercased() == "company" {
+                    UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+                } else if userTypeString.lowercased() == "employee" {
+                    UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
+                }
+                UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+            }
+            
+            // Fetch and create/update user
+            try await fetchUserFromAPI(userId: userDTO.id)
+            
+            // Check onboarding status
+            if let user = currentUser {
+                let hasCompany = !(user.companyId ?? "").isEmpty
+                let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
+                let hasUserType = user.userType != nil
+                
+                print("🔵 Apple Login - Onboarding check:")
+                print("   Has company: \(hasCompany)")
+                print("   Has user type: \(hasUserType)")
+                print("   Has completed app onboarding: \(hasCompletedAppOnboarding)")
+                
+                // Determine if onboarding is needed
+                let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding || !hasUserType
+                UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
+                
+                if !needsOnboarding {
+                    self.isAuthenticated = true
+                    // Projects will sync after company fetch in fetchUserFromAPI
+                } else {
+                    print("🟡 User needs onboarding - will start from user type selection")
+                    // Don't set isAuthenticated - let LoginView handle onboarding
+                }
+                
+                return true
+            }
+            
+            return false
+        } catch {
+            print("🔴 Apple login failed: \(error.localizedDescription)")
+            
+            // Check for specific errors
+            if let authError = error as? AuthError {
+                switch authError {
+                case .invalidCredentials:
+                    // User doesn't exist yet - this is expected for new users
+                    print("🟡 No existing account found - user will need to complete signup")
+                default:
+                    print("🔴 Auth error: \(authError)")
+                }
+            }
+            
+            return false
+        }
+    }
+    
     /// Google login
     @MainActor
     func loginWithGoogle(googleUser: GIDGoogleUser) async -> Bool {
@@ -696,7 +785,7 @@ class DataController: ObservableObject {
         initializeSyncManager()
         
         // Fetch company data if needed
-        if isConnected, let companyId = user.companyId {
+        if isConnected, let companyId = user.companyId, !companyId.isEmpty {
             do {
                 print("🔵 Fetching company data for companyId: \(companyId)")
                 try await fetchCompanyData(companyId: companyId)
@@ -787,6 +876,14 @@ class DataController: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "company_id")
         UserDefaults.standard.removeObject(forKey: "Company Name")
         UserDefaults.standard.removeObject(forKey: "has_joined_company")
+        
+        // Clear user type data - CRITICAL for proper onboarding
+        UserDefaults.standard.removeObject(forKey: "selected_user_type")
+        UserDefaults.standard.removeObject(forKey: "user_type_raw")
+        UserDefaults.standard.removeObject(forKey: "user_type")  // This was missing!
+        
+        // Clear Apple Sign-In data
+        UserDefaults.standard.removeObject(forKey: "apple_user_identifier")
         
         // Clear PIN settings
         UserDefaults.standard.removeObject(forKey: "appPIN")

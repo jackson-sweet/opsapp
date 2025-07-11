@@ -55,33 +55,27 @@ struct AppHeader: View {
                 
                 Spacer()
                 
-                // User profile image - always shown for all header types now
-                if let imageData = dataController.currentUser?.profileImageData,
-                   let uiImage = UIImage(data: imageData) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 44, height: 44)
-                        .clipShape(Circle())
+                // User profile image - use unified UserAvatar component
+                if let user = dataController.currentUser {
+                    UserAvatar(user: user, size: 44)
                         .overlay(
                             Circle()
                                 .stroke(Color.white, lineWidth: 2)
                         )
                         .shadow(radius: 2)
                 } else {
-                    Circle()
-                        .fill(Color("Background"))
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            Text(dataController.currentUser?.firstName.prefix(1) ?? "U")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(.white)
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: 2)
-                        )
-                        .shadow(radius: 2)
+                    // Fallback if no user
+                    UserAvatar(
+                        firstName: "U",
+                        lastName: "",
+                        size: 44,
+                        backgroundColor: OPSStyle.Colors.primaryAccent
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                    )
+                    .shadow(radius: 2)
                 }
             }
             .padding(.horizontal, 16)

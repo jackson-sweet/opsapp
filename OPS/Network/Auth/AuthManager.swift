@@ -14,6 +14,11 @@ struct GoogleLoginResult {
     let company: CompanyDTO?
 }
 
+/// Structure to hold Apple login response with user data
+struct AppleLoginResult {
+    let user: UserDTO
+}
+
 /// Handles all authentication with the Bubble backend
 class AuthManager {
     private let baseURL: URL
@@ -190,6 +195,125 @@ class AuthManager {
         
         // Also sign out from Google if applicable
         GoogleSignInManager.shared.signOut()
+    }
+    
+    /// Sign in with Apple
+    /// - Parameters:
+    ///   - identityToken: Apple identity token (JWT)
+    ///   - userIdentifier: Apple's unique user identifier
+    ///   - email: User's email (may be relay address or nil)
+    ///   - givenName: User's first name (only on first auth)
+    ///   - familyName: User's last name (only on first auth)
+    /// - Returns: AppleLoginResult containing user data from Bubble
+    /// - Throws: AuthError if authentication fails
+    func signInWithApple(identityToken: String, userIdentifier: String, email: String?, givenName: String?, familyName: String?) async throws -> AppleLoginResult {
+        do {
+            // Ensure the baseURL doesn't end with a slash
+            let baseURLString = baseURL.absoluteString.trimmingCharacters(in: ["/"])
+            
+            // Construct the Apple login endpoint URL
+            let fullURLString = baseURLString + "/api/1.1/wf/login_apple"
+            guard let url = URL(string: fullURLString) else {
+                throw AuthError.invalidURL
+            }
+            
+            print("🔵 Apple Sign-In Request:")
+            print("   URL: \(fullURLString)")
+            print("   User Identifier: \(userIdentifier)")
+            print("   Email: \(email ?? "not provided")")
+            
+            // Create request
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            // Create payload
+            var payload: [String: Any] = [
+                "identity_token": identityToken,
+                "user_identifier": userIdentifier
+            ]
+            
+            // Add optional fields if available
+            if let email = email {
+                payload["email"] = email
+            }
+            if let givenName = givenName {
+                payload["given_name"] = givenName
+            }
+            if let familyName = familyName {
+                payload["family_name"] = familyName
+            }
+            
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            
+            // Execute request
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            // Log response details
+            if let httpResponse = response as? HTTPURLResponse {
+                print("🔶 API RESPONSE: Status \(httpResponse.statusCode)")
+            }
+            
+            // Debug: Print raw response
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("🔵 Apple Login Response: \(responseString)")
+            }
+            
+            // Parse response
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            
+            // Response structures for Apple login
+            struct AppleLoginResponse: Codable {
+                let status: String
+                let response: AppleLoginData?
+            }
+            
+            struct AppleLoginData: Codable {
+                let user: UserDTO
+            }
+            
+            do {
+                let loginResponse = try decoder.decode(AppleLoginResponse.self, from: data)
+                
+                // Check status
+                guard loginResponse.status == "success" else {
+                    print("🔴 Apple login failed: Status not success")
+                    throw AuthError.invalidCredentials
+                }
+                
+                // Parse the response - we only expect user data, no company
+                if let userDTO = loginResponse.response?.user {
+                    print("🟢 Successfully parsed Apple login response")
+                    print("   User ID: \(userDTO.id)")
+                    print("   Has completed onboarding: \(userDTO.hasCompletedAppOnboarding)")
+                    
+                    return AppleLoginResult(user: userDTO)
+                } else {
+                    print("🔴 No user data in Apple login response")
+                    throw AuthError.invalidResponse
+                }
+                
+            } catch DecodingError.keyNotFound(let key, let context) {
+                print("🔴 Decoding error - missing key: \(key.stringValue)")
+                print("   Context: \(context.debugDescription)")
+                throw AuthError.decodingFailed
+            } catch DecodingError.typeMismatch(let type, let context) {
+                print("🔴 Decoding error - type mismatch: \(type)")
+                print("   Context: \(context.debugDescription)")
+                throw AuthError.decodingFailed
+            } catch DecodingError.valueNotFound(let type, let context) {
+                print("🔴 Decoding error - value not found: \(type)")
+                print("   Context: \(context.debugDescription)")
+                throw AuthError.decodingFailed
+            } catch {
+                print("🔴 Unexpected decoding error: \(error)")
+                throw error
+            }
+        } catch {
+            print("🔴 Apple login error: \(error)")
+            throw error
+        }
     }
     
     /// Sign in with Google ID token

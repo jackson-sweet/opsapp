@@ -152,6 +152,26 @@ class APIService {
             
             print("🔶 API RESPONSE: Status \(httpResponse.statusCode) (\((200...299).contains(httpResponse.statusCode) ? "Success" : "Error"))")
             
+            // Special logging for User endpoint responses
+            if endpoint.contains("/User") && httpResponse.statusCode == 200 {
+                print("\n🔍 DEBUG - Raw API Response Data for User endpoint:")
+                if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+                   let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
+                   let prettyString = String(data: prettyData, encoding: .utf8) {
+                    // Print first 3000 characters
+                    let trimmed = String(prettyString.prefix(3000))
+                    print(trimmed)
+                    if prettyString.count > 3000 {
+                        print("... (truncated, total length: \(prettyString.count) characters)")
+                    }
+                } else if let rawString = String(data: data, encoding: .utf8) {
+                    // Fallback to raw string if pretty printing fails
+                    print("Raw string (first 1000 chars):")
+                    print(String(rawString.prefix(1000)))
+                }
+                print("")
+            }
+            
             // Check for success status codes
             guard (200...299).contains(httpResponse.statusCode) else {
                 print("🔴 HTTP Error: \(httpResponse.statusCode)")
@@ -305,6 +325,31 @@ class APIService {
         )
         
         // Log results
+        print("📡 API Response for \(objectType):")
+        print("  - Count: \(wrapper.response.results.count)")
+        print("  - Remaining: \(wrapper.response.remaining ?? 0)")
+        
+        // Special logging for User objects to debug phone/email issue
+        if objectType == "User" && !wrapper.response.results.isEmpty {
+            print("\n🔍 DEBUG - Decoded User Objects:")
+            // Since we can't encode back to JSON, let's just print the first few users
+            for (index, user) in wrapper.response.results.prefix(2).enumerated() {
+                if let userDTO = user as? UserDTO {
+                    print("  User \(index + 1):")
+                    print("    - id: \(userDTO.id)")
+                    print("    - nameFirst: \(userDTO.nameFirst ?? "nil")")
+                    print("    - nameLast: \(userDTO.nameLast ?? "nil")")
+                    print("    - phone: \(userDTO.phone ?? "nil")")
+                    print("    - email: \(userDTO.email ?? "nil")")
+                    print("    - employeeType: \(userDTO.employeeType ?? "nil")")
+                    print("    - userType: \(userDTO.userType ?? "nil")")
+                    print("    - avatar: \(userDTO.avatar ?? "nil")")
+                }
+            }
+            if wrapper.response.results.count > 2 {
+                print("  ... and \(wrapper.response.results.count - 2) more users")
+            }
+        }
         
         return wrapper.response.results
     }

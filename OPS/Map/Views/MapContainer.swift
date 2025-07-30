@@ -15,7 +15,7 @@ struct MapContainer: View {
     @StateObject private var navigationEngine = NavigationEngine()
     @State private var showArrivalMessage = false
     @ObservedObject var appState: AppState
-    @EnvironmentObject var locationManager: LocationManager
+    @ObservedObject var locationManager: LocationManager
     
     // Projects passed from parent
     let projects: [Project]
@@ -29,18 +29,19 @@ struct MapContainer: View {
          selectedIndex: Int,
          onProjectSelected: @escaping (Project) -> Void,
          onNavigationStarted: @escaping (Project) -> Void,
-         appState: AppState) {
+         appState: AppState,
+         locationManager: LocationManager) {
         self.projects = projects
         self.selectedIndex = selectedIndex
         self.onProjectSelected = onProjectSelected
         self.onNavigationStarted = onNavigationStarted
         self.appState = appState
+        self.locationManager = locationManager
         
-        // Create coordinator with temporary values - will be replaced in body
-        let tempLocationManager = LocationManager()
+        // Create coordinator with the provided location manager
         let tempNavigationEngine = NavigationEngine()
         let coordinator = MapCoordinator(
-            locationManager: tempLocationManager,
+            locationManager: locationManager,
             navigationEngine: tempNavigationEngine
         )
         
@@ -150,7 +151,7 @@ struct MapContainer: View {
             // Setup coordinator
             coordinator.setupCoordinator()
             
-            // Request location permission if needed
+            // Request location permission if needed (this will also start updates)
             locationManager.requestPermissionIfNeeded(requestAlways: false)
             
             // Load projects

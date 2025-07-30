@@ -63,34 +63,12 @@ struct CompanyTeamListView: View {
 /// Row component for displaying a single team member
 struct CompanyTeamMemberRow: View {
     let teamMember: TeamMember
-    @State private var profileImage: Image?
-    @State private var isLoadingImage = false
     @Environment(\.openURL) private var openURL
     
     var body: some View {
         HStack(spacing: 12) {
-            // Avatar or initials
-            ZStack {
-                if let profileImage = profileImage {
-                    profileImage
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 48, height: 48)
-                        .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(OPSStyle.Colors.background.opacity(0))
-                        .frame(width: 48, height: 48)
-                    
-                    Text(teamMember.initials)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-            }
-            .overlay(
-                Circle()
-                    .stroke(OPSStyle.Colors.primaryText, lineWidth: 1)
-            )
+            // Avatar - using unified UserAvatar component
+            UserAvatar(teamMember: teamMember, size: 48)
             
             // Contact info
             VStack(alignment: .leading, spacing: 4) {
@@ -134,48 +112,6 @@ struct CompanyTeamMemberRow: View {
         .padding(8)
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(8)
-        .onAppear {
-            loadProfileImage()
-        }
-    }
-    
-    private func loadProfileImage() {
-        guard !isLoadingImage, let urlString = teamMember.avatarURL, !urlString.isEmpty else {
-            return
-        }
-        
-        isLoadingImage = true
-        
-        // First check if the image is in the cache
-        if let cachedImage = ImageCache.shared.get(forKey: urlString) {
-            self.profileImage = Image(uiImage: cachedImage)
-            isLoadingImage = false
-            return
-        }
-        
-        // Otherwise load from the URL
-        guard let url = URL(string: urlString) else {
-            isLoadingImage = false
-            return
-        }
-        
-        Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        self.profileImage = Image(uiImage: uiImage)
-                        ImageCache.shared.set(uiImage, forKey: urlString)
-                    }
-                }
-            } catch {
-                print("Failed to load profile image: \(error.localizedDescription)")
-            }
-            
-            await MainActor.run {
-                isLoadingImage = false
-            }
-        }
     }
     
     private func openEmail(_ email: String) {

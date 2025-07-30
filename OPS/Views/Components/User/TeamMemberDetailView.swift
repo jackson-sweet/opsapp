@@ -14,13 +14,11 @@ struct TeamMemberDetailView: View {
     let teamMember: TeamMember?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-    @State private var profileImage: Image?
-    @State private var isLoadingImage = false
     @State private var showFullContact = false // For animating contact display
     
     // Constants for styling
-    private let avatarSize: CGFloat = 120
-    private let contactIconSize: CGFloat = 28
+    private let avatarSize: CGFloat = 80
+    private let contactIconSize: CGFloat = 36
     
     var body: some View {
         NavigationStack {
@@ -30,10 +28,10 @@ struct TeamMemberDetailView: View {
                     .edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: 12) {
                         // Profile header with avatar - larger and more prominent
                         profileHeader
-                            .padding(.top, 20)
+                            .padding(.top, 24)
                         
                         // Action buttons
                         contactButtons
@@ -74,16 +72,17 @@ struct TeamMemberDetailView: View {
                     .frame(width: 44, height: 44)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.top, 8)
                 }
                 
                 ToolbarItem(placement: .principal) {
                     Text(isClient ? "CLIENT" : "TEAM MEMBER")
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(.white)
+                        .padding(.top, 12)
                 }
             }
             .onAppear {
-                loadProfileImage()
                 // Animate contact info appearing
                 withAnimation(.easeInOut.delay(0.3)) {
                     showFullContact = true
@@ -95,56 +94,27 @@ struct TeamMemberDetailView: View {
     // MARK: - Profile Header
     
     private var profileHeader: some View {
-        VStack(spacing: 20) {
-            // Profile image - now larger and with animation
-            ZStack {
-                if isLoadingImage {
-                    // Show loading indicator
-                    ZStack {
-                        Circle()
-                            .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: 2)
-                            .frame(width: avatarSize, height: avatarSize)
-                        
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                            .scaleEffect(1.5)
-                    }
-                } else if let profileImage = profileImage {
-                    // Actual avatar image with glow effect
-                    profileImage
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: avatarSize, height: avatarSize)
-                        .clipShape(Circle())
-                        .shadow(color: OPSStyle.Colors.primaryAccent.opacity(0.4), radius: 10)
-                        .overlay(
-                            Circle()
-                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 3)
-                        )
-                        .transition(.opacity)
+        HStack(spacing: 36) {
+            // Profile image - using unified UserAvatar component
+            Group {
+                if let user = user {
+                    UserAvatar(user: user, size: avatarSize)
+                } else if let teamMember = teamMember {
+                    UserAvatar(teamMember: teamMember, size: avatarSize)
                 } else {
-                    // Fallback with initials - no fill, primary text color stroke and font
-                    Circle()
-                        .stroke(OPSStyle.Colors.primaryText, lineWidth: 2)
-                        .frame(width: avatarSize, height: avatarSize)
-                        .shadow(color: Color.black.opacity(0.2), radius: 8)
-                    
-                    Text(initials)
-                        .font(OPSStyle.Typography.largeTitle)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    UserAvatar(firstName: "", lastName: "", size: avatarSize)
                 }
             }
-            .padding(.bottom, 10)
+            .overlay(
+                Circle()
+                    .stroke(OPSStyle.Colors.primaryText, lineWidth: 3)
+            )
             
             // Name and role on one row
-            HStack(spacing: 8) {
-                Text(fullName)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(fullName.uppercased())
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Text("|")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
                 
                 Text(role)
                     .font(OPSStyle.Typography.body)
@@ -153,8 +123,8 @@ struct TeamMemberDetailView: View {
             .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
         .padding(.horizontal, 16)
+        .padding(.vertical, 32)
     }
     
     // MARK: - Contact Buttons
@@ -172,15 +142,19 @@ struct TeamMemberDetailView: View {
                     VStack(spacing: 8) {
                         Image(systemName: "phone")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                         
                         Text("Call")
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(width: 70, height: 70)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                    )
                 }
             }
             
@@ -195,15 +169,19 @@ struct TeamMemberDetailView: View {
                     VStack(spacing: 8) {
                         Image(systemName: "message")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                         
                         Text("Message")
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(width: 70, height: 70)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                    )
                 }
             }
             
@@ -217,15 +195,19 @@ struct TeamMemberDetailView: View {
                     VStack(spacing: 8) {
                         Image(systemName: "envelope")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                         
                         Text("Email")
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(width: 70, height: 70)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                    )
                 }
             }
         }
@@ -437,10 +419,17 @@ struct TeamMemberDetailView: View {
     
     private var phone: String? {
         if let user = user {
+            print("🔍 TeamMemberDetailView: Getting phone from User object")
+            print("   - User: \(user.fullName)")
+            print("   - Phone: \(user.phone ?? "nil")")
             return user.phone
         } else if let teamMember = teamMember {
+            print("🔍 TeamMemberDetailView: Getting phone from TeamMember object")
+            print("   - TeamMember: \(teamMember.fullName)")
+            print("   - Phone: \(teamMember.phone ?? "nil")")
             return teamMember.phone
         } else {
+            print("🔍 TeamMemberDetailView: No user or teamMember provided")
             return nil
         }
     }
@@ -469,81 +458,6 @@ struct TeamMemberDetailView: View {
         return phoneNumber
     }
     
-    private func loadProfileImage() {
-        // Already have an image
-        if profileImage != nil {
-            return
-        }
-        
-        isLoadingImage = true
-        
-        // Check if we have a User with profile image data
-        if let user = user, let imageData = user.profileImageData, let uiImage = UIImage(data: imageData) {
-            self.profileImage = Image(uiImage: uiImage)
-            isLoadingImage = false
-            return
-        }
-        
-        // Check if we have a User with a profile image URL
-        if let user = user, let profileURL = user.profileImageURL, !profileURL.isEmpty {
-            loadImageFromURL(profileURL)
-            return
-        }
-        
-        // Check if we have a TeamMember with an avatar URL
-        if let teamMember = teamMember, let avatarURL = teamMember.avatarURL, !avatarURL.isEmpty {
-            loadImageFromURL(avatarURL)
-            return
-        }
-        
-        // No image available
-        isLoadingImage = false
-    }
-    
-    private func loadImageFromURL(_ urlString: String) {
-        // First check in-memory cache
-        if let cachedImage = ImageCache.shared.get(forKey: urlString) {
-            self.profileImage = Image(uiImage: cachedImage)
-            isLoadingImage = false
-            return
-        }
-        
-        // Check local file system cache
-        if let image = ImageFileManager.shared.loadImage(localID: urlString) {
-            self.profileImage = Image(uiImage: image)
-            ImageCache.shared.set(image, forKey: urlString) // Add to memory cache
-            isLoadingImage = false
-            return
-        }
-        
-        // Load from URL if not found in any cache
-        Task {
-            guard let url = URL(string: urlString) else {
-                await MainActor.run {
-                    isLoadingImage = false
-                }
-                return
-            }
-            
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        self.profileImage = Image(uiImage: uiImage)
-                        ImageCache.shared.set(uiImage, forKey: urlString)
-                        // Save to file system for persistence
-                        let _ = ImageFileManager.shared.saveImage(data: data, localID: urlString)
-                        isLoadingImage = false
-                    }
-                }
-            } catch {
-                print("Failed to load team member profile image: \(error.localizedDescription)")
-                await MainActor.run {
-                    isLoadingImage = false
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Preview

@@ -19,6 +19,8 @@ class CalendarViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var userInitiatedDateSelection = false
     @Published var shouldShowDaySheet = false // New published property for explicit control
+    @Published var selectedTeamMemberId: String? = nil
+    @Published var availableTeamMembers: [TeamMember] = []
     
     // MARK: - Private Properties
     var dataController: DataController?
@@ -38,7 +40,27 @@ class CalendarViewModel: ObservableObject {
     // MARK: - Public Methods
     func setDataController(_ controller: DataController) {
         self.dataController = controller
+        loadTeamMembersIfNeeded()
         loadProjectsForDate(selectedDate)
+    }
+    
+    // Check if current user should see team member filter
+    var shouldShowTeamMemberFilter: Bool {
+        guard let dataController = dataController,
+              let user = dataController.currentUser else { return false }
+        return user.role == .admin || user.role == .officeCrew
+    }
+    
+    // Load team members for filtering
+    private func loadTeamMembersIfNeeded() {
+        guard shouldShowTeamMemberFilter,
+              let dataController = dataController,
+              let companyId = dataController.currentUser?.companyId,
+              let company = dataController.getCompany(id: companyId) else {
+            return
+        }
+        
+        availableTeamMembers = company.teamMembers.sorted { $0.fullName < $1.fullName }
     }
     
     // Used for both programmatic and user-initiated date selection
@@ -154,7 +176,17 @@ class CalendarViewModel: ObservableObject {
             // For other dates, get the count from DataController
             if let dataController = dataController {
                 // Get projects based on user role
-                let count = dataController.getProjectsForCurrentUser(for: date).count
+                var projects = dataController.getProjectsForCurrentUser(for: date)
+                
+                // Apply team member filter if selected
+                if let selectedMemberId = selectedTeamMemberId {
+                    projects = projects.filter { project in
+                        project.getTeamMemberIds().contains(selectedMemberId) ||
+                        project.teamMembers.contains(where: { $0.id == selectedMemberId })
+                    }
+                }
+                
+                let count = projects.count
                 
                 // Cache the result
                 projectCountCache[dateKey] = count
@@ -173,6 +205,13 @@ class CalendarViewModel: ObservableObject {
         func clearProjectCountCache() {
             projectCountCache = [:]
         }
+        
+        // Update selected team member filter
+        func updateTeamMemberFilter(_ memberId: String?) {
+            selectedTeamMemberId = memberId
+            clearProjectCountCache()
+            loadProjectsForDate(selectedDate)
+        }
     
     
     
@@ -183,7 +222,15 @@ class CalendarViewModel: ObservableObject {
         isLoading = true
         
         // Get projects for the selected date based on user role
-        let projects = dataController.getProjectsForCurrentUser(for: date)
+        var projects = dataController.getProjectsForCurrentUser(for: date)
+        
+        // Apply team member filter if selected
+        if let selectedMemberId = selectedTeamMemberId {
+            projects = projects.filter { project in
+                project.getTeamMemberIds().contains(selectedMemberId) ||
+                project.teamMembers.contains(where: { $0.id == selectedMemberId })
+            }
+        }
         
         self.projectsForSelectedDate = projects
         self.isLoading = false

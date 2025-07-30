@@ -81,26 +81,8 @@ struct TeamMemberRowV1: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // User avatar
-            ZStack {
-                if let imageData = user.profileImageData,
-                   let uiImage = UIImage(data: imageData) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 40, height: 40)
-                        .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent)
-                        .frame(width: 40, height: 40)
-                        .overlay(
-                            Text(user.firstName.prefix(1) + user.lastName.prefix(1))
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.white)
-                        )
-                }
-            }
+            // User avatar - using unified UserAvatar component
+            UserAvatar(user: user, size: 40)
             
             // User details
             VStack(alignment: .leading, spacing: 4) {
@@ -145,31 +127,12 @@ struct TeamMemberRowV1: View {
 struct TeamMemberRowV2: View {
     let teamMember: TeamMember
     let isCurrentUser: Bool
-    @State private var profileImage: Image?
-    @State private var isLoadingImage = false
     @Environment(\.openURL) private var openURL
     
     var body: some View {
         HStack(spacing: 12) {
-            // Avatar 
-            ZStack {
-                if let profileImage = profileImage {
-                    profileImage
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 40, height: 40)
-                        .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent)
-                        .frame(width: 40, height: 40)
-                        .overlay(
-                            Text(teamMember.initials)
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.white)
-                        )
-                }
-            }
+            // Avatar - using unified UserAvatar component
+            UserAvatar(teamMember: teamMember, size: 40)
             
             // Details
             VStack(alignment: .leading, spacing: 4) {
@@ -223,47 +186,5 @@ struct TeamMemberRowV2: View {
             }
         }
         .padding(.vertical, 4)
-        .onAppear {
-            loadProfileImage()
-        }
-    }
-    
-    private func loadProfileImage() {
-        guard !isLoadingImage, let urlString = teamMember.avatarURL, !urlString.isEmpty else {
-            return
-        }
-        
-        isLoadingImage = true
-        
-        // First check if the image is in the cache
-        if let cachedImage = ImageCache.shared.get(forKey: urlString) {
-            self.profileImage = Image(uiImage: cachedImage)
-            isLoadingImage = false
-            return
-        }
-        
-        // Otherwise load from the URL
-        guard let url = URL(string: urlString) else {
-            isLoadingImage = false
-            return
-        }
-        
-        Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        self.profileImage = Image(uiImage: uiImage)
-                        ImageCache.shared.set(uiImage, forKey: urlString)
-                    }
-                }
-            } catch {
-                print("Failed to load profile image: \(error.localizedDescription)")
-            }
-            
-            await MainActor.run {
-                isLoadingImage = false
-            }
-        }
     }
 }

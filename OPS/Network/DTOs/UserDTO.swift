@@ -48,7 +48,7 @@ struct UserDTO: Codable {
         case authentication // this is not a bubble field.
         case email // the user's email address, which is what they registered with. It is used for contact purposes, and also as a login field.
         case homeAddress = "Home Address" // The user's home address, of type 'geographic address'.
-        case phone = "Phone" // The user's contact phone number.
+        case phone = "phone" // The user's contact phone number.
         case userColor = "User Color" // The user's unique color in HEX.
         case devPermission = "Dev Permission" // Bool indicating if user has dev permission for testing features.
         case hasCompletedAppOnboarding = "hasCompletedAppOnboarding" // Bool indicating if user has completed app onboarding.

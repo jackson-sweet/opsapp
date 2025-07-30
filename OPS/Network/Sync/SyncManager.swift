@@ -962,9 +962,43 @@ class SyncManager {
                 if !user.assignedProjects.contains(where: { $0.id == project.id }) {
                     user.assignedProjects.append(project)
                 }
+                
+                // If user doesn't have phone number, mark for refresh
+                if user.phone == nil {
+                    Task {
+                        await refreshUserData(user)
+                    }
+                }
             }
         }
         
+    }
+    
+    /// Refresh user data from API if needed
+    private func refreshUserData(_ user: User) async {
+        do {
+            let userDTO = try await apiService.fetchUser(id: user.id)
+            
+            // Update user properties that might be missing
+            if let phone = userDTO.phone, user.phone == nil {
+                user.phone = phone
+                print("📱 SyncManager: Updated phone number for \(user.fullName): \(phone)")
+            }
+            
+            // Update other potentially missing fields
+            if let email = userDTO.email ?? userDTO.authentication?.email?.email, user.email == nil {
+                user.email = email
+            }
+            
+            if let avatarUrl = userDTO.avatar, user.profileImageURL == nil {
+                user.profileImageURL = avatarUrl
+            }
+            
+            // Save the context
+            try modelContext.save()
+        } catch {
+            print("⚠️ SyncManager: Failed to refresh user \(user.id): \(error)")
+        }
     }
     
     /// Update a local project with remote data
@@ -1063,6 +1097,14 @@ class SyncManager {
                 userDTOs = try await apiService.fetchCompanyUsers(companyId: company.id)
                 
                 if !userDTOs.isEmpty {
+                    print("📱 SyncManager: Fetched \(userDTOs.count) team members for company")
+                    // Debug: Log first user's data
+                    if let firstUser = userDTOs.first {
+                        print("📱 First user data sample:")
+                        print("  - Name: \(firstUser.nameFirst ?? "nil") \(firstUser.nameLast ?? "nil")")
+                        print("  - Email: \(firstUser.email ?? "nil")")
+                        print("  - Phone: \(firstUser.phone ?? "nil")")
+                    }
                 }
             } else {
                 // Approach 2: Fetch users by their IDs (more targeted but requires multiple IDs)

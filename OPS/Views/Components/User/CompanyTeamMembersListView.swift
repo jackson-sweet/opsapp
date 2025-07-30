@@ -66,29 +66,11 @@ struct CompanyTeamMembersListView: View {
 /// Row component to display a single team member from the Company model
 struct CompanyTeamMemberListRow: View {
     let teamMember: TeamMember
-    @State private var profileImage: UIImage?
     
     var body: some View {
         HStack(spacing: 12) {
-            // Avatar
-            ZStack {
-                if let image = profileImage {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 40, height: 40)
-                        .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent)
-                        .frame(width: 40, height: 40)
-                        .overlay(
-                            Text(teamMember.initials)
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.white)
-                        )
-                }
-            }
+            // Avatar - using unified UserAvatar component
+            UserAvatar(teamMember: teamMember, size: 40)
             
             // User details
             VStack(alignment: .leading, spacing: 4) {
@@ -141,50 +123,6 @@ struct CompanyTeamMemberListRow: View {
             }
         }
         .padding(.vertical, 4)
-        .onAppear {
-            loadProfileImage()
-        }
-    }
-    
-    private func loadProfileImage() {
-        guard let avatarURL = teamMember.avatarURL, !avatarURL.isEmpty else {
-            return
-        }
-        
-        // First check if image is already cached
-        if let cachedImage = ImageCache.shared.get(forKey: avatarURL) {
-            self.profileImage = cachedImage
-            return
-        }
-        
-        // Otherwise load from URL
-        Task {
-            do {
-                var imageURL = avatarURL
-                
-                // Fix for URLs starting with //
-                if imageURL.starts(with: "//") {
-                    imageURL = "https:" + imageURL
-                }
-                
-                // Create URL
-                guard let url = URL(string: imageURL) else { return }
-                
-                // Fetch image data
-                let (data, _) = try await URLSession.shared.data(from: url)
-                
-                // Create image and update UI on main thread
-                if let image = UIImage(data: data) {
-                    await MainActor.run {
-                        // Cache the image for future use
-                        ImageCache.shared.set(image, forKey: avatarURL)
-                        self.profileImage = image
-                    }
-                }
-            } catch {
-                print("Error loading team member profile image: \(error.localizedDescription)")
-            }
-        }
     }
 }
 

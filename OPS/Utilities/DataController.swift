@@ -1177,6 +1177,43 @@ class DataController: ObservableObject {
                 if let existingUser = existingUsers.first {
                     // User exists - link to project
                     
+                    // Always try to refresh user data if we're online to ensure we have the latest
+                    if isConnected {
+                        do {
+                            let userDTO = try await apiService.fetchUser(id: memberId)
+                            
+                            // Update all user fields to ensure we have the latest data
+                            existingUser.firstName = userDTO.nameFirst ?? existingUser.firstName
+                            existingUser.lastName = userDTO.nameLast ?? existingUser.lastName
+                            
+                            // Update phone number
+                            if let phoneNumber = userDTO.phone {
+                                existingUser.phone = phoneNumber
+                                print("📱 Updated phone number for \(existingUser.fullName): \(phoneNumber)")
+                            }
+                            
+                            // Update email
+                            if let emailAuth = userDTO.authentication?.email?.email {
+                                existingUser.email = emailAuth
+                            } else if let email = userDTO.email {
+                                existingUser.email = email
+                            }
+                            
+                            // Update profile image URL
+                            if let avatarUrl = userDTO.avatar {
+                                existingUser.profileImageURL = avatarUrl
+                            }
+                            
+                            // Update last synced time
+                            existingUser.lastSyncedAt = Date()
+                            
+                            // Save the context
+                            try context.save()
+                        } catch {
+                            print("Failed to refresh user data for \(existingUser.fullName): \(error)")
+                        }
+                    }
+                    
                     // Add to project's team members if not already there
                     if !project.teamMembers.contains(where: { $0.id == existingUser.id }) {
                         project.teamMembers.append(existingUser)
@@ -1643,19 +1680,40 @@ class DataController: ObservableObject {
         guard let context = modelContext else { return [] }
         
         do {
-            // Get all projects where the user is a team member
+            // Get current user to check their role
+            guard let user = currentUser else { return [] }
+            
+            // Get all projects
             let allProjects = try context.fetch(FetchDescriptor<Project>())
             
-            // Filter projects for the specified user
-            let userProjects = allProjects.filter { project in
-                project.getTeamMemberIds().contains(userId) || 
-                project.teamMembers.contains(where: { $0.id == userId })
+            // Filter projects based on user role
+            let filteredProjects: [Project]
+            
+            if user.role == .fieldCrew {
+                // Field crew only see projects they're assigned to
+                filteredProjects = allProjects.filter { project in
+                    project.getTeamMemberIds().contains(userId) || 
+                    project.teamMembers.contains(where: { $0.id == userId })
+                }
+            } else {
+                // Office crew and admins see ALL projects for their company
+                if let companyId = user.companyId {
+                    filteredProjects = allProjects.filter { project in
+                        project.companyId == companyId
+                    }
+                } else {
+                    // If no company ID, fall back to showing user's projects
+                    filteredProjects = allProjects.filter { project in
+                        project.getTeamMemberIds().contains(userId) || 
+                        project.teamMembers.contains(where: { $0.id == userId })
+                    }
+                }
             }
             
             // If we have real projects, return them
-            if !userProjects.isEmpty {
+            if !filteredProjects.isEmpty {
                 // Sort by start date, most recent first
-                return userProjects.sorted { 
+                return filteredProjects.sorted { 
                     guard let date1 = $0.startDate, let date2 = $1.startDate else {
                         return false
                     }

@@ -57,6 +57,7 @@ final class MapCoordinator: ObservableObject {
     
     private var autoCenterTimer: Timer?
     private var routeRefreshTimer: Timer?
+    private var hasInitializedWithUserLocation = false
     
     // Heading state
     private var currentHeading: CLLocationDirection = 0
@@ -121,9 +122,17 @@ final class MapCoordinator: ObservableObject {
         self.locationManager = locationManager
         self.navigationEngine = navigationEngine
         
-        // Initialize with default region (will be updated by location)
+        // Initialize with user location if available, otherwise use a default
+        let initialCenter: CLLocationCoordinate2D
+        if let userLocation = locationManager.currentLocation {
+            initialCenter = userLocation.coordinate
+        } else {
+            // Use current user location if available from location services
+            initialCenter = locationManager.location?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+        }
+        
         let defaultRegion = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194), // SF default
+            center: initialCenter,
             latitudinalMeters: 5000,
             longitudinalMeters: 5000
         )
@@ -505,6 +514,12 @@ final class MapCoordinator: ObservableObject {
     
     private func handleLocationUpdate(_ location: CLLocation?) {
         guard let location = location else { return }
+        
+        // If this is the first location update and we haven't centered on user yet, do so now
+        if !hasInitializedWithUserLocation && projects.isEmpty {
+            hasInitializedWithUserLocation = true
+            recenterOnUser()
+        }
         
         // Update heading from GPS course when in course mode and moving
         if mapOrientationMode == "course" && location.speed > 1.25 && location.course >= 0 {

@@ -128,7 +128,8 @@ struct HomeContentView: View {
                         }
                     }
                 },
-                appState: appState
+                appState: appState,
+                locationManager: locationManager
             )
             
             // Semi-transparent dark overlay - using clear since we have gradient overlay

@@ -56,6 +56,13 @@ final class TeamMember {
             role = "Unassigned"
         }
         
+        // Debug: Log phone data
+        if let phone = dto.phone, !phone.isEmpty {
+            print("📱 TeamMember.fromUserDTO: Found phone number for \(dto.nameFirst ?? "") \(dto.nameLast ?? ""): \(phone)")
+        } else {
+            print("📱 TeamMember.fromUserDTO: No phone number for \(dto.nameFirst ?? "") \(dto.nameLast ?? "")")
+        }
+        
         return TeamMember(
             id: dto.id,
             firstName: dto.nameFirst ?? "",

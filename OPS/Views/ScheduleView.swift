@@ -22,6 +22,15 @@ struct ScheduleView: View {
     @State private var showDaySheet = false
     @State private var selectedProjectID: String? = nil
     
+    // Get the display text for team member filter
+    private var teamMemberFilterText: String {
+        if let memberId = viewModel.selectedTeamMemberId,
+           let member = viewModel.availableTeamMembers.first(where: { $0.id == memberId }) {
+            return member.fullName
+        }
+        return "All Team Members"
+    }
+    
     var body: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
@@ -32,6 +41,52 @@ struct ScheduleView: View {
                 
                 // Calendar header
                 CalendarHeaderView(viewModel: viewModel)
+                
+                // Team member filter (only for admin/office crew)
+                if viewModel.shouldShowTeamMemberFilter {
+                    HStack {
+                        Text("Filter by Team Member:")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Spacer()
+                        
+                        Menu {
+                            Button(action: {
+                                viewModel.updateTeamMemberFilter(nil)
+                            }) {
+                                Text("All Team Members")
+                            }
+                            
+                            Divider()
+                            
+                            ForEach(viewModel.availableTeamMembers, id: \.id) { member in
+                                Button(action: {
+                                    viewModel.updateTeamMemberFilter(member.id)
+                                }) {
+                                    Text(member.fullName)
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(teamMemberFilterText)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .lineLimit(1)
+                                
+                                Image(systemName: "chevron.down")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .background(OPSStyle.Colors.cardBackground)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        }
+            
+                    }
+                    .padding(.horizontal)
+                }
                 
                 // View toggle
                 CalendarToggleView(viewModel: viewModel)

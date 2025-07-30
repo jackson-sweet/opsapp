@@ -25,6 +25,9 @@ struct ProjectHistorySettingsView: View {
     @State private var searchText: String = ""
     // State for modal presentation - using optional Project as the item
     @State private var selectedProject: Project? = nil
+    @State private var isRefreshing = false
+    @State private var selectedTeamMemberId: String? = nil
+    @State private var availableTeamMembers: [TeamMember] = []
     
     // Placeholder model - part of shelved expense functionality, kept for future reference
     struct Expense: Identifiable {
@@ -71,6 +74,21 @@ struct ProjectHistorySettingsView: View {
         case inProgress = "In Progress"
         
         var id: String { self.rawValue }
+    }
+    
+    // Check if current user should see team member filter
+    private var shouldShowTeamMemberFilter: Bool {
+        guard let user = dataController.currentUser else { return false }
+        return user.role == .admin || user.role == .officeCrew
+    }
+    
+    // Get the display text for team member filter
+    private var teamMemberFilterText: String {
+        if let memberId = selectedTeamMemberId,
+           let member = availableTeamMembers.first(where: { $0.id == memberId }) {
+            return member.fullName
+        }
+        return "All Team Members"
     }
     
     var body: some View {
@@ -176,7 +194,57 @@ struct ProjectHistorySettingsView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     
+                    // Team member filter (only for admin/office crew)
+                    if shouldShowTeamMemberFilter {
+                        Menu {
+                            Button(action: {
+                                selectedTeamMemberId = nil
+                                applyFilters()
+                            }) {
+                                Text("All Team Members")
+                            }
+                            
+                            Divider()
+                            
+                            ForEach(availableTeamMembers, id: \.id) { member in
+                                Button(action: {
+                                    selectedTeamMemberId = member.id
+                                    applyFilters()
+                                }) {
+                                    Text(member.fullName)
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(teamMemberFilterText)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .lineLimit(1)
+                                
+                                Image(systemName: "chevron.down")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .background(OPSStyle.Colors.cardBackground)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        }
+                    }
+                    
                     Spacer()
+                    
+                    // Refresh button
+                    Button(action: {
+                        refreshProjects()
+                    }) {
+                        Image(systemName: isRefreshing ? "arrow.clockwise.circle.fill" : "arrow.clockwise")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .rotationEffect(.degrees(isRefreshing ? 360 : 0))
+                            .animation(isRefreshing ? Animation.linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isRefreshing)
+                    }
+                    .disabled(isRefreshing)
                 }
                 .padding()
                 
@@ -194,8 +262,17 @@ struct ProjectHistorySettingsView: View {
             // Reset filters to default values when view appears
             dateFilter = .all
             statusFilter = .all
+            selectedTeamMemberId = nil
             // Load initial data
             loadHistoryData()
+            
+            // Also trigger a sync if we're connected
+            if dataController.isConnected, let syncManager = dataController.syncManager {
+                Task {
+                    print("📱 ProjectHistorySettingsView: Triggering background sync on appear...")
+                    await syncManager.triggerBackgroundSync()
+                }
+            }
         }
         // Show project details in modal - using item instead of isPresented for better lifecycle management
         .sheet(item: $selectedProject, onDismiss: {
@@ -565,16 +642,31 @@ struct ProjectHistorySettingsView: View {
         
         Task {
             // Load all projects assigned to current user
-            let allProjects = dataController.getProjectHistory(
-                for: dataController.currentUser?.id ?? ""
-            )
+            let userId = dataController.currentUser?.id ?? ""
+            let userRole = dataController.currentUser?.role.displayName ?? "unknown"
+            let companyId = dataController.currentUser?.companyId ?? "none"
+            
+            print("📱 ProjectHistorySettingsView: Loading projects for user: \(userId), role: \(userRole), company: \(companyId)")
+            
+            let allProjects = dataController.getProjectHistory(for: userId)
+            
+            print("📱 ProjectHistorySettingsView: Found \(allProjects.count) projects")
+            
+            // Load team members if user is admin/office crew
+            if shouldShowTeamMemberFilter {
+                if let company = dataController.getCompany(id: companyId) {
+                    availableTeamMembers = company.teamMembers.sorted { $0.fullName < $1.fullName }
+                    print("📱 ProjectHistorySettingsView: Loaded \(availableTeamMembers.count) team members for filtering")
+                }
+            }
             
             // Apply initial filters
             let filtered = allProjects.filter { project in
                 let matchesStatus = filterProjectByStatus(project, filter: statusFilter)
                 let matchesDate = filterProjectByDate(project, filter: dateFilter)
                 let matchesSearch = searchText.isEmpty || matchesSearchCriteria(project)
-                return matchesStatus && matchesDate && matchesSearch
+                let matchesTeamMember = filterProjectByTeamMember(project, memberId: selectedTeamMemberId)
+                return matchesStatus && matchesDate && matchesSearch && matchesTeamMember
             }
             
             // Sort projects by date (most recent first)
@@ -695,11 +787,25 @@ struct ProjectHistorySettingsView: View {
                 "Projects with \(statusType) status will appear here"
             )
         } else {
-            // No filters applied
-            return (
-                "No projects found",
-                "Projects you've worked on will appear here"
-            )
+            // No filters applied - check user role for appropriate message
+            if let user = dataController.currentUser {
+                if user.role == .fieldCrew {
+                    return (
+                        "No projects found",
+                        "Projects you've been assigned to will appear here. Try refreshing to load the latest data."
+                    )
+                } else {
+                    return (
+                        "No projects found",
+                        "All company projects will appear here. Try refreshing to load the latest data."
+                    )
+                }
+            } else {
+                return (
+                    "No projects found",
+                    "Projects will appear here once loaded"
+                )
+            }
         }
     }
     
@@ -713,7 +819,8 @@ struct ProjectHistorySettingsView: View {
                 let matchesStatus = filterProjectByStatus(project, filter: statusFilter)
                 let matchesDate = filterProjectByDate(project, filter: dateFilter)
                 let matchesSearch = searchText.isEmpty || matchesSearchCriteria(project)
-                return matchesStatus && matchesDate && matchesSearch
+                let matchesTeamMember = filterProjectByTeamMember(project, memberId: selectedTeamMemberId)
+                return matchesStatus && matchesDate && matchesSearch && matchesTeamMember
             }
             
             // Sort projects by date (most recent first)
@@ -786,6 +893,44 @@ struct ProjectHistorySettingsView: View {
             let projectQuarter = (projectMonth - 1) / 3 + 1
             
             return currentQuarter == projectQuarter && currentYear == projectYear
+        }
+    }
+    
+    // Filter project by team member
+    private func filterProjectByTeamMember(_ project: Project, memberId: String?) -> Bool {
+        // If no team member selected, show all projects
+        guard let memberId = memberId else {
+            return true
+        }
+        
+        // Check if the selected team member is assigned to this project
+        return project.getTeamMemberIds().contains(memberId) ||
+               project.teamMembers.contains(where: { $0.id == memberId })
+    }
+    
+    private func refreshProjects() {
+        guard !isRefreshing else { return }
+        
+        isRefreshing = true
+        
+        Task {
+            // Force sync projects from the server
+            print("📱 ProjectHistorySettingsView: Manually refreshing projects...")
+            
+            if let syncManager = dataController.syncManager {
+                // Force project sync
+                await syncManager.forceSyncProjects()
+                
+                // Wait a moment for the sync to complete
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            }
+            
+            // Reload the project history
+            loadHistoryData()
+            
+            await MainActor.run {
+                isRefreshing = false
+            }
         }
     }
 }

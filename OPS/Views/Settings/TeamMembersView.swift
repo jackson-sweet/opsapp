@@ -108,7 +108,7 @@ struct TeamMembersView: View {
             loadTeamMembers()
         }
         .sheet(item: $selectedMember) { member in
-            memberDetailSheet(member)
+            TeamMemberDetailView(user: member, teamMember: nil)
         }
     }
     
@@ -134,16 +134,8 @@ struct TeamMembersView: View {
             selectedMember = member
         }) {
             HStack(spacing: 16) {
-                // Member avatar
-                ZStack {
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent)
-                        .frame(width: 50, height: 50)
-                    
-                    Text(String(member.firstName.prefix(1) + member.lastName.prefix(1)))
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
-                }
+                // Member avatar - using unified UserAvatar component
+                UserAvatar(user: member, size: 50)
                 
                 // Member details
                 VStack(alignment: .leading, spacing: 4) {
@@ -175,201 +167,6 @@ struct TeamMembersView: View {
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
             .cornerRadius(12)
             .padding(.horizontal, 20)
-        }
-    }
-    
-    
-    private func memberDetailSheet(_ member: User) -> some View {
-        ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
-            
-            VStack(spacing: 0) {
-                // Header with dismiss button
-                HStack {
-                    Spacer()
-                    
-                    Button(action: {
-                        selectedMember = nil
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                    .padding(.trailing, 20)
-                    .padding(.top, 20)
-                }
-                
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Member profile section
-                        VStack(alignment: .center, spacing: 16) {
-                            ZStack {
-                                Circle()
-                                    .fill(OPSStyle.Colors.primaryAccent)
-                                    .frame(width: 100, height: 100)
-                                
-                                Text(String(member.firstName.prefix(1) + member.lastName.prefix(1)))
-                                    .font(OPSStyle.Typography.title)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(.bottom, 8)
-                            
-                            Text("\(member.firstName) \(member.lastName)")
-                                .font(OPSStyle.Typography.title)
-                                .foregroundColor(.white)
-                            
-                            Text(member.role.displayName)
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 12)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(12)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        
-                        // Contact actions
-                        VStack(spacing: 16) {
-                            // Email button
-                            if let email = member.email, !email.isEmpty {
-                                Button(action: {
-                                    if let url = URL(string: "mailto:\(email)") {
-                                        openURL(url)
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "envelope")
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.black)
-                                        
-                                        Text("Send Email")
-                                            .font(OPSStyle.Typography.bodyBold)
-                                            .foregroundColor(.black)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 16)
-                                    .background(OPSStyle.Colors.primaryAccent)
-                                    .cornerRadius(12)
-                                }
-                                .padding(.horizontal, 20)
-                            }
-                            
-                            // Phone button
-                            if let phone = member.phone, !phone.isEmpty {
-                                Button(action: {
-                                    let cleaned = phone.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
-                                    if let url = URL(string: "tel:\(cleaned)") {
-                                        openURL(url)
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "phone")
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
-                                        
-                                        Text("Call")
-                                            .font(OPSStyle.Typography.bodyBold)
-                                            .foregroundColor(.white)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 16)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                    )
-                                }
-                                .padding(.horizontal, 20)
-                                
-                                // Text button
-                                Button(action: {
-                                    let cleaned = phone.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
-                                    if let url = URL(string: "sms:\(cleaned)") {
-                                        openURL(url)
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "message")
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
-                                        
-                                        Text("Send Text")
-                                            .font(OPSStyle.Typography.bodyBold)
-                                            .foregroundColor(.white)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 16)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                    )
-                                }
-                                .padding(.horizontal, 20)
-                            }
-                        }
-                        
-                        // Member details
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("CONTACT DETAILS")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.leading, 20)
-                            
-                            VStack(spacing: 16) {
-                                // Email
-                                HStack {
-                                    Image(systemName: "envelope")
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                        .frame(width: 24)
-                                    
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Email")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        
-                                        Text(member.email ?? "Not provided")
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(member.email?.isEmpty ?? true ? OPSStyle.Colors.secondaryText : .white)
-                                    }
-                                    
-                                    Spacer()
-                                }
-                                
-                                // Phone
-                                HStack {
-                                    Image(systemName: "phone")
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                        .frame(width: 24)
-                                    
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Phone")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        
-                                        Text(member.phone ?? "Not provided")
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(member.phone?.isEmpty ?? true ? OPSStyle.Colors.secondaryText : .white)
-                                    }
-                                    
-                                    Spacer()
-                                }
-                            }
-                            .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(12)
-                            .padding(.horizontal, 20)
-                        }
-                        .padding(.bottom, 32)
-                    }
-                    .padding(.top, 16)
-                }
-            }
         }
     }
     

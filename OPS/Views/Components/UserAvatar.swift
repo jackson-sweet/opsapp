@@ -115,6 +115,7 @@ struct UserAvatar: View {
                         Text(initials)
                             .font(.custom("Mohave-Bold", size: fontSize))
                             .foregroundColor(.white)
+                            .offset(x: 0, y: fontSize/15)
                     )
             }
             
@@ -143,12 +144,22 @@ struct UserAvatar: View {
         guard imageData == nil,
               loadedImage == nil,
               let urlString = imageURL,
-              !urlString.isEmpty,
-              let url = URL(string: urlString) else {
+              !urlString.isEmpty else {
             return
         }
         
-        // Check cache first
+        // Fix URLs that start with // by adding https:
+        var fixedURLString = urlString
+        if urlString.hasPrefix("//") {
+            fixedURLString = "https:" + urlString
+        }
+        
+        guard let url = URL(string: fixedURLString) else {
+            print("Invalid URL: \(fixedURLString)")
+            return
+        }
+        
+        // Check cache first (use original URL string as key)
         if let cachedImage = ImageCache.shared.get(forKey: urlString) {
             self.loadedImage = cachedImage
             return
@@ -164,12 +175,12 @@ struct UserAvatar: View {
                     await MainActor.run {
                         self.loadedImage = image
                         self.isLoading = false
-                        // Cache the image
+                        // Cache the image using original URL as key
                         ImageCache.shared.set(image, forKey: urlString)
                     }
                 }
             } catch {
-                print("Failed to load avatar image from \(urlString): \(error)")
+                print("Failed to load avatar image from \(fixedURLString): \(error)")
                 await MainActor.run {
                     self.isLoading = false
                 }

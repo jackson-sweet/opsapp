@@ -12,6 +12,7 @@ struct SafeMapContainer: View {
     let onProjectSelected: (Project) -> Void
     let onNavigationStarted: (Project) -> Void
     @ObservedObject var appState: AppState
+    @ObservedObject var locationManager: LocationManager
     
     @State private var isMapReady = false
     
@@ -23,7 +24,8 @@ struct SafeMapContainer: View {
                     selectedIndex: selectedIndex,
                     onProjectSelected: onProjectSelected,
                     onNavigationStarted: onNavigationStarted,
-                    appState: appState
+                    appState: appState,
+                    locationManager: locationManager
                 )
             } else {
                 // Show loading while we prepare

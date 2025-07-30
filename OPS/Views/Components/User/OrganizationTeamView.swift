@@ -67,8 +67,8 @@ struct OrganizationTeamView: View {
                         selectedTeamMember = member
                     }) {
                         HStack(spacing: 12) {
-                            // Avatar
-                            CompanyTeamMemberAvatar(teamMember: member, size: 40)
+                            // Avatar - using unified UserAvatar component
+                            UserAvatar(teamMember: member, size: 40)
                             
                             // Name & role
                             VStack(alignment: .leading, spacing: 2) {
@@ -85,7 +85,7 @@ struct OrganizationTeamView: View {
                             
                             // Indicator
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 14))
+                                .font(OPSStyle.Typography.smallBody)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         .contentShape(Rectangle())
@@ -109,76 +109,6 @@ struct OrganizationTeamView: View {
         }
         .sheet(isPresented: $showingFullTeamList) {
             OrganizationFullTeamView(company: company)
-        }
-    }
-}
-
-/// Avatar component for company team members
-struct CompanyTeamMemberAvatar: View {
-    let teamMember: TeamMember
-    let size: CGFloat
-    @State private var image: Image?
-    
-    var body: some View {
-        ZStack {
-            if let profileImage = image {
-                profileImage
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
-            } else {
-                Circle()
-                    .frame(width: size, height: size)
-                    .overlay(content: {
-                        Text(teamMember.initials)
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
-                        Circle()
-                            .stroke(Color(.white), lineWidth: 1)
-                    })
-                    .foregroundColor(.black)
-                    
-            }
-        }
-        .onAppear {
-            loadProfileImage()
-        }
-    }
-    
-    private func loadProfileImage() {
-        // Only load if we don't already have an image
-        guard image == nil, let imageURL = teamMember.avatarURL, !imageURL.isEmpty else {
-            return
-        }
-        
-        // Check cache first
-        if let cachedImage = ImageCache.shared.get(forKey: imageURL) {
-            self.image = Image(uiImage: cachedImage)
-            return
-        }
-        
-        // Load from URL
-        Task {
-            do {
-                // Handle URLs that start with // by adding https:
-                var finalURL = imageURL
-                if imageURL.hasPrefix("//") {
-                    finalURL = "https:" + imageURL
-                }
-                
-                guard let url = URL(string: finalURL) else { return }
-                
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        self.image = Image(uiImage: uiImage)
-                        ImageCache.shared.set(uiImage, forKey: imageURL)
-                    }
-                }
-            } catch {
-                print("Failed to load profile image: \(error.localizedDescription)")
-            }
         }
     }
 }
@@ -237,7 +167,7 @@ struct OrganizationFullTeamView: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.5))
                                 
                                 Text("No team members found")
-                                    .font(.headline)
+                                    .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             } else {
                                 // No search results
@@ -246,7 +176,7 @@ struct OrganizationFullTeamView: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.5))
                                 
                                 Text("No team members matching '\(searchText)'")
-                                    .font(.headline)
+                                    .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
                                 Button("Clear Search") {
@@ -298,39 +228,22 @@ struct OrganizationFullTeamView: View {
 /// Card for displaying team members in a grid
 struct TeamMemberCard: View {
     let teamMember: TeamMember
-    @State private var profileImage: Image?
     
     var body: some View {
         VStack(spacing: 8) {
-            // Avatar
-            ZStack {
-                if let profileImage = profileImage {
-                    profileImage
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 70, height: 70)
-                        .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
-                        .frame(width: 70, height: 70)
-                    
-                    Text(teamMember.initials)
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-            }
+            // Avatar - using unified UserAvatar component
+            UserAvatar(teamMember: teamMember, size: 70)
             
             // Name
             Text(teamMember.fullName)
-                .font(.system(size: 14, weight: .medium))
+                .font(OPSStyle.Typography.body)
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .multilineTextAlignment(.center)
             
             // Role
             Text(teamMember.role)
-                .font(.system(size: 12))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .lineLimit(1)
                 .multilineTextAlignment(.center)
@@ -339,44 +252,6 @@ struct TeamMemberCard: View {
         .padding()
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(12)
-        .onAppear {
-            loadProfileImage()
-        }
-    }
-    
-    private func loadProfileImage() {
-        guard profileImage == nil, let avatarURL = teamMember.avatarURL, !avatarURL.isEmpty else {
-            return
-        }
-        
-        // Check cache first
-        if let cachedImage = ImageCache.shared.get(forKey: avatarURL) {
-            self.profileImage = Image(uiImage: cachedImage)
-            return
-        }
-        
-        // Load from URL
-        Task {
-            do {
-                // Handle URLs that start with // by adding https:
-                var finalURL = avatarURL
-                if avatarURL.hasPrefix("//") {
-                    finalURL = "https:" + avatarURL
-                }
-                
-                guard let url = URL(string: finalURL) else { return }
-                
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        self.profileImage = Image(uiImage: uiImage)
-                        ImageCache.shared.set(uiImage, forKey: avatarURL)
-                    }
-                }
-            } catch {
-                print("Failed to load profile image: \(error.localizedDescription)")
-            }
-        }
     }
 }
 

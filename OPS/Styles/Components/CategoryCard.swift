@@ -75,28 +75,8 @@ struct OrganizationProfileCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
-                // Logo/icon
-                ZStack {
-                    Circle()
-                        .fill(Color.black)
-                        .frame(width: 60, height: 60)
-                    
-                    if let logoURL = company.logoURL, 
-                       !logoURL.isEmpty,
-                       let cachedImage = ImageCache.shared.get(forKey: logoURL) {
-                        // Show cached company logo
-                        Image(uiImage: cachedImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 60, height: 60)
-                            .clipShape(Circle())
-                    } else {
-                        // Default icon
-                        Image(systemName: "building.2.fill")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
+                // Logo/icon - using unified CompanyAvatar component
+                CompanyAvatar(company: company, size: 60)
                 
                 VStack(alignment: .leading, spacing: 6) {
                     // Company name

@@ -1,19 +1,22 @@
 Version 1.0.2
 
 What's New:
-• Projects now load immediately after login
-• Fixed issue where admin users only saw assigned projects instead of all company projects
-• Improved Google Sign-In stability and performance
+• Sign in with Apple support - required for App Store compliance
+• Unified authentication flow for both Google and Apple sign-in
+• Seamless account creation through social sign-in providers
+• Improved user avatar display with proper initials and image loading
 
 Bug Fixes:
-• Fixed critical network error preventing company users to complete signup
-• Resolved project sync failures during login
-• Fixed admin role detection from company data
-• Corrected thread safety issues in authentication flow
-• Fixed data synchronization sequence to ensure proper role assignment before project loading
+• Fixed critical bug where projects wouldn't load after login
+• Resolved user data contamination between different user sessions
+• Fixed "password is missing" error during onboarding
+• Corrected profile image loading and default avatar display
+• Fixed sign out functionality during onboarding flow
+• Resolved UI thread warnings during authentication
 
 Improvements:
-• Faster project loading on app launch
-• More reliable data synchronization
-• Better handling of user permissions and roles
-• Enhanced stability for authentication processes
+• Streamlined onboarding for social sign-in users
+• Better handling of user type persistence
+• Enhanced data cleanup on logout
+• Improved spacing in login form UI
+• More reliable project synchronization on login

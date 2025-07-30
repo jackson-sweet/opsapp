@@ -26,18 +26,25 @@ struct CalendarHeaderView: View {
             HStack(spacing: 0) {
                 // Left side - day label and date
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("TODAY")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    HStack(spacing: 12) {
+                        Text("TODAY")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        
+                        Divider()
+                            .frame(maxHeight: 12)
+                        
+                        Text(monthDayText)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
                     
                     Text(weekdayText)
-                        .font(OPSStyle.Typography.title)
+                        .font(OPSStyle.Typography.largeTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .fontWeight(.bold)
                     
-                    Text(monthDayText)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
                 }
                 .padding(.vertical, 16)
                 .padding(.horizontal, 16)
@@ -92,6 +99,16 @@ struct CalendarHeaderView: View {
     // Get projects for today specifically, not the selected date
     private var todaysProjectCount: Int {
         // Get projects based on user role
-        dataController.getProjectsForCurrentUser(for: today).count
+        var projects = dataController.getProjectsForCurrentUser(for: today)
+        
+        // Apply team member filter if selected
+        if let selectedMemberId = viewModel.selectedTeamMemberId {
+            projects = projects.filter { project in
+                project.getTeamMemberIds().contains(selectedMemberId) ||
+                project.teamMembers.contains(where: { $0.id == selectedMemberId })
+            }
+        }
+        
+        return projects.count
     }
 }

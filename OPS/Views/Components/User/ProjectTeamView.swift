@@ -69,8 +69,8 @@ struct ProjectTeamView: View {
                 
                 ForEach(Array(visibleMembers), id: \.id) { member in
                     HStack(spacing: 12) {
-                        // Avatar
-                        TeamMemberAvatar(user: member, size: 40)
+                        // Avatar - using unified UserAvatar component
+                        UserAvatar(user: member, size: 40)
                         
                         // Name & role
                         VStack(alignment: .leading, spacing: 2) {
@@ -93,6 +93,11 @@ struct ProjectTeamView: View {
                     .contentShape(Rectangle())
                     .padding(.vertical, 6)
                     .onTapGesture {
+                        print("🔍 ProjectTeamView: Tapped on team member")
+                        print("   - Name: \(member.fullName)")
+                        print("   - Email: \(member.email ?? "nil")")
+                        print("   - Phone: \(member.phone ?? "nil")")
+                        print("   - Role: \(member.role.displayName)")
                         selectedTeamMember = member
                         showingTeamMemberDetails = true
                     }
@@ -148,7 +153,13 @@ struct ProjectTeamView: View {
                             if freshProject.teamMembers.isEmpty {
                             } else {
                                 for (index, member) in freshProject.teamMembers.enumerated() {
-                                }
+                                print("  Member \(index + 1):")
+                                print("    - Name: \(member.fullName)")
+                                print("    - Email: \(member.email ?? "nil")")
+                                print("    - Phone: \(member.phone ?? "nil")")
+                                print("    - ID: \(member.id)")
+                            }
+                            
                             }
                             
                             // Update the refreshed project to trigger UI refresh
@@ -168,80 +179,7 @@ struct ProjectTeamView: View {
     }
 }
 
-/// Avatar component for team members
-struct TeamMemberAvatar: View {
-    let user: User
-    let size: CGFloat
-    @State private var image: Image?
-    
-    var body: some View {
-        ZStack {
-            if let imageData = user.profileImageData,
-               let uiImage = UIImage(data: imageData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
-            } else if let profileImage = image {
-                profileImage
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
-            } else {
-                Circle()
-                    .stroke(Color(.white))
-                    .frame(width: size, height: size)
-                    .overlay(
-                        Text(user.firstName.prefix(1) + user.lastName.prefix(1))
-                            .font(OPSStyle.Typography.cardBody)
-                            .foregroundColor(.white)
-                    )
-                    
-            }
-        }
-        .onAppear {
-            loadProfileImage()
-        }
-    }
-    
-    private func loadProfileImage() {
-        // Only load if we don't have local data and don't already have an image
-        guard user.profileImageData == nil, image == nil, let imageURL = user.profileImageURL, !imageURL.isEmpty else {
-            return
-        }
-        
-        // Check cache first
-        if let cachedImage = ImageCache.shared.get(forKey: imageURL) {
-            self.image = Image(uiImage: cachedImage)
-            return
-        }
-        
-        // Load from URL
-        Task {
-            do {
-                // Handle URLs that start with // by adding https:
-                var finalURL = imageURL
-                if imageURL.hasPrefix("//") {
-                    finalURL = "https:" + imageURL
-                }
-                
-                guard let url = URL(string: finalURL) else { return }
-                
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        self.image = Image(uiImage: uiImage)
-                        ImageCache.shared.set(uiImage, forKey: imageURL)
-                    }
-                }
-            } catch {
-                print("Failed to load profile image: \(error.localizedDescription)")
-            }
-        }
-    }
-}
+// TeamMemberAvatar component removed - using unified UserAvatar instead
 
 /// Full team list view that shows in a sheet
 struct FullTeamListView: View {
@@ -261,7 +199,7 @@ struct FullTeamListView: View {
                         ForEach(project.teamMembers) { member in
                             HStack(spacing: 16) {
                                 // Avatar
-                                TeamMemberAvatar(user: member, size: 50)
+                                UserAvatar(user: member, size: 50)
                                 
                                 // Details
                                 VStack(alignment: .leading, spacing: 4) {

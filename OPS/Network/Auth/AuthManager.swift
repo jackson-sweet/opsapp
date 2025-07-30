@@ -342,14 +342,20 @@ class AuthManager {
             request.httpMethod = "POST"
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
             
-            // Create login payload
-            let loginPayload: [String: String] = [
+            // Create login payload matching Apple endpoint
+            var loginPayload: [String: String] = [
                 "id_token": idToken,
                 "email": email,
-                "name": name,
-                "given_name": givenName ?? "",
-                "family_name": familyName ?? ""
+                "name": name
             ]
+            
+            // Add optional name fields
+            if let givenName = givenName, !givenName.isEmpty {
+                loginPayload["given_name"] = givenName
+            }
+            if let familyName = familyName, !familyName.isEmpty {
+                loginPayload["family_name"] = familyName
+            }
             
             request.httpBody = try JSONSerialization.data(withJSONObject: loginPayload)
             

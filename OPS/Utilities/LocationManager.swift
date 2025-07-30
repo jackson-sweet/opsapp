@@ -28,8 +28,18 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var isUpdatingLocation = false
     private var isUpdatingHeading = false
     
+    // Public property to check if location updates are active
+    var isLocationUpdatesActive: Bool {
+        return isUpdatingLocation
+    }
+    
     // Track if permission has been requested this session
     private var hasRequestedPermissionThisSession = false
+    
+    // Computed property for easy access to the latest location
+    var location: CLLocation? {
+        return currentLocation ?? locationManager.location
+    }
     
     override init() {
         // Initialize with the current status

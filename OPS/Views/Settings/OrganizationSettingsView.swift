@@ -63,29 +63,8 @@ struct OrganizationSettingsView: View {
                             if let company = organization {
                                 VStack(alignment: .leading, spacing: 16) {
                                     HStack(alignment: .top, spacing: 16) {
-                                        // Company logo
-                                        ZStack {
-                                            if let logoURL = company.logoURL, 
-                                                !logoURL.isEmpty,
-                                               let cachedImage = ImageCache.shared.get(forKey: logoURL) {
-                                                Image(uiImage: cachedImage)
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .frame(width: 60, height: 60)
-                                                    .clipShape(Circle())
-                                            } else {
-                                                // Simple circle outline with icon - black and white
-                                                Circle()
-                                                    .stroke(Color.white, lineWidth: 2)
-                                                    .frame(width: 60, height: 60)
-                                                    .background(Color.black)
-                                                    .clipShape(Circle())
-                                                
-                                                Image(systemName: "building.2")
-                                                    .font(OPSStyle.Typography.bodyBold)
-                                                    .foregroundColor(.white)
-                                            }
-                                        }
+                                        // Company logo - using unified CompanyAvatar component
+                                        CompanyAvatar(company: company, size: 60)
                                         
                                         VStack(alignment: .leading, spacing: 6) {
                                             // Company name

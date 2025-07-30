@@ -74,29 +74,12 @@ struct ProfileSettingsView: View {
                         if let user = dataController.currentUser {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack(alignment: .top, spacing: 16) {
-                                    // User avatar - updated to match app style
-                                    ZStack {
-                                        if let profileURL = user.profileImageURL,
-                                            !profileURL.isEmpty,
-                                           let cachedImage = ImageCache.shared.get(forKey: profileURL) {
-                                            Image(uiImage: cachedImage)
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(width: 60, height: 60)
-                                                .clipShape(Circle())
-                                        } else {
-                                            // Simple circle outline with text - black and white
+                                    // User avatar - using unified UserAvatar component
+                                    UserAvatar(user: user, size: 60)
+                                        .overlay(
                                             Circle()
                                                 .stroke(Color.white, lineWidth: 2)
-                                                .frame(width: 60, height: 60)
-                                                .background(Color.black)
-                                                .clipShape(Circle())
-                                            
-                                            Text(getInitials())
-                                                .font(OPSStyle.Typography.bodyBold)
-                                                .foregroundColor(.white)
-                                        }
-                                    }
+                                        )
                                     
                                     VStack(alignment: .leading, spacing: 6) {
                                         // Name and role

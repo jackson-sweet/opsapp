@@ -11,7 +11,7 @@ import SwiftUI
 struct MonthGridView: View {
     @ObservedObject var viewModel: CalendarViewModel
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
-    private let weekdayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+    private let weekdayLabels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
     
     var body: some View {
         VStack(spacing: 12) {

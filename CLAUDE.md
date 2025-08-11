@@ -98,6 +98,30 @@ OPS speaks with the confident, straightforward voice of an experienced field sup
 
 ## UI Design Guidelines
 
+### Consistency & Uniformity Principles
+
+**CRITICAL**: Consistency is paramount in OPS. Every similar component must look and behave identically across the entire application.
+
+1. **Section Layout Pattern**
+   - Section headers ALWAYS appear above cards, never inside them
+   - Section headers use `OPSStyle.Typography.captionBold` in `OPSStyle.Colors.secondaryText`
+   - Section headers should be formatted as: "SECTION NAME" (all caps)
+   - Cards containing content have consistent padding: `.padding(.vertical, 14).padding(.horizontal, 16)`
+   - Cards use `OPSStyle.Colors.cardBackgroundDark.opacity(0.8)` for background
+   - Never nest cards within cards (no double backgrounds)
+
+2. **Component Uniformity**
+   - If a component appears in multiple places, it MUST look identical
+   - Contact information rows (email, phone, address) must have the same layout everywhere
+   - Buttons with the same function must have identical styling
+   - Spacing between similar elements must be consistent
+
+3. **Visual Hierarchy**
+   - Maintain consistent visual hierarchy across all views
+   - Primary actions use `OPSStyle.Colors.primaryAccent`
+   - Secondary information uses `OPSStyle.Colors.secondaryText`
+   - Disabled/unavailable items use `OPSStyle.Colors.tertiaryText`
+
 ### Background Colors
 - **Primary Background**: Always use solid `OPSStyle.Colors.background` (near black) for main screens.
 - **Card Background**: Use `OPSStyle.Colors.cardBackground` or `OPSStyle.Colors.cardBackgroundDark` for cards and content containers.

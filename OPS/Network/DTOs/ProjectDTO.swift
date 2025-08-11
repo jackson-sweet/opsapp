@@ -15,7 +15,49 @@ struct ProjectDTO: Codable {
     let id: String
     let address: BubbleAddress?
     let allDay: Bool?
-    let client: BubbleReference?
+    let client: String?  // Changed from BubbleReference to String since API returns string ID
+    
+    // Custom initializer for debugging
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Decode all required fields
+        self.id = try container.decode(String.self, forKey: .id)
+        self.projectName = try container.decode(String.self, forKey: .projectName)
+        self.status = try container.decode(String.self, forKey: .status)
+        
+        // Decode optional fields
+        self.address = try container.decodeIfPresent(BubbleAddress.self, forKey: .address)
+        self.allDay = try container.decodeIfPresent(Bool.self, forKey: .allDay)
+        
+        // Debug client field decoding
+        if container.contains(.client) {
+            self.client = try container.decodeIfPresent(String.self, forKey: .client)
+            if let clientId = self.client {
+                print("🔍 Decoded client ID for '\(projectName)': \(clientId)")
+            }
+        } else {
+            print("⚠️ No Client field in JSON for project '\(projectName)'")
+            self.client = nil
+        }
+        
+        self.company = try container.decodeIfPresent(BubbleReference.self, forKey: .company)
+        self.completion = try container.decodeIfPresent(String.self, forKey: .completion)
+        self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.startDate = try container.decodeIfPresent(String.self, forKey: .startDate)
+        self.teamNotes = try container.decodeIfPresent(String.self, forKey: .teamNotes)
+        self.teamMembers = try container.decodeIfPresent([String].self, forKey: .teamMembers)
+        self.thumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnail)
+        self.clientName = try container.decodeIfPresent(String.self, forKey: .clientName)
+        self.clientEmail = try container.decodeIfPresent(String.self, forKey: .clientEmail)
+        self.clientPhone = try container.decodeIfPresent(String.self, forKey: .clientPhone)
+        self.projectImages = try container.decodeIfPresent([String].self, forKey: .projectImages)
+        self.duration = try container.decodeIfPresent(Int.self, forKey: .duration)
+        self.projectValue = try container.decodeIfPresent(Double.self, forKey: .projectValue)
+        self.projectGrossCost = try container.decodeIfPresent(Double.self, forKey: .projectGrossCost)
+        self.balance = try container.decodeIfPresent(Double.self, forKey: .balance)
+        self.slug = try container.decodeIfPresent(String.self, forKey: .slug)
+    }
     let company: BubbleReference?
     let completion: String?
     let description: String?
@@ -25,10 +67,12 @@ struct ProjectDTO: Codable {
     let teamNotes: String?
     let teamMembers: [String]?
     let thumbnail: String?
+    // These fields are deprecated - using Client reference instead
     let clientName: String?
     let clientEmail: String?
     let clientPhone: String?
     let projectImages: [String]?  // Added this field
+    let duration: Int? // Duration in days
     
     // Additional fields from the actual API response
     let projectValue: Double?
@@ -59,6 +103,7 @@ struct ProjectDTO: Codable {
         case clientEmail = "Client Email" // The client's email address. type string.
         case clientPhone = "Client Phone" // The client's phone number. type string.
         case projectImages = "Project Images" // list of type image, that have been uploaded to the project object.
+        case duration = "Duration" // Duration in days for the project. type number.
     }
     
     /// Convert DTO to SwiftData model
@@ -76,6 +121,20 @@ struct ProjectDTO: Codable {
                 project.longitude = bubbleAddress.lng
             }
             
+        // Store client reference if available
+        if let clientId = client {
+            project.clientId = clientId
+            print("📎 Project '\(projectName)' has client reference: \(clientId)")
+        } else {
+            print("⚠️ Project '\(projectName)' has NO client reference in API response")
+            // Debug: Check if we at least have the deprecated text fields
+            if let cName = clientName {
+                print("   - But has clientName: \(cName)")
+            }
+        }
+        
+        // Store client info only as fallback if text fields exist (deprecated)
+        // These will be removed once all projects use Client references
         project.clientName = clientName ?? "Unknown Client"
         project.clientEmail = clientEmail
         project.clientPhone = clientPhone
@@ -92,6 +151,9 @@ struct ProjectDTO: Codable {
         if let completionString = completion {
             project.endDate = DateFormatter.dateFromBubble(completionString)
         }
+        
+        // Store duration for cases where end date is invalid
+        project.duration = duration
         
         project.notes = teamNotes
         project.projectDescription = description

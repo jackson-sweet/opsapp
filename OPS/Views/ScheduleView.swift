@@ -21,6 +21,8 @@ struct ScheduleView: View {
     @StateObject private var viewModel = CalendarViewModel()
     @State private var showDaySheet = false
     @State private var selectedProjectID: String? = nil
+    @State private var showSearchSheet = false
+    @State private var showingRefreshAlert = false
     
     // Get the display text for team member filter
     private var teamMemberFilterText: String {
@@ -37,7 +39,25 @@ struct ScheduleView: View {
             
             VStack(spacing: 16) {
                 // Header without gradient
-                AppHeader(headerType: .schedule)
+                AppHeader(
+                    headerType: .schedule,
+                    onSearchTapped: {
+                        showSearchSheet = true
+                    },
+                    onRefreshTapped: {
+                        print("🔘 Refresh button tapped!")
+                        // Show indicator immediately
+                        showingRefreshAlert = true
+                        
+                        // Refresh projects in background
+                        Task {
+                            print("🚀 Starting refresh task...")
+                            await viewModel.refreshProjects()
+                            print("🏁 Refresh task completed")
+                            // Indicator will auto-dismiss after showing success
+                        }
+                    }
+                )
                 
                 // Calendar header
                 CalendarHeaderView(viewModel: viewModel)
@@ -109,6 +129,7 @@ struct ScheduleView: View {
             
             // No more NavigationLink - we'll use the global sheet instead
         }
+        .ignoresSafeArea(.keyboard)
         // Monitor viewMode changes to handle view transitions
         .onChange(of: viewModel.viewMode) { _, newMode in
             // Reset any project selection when switching view modes
@@ -159,6 +180,24 @@ struct ScheduleView: View {
             .presentationDragIndicator(.visible)
         }
         
+        // Search sheet for finding projects
+        .sheet(isPresented: $showSearchSheet) {
+            ProjectSearchSheet(
+                dataController: dataController,
+                onProjectSelected: { project in
+                    // Navigate to project details
+                    showSearchSheet = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        appState.viewProjectDetails(project)
+                    }
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .interactiveDismissDisabled(false)
+        }
+        
+        
         // We're using navigation instead of a sheet
         // Handle direct project selection from the project list
         .onReceive(projectSelectionObserver) { notification in
@@ -179,6 +218,8 @@ struct ScheduleView: View {
                 print("ScheduleView: ⚠️ ERROR - Notification did not contain a projectID")
             }
         }
+        // Add refresh indicator
+        .refreshIndicator(isPresented: $showingRefreshAlert)
     }
 }
 

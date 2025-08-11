@@ -108,7 +108,7 @@ struct TeamMembersView: View {
             loadTeamMembers()
         }
         .sheet(item: $selectedMember) { member in
-            TeamMemberDetailView(user: member, teamMember: nil)
+            TeamMemberDetailView(user: member)
         }
     }
     
@@ -176,8 +176,14 @@ struct TeamMembersView: View {
         isLoading = true
         
         Task {
-            // Load team members from data controller
-            if let companyId = dataController.currentUser?.companyId {
+            // First sync team members from the API to ensure we have the latest data
+            if let companyId = dataController.currentUser?.companyId,
+               let company = dataController.getCompany(id: companyId) {
+                
+                // Force sync team members from API
+                await dataController.syncManager?.syncCompanyTeamMembers(company)
+                
+                // Now load the updated team members
                 let members = dataController.getTeamMembers(companyId: companyId)
                 
                 await MainActor.run {

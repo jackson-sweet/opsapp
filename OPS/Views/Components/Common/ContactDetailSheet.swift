@@ -51,7 +51,6 @@ struct ContactDetailSheet: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
-            .padding(.bottom, 32)
             
             // Contact actions
             VStack(spacing: 16) {

@@ -17,6 +17,7 @@ struct BubbleFields {
         static let company = "Company"
         static let project = "Project"
         static let user = "User"
+        static let subClient = "Sub Client"  // Note the space - Bubble uses "Sub Client"
     }
     
     /// Job status values (from your Job Status custom type)
@@ -117,5 +118,17 @@ struct BubbleFields {
         static let phoneNumber = "Phone Number"
         static let emailAddress = "Email Address"
         static let projectsList = "Projects List"
+        static let company = "Company"
+    }
+    
+    /// SubClient entity fields (match your Bubble field names exactly)
+    struct SubClient {
+        static let id = "_id"
+        static let address = "Address"
+        static let emailAddress = "Email Address"
+        static let name = "Name"
+        static let parentClient = "Parent Client"
+        static let phoneNumber = "Phone Number"
+        static let title = "Title"
     }
 }

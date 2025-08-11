@@ -23,6 +23,8 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @State private var selectedTab: SettingsTab = .settings
     var headerType: HeaderType
+    var onSearchTapped: (() -> Void)? = nil
+    var onRefreshTapped: (() -> Void)? = nil
     
     private var title: String {
         switch headerType {
@@ -91,6 +93,35 @@ struct AppHeader: View {
                 }
                 
                 Spacer()
+                
+                // Search and refresh buttons for schedule view
+                if headerType == .schedule {
+                    HStack(spacing: 8) {
+                        // Refresh button
+                        if let onRefreshTapped = onRefreshTapped {
+                            Button(action: onRefreshTapped) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 44, height: 44)
+                                    .background(OPSStyle.Colors.cardBackground)
+                                    .clipShape(Circle())
+                            }
+                        }
+                        
+                        // Search button
+                        if let onSearchTapped = onSearchTapped {
+                            Button(action: onSearchTapped) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 44, height: 44)
+                                    .background(OPSStyle.Colors.cardBackground)
+                                    .clipShape(Circle())
+                            }
+                        }
+                    }
+                }
                 
                 // User information if available
                 if headerType == .settings {

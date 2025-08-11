@@ -27,6 +27,7 @@ struct ProjectDetailsView: View {
     // REMOVED: No longer tracking photo deletion state
     @State private var showingUnsavedChangesAlert = false
     @State private var showingClientContact = false
+    @State private var isRefreshingClient = false
     
     // Initialize with project's existing notes
     init(project: Project) {
@@ -205,6 +206,11 @@ struct ProjectDetailsView: View {
             
             // Request location permission when project details are viewed
             locationManager.requestPermissionIfNeeded()
+            
+            // Refresh client data if project has a client
+            if let clientId = project.clientId, !clientId.isEmpty {
+                refreshClientData(clientId: clientId)
+            }
         }
         .onDisappear {
             // Make sure to clean up the timer when view disappears
@@ -218,23 +224,31 @@ struct ProjectDetailsView: View {
         }
         // Client contact sheet
         .sheet(isPresented: $showingClientContact) {
-            // Create a temporary TeamMember for client contact
-            let clientTeamMember = TeamMember(
-                id: "client-\(project.id)",
-                firstName: project.clientName.components(separatedBy: " ").first ?? project.clientName,
-                lastName: project.clientName.components(separatedBy: " ").dropFirst().joined(separator: " "),
-                role: "Client",
-                avatarURL: nil,
-                email: nil, // TODO: Add client email when available in API
-                phone: nil  // TODO: Add client phone when available in API
-            )
-            
-            TeamMemberDetailView(user: nil, teamMember: clientTeamMember)
-                .presentationDragIndicator(.visible)
+            // Pass the actual Client object if available, otherwise create a temporary one
+            if let client = project.client {
+                TeamMemberDetailView(client: client, project: project)
+                    .presentationDragIndicator(.visible)
+                    .environmentObject(dataController)
+            } else {
+                // Fallback: Create a temporary TeamMember for client contact
+                let clientTeamMember = TeamMember(
+                    id: "client-\(project.id)",
+                    firstName: project.effectiveClientName.components(separatedBy: " ").first ?? project.effectiveClientName,
+                    lastName: project.effectiveClientName.components(separatedBy: " ").dropFirst().joined(separator: " "),
+                    role: "Client",
+                    avatarURL: nil,
+                    email: project.effectiveClientEmail,
+                    phone: project.effectiveClientPhone
+                )
+                
+                TeamMemberDetailView(teamMember: clientTeamMember)
+                    .presentationDragIndicator(.visible)
+                    .environmentObject(dataController)
+            }
         }
     }
     
-    // Project header section with title and date
+    // Project header section with title and date  
     private var projectHeaderSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Project title in large, prominent type
@@ -242,37 +256,15 @@ struct ProjectDetailsView: View {
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(.white)
             
-            // Date and client info in horizontal layout
-            HStack(spacing: 24) {
-                // Start date with icon
-                if let startDate = project.startDate {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("STARTS")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        HStack(spacing: 6) {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 14))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                            
-                            Text(formatDate(startDate))
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.white)
-                        }
-                    }
-                }
+            // Client info
+            VStack(alignment: .leading, spacing: 4) {
+                Text("CLIENT")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                 
-                // Client name
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("CLIENT")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
-                    Text(project.clientName)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
-                }
+                Text(project.effectiveClientName)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(.white)
             }
         }
     }
@@ -357,24 +349,83 @@ struct ProjectDetailsView: View {
                 Button(action: {
                     showingClientContact = true
                 }) {
-                    infoRow(
-                        icon: "person",
-                        title: "CLIENT",
-                        value: project.clientName.uppercased(),
-                        valueColor: OPSStyle.Colors.primaryText,
-                        showChevron: true
-                    )
+                    HStack {
+                        infoRow(
+                            icon: "person",
+                            title: "CLIENT",
+                            value: project.effectiveClientName.uppercased(),
+                            valueColor: OPSStyle.Colors.primaryText,
+                            showChevron: true
+                        )
+                        
+                        // Always show contact indicators with availability status
+                        HStack(spacing: 6) {
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.2)
+                            
+                            Image(systemName: "envelope.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.2)
+                        }
+                        .padding(.trailing, 12)
+                        
+                    }.background(OPSStyle.Colors.cardBackgroundDark)
                 }
                 .buttonStyle(PlainButtonStyle())
                 
-                // End date if available
-                if let endDate = project.endDate {
-                    infoRow(
-                        icon: "calendar.badge.clock", 
-                        title: "COMPLETION DATE", 
-                        value: formatDate(endDate)
-                    )
+                // Dates row - show start date or "Unscheduled", show end date if valid
+                HStack(spacing: 0) {
+                    // Start date (show actual date or "Unscheduled")
+                    HStack(spacing: 12) {
+                        Image(systemName: "calendar")
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(width: 24)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("START DATE")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            if let startDate = project.startDate {
+                                Text(formatDate(startDate))
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            } else {
+                                Text("Unscheduled")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // End date (only show if valid - exists and on or after start date)
+                    if let endDate = project.endDate,
+                       let startDate = project.startDate,
+                       endDate >= startDate {
+                        HStack(spacing: 12) {
+                            Image(systemName: "calendar.badge.checkmark")
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .frame(width: 24)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("COMPLETION DATE")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                
+                                Text(formatDate(endDate))
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
+                .padding()
+                .background(OPSStyle.Colors.cardBackgroundDark)
                 
                 // Description card
                 if let description = project.projectDescription, !description.isEmpty {
@@ -470,6 +521,19 @@ struct ProjectDetailsView: View {
     // Team members section with modern styling
     private var teamSection: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Section heading outside the card (consistent with other sections)
+            HStack {
+                Image(systemName: "person.2")
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("TEAM MEMBERS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Spacer()
+            }
+            .padding(.horizontal)
+            
             // Team members content
             ProjectTeamView(project: project)
                 .padding(.horizontal)
@@ -878,6 +942,51 @@ struct ProjectDetailsView: View {
     
     /// REMOVED: Photo deletion functionality as requested
     // We're now only allowing users to add photos without deleting them
+    
+    // MARK: - Client Data Refresh
+    
+    private func refreshClientData(clientId: String, forceRefresh: Bool = false) {
+        // Only refresh if we haven't refreshed recently (within last 5 minutes)
+        // Unless forceRefresh is true
+        if !forceRefresh, let client = project.client {
+            if let lastSynced = client.lastSyncedAt,
+               Date().timeIntervalSince(lastSynced) < 300 { // 5 minutes
+                print("📱 Client data is fresh (synced \(Int(Date().timeIntervalSince(lastSynced))) seconds ago), skipping refresh")
+                return
+            }
+        }
+        
+        guard !isRefreshingClient else { return }
+        isRefreshingClient = true
+        
+        print("🔄 ProjectDetailsView: Refreshing client \(clientId) for project '\(project.title)'")
+        
+        Task {
+            do {
+                // Get the sync manager from data controller
+                guard let syncManager = dataController.syncManager else {
+                    print("❌ No sync manager available")
+                    isRefreshingClient = false
+                    return
+                }
+                
+                // Refresh just this one client
+                await syncManager.refreshSingleClient(clientId: clientId, for: project, forceRefresh: forceRefresh)
+                
+                print("✅ Client refresh completed for '\(project.client?.name ?? "Unknown")'")
+                
+                // Update UI on main thread
+                await MainActor.run {
+                    isRefreshingClient = false
+                }
+            } catch {
+                print("❌ Failed to refresh client: \(error)")
+                await MainActor.run {
+                    isRefreshingClient = false
+                }
+            }
+        }
+    }
 }
 
 struct ProjectDetailsView_Previews: PreviewProvider {
@@ -966,10 +1075,13 @@ struct ZoomablePhotoView: View {
     let url: String
     @State private var image: UIImage?
     @State private var scale: CGFloat = 1.0
-    @State private var lastScale: CGFloat = 1.0
     @State private var offset: CGSize = .zero
-    @State private var lastOffset: CGSize = .zero
     @State private var isLoading = true
+    @State private var showingSaveDialog = false
+    @State private var showingSaveAlert = false
+    @State private var saveAlertMessage = ""
+    @State private var lastScaleValue: CGFloat = 1.0
+    @State private var pinchCenter: CGPoint? = nil
     
     var body: some View {
         GeometryReader { geometry in
@@ -980,70 +1092,64 @@ struct ZoomablePhotoView: View {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .scaleEffect(scale)
+                        .scaleEffect(scale, anchor: .center)
                         .offset(offset)
+                        .onLongPressGesture {
+                            // Show save dialog on long press
+                            showingSaveDialog = true
+                        }
                         .gesture(
-                            // Magnification gesture for zoom
                             MagnificationGesture()
                                 .onChanged { value in
-                                    let delta = value / lastScale
-                                    lastScale = value
-                                    scale = min(max(scale * delta, 1), 5)
-                                }
-                                .onEnded { _ in
-                                    lastScale = 1.0
+                                    // Calculate the scale change
+                                    let delta = value / lastScaleValue
+                                    lastScaleValue = value
                                     
-                                    // Reset zoom if scale is below 1
-                                    if scale < 1 {
-                                        withAnimation(.spring()) {
-                                            scale = 1.0
+                                    // Apply zoom
+                                    let newScale = min(max(scale * delta, 1), 5)
+                                    
+                                    if newScale > 1 {
+                                        // Calculate zoom-to-pinch-point offset
+                                        if pinchCenter == nil {
+                                            // Store the initial pinch center
+                                            pinchCenter = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                                        }
+                                        
+                                        // Adjust offset based on zoom center
+                                        let scaleDiff = newScale - scale
+                                        if let center = pinchCenter {
+                                            let offsetX = (center.x - geometry.size.width / 2) * scaleDiff
+                                            let offsetY = (center.y - geometry.size.height / 2) * scaleDiff
+                                            offset.width -= offsetX
+                                            offset.height -= offsetY
                                         }
                                     }
                                     
-                                    // Limit zoom to 5x
-                                    if scale > 5 {
-                                        withAnimation(.spring()) {
-                                            scale = 5.0
-                                        }
+                                    scale = newScale
+                                }
+                                .onEnded { _ in
+                                    // Always reset to 1x when fingers are lifted
+                                    withAnimation(.spring()) {
+                                        scale = 1.0
+                                        offset = .zero
+                                        lastScaleValue = 1.0
+                                        pinchCenter = nil
                                     }
                                 }
                         )
-                        .gesture(
-                            // Drag gesture for panning when zoomed
-                            DragGesture()
+                        .highPriorityGesture(
+                            // Only allow drag when zoomed in
+                            scale > 1 ? DragGesture()
                                 .onChanged { value in
-                                    // Only allow panning when zoomed in
-                                    if scale > 1 {
-                                        offset = CGSize(
-                                            width: lastOffset.width + value.translation.width,
-                                            height: lastOffset.height + value.translation.height
-                                        )
-                                    }
+                                    offset = CGSize(
+                                        width: offset.width + value.translation.width,
+                                        height: offset.height + value.translation.height
+                                    )
                                 }
                                 .onEnded { _ in
-                                    lastOffset = offset
-                                    
-                                    // If scale is reset to 1, also reset offset
-                                    if scale <= 1 {
-                                        withAnimation(.spring()) {
-                                            offset = .zero
-                                            lastOffset = .zero
-                                        }
-                                    }
-                                }
+                                    // Keep offset when zoomed
+                                } : nil
                         )
-                        // Double tap to toggle zoom
-                        .onTapGesture(count: 2) {
-                            withAnimation(.spring()) {
-                                if scale > 1 {
-                                    scale = 1.0
-                                    offset = .zero
-                                    lastOffset = .zero
-                                } else {
-                                    scale = 3.0
-                                }
-                            }
-                        }
                 } else if isLoading {
                     VStack {
                         ProgressView()
@@ -1069,6 +1175,19 @@ struct ZoomablePhotoView: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .onAppear(perform: loadImage)
+        .alert("Save Image", isPresented: $showingSaveDialog) {
+            Button("Save to Camera Roll") {
+                saveImageToPhotos()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Would you like to save this image to your camera roll?")
+        }
+        .alert("Save Result", isPresented: $showingSaveAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(saveAlertMessage)
+        }
     }
     
     private func loadImage() {
@@ -1160,6 +1279,25 @@ struct ZoomablePhotoView: View {
                 }
             }
         }.resume()
+    }
+    
+    private func saveImageToPhotos() {
+        guard let imageToSave = image else {
+            saveAlertMessage = "No image to save"
+            showingSaveAlert = true
+            return
+        }
+        
+        UIImageWriteToSavedPhotosAlbum(imageToSave, nil, nil, nil)
+        saveAlertMessage = "Image saved to your camera roll"
+        showingSaveAlert = true
+        
+        // Provide haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+        
+        saveAlertMessage = "Image saved to Photos"
+        showingSaveAlert = true
     }
 }
 

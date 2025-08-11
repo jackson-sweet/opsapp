@@ -13,19 +13,24 @@ import CoreLocation
 final class Project: Identifiable {
     var id: String
     var title: String
-    var clientName: String
-    var clientEmail: String?
-    var clientPhone: String?
+    var clientName: String // Keep for backward compatibility and quick access
+    var clientEmail: String? // Keep for backward compatibility
+    var clientPhone: String? // Keep for backward compatibility
     var address: String
     var latitude: Double?
     var longitude: Double?
     var startDate: Date?
     var endDate: Date?
+    var duration: Int? // Duration in days from API
     var status: Status
     var notes: String?
     var companyId: String
-    var clientId: String?
+    var clientId: String? // Store the client's Bubble ID
     var allDay: Bool
+    
+    // Relationship to Client object
+    @Relationship(deleteRule: .nullify)
+    var client: Client?
     
     // Store team member IDs as string
     var teamMemberIdsString: String = ""
@@ -64,6 +69,55 @@ final class Project: Identifiable {
         self.unsyncedImagesString = ""
         self.teamMembers = []
         self.allDay = false
+        self.client = nil
+    }
+    
+    // Computed properties to get client info from Client object if available
+    var effectiveClientName: String {
+        return client?.name ?? clientName
+    }
+    
+    var effectiveClientEmail: String? {
+        // First check if client has email
+        if let clientEmail = client?.email, !clientEmail.isEmpty {
+            return clientEmail
+        }
+        
+        // Check sub-clients for email
+        if let subClients = client?.subClients {
+            for subClient in subClients {
+                if let email = subClient.email, !email.isEmpty {
+                    return email // Return first available sub-client email
+                }
+            }
+        }
+        
+        // Fall back to legacy field
+        return clientEmail
+    }
+    
+    var effectiveClientPhone: String? {
+        // First check if client has phone
+        if let clientPhone = client?.phoneNumber, !clientPhone.isEmpty {
+            return clientPhone
+        }
+        
+        // Check sub-clients for phone
+        if let subClients = client?.subClients {
+            for subClient in subClients {
+                if let phone = subClient.phoneNumber, !phone.isEmpty {
+                    return phone // Return first available sub-client phone
+                }
+            }
+        }
+        
+        // Fall back to legacy field
+        return clientPhone
+    }
+    
+    // Check if any contact info is available (including sub-clients)
+    var hasAnyClientContactInfo: Bool {
+        return effectiveClientEmail != nil || effectiveClientPhone != nil
     }
     
     // Array accessor methods
@@ -173,5 +227,118 @@ final class Project: Identifiable {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: startDate)
+    }
+    
+    // MARK: - Multi-Day Calendar Support
+    
+    /// Computed property that returns the effective end date
+    /// If endDate is before startDate, calculates based on duration
+    /// If no duration is provided, defaults to single day
+    var effectiveEndDate: Date? {
+        guard let start = startDate else { return nil }
+        
+        // If we have a valid end date (after or equal to start date), use it
+        if let end = endDate, end >= start {
+            return end
+        }
+        
+        // If end date is invalid (before start date) or missing, use duration
+        let calendar = Calendar.current
+        
+        // Use duration if available, otherwise default to 1 day
+        let daysToAdd = (duration ?? 1) - 1 // Subtract 1 because start date counts as day 1
+        
+        // Calculate end date based on duration
+        return calendar.date(byAdding: .day, value: max(0, daysToAdd), to: start)
+    }
+    
+    /// Returns true if this project spans multiple days
+    var isMultiDay: Bool {
+        guard let start = startDate, let end = effectiveEndDate else { return false }
+        let calendar = Calendar.current
+        return !calendar.isDate(start, inSameDayAs: end)
+    }
+    
+    /// Returns the number of days this project spans
+    /// Note: Completion date is the day AFTER work ends, except when start = end (single day project)
+    var daySpan: Int {
+        guard let start = startDate, let end = effectiveEndDate else { return 1 }
+        let calendar = Calendar.current
+        
+        // If start and end are the same day, it's a single-day project
+        if calendar.isDate(start, inSameDayAs: end) {
+            return 1
+        }
+        
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: start), to: calendar.startOfDay(for: end)).day ?? 0
+        return max(1, days) // Don't add 1 since completion date is day after work ends
+    }
+    
+    /// Returns an array of dates that this project spans
+    /// Note: Completion date is the day AFTER work ends, except when start = end (single day project)
+    var spannedDates: [Date] {
+        guard let start = startDate, let end = effectiveEndDate else {
+            if let start = startDate {
+                return [start]
+            }
+            return []
+        }
+        
+        var dates: [Date] = []
+        let calendar = Calendar.current
+        var currentDate = calendar.startOfDay(for: start)
+        let endDay = calendar.startOfDay(for: end)
+        
+        // If start and end are the same day, it's a single-day project
+        if calendar.isDate(start, inSameDayAs: end) {
+            return [currentDate]
+        }
+        
+        // Otherwise, stop BEFORE the completion date (completion is day after work ends)
+        while currentDate < endDay {
+            dates.append(currentDate)
+            currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
+        }
+        
+        return dates
+    }
+    
+    /// Check if project is active on a specific date
+    /// Note: Completion date is the day AFTER work ends, except when start = end (single day project)
+    func isActiveOn(date: Date) -> Bool {
+        let calendar = Calendar.current
+        let checkDate = calendar.startOfDay(for: date)
+        
+        // If no dates set, not active
+        guard let start = startDate else { return false }
+        
+        let startDay = calendar.startOfDay(for: start)
+        
+        // Use effective end date instead of raw endDate
+        guard let end = effectiveEndDate else {
+            return calendar.isDate(startDay, inSameDayAs: checkDate)
+        }
+        
+        let endDay = calendar.startOfDay(for: end)
+        
+        // If start and end are the same day, it's a single-day project
+        if calendar.isDate(startDay, inSameDayAs: endDay) {
+            return calendar.isDate(startDay, inSameDayAs: checkDate)
+        }
+        
+        // Otherwise, check if date falls within range (exclusive of completion date)
+        return checkDate >= startDay && checkDate < endDay
+    }
+    
+    /// Get the day number for a specific date (e.g., "Day 2 of 5")
+    func dayNumber(for date: Date) -> Int? {
+        guard let start = startDate, isActiveOn(date: date) else { return nil }
+        
+        let calendar = Calendar.current
+        let startDay = calendar.startOfDay(for: start)
+        let checkDay = calendar.startOfDay(for: date)
+        
+        let dayDiff = calendar.dateComponents([.day], from: startDay, to: checkDay).day ?? 0
+        return dayDiff + 1 // Make it 1-based
     }
 }

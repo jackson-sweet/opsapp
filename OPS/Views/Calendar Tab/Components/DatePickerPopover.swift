@@ -80,9 +80,9 @@ struct DatePickerPopover: View {
                 }
             }
             
-            // Weekday headers with unique identifiers
+            // Weekday headers with unique identifiers - Starting with Monday
             HStack(spacing: 0) {
-                ForEach(["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"], id: \.self) { day in
+                ForEach(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"], id: \.self) { day in
                     Text(day)
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -123,7 +123,9 @@ struct DatePickerPopover: View {
             
             // Today button
             Button {
-                selectWeek(Date())
+                // Select today's date directly, not the start of the week
+                onSelectDate(Date())
+                dismiss()
             } label: {
                 Text("Today")
                     .font(OPSStyle.Typography.bodyBold)
@@ -265,7 +267,10 @@ struct DatePickerPopover: View {
     }
     
     private func getDaysInMonth() -> [Date] {
-        let calendar = Calendar.current
+        var calendar = Calendar.current
+        // Set first weekday to Monday
+        calendar.firstWeekday = 2
+        
         let monthComponents = calendar.dateComponents([.year, .month], from: displayDate)
         
         guard let startOfMonth = calendar.date(from: monthComponents) else { return [] }
@@ -273,8 +278,10 @@ struct DatePickerPopover: View {
         // Get the weekday of the first day (1 = Sunday, 2 = Monday, etc.)
         let firstWeekday = calendar.component(.weekday, from: startOfMonth)
         
-        // Calculate offset to get to start of the first week
-        let offset = (firstWeekday - 1)
+        // Calculate offset to get to start of the first week (Monday-based)
+        // Convert to Monday-based index (0 = Monday, 6 = Sunday)
+        let mondayBasedWeekday = (firstWeekday + 5) % 7
+        let offset = mondayBasedWeekday
         
         // Get number of days in month
         guard let range = calendar.range(of: .day, in: .month, for: startOfMonth) else { return [] }
@@ -320,12 +327,15 @@ struct DatePickerPopover: View {
     }
     
     private func selectWeek(_ date: Date) {
-        let calendar = Calendar.current
-        // Get the first day of the week containing this date
-        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
-        guard let firstDay = calendar.date(from: components) else { return }
+        var calendar = Calendar.current
+        // Set first weekday to Monday
+        calendar.firstWeekday = 2
         
-        onSelectDate(firstDay)
+        // Get the week interval for the date (this will start on Monday)
+        guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: date) else { return }
+        
+        // Select the Monday of the week
+        onSelectDate(weekInterval.start)
         dismiss()
     }
     
@@ -343,15 +353,18 @@ struct DatePickerPopover: View {
     }
     
     private func isSelectedWeek(_ date: Date) -> Bool {
-        let calendar = Calendar.current
+        var calendar = Calendar.current
+        // Set first weekday to Monday
+        calendar.firstWeekday = 2
         
-        // Get week components for the date and selected date
-        let dateWeek = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
-        let selectedWeek = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: selectedDate)
+        // Get week intervals for both dates
+        guard let dateWeekInterval = calendar.dateInterval(of: .weekOfYear, for: date),
+              let selectedWeekInterval = calendar.dateInterval(of: .weekOfYear, for: selectedDate) else {
+            return false
+        }
         
-        // Check if they're in the same week
-        return dateWeek.yearForWeekOfYear == selectedWeek.yearForWeekOfYear && 
-               dateWeek.weekOfYear == selectedWeek.weekOfYear
+        // Check if they're in the same week by comparing the start of the week
+        return dateWeekInterval.start == selectedWeekInterval.start
     }
     
     private func isSameMonth(_ date: Date) -> Bool {

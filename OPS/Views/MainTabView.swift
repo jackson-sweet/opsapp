@@ -18,6 +18,7 @@ struct MainTabView: View {
     
     @State private var selectedTab = 0
     @State private var keyboardIsShowing = false
+    @State private var sheetIsPresented = false
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
     @ObservedObject private var inProgressManager = InProgressManager.shared
     
@@ -158,10 +159,18 @@ struct MainTabView: View {
             }
         }
         
-        // Handle keyboard appearance
-        .onReceive(keyboardWillShow) { _ in
-            withAnimation(.easeInOut(duration: 0.25)) {
-                keyboardIsShowing = true
+        // Handle keyboard appearance - but ignore if from a sheet
+        .onReceive(keyboardWillShow) { notification in
+            // Check if keyboard is from current window context
+            // Don't hide tab bar if keyboard is from a sheet
+            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue {
+                let keyboardHeight = keyboardFrame.cgRectValue.height
+                // Only respond to keyboard if it's substantial (not from sheet)
+                if keyboardHeight > 0 && !checkIfSheetIsPresented() {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        keyboardIsShowing = true
+                    }
+                }
             }
         }
         .onReceive(keyboardWillHide) { _ in
@@ -195,5 +204,16 @@ struct MainTabView: View {
             // Clear all pending uploads to prevent issues with large/stuck uploads
             imageSyncManager.clearAllPendingUploads()
         }
+    }
+    
+    private func checkIfSheetIsPresented() -> Bool {
+        // Check if any common sheets are presented
+        // This is a simple check - you can expand based on your app's sheets
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            // Check if there's a presented view controller (sheet)
+            return window.rootViewController?.presentedViewController != nil
+        }
+        return false
     }
 }

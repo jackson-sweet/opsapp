@@ -93,12 +93,8 @@ struct ProfileSettingsView: View {
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                         }
                                         
-                                        // Email - moved out of input fields
-                                        if let userEmail = user.email, !userEmail.isEmpty {
-                                            Text(userEmail)
-                                                .font(OPSStyle.Typography.smallCaption)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        }
+                                        // Show role only (email is now in form field)
+                                        // Removed email display from header
                                         
                                         // Phone
                                         if let userPhone = user.phone, !userPhone.isEmpty {
@@ -133,6 +129,31 @@ struct ProfileSettingsView: View {
                             }
                             .padding(.horizontal, 20)
                             
+                            // Email - disabled field with grey border
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("EMAIL ADDRESS")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                
+                                Text(email)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding()
+                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 1)
+                                    )
+                                
+                                Text("You cannot change your email address, it is the foundation of your account")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .italic()
+                            }
+                            .padding(.horizontal, 20)
+                            
                             // Phone - directly editable
                             FormTextField(
                                 title: "Phone Number",
@@ -140,14 +161,6 @@ struct ProfileSettingsView: View {
                                 keyboardType: .phonePad
                             )
                             .padding(.horizontal, 20)
-                            
-                            // Email note
-                            Text("You cannot change your email address, it is the foundation of your account")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .italic()
-                                .padding(.horizontal, 20)
-                                .padding(.top, -16)
                             
                             // Home address - with autocomplete
                             VStack(alignment: .leading, spacing: 8) {
@@ -262,9 +275,9 @@ struct ProfileSettingsView: View {
                                 .disableAutocorrection(true)
                                 .padding()
                                 .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(12)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                                 )
                         }
@@ -292,7 +305,7 @@ struct ProfileSettingsView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 16)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(12)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                             
                             Button(action: {
@@ -304,7 +317,7 @@ struct ProfileSettingsView: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
                                         .background(OPSStyle.Colors.primaryAccent)
-                                        .cornerRadius(12)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 } else {
                                     Text("Send Reset Link")
                                         .font(OPSStyle.Typography.button)
@@ -312,7 +325,7 @@ struct ProfileSettingsView: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
                                         .background(OPSStyle.Colors.primaryAccent)
-                                        .cornerRadius(12)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 }
                             }
                             .disabled(passwordResetInProgress || !isEmailValid)
@@ -350,7 +363,7 @@ struct ProfileSettingsView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(OPSStyle.Colors.primaryAccent)
-                                .cornerRadius(12)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 30)

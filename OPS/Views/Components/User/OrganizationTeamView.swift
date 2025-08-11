@@ -105,7 +105,7 @@ struct OrganizationTeamView: View {
         }
         .padding(12)
         .sheet(item: $selectedTeamMember) { member in
-            TeamMemberDetailView(user: nil, teamMember: member)
+            TeamMemberDetailView(teamMember: member)
         }
         .sheet(isPresented: $showingFullTeamList) {
             OrganizationFullTeamView(company: company)
@@ -219,7 +219,7 @@ struct OrganizationFullTeamView: View {
                 }
             }
             .sheet(item: $selectedTeamMember) { member in
-                TeamMemberDetailView(user: nil, teamMember: member)
+                TeamMemberDetailView(teamMember: member)
             }
         }
     }

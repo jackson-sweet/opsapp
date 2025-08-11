@@ -26,6 +26,14 @@ class SyncManager {
     // Flag to prevent automatic status updates
     private var preventAutoStatusUpdates: Bool = false
     
+    // Cache of non-existent user IDs to prevent repeated fetch attempts
+    private var nonExistentUserIds: Set<String> = []
+    
+    /// Add a user ID to the non-existent cache
+    func addNonExistentUserId(_ userId: String) {
+        nonExistentUserIds.insert(userId)
+    }
+    
     private(set) var syncInProgress = false {
         didSet {
             // Publish state changes
@@ -816,12 +824,51 @@ class SyncManager {
         
         print("🟢 SyncManager: Fetched \(remoteProjects.count) projects from API")
         
+        // Get IDs of all remote projects
+        let remoteProjectIds = Set(remoteProjects.map { $0.id })
+        
+        // Remove local projects that are no longer in the remote list
+        // This handles when users are unassigned from projects
+        await removeUnassignedProjects(keepingIds: remoteProjectIds, for: currentUser)
+        
         // Process batches to avoid memory pressure
         for batch in remoteProjects.chunked(into: 20) {
             await processRemoteProjects(batch)
             
             // Small delay between batches to prevent UI stutter
             try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
+        }
+    }
+    
+    /// Remove local projects that the user is no longer assigned to
+    private func removeUnassignedProjects(keepingIds remoteIds: Set<String>, for user: User?) async {
+        do {
+            // Fetch all local projects
+            let descriptor = FetchDescriptor<Project>()
+            let localProjects = try modelContext.fetch(descriptor)
+            
+            print("🔍 Checking for unassigned projects...")
+            print("  - Local projects: \(localProjects.count)")
+            print("  - Remote projects: \(remoteIds.count)")
+            
+            // Find projects to remove (local projects not in remote list)
+            let projectsToRemove = localProjects.filter { !remoteIds.contains($0.id) }
+            
+            if !projectsToRemove.isEmpty {
+                print("🗑️ Removing \(projectsToRemove.count) unassigned projects:")
+                for project in projectsToRemove {
+                    print("  - Removing: \(project.title) (ID: \(project.id))")
+                    modelContext.delete(project)
+                }
+                
+                // Save the deletions
+                try modelContext.save()
+                print("✅ Successfully removed unassigned projects")
+            } else {
+                print("✅ No unassigned projects to remove")
+            }
+        } catch {
+            print("❌ Error removing unassigned projects: \(error)")
         }
     }
     
@@ -851,12 +898,34 @@ class SyncManager {
     
     /// Process remote projects and update local database
     private func processRemoteProjects(_ remoteProjects: [ProjectDTO]) async {
+        print("🔵 SyncManager: Processing \(remoteProjects.count) remote projects")
+        
         do {
             // Efficiently handle the projects in memory to reduce database pressure
             let localProjectIds = try fetchLocalProjectIds()
             let usersMap = try fetchUsersMap()
             
+            print("🔵 SyncManager: Found \(localProjectIds.count) existing local projects")
+            
+            // NO LONGER PRE-FETCHING CLIENTS
+            // Clients will be fetched on-demand when ProjectDetailsView is opened
+            // This reduces sync time and API calls significantly
+            /*
+            let uniqueClientIds = Set(remoteProjects.compactMap { $0.client })
+            if !uniqueClientIds.isEmpty {
+                print("🔵 SyncManager: Pre-fetching \(uniqueClientIds.count) unique clients")
+                await prefetchClients(clientIds: Array(uniqueClientIds))
+            }
+            */
+            
             for remoteProject in remoteProjects {
+                // Debug: Check if this project has a client
+                if let clientId = remoteProject.client {
+                    print("📋 Project '\(remoteProject.projectName)' has client ID: \(clientId)")
+                } else {
+                    print("📋 Project '\(remoteProject.projectName)' has NO client ID")
+                }
+                
                 if localProjectIds.contains(remoteProject.id) {
                     await updateExistingProject(remoteProject, usersMap: usersMap)
                 } else {
@@ -916,10 +985,22 @@ class SyncManager {
             let predicate = #Predicate<Project> { $0.id == remoteDTO.id }
             let descriptor = FetchDescriptor<Project>(predicate: predicate)
             
-            if let localProject = try modelContext.fetch(descriptor).first, !localProject.needsSync {
-                // Only update if not modified locally
-                updateLocalProjectFromRemote(localProject, remoteDTO: remoteDTO)
-                
+            if let localProject = try modelContext.fetch(descriptor).first {
+                // Check if project needs sync
+                if localProject.needsSync {
+                    print("⚠️ Skipping update for '\(remoteDTO.projectName)' - has local changes")
+                } else {
+                    // Only update if not modified locally
+                    updateLocalProjectFromRemote(localProject, remoteDTO: remoteDTO)
+                    
+                    // Sync and link the client if available
+                    if let clientId = remoteDTO.client {
+                        print("🔗 Linking client \(clientId) to project '\(remoteDTO.projectName)'")
+                        await linkProjectToClient(project: localProject, clientId: clientId)
+                    } else {
+                        print("⚠️ No client to link for project '\(remoteDTO.projectName)'")
+                    }
+                }
                 
                 // Update team members
                 if let teamMembers = remoteDTO.teamMembers {
@@ -938,6 +1019,11 @@ class SyncManager {
         let newProject = remoteDTO.toModel()
         modelContext.insert(newProject)
         
+        // Sync and link the client if available
+        if let clientId = remoteDTO.client {
+            await linkProjectToClient(project: newProject, clientId: clientId)
+        }
+        
         // Set up relationships
         if let teamMembers = remoteDTO.teamMembers {
             let teamMemberIds = teamMembers.map { $0 }
@@ -950,11 +1036,14 @@ class SyncManager {
         // Clear existing team members to avoid duplicates
         project.teamMembers = []
         
-        // Always set the team member IDs string
-        project.setTeamMemberIds(teamMemberIds)
+        // Filter out non-existent users from team member IDs
+        let validTeamMemberIds = teamMemberIds.filter { !nonExistentUserIds.contains($0) }
+        
+        // Always set the team member IDs string (with filtered list)
+        project.setTeamMemberIds(validTeamMemberIds)
         
         // Add only existing users (avoid fetching again)
-        for memberId in teamMemberIds {
+        for memberId in validTeamMemberIds {
             if let user = usersMap[memberId] {
                 project.teamMembers.append(user)
                 
@@ -976,6 +1065,14 @@ class SyncManager {
     
     /// Refresh user data from API if needed
     private func refreshUserData(_ user: User) async {
+        // Skip if we already know this user doesn't exist
+        if nonExistentUserIds.contains(user.id) {
+            print("⏭️ SyncManager: Skipping fetch for known non-existent user \(user.id)")
+            modelContext.delete(user)
+            try? modelContext.save()
+            return
+        }
+        
         do {
             let userDTO = try await apiService.fetchUser(id: user.id)
             
@@ -997,7 +1094,24 @@ class SyncManager {
             // Save the context
             try modelContext.save()
         } catch {
-            print("⚠️ SyncManager: Failed to refresh user \(user.id): \(error)")
+            // Check if this is a 404 error (user deleted from Bubble)
+            if let apiError = error as? APIError, case .httpError(let statusCode) = apiError, statusCode == 404 {
+                print("🗑️ SyncManager: User \(user.id) not found (404), deleting from local database")
+                
+                // Add to non-existent cache to prevent future fetch attempts
+                nonExistentUserIds.insert(user.id)
+                
+                // Delete the user from local database
+                modelContext.delete(user)
+                do {
+                    try modelContext.save()
+                    print("✅ SyncManager: Deleted user \(user.id) from local database")
+                } catch {
+                    print("❌ SyncManager: Failed to delete user \(user.id): \(error)")
+                }
+            } else {
+                print("⚠️ SyncManager: Failed to refresh user \(user.id): \(error)")
+            }
         }
     }
     
@@ -1055,10 +1169,16 @@ class SyncManager {
         // Update dates
         if let startDateString = remoteDTO.startDate {
             localProject.startDate = DateFormatter.dateFromBubble(startDateString)
+            print("📅 Project '\(localProject.title)' - Start date: \(startDateString) -> \(localProject.startDate?.description ?? "nil")")
+        } else {
+            print("⚠️ Project '\(localProject.title)' - No start date in API response")
         }
         
         if let completionString = remoteDTO.completion {
             localProject.endDate = DateFormatter.dateFromBubble(completionString)
+            print("📅 Project '\(localProject.title)' - End date: \(completionString) -> \(localProject.endDate?.description ?? "nil")")
+        } else {
+            print("⚠️ Project '\(localProject.title)' - No completion date in API response")
         }
         
         // Update notes and description fields
@@ -1076,6 +1196,457 @@ class SyncManager {
         if !localProject.needsSync || !preventAutoStatusUpdates {
             localProject.status = BubbleFields.JobStatus.toSwiftEnum(remoteDTO.status)
         } else {
+        }
+    }
+    
+    // MARK: - Client Management
+    
+    /// Link a project to its client, fetching the client if needed
+    /// Update client contact information via API
+    func updateClientContact(clientId: String, name: String, email: String?, phone: String?, address: String?) async throws -> Client? {
+        do {
+            print("📝 SyncManager: Updating client contact info for \(clientId)")
+            
+            // Call the Bubble workflow API and get the updated client
+            let updatedClientDTO = try await apiService.updateClientContact(
+                clientId: clientId,
+                name: name,
+                email: email,
+                phone: phone,
+                address: address
+            )
+            
+            print("✅ Client contact updated via API")
+            print("📥 Received updated client data from API:")
+            print("  - Name: \(updatedClientDTO.name ?? "nil")")
+            print("  - Email: \(updatedClientDTO.emailAddress ?? "nil")")
+            print("  - Phone: \(updatedClientDTO.phoneNumber ?? "nil")")
+            print("  - Address: \(updatedClientDTO.address?.formattedAddress ?? "nil")")
+            
+            // Update local client with the data returned from API
+            let clientPredicate = #Predicate<Client> { $0.id == clientId }
+            let clientDescriptor = FetchDescriptor<Client>(predicate: clientPredicate)
+            
+            if let existingClient = try modelContext.fetch(clientDescriptor).first {
+                // Update with actual values from API response
+                existingClient.name = updatedClientDTO.name ?? "Unknown Client"
+                existingClient.email = updatedClientDTO.emailAddress
+                existingClient.phoneNumber = updatedClientDTO.phoneNumber
+                
+                if let address = updatedClientDTO.address {
+                    existingClient.address = address.formattedAddress
+                    existingClient.latitude = address.lat
+                    existingClient.longitude = address.lng
+                } else {
+                    existingClient.address = nil
+                    existingClient.latitude = nil
+                    existingClient.longitude = nil
+                }
+                
+                existingClient.lastSyncedAt = Date()
+                
+                try modelContext.save()
+                print("✅ Local client updated with API response data")
+                
+                return existingClient
+            } else {
+                // Client doesn't exist locally, create it from the API response
+                let newClient = updatedClientDTO.toModel()
+                modelContext.insert(newClient)
+                try modelContext.save()
+                
+                print("✅ Created new local client from API response")
+                return newClient
+            }
+            
+        } catch {
+            print("❌ SyncManager: Failed to update client contact: \(error)")
+            throw error
+        }
+    }
+    
+    // MARK: - Sub-Client Methods
+    
+    func createSubClient(clientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws -> SubClientDTO {
+        do {
+            print("📝 SyncManager: Creating sub-client for client \(clientId)")
+            
+            // Call the API to create sub-client
+            let subClientDTO = try await apiService.createSubClient(
+                clientId: clientId,
+                name: name,
+                title: title,
+                email: email,
+                phone: phone,
+                address: address
+            )
+            
+            print("✅ SyncManager: Sub-client created successfully")
+            return subClientDTO
+        } catch {
+            print("❌ SyncManager: Failed to create sub-client: \(error)")
+            throw error
+        }
+    }
+    
+    func editSubClient(subClientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws -> SubClientDTO {
+        do {
+            print("📝 SyncManager: Editing sub-client \(subClientId)")
+            
+            // Call the API to edit sub-client
+            let subClientDTO = try await apiService.editSubClient(
+                subClientId: subClientId,
+                name: name,
+                title: title,
+                email: email,
+                phone: phone,
+                address: address
+            )
+            
+            print("✅ SyncManager: Sub-client updated successfully")
+            return subClientDTO
+        } catch {
+            print("❌ SyncManager: Failed to edit sub-client: \(error)")
+            throw error
+        }
+    }
+    
+    func deleteSubClient(subClientId: String) async throws {
+        do {
+            print("🗑 SyncManager: Deleting sub-client \(subClientId)")
+            
+            // Call the API to delete sub-client
+            try await apiService.deleteSubClient(subClientId: subClientId)
+            
+            print("✅ SyncManager: Sub-client deleted successfully")
+        } catch {
+            print("❌ SyncManager: Failed to delete sub-client: \(error)")
+            throw error
+        }
+    }
+    
+    /// Refresh a single client's data when viewing project details
+    func refreshSingleClient(clientId: String, for project: Project, forceRefresh: Bool = false) async {
+        do {
+            print("🔄 SyncManager: Refreshing single client \(clientId) (force: \(forceRefresh))")
+            
+            // Fetch fresh data from API
+            let clientDTO = try await apiService.fetchClient(id: clientId)
+            
+            // Check if client already exists locally
+            let clientPredicate = #Predicate<Client> { $0.id == clientId }
+            let clientDescriptor = FetchDescriptor<Client>(predicate: clientPredicate)
+            
+            if let existingClient = try modelContext.fetch(clientDescriptor).first {
+                // Update existing client with fresh data
+                print("📝 Updating existing client '\(existingClient.name)' with fresh data")
+                
+                existingClient.name = clientDTO.name ?? "Unknown Client"
+                existingClient.email = clientDTO.emailAddress
+                existingClient.phoneNumber = clientDTO.phoneNumber
+                existingClient.profileImageURL = clientDTO.thumbnail
+                
+                if let address = clientDTO.address {
+                    existingClient.address = address.formattedAddress
+                    existingClient.latitude = address.lat
+                    existingClient.longitude = address.lng
+                }
+                
+                existingClient.lastSyncedAt = Date()
+                
+                // Fetch and update sub-clients based on IDs from client response
+                print("🔵 Fetching sub-clients for client '\(existingClient.name)'")
+                
+                // Check if we have sub-client IDs from the client response
+                if let subClientIds = clientDTO.subClientIds, !subClientIds.isEmpty {
+                    print("📋 Client has \(subClientIds.count) sub-client IDs to fetch: \(subClientIds)")
+                    
+                    // Clear existing sub-clients
+                    existingClient.subClients.removeAll()
+                    
+                    // Track how many we successfully fetch
+                    var successfulFetches = 0
+                    
+                    // Fetch each sub-client by ID
+                    for subClientId in subClientIds {
+                        do {
+                            print("  🔵 Fetching sub-client with ID: \(subClientId)")
+                            let subClientDTO: SubClientDTO = try await apiService.fetchBubbleObject(
+                                objectType: BubbleFields.Types.subClient,
+                                id: subClientId
+                            )
+                            let subClient = subClientDTO.toSubClient()
+                            subClient.client = existingClient
+                            modelContext.insert(subClient)  // Insert into SwiftData
+                            existingClient.subClients.append(subClient)
+                            successfulFetches += 1
+                            print("  ✅ Fetched sub-client: \(subClient.name)")
+                        } catch {
+                            print("  ⚠️ Failed to fetch sub-client \(subClientId): \(error)")
+                            // Continue with other sub-clients even if one fails
+                        }
+                    }
+                    
+                    // If all ID fetches failed, try constraint query as fallback
+                    if successfulFetches == 0 && subClientIds.count > 0 {
+                        print("⚠️ All sub-client ID fetches failed, trying constraint query as fallback")
+                        let subClientDTOs = try await apiService.fetchSubClientsForClient(clientId: clientId)
+                        print("  🔵 Found \(subClientDTOs.count) sub-clients via constraint query")
+                        
+                        for subClientDTO in subClientDTOs {
+                            let subClient = subClientDTO.toSubClient()
+                            subClient.client = existingClient
+                            modelContext.insert(subClient)
+                            existingClient.subClients.append(subClient)
+                            print("  ✅ Added sub-client via constraint: \(subClient.name)")
+                        }
+                    }
+                } else {
+                    print("📋 No sub-client IDs in response, trying constraint query")
+                    // Fallback: Try fetching sub-clients by client ID constraint
+                    let subClientDTOs = try await apiService.fetchSubClientsForClient(clientId: clientId)
+                    print("  🔵 Found \(subClientDTOs.count) sub-clients via constraint query")
+                    
+                    // Clear existing sub-clients and add fresh ones
+                    existingClient.subClients.removeAll()
+                    for subClientDTO in subClientDTOs {
+                        let subClient = subClientDTO.toSubClient()
+                        subClient.client = existingClient
+                        modelContext.insert(subClient)  // Insert into SwiftData
+                        existingClient.subClients.append(subClient)
+                        print("  ✅ Added sub-client via constraint: \(subClient.name)")
+                    }
+                }
+                
+                print("✅ Client updated: Name='\(existingClient.name)', Email='\(existingClient.email ?? "nil")', Phone='\(existingClient.phoneNumber ?? "nil")', SubClients=\(existingClient.subClients.count)")
+            } else {
+                // Create new client
+                print("🆕 Creating new client from fresh data")
+                let newClient = clientDTO.toModel()
+                newClient.companyId = project.companyId
+                modelContext.insert(newClient)
+                
+                // Link to project
+                project.client = newClient
+                project.clientId = clientId
+                newClient.projects.append(project)
+                
+                // Fetch and add sub-clients for new client
+                print("🔵 Fetching sub-clients for new client '\(newClient.name)'")
+                
+                // Check if we have sub-client IDs from the client response
+                if let subClientIds = clientDTO.subClientIds, !subClientIds.isEmpty {
+                    print("📋 New client has \(subClientIds.count) sub-client IDs to fetch: \(subClientIds)")
+                    
+                    // Fetch each sub-client by ID
+                    for subClientId in subClientIds {
+                        do {
+                            print("  🔵 Fetching sub-client with ID: \(subClientId)")
+                            let subClientDTO: SubClientDTO = try await apiService.fetchBubbleObject(
+                                objectType: BubbleFields.Types.subClient,
+                                id: subClientId
+                            )
+                            let subClient = subClientDTO.toSubClient()
+                            subClient.client = newClient
+                            modelContext.insert(subClient)  // Insert into SwiftData
+                            newClient.subClients.append(subClient)
+                            print("  ✅ Fetched sub-client: \(subClient.name)")
+                        } catch {
+                            print("  ⚠️ Failed to fetch sub-client \(subClientId): \(error)")
+                            // Continue with other sub-clients even if one fails
+                        }
+                    }
+                } else {
+                    print("📋 No sub-client IDs in response, trying constraint query")
+                    // Fallback: Try fetching sub-clients by client ID constraint
+                    let subClientDTOs = try await apiService.fetchSubClientsForClient(clientId: clientId)
+                    print("  🔵 Found \(subClientDTOs.count) sub-clients via constraint query")
+                    
+                    for subClientDTO in subClientDTOs {
+                        let subClient = subClientDTO.toSubClient()
+                        subClient.client = newClient
+                        modelContext.insert(subClient)  // Insert into SwiftData
+                        newClient.subClients.append(subClient)
+                        print("  ✅ Added sub-client via constraint: \(subClient.name)")
+                    }
+                }
+                
+                print("✅ New client created: Name='\(newClient.name)', Email='\(newClient.email ?? "nil")', Phone='\(newClient.phoneNumber ?? "nil")', SubClients=\(newClient.subClients.count)")
+            }
+            
+            // Save changes
+            try modelContext.save()
+            
+        } catch {
+            print("❌ SyncManager: Failed to refresh client \(clientId): \(error)")
+            
+            // Handle 404 gracefully
+            if case APIError.httpError(let statusCode) = error, statusCode == 404 {
+                print("⚠️ Client \(clientId) not found (404)")
+            }
+        }
+    }
+    
+    /// Pre-fetch multiple clients in batch to avoid individual API calls
+    private func prefetchClients(clientIds: [String]) async {
+        do {
+            // Get existing client IDs to avoid re-fetching
+            let existingClients = try modelContext.fetch(FetchDescriptor<Client>())
+            let existingClientIds = Set(existingClients.map { $0.id })
+            
+            // Filter to only fetch missing clients
+            let missingClientIds = clientIds.filter { !existingClientIds.contains($0) }
+            
+            if missingClientIds.isEmpty {
+                print("✅ All \(clientIds.count) clients already exist locally")
+                return
+            }
+            
+            print("🔵 SyncManager: Fetching \(missingClientIds.count) missing clients from API")
+            
+            // Fetch missing clients in batch
+            let clientDTOs = try await apiService.fetchClientsByIds(clientIds: missingClientIds)
+            
+            print("🟢 SyncManager: Fetched \(clientDTOs.count) clients from API")
+            
+            // Convert and save
+            for clientDTO in clientDTOs {
+                let client = clientDTO.toModel()
+                modelContext.insert(client)
+            }
+            
+            // Check for any clients that weren't returned by the API
+            let fetchedIds = Set(clientDTOs.map { $0.id })
+            let notFoundIds = Set(missingClientIds).subtracting(fetchedIds)
+            
+            if !notFoundIds.isEmpty {
+                print("⚠️ \(notFoundIds.count) clients not found in API response")
+                // Create placeholder clients for missing ones
+                for clientId in notFoundIds {
+                    let placeholderClient = Client(
+                        id: clientId,
+                        name: "Client #\(clientId.prefix(4))",
+                        email: nil,
+                        phoneNumber: nil,
+                        address: nil
+                    )
+                    modelContext.insert(placeholderClient)
+                }
+            }
+            
+            try modelContext.save()
+            
+        } catch {
+            print("❌ SyncManager: Failed to prefetch clients: \(error)")
+        }
+    }
+    
+    private func linkProjectToClient(project: Project, clientId: String) async {
+        do {
+            // First check if we already have this client locally
+            let clientPredicate = #Predicate<Client> { $0.id == clientId }
+            let clientDescriptor = FetchDescriptor<Client>(predicate: clientPredicate)
+            
+            if let existingClient = try modelContext.fetch(clientDescriptor).first {
+                // Client exists locally, just link it
+                print("✅ Found existing client '\(existingClient.name)' for project '\(project.title)'")
+                
+                project.client = existingClient
+                project.clientId = clientId
+                
+                // Ensure client has this project in its list
+                if !existingClient.projects.contains(where: { $0.id == project.id }) {
+                    existingClient.projects.append(project)
+                }
+            } else {
+                // Client doesn't exist locally - create a placeholder
+                // It will be properly fetched when the user opens ProjectDetailsView
+                print("📝 Creating placeholder client \(clientId) for project '\(project.title)'")
+                
+                let placeholderClient = Client(
+                    id: clientId,
+                    name: "Loading...",  // Will be updated when ProjectDetailsView opens
+                    email: nil,
+                    phoneNumber: nil,
+                    address: nil
+                )
+                placeholderClient.companyId = project.companyId
+                modelContext.insert(placeholderClient)
+                
+                // Link to project
+                project.client = placeholderClient
+                project.clientId = clientId
+                placeholderClient.projects.append(project)
+                
+                print("📎 Linked placeholder client to project '\(project.title)'")
+            }
+            
+            // Save the context
+            try modelContext.save()
+        } catch {
+            print("⚠️ SyncManager: Failed to link client \(clientId) to project: \(error)")
+        }
+    }
+    
+    /// Sync all clients for a company
+    func syncCompanyClients(companyId: String) async {
+        do {
+            print("🔵 SyncManager: Fetching clients for company \(companyId)")
+            
+            // Fetch all clients for the company from API
+            let clientDTOs = try await apiService.fetchCompanyClients(companyId: companyId)
+            
+            print("🔵 SyncManager: Fetched \(clientDTOs.count) clients from API")
+            
+            // Get existing clients for this company
+            let existingDescriptor = FetchDescriptor<Client>(
+                predicate: #Predicate<Client> { client in
+                    client.companyId == companyId
+                }
+            )
+            let existingClients = try modelContext.fetch(existingDescriptor)
+            let existingClientIds = Set(existingClients.map { $0.id })
+            
+            // Create set of current client IDs from API
+            let currentClientIds = Set(clientDTOs.map { $0.id })
+            
+            // Delete clients that are no longer in the API response
+            for client in existingClients {
+                if !currentClientIds.contains(client.id) {
+                    print("🗑️ SyncManager: Removing client \(client.name) - no longer in company")
+                    modelContext.delete(client)
+                }
+            }
+            
+            // Process each client from API
+            for clientDTO in clientDTOs {
+                if let existingClient = existingClients.first(where: { $0.id == clientDTO.id }) {
+                    // Update existing client
+                    existingClient.name = clientDTO.name ?? "Unknown Client"
+                    existingClient.email = clientDTO.emailAddress
+                    existingClient.phoneNumber = clientDTO.phoneNumber
+                    
+                    if let address = clientDTO.address {
+                        existingClient.address = address.formattedAddress
+                        existingClient.latitude = address.lat
+                        existingClient.longitude = address.lng
+                    }
+                    
+                    existingClient.lastSyncedAt = Date()
+                } else {
+                    // Create new client
+                    let newClient = clientDTO.toModel()
+                    newClient.companyId = companyId
+                    modelContext.insert(newClient)
+                }
+            }
+            
+            // Save all changes
+            try modelContext.save()
+            
+            print("🟢 SyncManager: Client sync completed")
+        } catch {
+            print("❌ SyncManager: Failed to sync clients: \(error)")
         }
     }
     
@@ -1117,6 +1688,25 @@ class SyncManager {
                 userDTOs = try await apiService.fetchUsersByIds(userIds: teamIds)
             }
             
+            // Get all existing User objects for this company
+            let companyId = company.id
+            let existingUsersDescriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { user in 
+                    user.companyId == companyId
+                }
+            )
+            let existingUsers = try modelContext.fetch(existingUsersDescriptor)
+            
+            // Create a set of user IDs from the API response
+            let currentUserIds = Set(userDTOs.map { $0.id })
+            
+            // Delete users that are no longer in the company
+            for user in existingUsers {
+                if !currentUserIds.contains(user.id) {
+                    print("🗑️ SyncManager: Removing user \(user.fullName) - no longer in company")
+                    modelContext.delete(user)
+                }
+            }
             
             // Clear existing team members to avoid duplicates
             company.teamMembers = []
@@ -1124,11 +1714,57 @@ class SyncManager {
             // Get admin IDs from company if available
             let adminIds = company.getAdminIds()
             
-            // Create TeamMember objects from the DTOs
+            // Create or update User and TeamMember objects from the DTOs
             for userDTO in userDTOs {
                 // Check if this user is an admin
                 let isAdmin = adminIds.contains(userDTO.id)
                 
+                // Update or create User object
+                if let existingUser = existingUsers.first(where: { $0.id == userDTO.id }) {
+                    // Update existing user
+                    existingUser.firstName = userDTO.nameFirst ?? ""
+                    existingUser.lastName = userDTO.nameLast ?? ""
+                    existingUser.email = userDTO.email
+                    existingUser.phone = userDTO.phone
+                    
+                    // Extract role from userType and employeeType
+                    if userDTO.userType == BubbleFields.UserType.admin {
+                        existingUser.role = .admin
+                    } else if let employeeTypeString = userDTO.employeeType {
+                        existingUser.role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
+                    } else {
+                        existingUser.role = .fieldCrew
+                    }
+                    
+                    existingUser.profileImageURL = userDTO.avatar
+                    existingUser.isActive = true // Users from API are considered active
+                } else {
+                    // Extract role for new user
+                    let role: UserRole
+                    if userDTO.userType == BubbleFields.UserType.admin {
+                        role = .admin
+                    } else if let employeeTypeString = userDTO.employeeType {
+                        role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
+                    } else {
+                        role = .fieldCrew
+                    }
+                    
+                    // Create new User object
+                    let newUser = User(
+                        id: userDTO.id,
+                        firstName: userDTO.nameFirst ?? "",
+                        lastName: userDTO.nameLast ?? "",
+                        role: role,
+                        companyId: company.id
+                    )
+                    newUser.email = userDTO.email
+                    newUser.phone = userDTO.phone
+                    newUser.profileImageURL = userDTO.avatar
+                    newUser.isActive = true // Users from API are considered active
+                    modelContext.insert(newUser)
+                }
+                
+                // Create TeamMember object
                 let teamMember = TeamMember.fromUserDTO(userDTO, isAdmin: isAdmin)
                 teamMember.company = company
                 company.teamMembers.append(teamMember)

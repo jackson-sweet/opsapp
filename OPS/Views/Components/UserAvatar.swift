@@ -66,6 +66,17 @@ struct UserAvatar: View {
         self.backgroundColor = OPSStyle.Colors.primaryAccent
     }
     
+    init(client: Client, size: CGFloat = 40) {
+        // Parse client name into first and last name
+        let names = client.name.components(separatedBy: " ")
+        self.firstName = names.first ?? client.name
+        self.lastName = names.count > 1 ? names.dropFirst().joined(separator: " ") : ""
+        self.imageURL = client.profileImageURL
+        self.imageData = nil
+        self.size = size
+        self.backgroundColor = OPSStyle.Colors.primaryAccent
+    }
+    
     init(firstName: String, lastName: String, imageURL: String? = nil, imageData: Data? = nil, size: CGFloat = 40, backgroundColor: Color? = nil) {
         self.firstName = firstName
         self.lastName = lastName

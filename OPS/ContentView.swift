@@ -35,7 +35,6 @@ struct ContentView: View {
             } else {
                 // Check if PIN authentication is required
                 // Access the PIN manager directly as @ObservedObject to ensure proper state updates
-                let _ = print("ContentView: Creating PINGatedView")
                 PINGatedView(dataController: dataController, appState: appState, locationManager: locationManager)
             }
         }

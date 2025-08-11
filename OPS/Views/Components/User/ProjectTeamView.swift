@@ -22,15 +22,11 @@ struct ProjectTeamView: View {
             // Use refreshedProject if available, otherwise use original project
             let activeProject = refreshedProject ?? project
             
-            // Header with see all button
-            HStack {
-                Text("TEAM MEMBERS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Spacer()
-                
-                if activeProject.teamMembers.count > 3 {
+            // See all button in top right if there are more than 3 members
+            if activeProject.teamMembers.count > 3 {
+                HStack {
+                    Spacer()
+                    
                     Button(action: {
                         // Show full team member list
                         showingTeamMemberDetails = true
@@ -42,7 +38,6 @@ struct ProjectTeamView: View {
                     }
                 }
             }
-            .padding(.bottom, 4)
             
             // Show team member info or loading state
             if !teamsRefreshed && activeProject.getTeamMemberIds().count > 0 && activeProject.teamMembers.isEmpty {
@@ -120,10 +115,14 @@ struct ProjectTeamView: View {
         .padding()
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
         .sheet(isPresented: $showingTeamMemberDetails) {
             if let selectedMember = selectedTeamMember {
                 // Show team member details
-                TeamMemberDetailView(user: selectedMember, teamMember: nil)
+                TeamMemberDetailView(user: selectedMember)
                     .presentationDragIndicator(.visible)
                     .presentationDetents([.medium, .large])
             } else {
@@ -258,7 +257,7 @@ struct FullTeamListView: View {
                 }
             }
             .sheet(item: $selectedTeamMember) { member in
-                TeamMemberDetailView(user: member, teamMember: nil)
+                TeamMemberDetailView(user: member)
                     .presentationDragIndicator(.visible)
                     .presentationDetents([.medium, .large])
             }

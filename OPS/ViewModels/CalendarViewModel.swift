@@ -175,7 +175,7 @@ class CalendarViewModel: ObservableObject {
             
             // For other dates, get the count from DataController
             if let dataController = dataController {
-                // Get projects based on user role
+                // Get all projects active on this date (including multi-day projects)
                 var projects = dataController.getProjectsForCurrentUser(for: date)
                 
                 // Apply team member filter if selected
@@ -217,27 +217,68 @@ class CalendarViewModel: ObservableObject {
     
     // MARK: - Private Methods
     func loadProjectsForDate(_ date: Date) {
-        guard let dataController = dataController else { return }
+        guard let dataController = dataController else { 
+            print("❌ loadProjectsForDate: No dataController")
+            return 
+        }
         
+        print("📅 Loading projects for date: \(date)")
         isLoading = true
         
         // Get projects for the selected date based on user role
         var projects = dataController.getProjectsForCurrentUser(for: date)
+        print("📊 Found \(projects.count) projects from dataController")
         
         // Apply team member filter if selected
         if let selectedMemberId = selectedTeamMemberId {
+            print("👤 Applying team member filter for: \(selectedMemberId)")
             projects = projects.filter { project in
                 project.getTeamMemberIds().contains(selectedMemberId) ||
                 project.teamMembers.contains(where: { $0.id == selectedMemberId })
             }
+            print("📊 After filter: \(projects.count) projects")
         }
         
-        self.projectsForSelectedDate = projects
-        self.isLoading = false
+        // Force UI update
+        DispatchQueue.main.async { [weak self] in
+            self?.objectWillChange.send()
+            self?.projectsForSelectedDate = projects
+            self?.isLoading = false
+        }
         
         // Update the cache for this date
         let dateKey = formatDateKey(date)
         projectCountCache[dateKey] = projects.count
+        print("💾 Updated cache for \(dateKey): \(projects.count) projects")
+        print("🔄 UI update triggered")
+    }
+    
+    // Refresh projects from the data source
+    @MainActor
+    func refreshProjects() async {
+        guard let dataController = dataController else { 
+            print("❌ Refresh failed: No dataController")
+            return 
+        }
+        
+        print("🔄 Starting project refresh...")
+        print("📅 Current selected date: \(selectedDate)")
+        
+        // Clear the cache to force fresh data
+        projectCountCache.removeAll()
+        print("🗑️ Cleared project cache")
+        
+        // Sync with Bubble backend to get latest project data
+        print("🌐 Fetching latest data from Bubble...")
+        await dataController.refreshProjectsFromBackend()
+        
+        // Reload projects for the current selected date with fresh data
+        loadProjectsForDate(selectedDate)
+        
+        print("✅ Refresh complete. Found \(projectsForSelectedDate.count) projects")
+        for project in projectsForSelectedDate {
+            print("  📋 Project: \(project.title) - Status: \(project.status.displayName)")
+        }
     }
     
     private func getWeekDays() -> [Date] {
@@ -255,7 +296,10 @@ class CalendarViewModel: ObservableObject {
     }
     
     private func getMonthDays() -> [Date] {
-            let calendar = Calendar.current
+            var calendar = Calendar.current
+            // Set first weekday to Monday
+            calendar.firstWeekday = 2
+            
             let selectedMonth = calendar.dateComponents([.year, .month], from: selectedDate)
             guard let startOfMonth = calendar.date(from: selectedMonth) else { return [] }
             
@@ -265,9 +309,10 @@ class CalendarViewModel: ObservableObject {
             // Get the weekday of the first day (1 = Sunday, 2 = Monday, etc.)
             let firstWeekday = calendar.component(.weekday, from: firstDay)
             
-            // Calculate offset to start grid with appropriate weekday
-            // Adjust by subtracting 1 to align with 0-based indexing
-            let weekdayOffset = firstWeekday - 1
+            // Calculate offset to start grid with Monday as first day
+            // Convert to Monday-based index (0 = Monday, 6 = Sunday)
+            let mondayBasedWeekday = (firstWeekday + 5) % 7
+            let weekdayOffset = mondayBasedWeekday
             
             // Get number of days in the month
             let daysInMonth = calendar.range(of: .day, in: .month, for: startOfMonth)?.count ?? 30

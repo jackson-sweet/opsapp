@@ -86,6 +86,159 @@ class APIService {
         return response
     }
     
+    /// Update client contact information
+    /// - Parameters:
+    ///   - clientId: The client's unique ID
+    ///   - name: Updated client name
+    ///   - email: Updated email address (optional)
+    ///   - phone: Updated phone number (optional)
+    ///   - address: Updated address (optional)
+    /// - Returns: Updated ClientDTO from the API response
+    func updateClientContact(clientId: String, name: String, email: String?, phone: String?, address: String?) async throws -> ClientDTO {
+        print("🔵 APIService: Updating client contact for \(clientId)")
+        
+        // Create request body with client info
+        var requestBody: [String: Any] = [
+            "client": clientId,
+            "name": name
+        ]
+        
+        // Add optional fields if provided
+        if let email = email {
+            requestBody["email"] = email
+        }
+        if let phone = phone {
+            requestBody["phone"] = phone
+        }
+        if let address = address {
+            requestBody["address"] = address
+        }
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        print("📤 Sending client update: name='\(name)', email='\(email ?? "nil")', phone='\(phone ?? "nil")', address='\(address ?? "nil")'")
+        
+        // Execute the request to the update_client_contact endpoint
+        // The response will contain the updated client object
+        let response: UpdateClientResponse = try await executeRequest(
+            endpoint: "api/1.1/wf/update_client_contact",
+            method: "POST",
+            body: jsonData,
+            requiresAuth: false  // Bubble workflow endpoints typically don't require auth headers
+        )
+        
+        print("✅ Client contact updated successfully")
+        print("📥 Received updated client: \(response.client.name ?? "Unknown")")
+        
+        return response.client
+    }
+    
+    // MARK: - Sub-Client Methods
+    
+    func createSubClient(clientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws -> SubClientDTO {
+        print("🔵 APIService: Creating sub-client for client \(clientId)")
+        
+        // Create request body
+        var requestBody: [String: Any] = [
+            "client": clientId,
+            "name": name
+        ]
+        
+        // Add optional fields
+        if let title = title {
+            requestBody["title"] = title
+        }
+        if let email = email {
+            requestBody["email"] = email
+        }
+        if let phone = phone {
+            requestBody["phone"] = phone
+        }
+        if let address = address {
+            requestBody["address"] = address
+        }
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        print("📤 Creating sub-client: name='\(name)', title='\(title ?? "nil")', email='\(email ?? "nil")', phone='\(phone ?? "nil")'")
+        
+        let response: SubClientResponse = try await executeRequest(
+            endpoint: "api/1.1/wf/create_sub_client",
+            method: "POST",
+            body: jsonData,
+            requiresAuth: false
+        )
+        
+        print("✅ Sub-client created successfully")
+        return response.response.subClient
+    }
+    
+    func editSubClient(subClientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws -> SubClientDTO {
+        print("🔵 APIService: Editing sub-client \(subClientId)")
+        
+        // Create request body
+        var requestBody: [String: Any] = [
+            "subClient": subClientId,
+            "name": name
+        ]
+        
+        // Add optional fields
+        if let title = title {
+            requestBody["title"] = title
+        }
+        if let email = email {
+            requestBody["email"] = email
+        }
+        if let phone = phone {
+            requestBody["phone"] = phone
+        }
+        if let address = address {
+            requestBody["address"] = address
+        }
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        print("📤 Updating sub-client: name='\(name)', title='\(title ?? "nil")', email='\(email ?? "nil")', phone='\(phone ?? "nil")'")
+        
+        let response: SubClientResponse = try await executeRequest(
+            endpoint: "api/1.1/wf/edit_sub_client",
+            method: "POST",
+            body: jsonData,
+            requiresAuth: false
+        )
+        
+        print("✅ Sub-client updated successfully")
+        return response.response.subClient
+    }
+    
+    func deleteSubClient(subClientId: String) async throws {
+        print("🔵 APIService: Deleting sub-client \(subClientId)")
+        
+        // Create request body
+        let requestBody: [String: Any] = [
+            "subClient": subClientId
+        ]
+        
+        let bodyData = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        // Note: Using struct just for the response structure, we don't need the data
+        struct DeleteResponse: Decodable {
+            struct Response: Decodable {
+                let status: String?
+            }
+            let response: Response
+        }
+        
+        let _: DeleteResponse = try await executeRequest(
+            endpoint: "api/1.1/wf/delete_sub_client",
+            method: "POST",
+            body: bodyData,
+            requiresAuth: false
+        )
+        
+        print("✅ Sub-client deleted successfully")
+    }
+    
     // MARK: - Core Request Method
 
     func executeRequest<T: Decodable>(
@@ -172,9 +325,85 @@ class APIService {
                 print("")
             }
             
+            // Special logging for Project endpoint responses  
+            if endpoint.contains("/Project") && httpResponse.statusCode == 200 {
+                print("\n🔍 DEBUG - Raw API Response Data for Project endpoint:")
+                if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+                   let response = jsonObject["response"] as? [String: Any],
+                   let results = response["results"] as? [[String: Any]],
+                   let firstProject = results.first {
+                    print("First project sample:")
+                    // Check for Client field specifically
+                    if let client = firstProject["Client"] {
+                        print("  ✅ Client field exists: \(client)")
+                    } else {
+                        print("  ❌ Client field is missing!")
+                    }
+                    // Check other client-related fields
+                    print("  - Project Name: \(firstProject["Project Name"] ?? "nil")")
+                    print("  - Client Name: \(firstProject["Client Name"] ?? "nil")")
+                    print("  - Client Email: \(firstProject["Client Email"] ?? "nil")")
+                    print("  - Client Phone: \(firstProject["Client Phone"] ?? "nil")")
+                }
+            }
+            
+            // Special logging for Client endpoint responses
+            if endpoint.contains("/Client") && httpResponse.statusCode == 200 {
+                print("\n🔍 DEBUG - Raw API Response Data for Client endpoint:")
+                if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []) {
+                    // Check if it's a single client response
+                    if let responseDict = jsonObject as? [String: Any],
+                       let clientData = responseDict["response"] as? [String: Any] {
+                        print("Single Client Response:")
+                        print("  - ID: \(clientData["_id"] ?? "nil")")
+                        print("  - Name: \(clientData["Name"] ?? "nil")")
+                        print("  - Email Address: \(clientData["Email Address"] ?? "nil")")
+                        print("  - Phone Number: \(clientData["Phone Number"] ?? "nil")")
+                        print("  - Address: \(clientData["Address"] ?? "nil")")
+                        
+                        // Check all fields to see what's available
+                        print("\n  All available fields in response:")
+                        for (key, value) in clientData {
+                            if let stringValue = value as? String, !stringValue.isEmpty {
+                                print("    - \(key): \(stringValue)")
+                            } else if value is Bool || value is Int || value is Double {
+                                print("    - \(key): \(value)")
+                            }
+                        }
+                    }
+                    
+                    // Pretty print for full inspection
+                    if let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
+                       let prettyString = String(data: prettyData, encoding: .utf8) {
+                        // Print first 2000 characters for Client data
+                        let trimmed = String(prettyString.prefix(2000))
+                        print("\nFull response (first 2000 chars):")
+                        print(trimmed)
+                        if prettyString.count > 2000 {
+                            print("... (truncated, total length: \(prettyString.count) characters)")
+                        }
+                    }
+                } else if let rawString = String(data: data, encoding: .utf8) {
+                    // Fallback to raw string if pretty printing fails
+                    print("Raw string (first 1000 chars):")
+                    print(String(rawString.prefix(1000)))
+                }
+                print("")
+            }
+            
             // Check for success status codes
             guard (200...299).contains(httpResponse.statusCode) else {
                 print("🔴 HTTP Error: \(httpResponse.statusCode)")
+                
+                // Log raw response for debugging 404s
+                if httpResponse.statusCode == 404 {
+                    print("🔴 404 Error Details:")
+                    print("  - Endpoint: \(endpoint)")
+                    if let rawString = String(data: data, encoding: .utf8) {
+                        print("  - Response: \(rawString)")
+                    }
+                }
+                
                 throw APIError.httpError(statusCode: httpResponse.statusCode)
             }
             
@@ -314,8 +543,12 @@ class APIService {
             }
         }
         
-        // Construct endpoint
-        let endpoint = "api/1.1/obj/\(objectType)"
+        // Format object type for API: lowercase, no spaces
+        let apiObjectType = objectType.lowercased().replacingOccurrences(of: " ", with: "")
+        let endpoint = "api/1.1/obj/\(apiObjectType)"
+        
+        print("🔵 Fetching \(objectType) objects")
+        print("  📍 API endpoint: \(endpoint)")
         
         // Execute the request
         let wrapper: BubbleListResponse<T> = try await executeRequest(
@@ -328,6 +561,21 @@ class APIService {
         print("📡 API Response for \(objectType):")
         print("  - Count: \(wrapper.response.results.count)")
         print("  - Remaining: \(wrapper.response.remaining ?? 0)")
+        
+        // Special logging for Sub Client objects
+        if objectType == BubbleFields.Types.subClient && !wrapper.response.results.isEmpty {
+            print("🔍 DEBUG - Sub-Client Objects Found:")
+            for (index, result) in wrapper.response.results.prefix(5).enumerated() {
+                if let subClientDTO = result as? SubClientDTO {
+                    print("  Sub-Client \(index + 1):")
+                    print("    - ID: \(subClientDTO.id)")
+                    print("    - Name: \(subClientDTO.name ?? "nil")")
+                    print("    - Title: \(subClientDTO.title ?? "nil")")
+                    print("    - Email: \(subClientDTO.emailAddress ?? "nil")")
+                    print("    - Phone: \(subClientDTO.phoneNumber?.stringValue ?? "nil")")
+                }
+            }
+        }
         
         // Special logging for User objects to debug phone/email issue
         if objectType == "User" && !wrapper.response.results.isEmpty {
@@ -363,8 +611,9 @@ class APIService {
         sortField: String? = nil,
         sortOrder: String = "asc"
     ) async throws -> [T] {
-        // Build endpoint
-        let endpoint = "api/1.1/obj/\(objectType)"
+        // Format object type for API: lowercase, no spaces
+        let apiObjectType = objectType.lowercased().replacingOccurrences(of: " ", with: "")
+        let endpoint = "api/1.1/obj/\(apiObjectType)"
         
         // Build query items
         var queryItems = [
@@ -411,9 +660,13 @@ class APIService {
         objectType: String,
         id: String
     ) async throws -> T {
-        let endpoint = "api/1.1/obj/\(objectType)/\(id)"
+        // Format object type for API: lowercase, no spaces
+        // Bubble API requires: "Sub Client" -> "subclient"
+        let apiObjectType = objectType.lowercased().replacingOccurrences(of: " ", with: "")
+        let endpoint = "api/1.1/obj/\(apiObjectType)/\(id)"
         
         print("🔵 Fetching \(objectType) with ID: \(id)")
+        print("  📍 Endpoint: \(endpoint)")
         
         // Execute the request
         let wrapper: BubbleObjectResponse<T> = try await executeRequest(
@@ -429,6 +682,20 @@ class APIService {
                 print("   User company ID: \(userData.company ?? "none")")
                 print("   User email: \(userData.email ?? "none")")
                 print("   User type: \(userData.userType ?? "none")")
+            }
+        } else if objectType == BubbleFields.Types.client {
+            print("🟢 Client fetch successful")
+            // Debug: Print raw JSON if possible
+            if let clientData = wrapper.response as? ClientDTO {
+                print("🔍 Raw Client data received from API")
+                // This will trigger the debug logging in ClientDTO.toModel()
+            }
+        } else if objectType == BubbleFields.Types.subClient {
+            print("🟢 Sub-Client fetch successful for ID: \(id)")
+            if let subClientData = wrapper.response as? SubClientDTO {
+                print("   Sub-client name: \(subClientData.name ?? "none")")
+                print("   Sub-client title: \(subClientData.title ?? "none")")
+                print("   Sub-client email: \(subClientData.emailAddress ?? "none")")
             }
         }
         
@@ -623,6 +890,11 @@ struct EmptyResponse: Decodable {}
 // Response for delete user API call
 struct DeleteUserResponse: Decodable {
     let deleted: String?
+}
+
+// Response for update client contact API call
+struct UpdateClientResponse: Decodable {
+    let client: ClientDTO
 }
 
 // Helper enum to distinguish between API types

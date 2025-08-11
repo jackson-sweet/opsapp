@@ -1238,9 +1238,31 @@ class DataController: ObservableObject {
                         // Insert into database
                         context.insert(newUser)
                     } catch {
+                        // Check if this is a 404 error (user deleted from system)
+                        if let apiError = error as? APIError, case .httpError(let statusCode) = apiError, statusCode == 404 {
+                            print("DataController: User \(memberId) not found (404), deleting from local database")
+                            
+                            // Delete any existing local user with this ID
+                            let existingUserPredicate = #Predicate<User> { $0.id == memberId }
+                            let existingUserDescriptor = FetchDescriptor<User>(predicate: existingUserPredicate)
+                            if let existingUsers = try? context.fetch(existingUserDescriptor) {
+                                for userToDelete in existingUsers {
+                                    print("🗑️ Deleting non-existent user \(userToDelete.fullName) from local database")
+                                    context.delete(userToDelete)
+                                }
+                            }
+                            
+                            // Add to sync manager's non-existent cache if available
+                            if let syncManager = self.syncManager {
+                                syncManager.addNonExistentUserId(memberId)
+                            }
+                            
+                            continue
+                        }
+                        
                         print("DataController: Failed to fetch user \(memberId) from API: \(error.localizedDescription)")
                         
-                        // Create placeholder user until we can fetch real data
+                        // Only create placeholder for non-404 errors (network issues, etc)
                         let placeholderUser = User(
                             id: memberId,
                             firstName: "Team Member",
@@ -1316,13 +1338,11 @@ class DataController: ObservableObject {
             }
             
             
-            // Then filter by date if needed
+            // Then filter by date if needed - check if project is active on this date
             if let date = date {
                 filteredProjects = filteredProjects.filter { project in
-                    guard let projectDate = project.startDate else {
-                        return false
-                    }
-                    return Calendar.current.isDate(projectDate, inSameDayAs: date)
+                    // Use the project's isActiveOn method to check if it's scheduled for this date
+                    return project.isActiveOn(date: date)
                 }
             }
             
@@ -1357,6 +1377,26 @@ class DataController: ObservableObject {
             // For Field Crew, pass the user to filter by assignment
             return getProjects(for: date, assignedTo: user)
         }
+    }
+    
+    /// Force refresh projects from Bubble backend
+    func refreshProjectsFromBackend() async {
+        guard isConnected, isAuthenticated else {
+            print("❌ Cannot refresh projects: Not connected or not authenticated")
+            return
+        }
+        
+        guard let syncManager = syncManager else {
+            print("❌ Cannot refresh projects: SyncManager not initialized")
+            return
+        }
+        
+        print("🔄 Starting project refresh from backend...")
+        
+        // Force sync projects from Bubble
+        await syncManager.forceSyncProjects()
+        
+        print("✅ Project refresh from backend completed")
     }
     
     func getProjectDetails(projectId: String) async throws -> Project {
@@ -1487,6 +1527,7 @@ class DataController: ObservableObject {
         }
     }
     
+    
     func getProjectsForMap() throws -> [Project] {
         guard let context = modelContext else {
             throw NSError(domain: "DataController", code: 2,
@@ -1498,6 +1539,52 @@ class DataController: ObservableObject {
         descriptor.sortBy = [SortDescriptor(\.startDate, order: .forward)]
         
         return try context.fetch(descriptor)
+    }
+    
+    func getAllProjects() -> [Project] {
+        guard let context = modelContext else {
+            return []
+        }
+        
+        do {
+            // Fetch all projects, sorted by start date (most recent first)
+            var descriptor = FetchDescriptor<Project>()
+            descriptor.sortBy = [SortDescriptor(\.startDate, order: .reverse)]
+            
+            return try context.fetch(descriptor)
+        } catch {
+            print("Error fetching all projects: \(error.localizedDescription)")
+            return []
+        }
+    }
+    
+    // MARK: - Client Management
+    
+    func getClient(id: String) -> Client? {
+        guard let context = modelContext else { return nil }
+        
+        do {
+            let descriptor = FetchDescriptor<Client>(
+                predicate: #Predicate<Client> { client in
+                    client.id == id
+                }
+            )
+            return try context.fetch(descriptor).first
+        } catch {
+            print("Error fetching client: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    func saveClient(_ client: Client) {
+        guard let context = modelContext else { return }
+        
+        context.insert(client)
+        do {
+            try context.save()
+        } catch {
+            print("Error saving client: \(error.localizedDescription)")
+        }
     }
     
     func getCurrentUserCompany() -> Company? {

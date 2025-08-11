@@ -22,7 +22,7 @@
                                     <constraint firstAttribute="height" constant="80" id="WOg-mk-FYE"/>
                                 </constraints>
                             </imageView>
-                            <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="[ VERSION 1.0.2 ]" textAlignment="center" lineBreakMode="middleTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="MN4-5K-dhl">
+                            <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="[ VERSION 1.1.0 ]" textAlignment="center" lineBreakMode="middleTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="MN4-5K-dhl">
                                 <rect key="frame" x="20" y="778" width="353" height="16"/>
                                 <fontDescription key="fontDescription" name="Kosugi-Regular" family="Kosugi" pointSize="14"/>
                                 <color key="textColor" red="0.6" green="0.6" blue="0.6" alpha="0.7" colorSpace="custom" customColorSpace="sRGB"/>

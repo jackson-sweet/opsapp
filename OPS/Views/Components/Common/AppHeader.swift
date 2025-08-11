@@ -360,7 +360,7 @@ struct AppHeader: View {
                 
                 Spacer()
                 
-                Text("v1.0.0")
+                Text(AppConfiguration.AppInfo.displayVersion)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

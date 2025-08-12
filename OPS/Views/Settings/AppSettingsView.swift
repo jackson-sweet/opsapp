@@ -14,6 +14,7 @@ struct AppSettingsView: View {
     @State private var showNotificationSettings = false
     @State private var showDataSettings = false
     @State private var showSecuritySettings = false
+    @State private var showTaskTest = false
     
     var body: some View {
         ZStack {
@@ -73,6 +74,29 @@ struct AppSettingsView: View {
                             iconName: "lock"
                         )
                     }
+                    
+                    #if DEBUG
+                    // Debug section - only visible in debug builds
+                    Divider()
+                        .background(OPSStyle.Colors.tertiaryText)
+                        .padding(.vertical, 8)
+                    
+                    Text("DEBUG OPTIONS")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // Task Test View
+                    Button {
+                        showTaskTest = true
+                    } label: {
+                        SettingsRowCard(
+                            title: "Task Model Test",
+                            description: "Test task-based scheduling models",
+                            iconName: "hammer.circle"
+                        )
+                    }
+                    #endif
                 }
                 .padding(.horizontal, 20)
                 
@@ -108,6 +132,12 @@ struct AppSettingsView: View {
         .fullScreenCover(isPresented: $showSecuritySettings) {
             NavigationStack {
                 SecuritySettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showTaskTest) {
+            NavigationStack {
+                TaskTestView()
                     .environmentObject(dataController)
             }
         }

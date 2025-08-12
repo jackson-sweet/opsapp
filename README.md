@@ -5,7 +5,7 @@
 OPS (Operational Project System) is a specialized iOS app built for trade workers to manage projects and crews in the field. The app prioritizes reliability, simplicity, and offline functionality. Built "by trades, for trades," OPS transforms how field crews manage their daily operations.
 
 **Status**: LAUNCHED ✅  
-**Version**: 1.0.2  
+**Version**: 1.1.0  
 **Platform**: iOS 17+  
 **Architecture**: 200+ Swift files implementing comprehensive field management
 **Backend**: Bubble.io with AWS S3 for media storage

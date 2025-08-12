@@ -122,6 +122,64 @@ This document tracks features that have been identified for V2 implementation (p
   - Location check-ins
   - Team notifications
 
+## Auto-Scheduling & Task Management
+
+### Intelligent Project Scheduling
+- **Task Dependencies**
+  - Define prerequisite tasks that must complete before others can start
+  - Visual dependency chain in project view
+  - Automatic date adjustment when dependencies change
+  - Critical path identification
+  
+- **Auto-Scheduling Engine**
+  - Automatically calculate task dates based on:
+    - Dependencies between tasks
+    - Team member availability
+    - Task estimated hours
+    - Working days/hours configuration
+  - Conflict detection and resolution suggestions
+  - Resource leveling across projects
+  
+- **Task Ordering & Management**
+  - Manual drag-and-drop reordering with displayOrder/index values
+  - Automatic reordering based on dependencies
+  - Task templates for common project types
+  - Bulk task operations (copy, move, delete)
+  
+- **Advanced Task Fields**
+  - estimatedHours: Track expected time per task
+  - actualHours: Compare against estimates
+  - percentComplete: Progress tracking beyond status
+  - priority: High/Medium/Low for scheduling decisions
+  - constraints: Must start on, must finish by, etc.
+  
+- **Scheduling Algorithms**
+  - Forward scheduling from project start date
+  - Backward scheduling from required completion date
+  - Resource-constrained scheduling
+  - Time-constrained scheduling
+  
+- **Visual Scheduling Tools**
+  - Gantt chart view for projects
+  - Resource utilization heat map
+  - Timeline view with task dependencies
+  - Calendar overlay showing all project tasks
+  
+- **Smart Suggestions**
+  - Recommend optimal task sequences
+  - Identify scheduling conflicts early
+  - Suggest resource reallocation
+  - Alert on impossible schedules
+
+### Implementation Notes
+*These features build on the Task-based scheduling foundation (V2.0.0)*
+- Requires displayOrder field on Task model
+- Requires dependencies array field on Task model  
+- Requires estimatedHours field on Task model
+- Backend must support dependency validation
+- Complex UI components needed (Gantt, timeline)
+- Consider third-party scheduling library integration
+
 ## Advanced Offline Features
 
 - **Conflict Resolution UI**

@@ -1,9 +1,9 @@
 # OPS App - Current State & MVP Status
 
-**Last Updated**: July 03, 2025  
-**Current Version**: 1.0.2  
-**Current Completion**: 97-98% MVP Ready  
-**Status**: LAUNCHED ✅ (June 1, 2025)
+**Last Updated**: January 2025  
+**Current Version**: 1.1.0  
+**Current Completion**: 100% MVP Complete + Enhanced Features  
+**Status**: PRODUCTION ✅ (Version 1.1.0 - January 2025)
 
 ## Executive Summary
 
@@ -95,6 +95,35 @@ Comprehensive settings implementation with 13+ screens:
 - **Location Services**: Enhanced permission handling with completion callbacks
 - **Offline Support**: Map caching for previously viewed areas
 - **Permission UI**: Clear overlay when location disabled with settings link
+
+## Version 1.1.0 Features (January 2025)
+
+### Advanced Contact Management
+- **Client & Sub-Contact System**: Full CRUD operations for managing multiple contacts per client
+- **Contact Roles**: Project managers, site supervisors, owners with dedicated contact info
+- **Device Integration**: Import/export contacts to phone's address book
+- **Profile Photos**: Client profile images sync from Bubble's Thumbnail field
+- **Role-Based Permissions**: Admin/Office crew only can edit contacts
+
+### Enhanced Project Features
+- **Smart Search**: Filter projects by status, client, date with auto-focus
+- **Calendar Logic Fix**: Completion date correctly represents day after last work day
+- **Single-Day Projects**: Proper handling when start equals completion date
+- **Unscheduled Display**: Clear "Unscheduled" status for projects without dates
+- **On-Demand Refresh**: Manual project sync with visual feedback
+
+### UI/UX Improvements
+- **Consistent Styling**: All cards use proper borders and OPSStyle corner radius
+- **Address Autocomplete**: MapKit integration for faster address entry
+- **Keyboard Management**: Fixed keyboard pushing up content in search sheets
+- **Profile Settings**: Email field display (read-only) with disabled styling
+- **Team Members**: Unified section styling across all views
+
+### Technical Enhancements
+- **Dynamic Versioning**: All version references use AppConfiguration
+- **Improved Sync**: Better offline handling with automatic reconnection
+- **Data Models**: New Client/SubClient models with full relationships
+- **Performance**: Fixed preview crashes and UIActivityViewController conflicts
 
 ## Recent Improvements (May-July 2025)
 

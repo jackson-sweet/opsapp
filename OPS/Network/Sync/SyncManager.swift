@@ -768,10 +768,100 @@ class SyncManager {
         print("🔵 SyncManager: Force syncing projects...")
         do {
             try await syncProjects()
+            
+            // Also refresh any placeholder clients
+            await refreshPlaceholderClients()
+            
             print("🟢 SyncManager: Force project sync completed")
         } catch {
             print("🔴 SyncManager: Force project sync failed: \(error.localizedDescription)")
         }
+    }
+    
+    /// Refresh any clients that are still showing placeholder data
+    private func refreshPlaceholderClients() async {
+        do {
+            // Find clients that need refreshing (placeholder names)
+            let placeholderPredicate = #Predicate<Client> { client in
+                client.name.contains("Syncing") || 
+                client.name.contains("Loading") || 
+                client.name == "Unknown Client"
+            }
+            let descriptor = FetchDescriptor<Client>(predicate: placeholderPredicate)
+            let placeholderClients = try modelContext.fetch(descriptor)
+            
+            if !placeholderClients.isEmpty {
+                print("🔄 SyncManager: Found \(placeholderClients.count) placeholder clients to refresh")
+                
+                var failedClients: [String] = []
+                
+                for client in placeholderClients {
+                    do {
+                        let clientDTO = try await apiService.fetchClient(id: client.id)
+                        
+                        // Update the client with real data
+                        client.name = clientDTO.name ?? "Unknown Client"
+                        client.email = clientDTO.emailAddress
+                        client.phoneNumber = clientDTO.phoneNumber
+                        client.address = clientDTO.address?.formattedAddress
+                        client.profileImageURL = clientDTO.thumbnail
+                        
+                        print("✅ Updated placeholder client to '\(client.name)'")
+                    } catch {
+                        print("⚠️ Failed to refresh client \(client.id): \(error)")
+                        failedClients.append(client.id)
+                    }
+                }
+                
+                // Save all updates
+                try modelContext.save()
+                
+                // If we had failures, try syncing all company clients as a fallback
+                if !failedClients.isEmpty {
+                    print("⚠️ SyncManager: \(failedClients.count) clients failed to sync individually")
+                    print("🔄 SyncManager: Attempting to sync all company clients as fallback...")
+                    
+                    // Get company ID from the first project or user's company
+                    if let companyId = try getCompanyId() {
+                        await syncCompanyClients(companyId: companyId)
+                    } else {
+                        print("❌ SyncManager: Could not determine company ID for fallback sync")
+                    }
+                }
+            }
+        } catch {
+            print("🔴 Failed to refresh placeholder clients: \(error)")
+            
+            // Even if the placeholder refresh fails, try to sync all clients as last resort
+            print("🔄 SyncManager: Attempting fallback sync of all company clients...")
+            if let companyId = try? getCompanyId() {
+                await syncCompanyClients(companyId: companyId)
+            }
+        }
+    }
+    
+    /// Helper method to get the company ID for the current user
+    private func getCompanyId() throws -> String? {
+        // Try to get from a project first
+        var projectDescriptor = FetchDescriptor<Project>()
+        projectDescriptor.fetchLimit = 1
+        
+        let projects = try modelContext.fetch(projectDescriptor)
+        if let project = projects.first {
+            return project.companyId
+        }
+        
+        // Try to get from the current user
+        var userDescriptor = FetchDescriptor<User>()
+        userDescriptor.fetchLimit = 1
+        
+        let users = try modelContext.fetch(userDescriptor)
+        if let user = users.first,
+           let companyId = user.companyId {
+            return companyId
+        }
+        
+        return nil
     }
     
     /// Sync projects between local storage and backend
@@ -907,16 +997,13 @@ class SyncManager {
             
             print("🔵 SyncManager: Found \(localProjectIds.count) existing local projects")
             
-            // NO LONGER PRE-FETCHING CLIENTS
-            // Clients will be fetched on-demand when ProjectDetailsView is opened
-            // This reduces sync time and API calls significantly
-            /*
+            // Pre-fetch clients for all projects to ensure they're available
+            // This prevents "Loading..." placeholder clients from persisting
             let uniqueClientIds = Set(remoteProjects.compactMap { $0.client })
             if !uniqueClientIds.isEmpty {
                 print("🔵 SyncManager: Pre-fetching \(uniqueClientIds.count) unique clients")
                 await prefetchClients(clientIds: Array(uniqueClientIds))
             }
-            */
             
             for remoteProject in remoteProjects {
                 // Debug: Check if this project has a client
@@ -1538,6 +1625,14 @@ class SyncManager {
             
         } catch {
             print("❌ SyncManager: Failed to prefetch clients: \(error)")
+            
+            // As a last resort, try to sync all company clients
+            print("🔄 SyncManager: Attempting fallback sync of all company clients...")
+            if let companyId = try? getCompanyId() {
+                await syncCompanyClients(companyId: companyId)
+            } else {
+                print("❌ SyncManager: Could not determine company ID for fallback sync")
+            }
         }
     }
     
@@ -1559,18 +1654,60 @@ class SyncManager {
                     existingClient.projects.append(project)
                 }
             } else {
-                // Client doesn't exist locally - create a placeholder
-                // It will be properly fetched when the user opens ProjectDetailsView
-                print("📝 Creating placeholder client \(clientId) for project '\(project.title)'")
+                // Client doesn't exist locally - try to fetch it immediately
+                print("📝 Client \(clientId) not found locally for project '\(project.title)' - fetching from API")
+                
+                // Try to fetch the client data immediately
+                var clientName = "Unknown Client"
+                var clientEmail: String? = nil
+                var clientPhone: String? = nil
+                var clientAddress: String? = nil
+                var clientThumbnail: String? = nil
+                
+                do {
+                    let clientDTO = try await apiService.fetchClient(id: clientId)
+                    clientName = clientDTO.name ?? "Unknown Client"
+                    clientEmail = clientDTO.emailAddress
+                    clientPhone = clientDTO.phoneNumber
+                    clientAddress = clientDTO.address?.formattedAddress
+                    clientThumbnail = clientDTO.thumbnail
+                    print("✅ Successfully fetched client '\(clientName)' from API")
+                } catch {
+                    print("⚠️ Failed to fetch client \(clientId) from API: \(error)")
+                    print("📝 Creating placeholder that will retry on next sync")
+                    clientName = "Client (Syncing...)"
+                    
+                    // Try to sync all company clients as fallback
+                    let companyId = project.companyId
+                    if !companyId.isEmpty {
+                        print("🔄 Attempting to sync all company clients as fallback...")
+                        await syncCompanyClients(companyId: companyId)
+                        
+                        // Check if client exists now after company sync
+                        let checkPredicate = #Predicate<Client> { $0.id == clientId }
+                        let checkDescriptor = FetchDescriptor<Client>(predicate: checkPredicate)
+                        if let syncedClient = try? modelContext.fetch(checkDescriptor).first {
+                            print("✅ Client found after company sync!")
+                            project.client = syncedClient
+                            project.clientId = clientId
+                            if !syncedClient.projects.contains(where: { $0.id == project.id }) {
+                                syncedClient.projects.append(project)
+                            }
+                            try? modelContext.save()
+                            return
+                        }
+                    }
+                }
                 
                 let placeholderClient = Client(
                     id: clientId,
-                    name: "Loading...",  // Will be updated when ProjectDetailsView opens
-                    email: nil,
-                    phoneNumber: nil,
-                    address: nil
+                    name: clientName,
+                    email: clientEmail,
+                    phoneNumber: clientPhone,
+                    address: clientAddress
                 )
                 placeholderClient.companyId = project.companyId
+                placeholderClient.profileImageURL = clientThumbnail
                 modelContext.insert(placeholderClient)
                 
                 // Link to project

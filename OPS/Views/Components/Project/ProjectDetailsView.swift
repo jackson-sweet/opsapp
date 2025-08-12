@@ -207,9 +207,10 @@ struct ProjectDetailsView: View {
             // Request location permission when project details are viewed
             locationManager.requestPermissionIfNeeded()
             
-            // Refresh client data if project has a client
+            // Always refresh client data when opening project details
+            // This ensures we have the latest client information
             if let clientId = project.clientId, !clientId.isEmpty {
-                refreshClientData(clientId: clientId)
+                refreshClientData(clientId: clientId, forceRefresh: true)
             }
         }
         .onDisappear {
@@ -946,17 +947,11 @@ struct ProjectDetailsView: View {
     // MARK: - Client Data Refresh
     
     private func refreshClientData(clientId: String, forceRefresh: Bool = false) {
-        // Only refresh if we haven't refreshed recently (within last 5 minutes)
-        // Unless forceRefresh is true
-        if !forceRefresh, let client = project.client {
-            if let lastSynced = client.lastSyncedAt,
-               Date().timeIntervalSince(lastSynced) < 300 { // 5 minutes
-                print("📱 Client data is fresh (synced \(Int(Date().timeIntervalSince(lastSynced))) seconds ago), skipping refresh")
-                return
-            }
+        // Skip if already refreshing
+        guard !isRefreshingClient else { 
+            print("📱 Already refreshing client, skipping duplicate request")
+            return 
         }
-        
-        guard !isRefreshingClient else { return }
         isRefreshingClient = true
         
         print("🔄 ProjectDetailsView: Refreshing client \(clientId) for project '\(project.title)'")

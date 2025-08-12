@@ -46,6 +46,10 @@ final class Project: Identifiable {
     @Relationship(deleteRule: .noAction)
     var teamMembers: [User]
     
+    // Relationship to tasks (for task-based scheduling)
+    @Relationship(deleteRule: .cascade, inverse: \ProjectTask.project)
+    var tasks: [ProjectTask] = []
+    
     // Offline/sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
@@ -340,5 +344,62 @@ final class Project: Identifiable {
         
         let dayDiff = calendar.dateComponents([.day], from: startDay, to: checkDay).day ?? 0
         return dayDiff + 1 // Make it 1-based
+    }
+    
+    // MARK: - Task-Based Scheduling Support
+    
+    /// Check if project has tasks
+    var hasTasks: Bool {
+        return !tasks.isEmpty
+    }
+    
+    /// Get computed status based on task statuses
+    var computedStatus: Status {
+        // If no tasks, use the project's own status
+        if !hasTasks {
+            return status
+        }
+        
+        // If any task is in progress, project is in progress
+        if tasks.contains(where: { $0.status == .inProgress }) {
+            return .inProgress
+        }
+        
+        // If all tasks are completed, project is completed
+        if !tasks.isEmpty && tasks.allSatisfy({ $0.status == .completed }) {
+            return .completed
+        }
+        
+        // If all tasks are cancelled, project status doesn't change
+        if tasks.allSatisfy({ $0.status == .cancelled }) {
+            return status
+        }
+        
+        // Otherwise, keep current project status
+        return status
+    }
+    
+    /// Get effective start date (from tasks or project)
+    var effectiveStartDate: Date? {
+        if hasTasks {
+            // Get earliest task start date
+            let taskDates = tasks.compactMap { task in
+                task.calendarEvent?.startDate
+            }
+            return taskDates.min() ?? startDate
+        }
+        return startDate
+    }
+    
+    /// Get effective completion date (from tasks or project)
+    var effectiveCompletionDate: Date? {
+        if hasTasks {
+            // Get latest task end date
+            let taskDates = tasks.compactMap { task in
+                task.calendarEvent?.endDate
+            }
+            return taskDates.max() ?? endDate
+        }
+        return effectiveEndDate
     }
 }

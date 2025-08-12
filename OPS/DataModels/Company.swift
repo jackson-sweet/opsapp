@@ -43,6 +43,13 @@ final class Company {
     @Relationship(deleteRule: .cascade)
     var teamMembers: [TeamMember] = []
     
+    // Relationship to task types
+    @Relationship(deleteRule: .cascade)
+    var taskTypes: [TaskType] = []
+    
+    // Default color for project-level calendar events (hex)
+    var defaultProjectColor: String = "#59779F"
+    
     // Flag to track if team members have been synced
     var teamMembersSynced: Bool = false
     

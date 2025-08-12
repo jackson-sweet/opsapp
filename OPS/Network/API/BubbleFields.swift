@@ -18,6 +18,9 @@ struct BubbleFields {
         static let project = "Project"
         static let user = "User"
         static let subClient = "Sub Client"  // Note the space - Bubble uses "Sub Client"
+        static let task = "Task"
+        static let taskType = "TaskType"
+        static let calendarEvent = "CalendarEvent"
     }
     
     /// Job status values (from your Job Status custom type)
@@ -130,5 +133,53 @@ struct BubbleFields {
         static let parentClient = "Parent Client"
         static let phoneNumber = "Phone Number"
         static let title = "Title"
+    }
+    
+    /// Task entity fields (match your Bubble field names exactly)
+    struct Task {
+        static let id = "_id"
+        static let calendarEvent = "Calendar Event"
+        static let company = "Company"
+        static let project = "Project"
+        static let status = "Status"
+        static let taskColor = "Task Color"
+        static let taskNotes = "Task Notes"
+        static let taskType = "Task Type"
+        static let teamMembers = "Team Members"
+        static let displayOrder = "Display Order"
+    }
+    
+    /// TaskType entity fields (match your Bubble field names exactly)
+    struct TaskType {
+        static let id = "_id"
+        static let color = "Color"
+        static let display = "Display"
+        static let icon = "Icon"
+        static let isDefault = "Is Default"
+        static let company = "Company"
+        static let displayOrder = "Display Order"
+    }
+    
+    /// CalendarEvent entity fields (match your Bubble field names exactly)
+    struct CalendarEvent {
+        static let id = "_id"
+        static let color = "Color"
+        static let company = "Company"
+        static let project = "Project"
+        static let task = "Task"
+        static let duration = "Duration"
+        static let endDate = "End Date"
+        static let startDate = "Start Date"
+        static let teamMembers = "Team Members"
+        static let title = "Title"
+        static let type = "Type"
+    }
+    
+    /// Task Status values
+    struct TaskStatus {
+        static let scheduled = "Scheduled"
+        static let inProgress = "In Progress"
+        static let completed = "Completed"
+        static let cancelled = "Cancelled"
     }
 }

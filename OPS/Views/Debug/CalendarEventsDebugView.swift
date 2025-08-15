@@ -128,7 +128,7 @@ struct CalendarEventsDebugView: View {
                     }
                 }
                 
-                // Summary bar
+                // Summary bar with sync options
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Total: \(events.count) events")
@@ -145,11 +145,19 @@ struct CalendarEventsDebugView: View {
                     
                     Spacer()
                     
-                    Button("Generate from Projects") {
-                        generateEventsFromProjects()
+                    HStack(spacing: 12) {
+                        Button("Sync from API") {
+                            syncEventsFromAPI()
+                        }
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                        
+                        Button("Generate from Projects") {
+                            generateEventsFromProjects()
+                        }
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding()
                 .background(OPSStyle.Colors.cardBackgroundDark)
@@ -176,6 +184,55 @@ struct CalendarEventsDebugView: View {
         } catch {
             errorMessage = "Failed to fetch events: \(error.localizedDescription)"
             isLoading = false
+        }
+    }
+    
+    private func syncEventsFromAPI() {
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                guard let companyId = dataController.currentUser?.companyId else {
+                    await MainActor.run {
+                        errorMessage = "No company ID found"
+                        isLoading = false
+                    }
+                    return
+                }
+                
+                // Fetch from API
+                let apiEvents = try await dataController.apiService.fetchCompanyCalendarEvents(companyId: companyId)
+                
+                await MainActor.run {
+                    // Convert and save
+                    var syncedCount = 0
+                    for dto in apiEvents {
+                        if let event = dto.toModel() {
+                            // Check if exists
+                            let existing = events.first { $0.id == event.id }
+                            if existing == nil {
+                                modelContext.insert(event)
+                                syncedCount += 1
+                            }
+                        }
+                    }
+                    
+                    do {
+                        try modelContext.save()
+                        errorMessage = "Synced \(syncedCount) new events from API"
+                    } catch {
+                        errorMessage = "Failed to save events: \(error.localizedDescription)"
+                    }
+                    
+                    fetchEvents()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "API sync failed: \(error.localizedDescription)"
+                    isLoading = false
+                }
+            }
         }
     }
     

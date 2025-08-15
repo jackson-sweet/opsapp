@@ -14,10 +14,7 @@ struct AppSettingsView: View {
     @State private var showNotificationSettings = false
     @State private var showDataSettings = false
     @State private var showSecuritySettings = false
-    @State private var showTaskTest = false
-    @State private var showTaskList = false
-    @State private var showCalendarEvents = false
-    @State private var showAPICallsDebug = false
+    @State private var showDeveloperDashboard = false
     @State private var developerModeEnabled: Bool = false
     @State private var developerModeExplicitlyDisabled: Bool = false
     
@@ -94,89 +91,22 @@ struct AppSettingsView: View {
                         )
                     }
                     
-                    // Debug section - visible in debug builds or when developer mode is enabled
+                    // Developer Tools section - visible in debug builds or when developer mode is enabled
                     if shouldShowDeveloperOptions {
                         Divider()
                             .background(OPSStyle.Colors.tertiaryText)
                             .padding(.vertical, 8)
                         
-                        Text("DEVELOPER OPTIONS")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        // Task Test View
+                        // Developer Tools Card
                         Button {
-                            showTaskTest = true
+                            showDeveloperDashboard = true
                         } label: {
                             SettingsRowCard(
-                                title: "Task Model Test",
-                                description: "Test task-based scheduling models",
-                                iconName: "hammer.circle"
+                                title: "Developer Tools",
+                                description: "Access debugging and testing tools",
+                                iconName: "hammer.circle.fill"
                             )
                         }
-                        
-                        // Task List View
-                        Button {
-                            showTaskList = true
-                        } label: {
-                            SettingsRowCard(
-                                title: "Task List Debug",
-                                description: "View all tasks with full field details",
-                                iconName: "list.bullet.rectangle"
-                            )
-                        }
-                        
-                        // Calendar Events View
-                        Button {
-                            showCalendarEvents = true
-                        } label: {
-                            SettingsRowCard(
-                                title: "Calendar Events Debug",
-                                description: "View all calendar events with details",
-                                iconName: "calendar.badge.clock"
-                            )
-                        }
-                        
-                        // API Calls Debug View
-                        Button {
-                            showAPICallsDebug = true
-                        } label: {
-                            SettingsRowCard(
-                                title: "API Calls Debug",
-                                description: "Test API endpoints and view responses",
-                                iconName: "network"
-                            )
-                        }
-                        
-                        // Exit developer mode button - always show at bottom
-                        Divider()
-                            .background(OPSStyle.Colors.tertiaryText)
-                            .padding(.vertical, 8)
-                        
-                        Button {
-                            UserDefaults.standard.set(false, forKey: "developerModeEnabled")
-                            UserDefaults.standard.synchronize()
-                            developerModeEnabled = false
-                            developerModeExplicitlyDisabled = true
-                            print("🔧 Developer mode deactivated")
-                        } label: {
-                            HStack {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                                Text("Exit Developer Mode")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1)
-                            )
-                        }
-                        .padding(.top, 8)
                     }
                     
                     // App info at the bottom of scroll content
@@ -227,27 +157,9 @@ struct AppSettingsView: View {
                     .environmentObject(dataController)
             }
         }
-        .fullScreenCover(isPresented: $showTaskTest) {
+        .fullScreenCover(isPresented: $showDeveloperDashboard) {
             NavigationStack {
-                TaskTestView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showTaskList) {
-            NavigationStack {
-                TaskListDebugView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showCalendarEvents) {
-            NavigationStack {
-                CalendarEventsDebugView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showAPICallsDebug) {
-            NavigationStack {
-                APICallsDebugView()
+                DeveloperDashboard()
                     .environmentObject(dataController)
             }
         }

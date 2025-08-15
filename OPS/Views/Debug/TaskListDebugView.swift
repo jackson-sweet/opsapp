@@ -141,23 +141,46 @@ struct TaskListDebugView: View {
     }
     
     private func syncTasksFromAPI() {
-        guard let syncManager = dataController.syncManager,
-              let companyId = dataController.currentUser?.companyId else {
-            errorMessage = "Unable to sync: No sync manager or company ID"
+        guard let companyId = dataController.currentUser?.companyId else {
+            errorMessage = "Unable to sync: No company ID"
             return
         }
         
         isLoading = true
+        errorMessage = nil
         
         Task {
             do {
-                try await syncManager.syncCompanyTasks(companyId: companyId)
+                // Fetch from API
+                let apiTasks = try await dataController.apiService.fetchCompanyTasks(companyId: companyId)
+                
                 await MainActor.run {
+                    // Convert and save
+                    var syncedCount = 0
+                    let defaultColor = "#59779F"
+                    
+                    for dto in apiTasks {
+                        // Check if exists
+                        let existing = tasks.first { $0.id == dto.id }
+                        if existing == nil {
+                            let task = dto.toModel(defaultColor: defaultColor)
+                            modelContext.insert(task)
+                            syncedCount += 1
+                        }
+                    }
+                    
+                    do {
+                        try modelContext.save()
+                        errorMessage = "Synced \(syncedCount) new tasks from API"
+                    } catch {
+                        errorMessage = "Failed to save tasks: \(error.localizedDescription)"
+                    }
+                    
                     fetchTasks()
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = "Sync failed: \(error.localizedDescription)"
+                    errorMessage = "API sync failed: \(error.localizedDescription)"
                     isLoading = false
                 }
             }

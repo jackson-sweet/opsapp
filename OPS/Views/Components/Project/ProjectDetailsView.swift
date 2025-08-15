@@ -42,11 +42,7 @@ struct ProjectDetailsView: View {
         
         // Debug project team member information
         
-        if !project.teamMembers.isEmpty {
-            for (index, member) in project.teamMembers.enumerated() {
-            }
-        } else {
-        }
+        // Team member debugging removed - no longer needed
         
         // Convert project to JSON for complete debugging
         do {
@@ -65,9 +61,8 @@ struct ProjectDetailsView: View {
                 "endDate": project.endDate?.description ?? "nil"
             ]
             
-            let jsonData = try JSONSerialization.data(withJSONObject: projectDict, options: .prettyPrinted)
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-            }
+            let _ = try JSONSerialization.data(withJSONObject: projectDict, options: .prettyPrinted)
+            // JSON debugging removed - no longer needed
         } catch {
             print("Error converting project to JSON: \(error.localizedDescription)")
         }
@@ -127,11 +122,19 @@ struct ProjectDetailsView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         
+                        // Scheduling mode toggle (for projects with eventType support)
+                        schedulingModeSection
+                        
                         // Location map - more visual prominence
                         locationSection
                         
                         // Project info with notes - streamlined cards
                         infoSection
+                        
+                        // Tasks section (only for task-based scheduling)
+                        if project.usesTaskBasedScheduling {
+                            tasksSection
+                        }
                         
                         // Photos - improved grid layout
                         photosSection
@@ -747,6 +750,106 @@ struct ProjectDetailsView: View {
         .zIndex(100)
     }
     
+    // Scheduling mode section
+    private var schedulingModeSection: some View {
+        Group {
+            // Only show if user has permission to edit
+            if canEditProjectSettings() {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.system(size: 20))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        
+                        Text("SCHEDULING MODE")
+                            .font(OPSStyle.Typography.cardTitle)
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        // Mode toggle
+                        Menu {
+                            Button {
+                                updateSchedulingMode(.project)
+                            } label: {
+                                Label(
+                                    "Project Scheduling",
+                                    systemImage: project.effectiveEventType == .project ? "checkmark" : ""
+                                )
+                            }
+                            
+                            Button {
+                                updateSchedulingMode(.task)
+                            } label: {
+                                Label(
+                                    "Task-Based Scheduling",
+                                    systemImage: project.effectiveEventType == .task ? "checkmark" : ""
+                                )
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(project.effectiveEventType == .task ? "Task-Based" : "Project")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                
+                                Image(systemName: "chevron.down.circle")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                            )
+                        }
+                    }
+                    .padding()
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    
+                    // Mode description
+                    Text(project.effectiveEventType == .task ? 
+                        "Schedule individual tasks with specific dates and team assignments" :
+                        "Schedule the entire project as a single calendar event"
+                    )
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .padding(.horizontal)
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+    
+    // Tasks section
+    private var tasksSection: some View {
+        TaskListView(project: project)
+            .environmentObject(dataController)
+    }
+    
+    // Check if user can edit project settings
+    private func canEditProjectSettings() -> Bool {
+        guard let currentUser = dataController.currentUser else { return false }
+        return currentUser.role != .fieldCrew
+    }
+    
+    // Update scheduling mode
+    private func updateSchedulingMode(_ mode: CalendarEventType) {
+        guard mode != project.effectiveEventType else { return }
+        
+        // Update the project
+        project.eventType = mode
+        project.needsSync = true
+        
+        // Save changes
+        do {
+            try dataController.modelContext?.save()
+        } catch {
+            print("Error updating scheduling mode: \(error)")
+        }
+    }
+    
     // Helper to format date
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -786,36 +889,31 @@ struct ProjectDetailsView: View {
             project.needsSync = true
             
             if let modelContext = dataController.modelContext {
-                do {
-                    try modelContext.save()
-                    showSaveNotification()
-                    
-                    // Also post notes to API if we're online
-                    if dataController.isConnected {
-                        Task {
-                            do {
-                                // Call the API endpoint to update notes
-                                try await dataController.apiService.updateProjectNotes(
-                                    id: project.id,
-                                    notes: noteText
-                                )
-                                
-                                // If successful, mark as synced
-                                await MainActor.run {
-                                    project.needsSync = false
-                                    project.lastSyncedAt = Date()
-                                    try? modelContext.save()
-                                }
-                                
-                            } catch {
-                                print("❌ Error syncing project notes to API: \(error.localizedDescription)")
-                                // Leave needsSync = true so it will be tried again later
+                try? modelContext.save()
+                showSaveNotification()
+                
+                // Also post notes to API if we're online
+                if dataController.isConnected {
+                    Task {
+                        do {
+                            // Call the API endpoint to update notes
+                            try await dataController.apiService.updateProjectNotes(
+                                id: project.id,
+                                notes: noteText
+                            )
+                            
+                            // If successful, mark as synced
+                            await MainActor.run {
+                                project.needsSync = false
+                                project.lastSyncedAt = Date()
+                                try? modelContext.save()
                             }
+                            
+                        } catch {
+                            print("❌ Error syncing project notes to API: \(error.localizedDescription)")
+                            // Leave needsSync = true so it will be tried again later
                         }
-                    } else {
                     }
-                } catch {
-                    print("❌ Error saving notes locally: \(error.localizedDescription)")
                 }
             }
         }

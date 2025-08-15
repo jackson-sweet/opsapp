@@ -155,7 +155,34 @@ struct TaskListDebugView: View {
                 let apiTasks = try await dataController.apiService.fetchCompanyTasks(companyId: companyId)
                 
                 await MainActor.run {
-                    // Convert and save
+                    // First, ensure we have task types for all unique type IDs
+                    var taskTypeMap: [String: TaskType] = [:]
+                    
+                    // Fetch existing task types
+                    let existingTypes = try? modelContext.fetch(FetchDescriptor<TaskType>())
+                    for type in existingTypes ?? [] {
+                        taskTypeMap[type.id] = type
+                    }
+                    
+                    // Create missing task types from task data
+                    let uniqueTypeIds = Set(apiTasks.compactMap { $0.type })
+                    for typeId in uniqueTypeIds {
+                        if taskTypeMap[typeId] == nil {
+                            // Create a basic task type for this ID
+                            let taskType = TaskType(
+                                id: typeId,
+                                display: "Task Type \(typeId.prefix(8))", // Use first 8 chars of ID as display
+                                color: "#59779F",
+                                companyId: companyId,
+                                isDefault: false,
+                                icon: "hammer.fill"
+                            )
+                            modelContext.insert(taskType)
+                            taskTypeMap[typeId] = taskType
+                        }
+                    }
+                    
+                    // Convert and save tasks
                     var syncedCount = 0
                     let defaultColor = "#59779F"
                     
@@ -164,6 +191,12 @@ struct TaskListDebugView: View {
                         let existing = tasks.first { $0.id == dto.id }
                         if existing == nil {
                             let task = dto.toModel(defaultColor: defaultColor)
+                            
+                            // Link to task type if available
+                            if let typeId = dto.type, let taskType = taskTypeMap[typeId] {
+                                task.taskType = taskType
+                            }
+                            
                             modelContext.insert(task)
                             syncedCount += 1
                         }

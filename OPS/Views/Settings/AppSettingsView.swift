@@ -177,36 +177,6 @@ struct AppSettingsView: View {
                             )
                         }
                         .padding(.top, 8)
-                    } else if developerModeExplicitlyDisabled {
-                        // Show re-enable option when explicitly disabled in DEBUG builds
-                        #if DEBUG
-                        Divider()
-                            .background(OPSStyle.Colors.tertiaryText)
-                            .padding(.vertical, 8)
-                        
-                        Button {
-                            UserDefaults.standard.set(true, forKey: "developerModeEnabled")
-                            UserDefaults.standard.synchronize()
-                            developerModeEnabled = true
-                            developerModeExplicitlyDisabled = false
-                            print("🔧 Developer mode re-enabled")
-                        } label: {
-                            HStack {
-                                Image(systemName: "hammer.circle")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                Text("Re-enable Developer Mode")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                            )
-                        }
-                        #endif
                     }
                     
                     // App info at the bottom of scroll content

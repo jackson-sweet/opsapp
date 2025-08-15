@@ -17,6 +17,7 @@ struct SecuritySettingsView: View {
     @State private var passwordResetError: String?
     @State private var passwordResetSuccess = false
     @State private var passwordResetInProgress = false
+    @State private var developerModeActivated = false
     
     private var pinManager: SimplePINManager {
         dataController.simplePINManager
@@ -144,10 +145,10 @@ struct SecuritySettingsView: View {
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            TextField("", text: $resetEmail)
+                            TextField("Enter email address", text: $resetEmail)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(.white)
-                                .keyboardType(.emailAddress)
+                                .keyboardType(.default)  // Changed to default to allow entering the phrase
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                                 .padding()
@@ -157,6 +158,43 @@ struct SecuritySettingsView: View {
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                                 )
+                            
+                            // Show developer mode button when secret phrase is entered
+                            // Check directly without onChange
+                            if resetEmail.lowercased() == "railmetwice" {
+                                VStack(spacing: 8) {
+                                    if UserDefaults.standard.bool(forKey: "developerModeEnabled") {
+                                        // Show if already enabled
+                                        HStack {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(OPSStyle.Colors.successStatus)
+                                            Text("Developer Mode Already Active")
+                                                .font(OPSStyle.Typography.caption)
+                                                .foregroundColor(OPSStyle.Colors.successStatus)
+                                        }
+                                        .padding(.top, 8)
+                                    } else {
+                                        // Show activation button
+                                        Button(action: activateDeveloperMode) {
+                                            HStack {
+                                                Image(systemName: "hammer.circle.fill")
+                                                    .font(.system(size: 20))
+                                                Text("Enter Developer Mode")
+                                                    .font(OPSStyle.Typography.body)
+                                            }
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 8)
+                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                            )
+                                        }
+                                        .padding(.top, 8)
+                                    }
+                                }
+                                .transition(.scale.combined(with: .opacity))
+                            }
                         }
                         .padding(.horizontal, 20)
                         
@@ -213,16 +251,16 @@ struct SecuritySettingsView: View {
                 } else {
                     // Success message
                     VStack(spacing: 16) {
-                        Image(systemName: "checkmark.circle.fill")
+                        Image(systemName: developerModeActivated ? "hammer.circle.fill" : "checkmark.circle.fill")
                             .font(.system(size: 60))
-                            .foregroundColor(OPSStyle.Colors.successStatus)
+                            .foregroundColor(developerModeActivated ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.successStatus)
                             .padding(.bottom, 8)
                         
-                        Text("Reset Link Sent!")
+                        Text(developerModeActivated ? "Developer Mode Activated!" : "Reset Link Sent!")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(.white)
                         
-                        Text("Check your email for instructions on how to reset your password.")
+                        Text(developerModeActivated ? "You now have access to debug features." : "Check your email for instructions on how to reset your password.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)
@@ -295,6 +333,29 @@ struct SecuritySettingsView: View {
         passwordResetError = nil
         passwordResetSuccess = false
         passwordResetInProgress = false
+        developerModeActivated = false
+    }
+    
+    // Activate developer mode
+    private func activateDeveloperMode() {
+        print("🔧 Activating developer mode...")
+        
+        // Activate developer mode
+        UserDefaults.standard.set(true, forKey: "developerModeEnabled")
+        UserDefaults.standard.synchronize() // Force sync
+        
+        developerModeActivated = true
+        passwordResetSuccess = true
+        
+        print("🔧 Developer mode activated successfully")
+        
+        // Auto-dismiss after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            showResetPasswordSheet = false
+            
+            // Show an alert or notification that developer mode is active
+            print("✅ Developer mode is now active. Check App Settings for developer options.")
+        }
     }
 }
 

@@ -20,7 +20,7 @@ struct BubbleFields {
         static let subClient = "Sub Client"  // Note the space - Bubble uses "Sub Client"
         static let task = "Task"
         static let taskType = "TaskType"
-        static let calendarEvent = "CalendarEvent"
+        static let calendarEvent = "calendarevent"  // Bubble uses lowercase
     }
     
     /// Job status values (from your Job Status custom type)
@@ -117,11 +117,21 @@ struct BubbleFields {
     struct Client {
         static let id = "_id" // Bubble uses _id for internal ID
         static let address = "Address"
-        static let name = "Name"
-        static let phoneNumber = "Phone Number"
+        static let balance = "Balance"
+        static let clientIdNo = "Client ID No"
+        static let clientsList = "Clients List"
         static let emailAddress = "Email Address"
+        static let estimatesList = "Estimates List"
+        static let invoices = "Invoices"
+        static let isCompany = "Is Company"
+        static let name = "Name"
+        static let parentCompany = "Parent Company"
+        static let phoneNumber = "Phone Number"
         static let projectsList = "Projects List"
-        static let company = "Company"
+        static let status = "Status"
+        static let thumbnail = "Thumbnail"
+        static let unit = "Unit"
+        static let userId = "User ID"
     }
     
     /// SubClient entity fields (match your Bubble field names exactly)
@@ -138,15 +148,17 @@ struct BubbleFields {
     /// Task entity fields (match your Bubble field names exactly)
     struct Task {
         static let id = "_id"
-        static let calendarEvent = "Calendar Event"
-        static let company = "Company"
-        static let project = "Project"
-        static let status = "Status"
-        static let taskColor = "Task Color"
-        static let taskNotes = "Task Notes"
-        static let taskType = "Task Type"
+        static let calendarEventId = "calendarEventId"
+        static let companyId = "companyId"
+        static let completionDate = "completionDate"
+        static let projectID = "projectID"
+        static let scheduledDate = "scheduledDate"
+        static let status = "status"
+        static let taskColor = "taskColor"
+        static let taskIndex = "taskIndex"
+        static let taskNotes = "taskNotes"
         static let teamMembers = "Team Members"
-        static let displayOrder = "Display Order"
+        static let type = "type"
     }
     
     /// TaskType entity fields (match your Bubble field names exactly)
@@ -154,22 +166,19 @@ struct BubbleFields {
         static let id = "_id"
         static let color = "Color"
         static let display = "Display"
-        static let icon = "Icon"
-        static let isDefault = "Is Default"
-        static let company = "Company"
-        static let displayOrder = "Display Order"
+        static let isDefault = "isDefault"
     }
     
     /// CalendarEvent entity fields (match your Bubble field names exactly)
     struct CalendarEvent {
         static let id = "_id"
         static let color = "Color"
-        static let company = "Company"
-        static let project = "Project"
-        static let task = "Task"
+        static let companyId = "companyId"  // lowercase 'c'
         static let duration = "Duration"
         static let endDate = "End Date"
+        static let projectId = "projectId"  // lowercase 'p'
         static let startDate = "Start Date"
+        static let taskId = "taskId"  // lowercase 't'
         static let teamMembers = "Team Members"
         static let title = "Title"
         static let type = "Type"

@@ -111,4 +111,29 @@ final class ProjectTask {
         // All users can update task status
         return true
     }
+    
+    // MARK: - Computed Properties for Dates
+    
+    /// Get scheduled date from calendar event
+    var scheduledDate: Date? {
+        return calendarEvent?.startDate
+    }
+    
+    /// Get completion/end date from calendar event
+    var completionDate: Date? {
+        return calendarEvent?.endDate
+    }
+    
+    /// Check if task is overdue
+    var isOverdue: Bool {
+        guard status != .completed && status != .cancelled,
+              let endDate = completionDate else { return false }
+        return Date() > endDate
+    }
+    
+    /// Check if task is happening today
+    var isToday: Bool {
+        guard let startDate = scheduledDate else { return false }
+        return Calendar.current.isDateInToday(startDate)
+    }
 }

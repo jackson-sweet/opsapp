@@ -305,6 +305,25 @@ class APIService {
             
             print("🔶 API RESPONSE: Status \(httpResponse.statusCode) (\((200...299).contains(httpResponse.statusCode) ? "Success" : "Error"))")
             
+            // Special logging for CalendarEvent endpoint responses
+            if endpoint.contains("calendarevent") && httpResponse.statusCode == 200 {
+                print("\n🔍 DEBUG - Raw API Response Data for CalendarEvent endpoint:")
+                if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+                   let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
+                   let prettyString = String(data: prettyData, encoding: .utf8) {
+                    // Print first 3000 characters
+                    let trimmed = String(prettyString.prefix(3000))
+                    print(trimmed)
+                    if prettyString.count > 3000 {
+                        print("... (truncated, total length: \(prettyString.count) characters)")
+                    }
+                } else if let rawString = String(data: data, encoding: .utf8) {
+                    // Fallback to raw string if pretty printing fails
+                    print("Raw response (first 3000 chars): \(String(rawString.prefix(3000)))")
+                }
+                print("\n")
+            }
+            
             // Special logging for User endpoint responses
             if endpoint.contains("/User") && httpResponse.statusCode == 200 {
                 print("\n🔍 DEBUG - Raw API Response Data for User endpoint:")

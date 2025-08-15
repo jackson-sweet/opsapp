@@ -13,7 +13,12 @@ Project (no tasks) → CalendarEvent
     OR
 Project → Task → CalendarEvent
           ↑
-      TaskType (color, name, icon)
+      TaskType (color, display name)
+      
+Field Names in Bubble:
+- Task: projectID (capital ID), companyId, scheduledDate, completionDate
+- CalendarEvent: companyId, projectId, taskId (all lowercase first letter)
+- TaskType: Color, Display, isDefault (Option Set)
 ```
 
 ## Permission Rules

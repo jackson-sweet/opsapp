@@ -928,6 +928,25 @@ class SyncManager {
             // Small delay between batches to prevent UI stutter
             try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
         }
+        
+        // Sync task types for the company
+        if !companyId.isEmpty {
+            do {
+                try await syncCompanyTaskTypes(companyId: companyId)
+            } catch {
+                print("⚠️ Failed to sync task types: \(error)")
+            }
+        }
+        
+        // Sync tasks for all projects (if tasks are enabled)
+        // This could be made conditional based on a feature flag
+        if !companyId.isEmpty {
+            do {
+                try await syncCompanyTasks(companyId: companyId)
+            } catch {
+                print("⚠️ Failed to sync tasks: \(error)")
+            }
+        }
     }
     
     /// Remove local projects that the user is no longer assigned to
@@ -1284,6 +1303,244 @@ class SyncManager {
             localProject.status = BubbleFields.JobStatus.toSwiftEnum(remoteDTO.status)
         } else {
         }
+    }
+    
+    // MARK: - Task Management
+    
+    /// Sync tasks for a project
+    func syncProjectTasks(projectId: String) async throws {
+        print("🔵 SyncManager: Syncing tasks for project \(projectId)")
+        
+        // Fetch tasks from API
+        let remoteTasks = try await apiService.fetchProjectTasks(projectId: projectId)
+        print("📥 Received \(remoteTasks.count) tasks from API")
+        
+        // Get company's default color (projects don't have their own color)
+        let projectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id == projectId }
+        )
+        let project = try modelContext.fetch(projectDescriptor).first
+        let companyId = project?.companyId ?? ""
+        
+        let companyDescriptor = FetchDescriptor<Company>(
+            predicate: #Predicate<Company> { $0.id == companyId }
+        )
+        let defaultColor = try modelContext.fetch(companyDescriptor).first?.defaultProjectColor ?? "#59779F"
+        
+        // Get local tasks
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.projectId == projectId }
+        )
+        let localTasks = try modelContext.fetch(descriptor)
+        let localTaskIds = Set(localTasks.map { $0.id })
+        
+        // Process remote tasks
+        for remoteTask in remoteTasks {
+            if localTaskIds.contains(remoteTask.id) {
+                // Update existing task with project color as default
+                if let localTask = localTasks.first(where: { $0.id == remoteTask.id }) {
+                    updateTask(localTask, from: remoteTask, defaultColor: defaultColor)
+                }
+            } else {
+                // Insert new task with project color as default
+                let newTask = remoteTask.toModel(defaultColor: defaultColor)
+                modelContext.insert(newTask)
+                
+                // Link to project if available
+                if let project = try? modelContext.fetch(
+                    FetchDescriptor<Project>(
+                        predicate: #Predicate<Project> { $0.id == projectId }
+                    )
+                ).first {
+                    newTask.project = project
+                    project.tasks.append(newTask)
+                }
+            }
+        }
+        
+        // Remove local tasks not in remote
+        let remoteTaskIds = Set(remoteTasks.map { $0.id })
+        for localTask in localTasks {
+            if !remoteTaskIds.contains(localTask.id) {
+                modelContext.delete(localTask)
+            }
+        }
+        
+        try modelContext.save()
+        print("✅ Tasks synced successfully for project \(projectId)")
+    }
+    
+    /// Sync all tasks for a company
+    func syncCompanyTasks(companyId: String) async throws {
+        print("🔵 SyncManager: Syncing all tasks for company \(companyId)")
+        
+        // Fetch all tasks from API
+        let remoteTasks = try await apiService.fetchCompanyTasks(companyId: companyId)
+        print("📥 Received \(remoteTasks.count) tasks from API")
+        
+        // Get company's default color
+        let companyDescriptor = FetchDescriptor<Company>(
+            predicate: #Predicate<Company> { $0.id == companyId }
+        )
+        let defaultColor = try modelContext.fetch(companyDescriptor).first?.defaultProjectColor ?? "#59779F"
+        
+        // Get local tasks
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.companyId == companyId }
+        )
+        let localTasks = try modelContext.fetch(descriptor)
+        let localTaskIds = Set(localTasks.map { $0.id })
+        
+        // Process in batches for performance
+        for batch in remoteTasks.chunked(into: 20) {
+            for remoteTask in batch {
+                if localTaskIds.contains(remoteTask.id) {
+                    // Update existing task
+                    if let localTask = localTasks.first(where: { $0.id == remoteTask.id }) {
+                        updateTask(localTask, from: remoteTask, defaultColor: defaultColor)
+                    }
+                } else {
+                    // Insert new task with company's default color
+                    let newTask = remoteTask.toModel(defaultColor: defaultColor)
+                    modelContext.insert(newTask)
+                    
+                    // Link to project if available
+                    if let projectId = remoteTask.projectId,
+                       let project = try? modelContext.fetch(
+                        FetchDescriptor<Project>(
+                            predicate: #Predicate<Project> { $0.id == projectId }
+                        )
+                    ).first {
+                        newTask.project = project
+                        if !project.tasks.contains(where: { $0.id == newTask.id }) {
+                            project.tasks.append(newTask)
+                        }
+                    }
+                }
+            }
+            
+            // Small delay between batches
+            try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
+        }
+        
+        // Remove local tasks not in remote
+        let remoteTaskIds = Set(remoteTasks.map { $0.id })
+        for localTask in localTasks {
+            if !remoteTaskIds.contains(localTask.id) {
+                modelContext.delete(localTask)
+            }
+        }
+        
+        try modelContext.save()
+        print("✅ All tasks synced successfully for company \(companyId)")
+    }
+    
+    /// Update a local task from a remote DTO
+    private func updateTask(_ localTask: ProjectTask, from remoteTask: TaskDTO, defaultColor: String? = nil) {
+        if let status = remoteTask.status {
+            localTask.status = TaskStatus(rawValue: status) ?? .scheduled
+        }
+        if let taskColor = remoteTask.taskColor {
+            localTask.taskColor = taskColor
+        } else if let defaultColor = defaultColor {
+            // Use company default if no color specified
+            localTask.taskColor = defaultColor
+        }
+        localTask.taskNotes = remoteTask.taskNotes
+        localTask.displayOrder = remoteTask.taskIndex ?? 0
+        localTask.calendarEventId = remoteTask.calendarEventId
+        
+        if let teamMembers = remoteTask.teamMembers {
+            localTask.setTeamMemberIds(teamMembers)
+        }
+    }
+    
+    /// Sync task types for a company
+    func syncCompanyTaskTypes(companyId: String) async throws {
+        print("🔵 SyncManager: Syncing task types for company \(companyId)")
+        
+        // Fetch task types from API
+        let remoteTaskTypes = try await apiService.fetchCompanyTaskTypes(companyId: companyId)
+        print("📥 Received \(remoteTaskTypes.count) task types from API")
+        
+        // Get local task types
+        let descriptor = FetchDescriptor<TaskType>(
+            predicate: #Predicate<TaskType> { $0.companyId == companyId }
+        )
+        let localTaskTypes = try modelContext.fetch(descriptor)
+        
+        // If no remote task types exist, create defaults
+        if remoteTaskTypes.isEmpty {
+            print("📝 No task types found, creating defaults...")
+            let defaultTypes = TaskType.createDefaults(companyId: companyId)
+            for taskType in defaultTypes {
+                modelContext.insert(taskType)
+                
+                // Also create in API
+                _ = try? await apiService.createTaskType(TaskTypeDTO.from(taskType))
+            }
+            try modelContext.save()
+            return
+        }
+        
+        let localTaskTypeIds = Set(localTaskTypes.map { $0.id })
+        
+        // Process remote task types
+        for remoteTaskType in remoteTaskTypes {
+            if localTaskTypeIds.contains(remoteTaskType.id) {
+                // Update existing task type
+                if let localTaskType = localTaskTypes.first(where: { $0.id == remoteTaskType.id }) {
+                    localTaskType.display = remoteTaskType.display
+                    localTaskType.color = remoteTaskType.color
+                    localTaskType.icon = nil  // Icon field doesn't exist in Bubble
+                    localTaskType.isDefault = remoteTaskType.isDefault ?? false
+                    localTaskType.displayOrder = 0  // Display order field doesn't exist in Bubble
+                }
+            } else {
+                // Insert new task type
+                let newTaskType = remoteTaskType.toModel()
+                newTaskType.companyId = companyId  // Set company ID since it's not in the DTO
+                modelContext.insert(newTaskType)
+            }
+        }
+        
+        // Remove local task types not in remote
+        let remoteTaskTypeIds = Set(remoteTaskTypes.map { $0.id })
+        for localTaskType in localTaskTypes {
+            if !remoteTaskTypeIds.contains(localTaskType.id) {
+                modelContext.delete(localTaskType)
+            }
+        }
+        
+        try modelContext.save()
+        print("✅ Task types synced successfully for company \(companyId)")
+    }
+    
+    /// Update task status on backend
+    func updateTaskStatus(taskId: String, status: TaskStatus) async throws {
+        print("🔵 SyncManager: Updating task \(taskId) status to \(status.rawValue)")
+        
+        // Update locally first
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.id == taskId }
+        )
+        
+        if let task = try modelContext.fetch(descriptor).first {
+            task.status = status
+            task.needsSync = true
+            try modelContext.save()
+        }
+        
+        // Update on backend
+        try await apiService.updateTaskStatus(id: taskId, status: status.rawValue)
+        
+        // Mark as synced
+        if let task = try modelContext.fetch(descriptor).first {
+            task.needsSync = false
+            try modelContext.save()
+        }
+        
+        print("✅ Task status updated successfully")
     }
     
     // MARK: - Client Management

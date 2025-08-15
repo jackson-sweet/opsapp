@@ -24,8 +24,7 @@ struct TeamMemberDetailView: View {
     @State private var showingClientEdit = false
     
     // Sub-client editing states
-    @State private var showingSubClientEdit = false
-    @State private var editingSubClient: SubClient? = nil
+    @State private var subClientToEdit: SubClient? = nil  // Single state for both data and presentation
     @State private var subClientsRefreshKey = UUID()  // Force refresh of sub-clients view
     @State private var isParentContactExpanded = true  // Start expanded by default
     @State private var showingCreateContact = false  // For creating a contact from client data
@@ -249,12 +248,15 @@ struct TeamMemberDetailView: View {
                                     client: client,
                                     isEditing: false,
                                     onEditSubClient: { subClient in
-                                        editingSubClient = subClient
-                                        showingSubClientEdit = true
+                                        subClientToEdit = subClient  // This will trigger the sheet
                                     },
                                     onCreateSubClient: {
-                                        editingSubClient = nil
-                                        showingSubClientEdit = true
+                                        // Use a special marker SubClient with empty ID to indicate new creation
+                                        let tempSubClient = SubClient(
+                                            id: UUID().uuidString,  // Temporary ID
+                                            name: ""  // Empty name indicates new subclient
+                                        )
+                                        subClientToEdit = tempSubClient
                                     },
                                     onDeleteSubClient: { subClient in
                                         deleteSubClient(subClient)
@@ -283,15 +285,14 @@ struct TeamMemberDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingSubClientEdit) {
+        .sheet(item: $subClientToEdit) { subClientToEdit in
             if let client = client {
                 SubClientEditSheet(
                     client: client,
-                    subClient: editingSubClient,
+                    subClient: subClientToEdit.name.isEmpty ? nil : subClientToEdit,  // Check if it's a new subclient
                     onSave: { name, title, email, phone, address in
                         await saveSubClient(name: name, title: title, email: email, phone: phone, address: address)
-                    },
-                    isPresented: $showingSubClientEdit
+                    }
                 )
             }
         }
@@ -1042,7 +1043,7 @@ struct TeamMemberDetailView: View {
         }
         
         do {
-            if let editingSubClient = editingSubClient {
+            if let editingSubClient = subClientToEdit, !editingSubClient.name.isEmpty {
                 // Edit existing sub-client
                 let subClientDTO = try await syncManager.editSubClient(
                     subClientId: editingSubClient.id,
@@ -1066,6 +1067,8 @@ struct TeamMemberDetailView: View {
                     
                     // Force refresh of the sub-clients view
                     subClientsRefreshKey = UUID()
+                    // Clear the editing state
+                    subClientToEdit = nil
                 }
                 
                 print("✅ Sub-client updated successfully: \(subClientDTO.name ?? "Unknown")")
@@ -1093,6 +1096,8 @@ struct TeamMemberDetailView: View {
                     
                     // Force refresh of the sub-clients view
                     subClientsRefreshKey = UUID()
+                    // Clear the editing state
+                    subClientToEdit = nil
                 }
                 
                 // Save to SwiftData context

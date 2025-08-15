@@ -1182,6 +1182,21 @@ class DataController: ObservableObject {
                         do {
                             let userDTO = try await apiService.fetchUser(id: memberId)
                             
+                            // Check if user is still part of the company
+                            if userDTO.company == nil || (userDTO.company != nil && userDTO.company != existingUser.companyId) {
+                                // User is no longer part of the company - remove them
+                                print("🗑️ User \(existingUser.fullName) (ID: \(memberId)) no longer belongs to company. Removing from local database.")
+                                
+                                // Remove from all projects
+                                for assignedProject in existingUser.assignedProjects {
+                                    assignedProject.teamMembers.removeAll { $0.id == memberId }
+                                }
+                                
+                                // Delete the user
+                                context.delete(existingUser)
+                                continue // Skip to next team member
+                            }
+                            
                             // Update all user fields to ensure we have the latest data
                             existingUser.firstName = userDTO.nameFirst ?? existingUser.firstName
                             existingUser.lastName = userDTO.nameLast ?? existingUser.lastName
@@ -1227,6 +1242,12 @@ class DataController: ObservableObject {
                     // User doesn't exist locally but we're online - fetch from API
                     do {
                         let userDTO = try await apiService.fetchUser(id: memberId)
+                        
+                        // Check if user belongs to a company
+                        if userDTO.company == nil {
+                            print("⚠️ User ID \(memberId) has no company - not adding to local database")
+                            continue // Skip this user
+                        }
                         
                         // Create new user
                         let newUser = userDTO.toModel()

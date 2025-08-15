@@ -8,17 +8,39 @@
 import SwiftUI
 import ContactsUI
 
+// View Model for SubClient editing
+class SubClientEditViewModel: ObservableObject {
+    @Published var name: String = ""
+    @Published var title: String = ""
+    @Published var email: String = ""
+    @Published var phone: String = ""
+    @Published var address: String = ""
+    
+    func loadFromSubClient(_ subClient: SubClient?) {
+        if let subClient = subClient {
+            self.name = subClient.name
+            self.title = subClient.title ?? ""
+            self.email = subClient.email ?? ""
+            self.phone = subClient.phoneNumber ?? ""
+            self.address = subClient.address ?? ""
+        } else {
+            // Reset for new sub-client
+            self.name = ""
+            self.title = ""
+            self.email = ""
+            self.phone = ""
+            self.address = ""
+        }
+    }
+}
+
 struct SubClientEditSheet: View {
     let client: Client
     let subClient: SubClient?  // nil for new sub-client
     let onSave: (String, String?, String?, String?, String?) async -> Void
-    @Binding var isPresented: Bool
+    @Environment(\.dismiss) private var dismiss
     
-    @State private var name: String = ""
-    @State private var title: String = ""
-    @State private var email: String = ""
-    @State private var phone: String = ""
-    @State private var address: String = ""
+    @StateObject private var viewModel = SubClientEditViewModel()
     @State private var isSaving: Bool = false
     @State private var showError: Bool = false
     @State private var errorMessage: String = ""
@@ -55,7 +77,7 @@ struct SubClientEditSheet: View {
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
-                                TextField("Enter name", text: $name)
+                                TextField("Enter name", text: $viewModel.name)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .padding()
@@ -70,7 +92,7 @@ struct SubClientEditSheet: View {
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
-                                TextField("Enter title", text: $title)
+                                TextField("Enter title", text: $viewModel.title)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .padding()
@@ -85,7 +107,7 @@ struct SubClientEditSheet: View {
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
-                                TextField("Enter email", text: $email)
+                                TextField("Enter email", text: $viewModel.email)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .keyboardType(.emailAddress)
@@ -102,7 +124,7 @@ struct SubClientEditSheet: View {
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
-                                TextField("Enter phone number", text: $phone)
+                                TextField("Enter phone number", text: $viewModel.phone)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .keyboardType(.phonePad)
@@ -118,7 +140,7 @@ struct SubClientEditSheet: View {
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
-                                AddressSearchField(address: $address, placeholder: "Enter address")
+                                AddressSearchField(address: $viewModel.address, placeholder: "Enter address")
                             }
                         }
                         .padding(.horizontal)
@@ -156,7 +178,7 @@ struct SubClientEditSheet: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
-                        isPresented = false
+                        dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
@@ -174,7 +196,7 @@ struct SubClientEditSheet: View {
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+                    .disabled(viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
             }
             .alert("Error", isPresented: $showError) {
@@ -189,37 +211,37 @@ struct SubClientEditSheet: View {
                 Button("Replace with Imported") {
                     // Replace all fields with imported data
                     if !pendingImportData.name.isEmpty {
-                        name = pendingImportData.name
+                        viewModel.name = pendingImportData.name
                     }
                     if let emailVal = pendingImportData.email {
-                        email = emailVal
+                        viewModel.email = emailVal
                     }
                     if let phoneVal = pendingImportData.phone {
-                        phone = phoneVal
+                        viewModel.phone = phoneVal
                     }
                     if let addressVal = pendingImportData.address {
-                        address = addressVal
+                        viewModel.address = addressVal
                     }
                     if let titleVal = pendingImportData.title {
-                        title = titleVal
+                        viewModel.title = titleVal
                     }
                 }
                 Button("Merge (Keep Non-Empty)", role: .destructive) {
                     // Only replace empty fields
-                    if name.isEmpty && !pendingImportData.name.isEmpty {
-                        name = pendingImportData.name
+                    if viewModel.name.isEmpty && !pendingImportData.name.isEmpty {
+                        viewModel.name = pendingImportData.name
                     }
-                    if email.isEmpty, let emailVal = pendingImportData.email {
-                        email = emailVal
+                    if viewModel.email.isEmpty, let emailVal = pendingImportData.email {
+                        viewModel.email = emailVal
                     }
-                    if phone.isEmpty, let phoneVal = pendingImportData.phone {
-                        phone = phoneVal
+                    if viewModel.phone.isEmpty, let phoneVal = pendingImportData.phone {
+                        viewModel.phone = phoneVal
                     }
-                    if address.isEmpty, let addressVal = pendingImportData.address {
-                        address = addressVal
+                    if viewModel.address.isEmpty, let addressVal = pendingImportData.address {
+                        viewModel.address = addressVal
                     }
-                    if title.isEmpty, let titleVal = pendingImportData.title {
-                        title = titleVal
+                    if viewModel.title.isEmpty, let titleVal = pendingImportData.title {
+                        viewModel.title = titleVal
                     }
                 }
             } message: {
@@ -238,7 +260,8 @@ struct SubClientEditSheet: View {
                 Text("The contact has a company name '\(pendingCompanyName)'. Would you like to replace the parent client's name '\(client.name)' with this company name?")
             }
             .onAppear {
-                loadSubClientData()
+                // Load data when the sheet appears
+                viewModel.loadFromSubClient(subClient)
             }
             .sheet(isPresented: $showingContactPicker) {
                 ContactPicker(
@@ -261,11 +284,11 @@ struct SubClientEditSheet: View {
                         }
                         
                         // Check for conflicts
-                        let hasConflicts = (!name.isEmpty && name != importedName) ||
-                                         (!email.isEmpty && importedEmail != nil && email != importedEmail) ||
-                                         (!phone.isEmpty && importedPhone != nil && phone != importedPhone) ||
-                                         (!address.isEmpty && importedAddress != nil && address != importedAddress) ||
-                                         (!title.isEmpty && importedTitle != nil && title != importedTitle)
+                        let hasConflicts = (!viewModel.name.isEmpty && viewModel.name != importedName) ||
+                                         (!viewModel.email.isEmpty && importedEmail != nil && viewModel.email != importedEmail) ||
+                                         (!viewModel.phone.isEmpty && importedPhone != nil && viewModel.phone != importedPhone) ||
+                                         (!viewModel.address.isEmpty && importedAddress != nil && viewModel.address != importedAddress) ||
+                                         (!viewModel.title.isEmpty && importedTitle != nil && viewModel.title != importedTitle)
                         
                         if hasConflicts {
                             // Store pending data and show conflict dialog
@@ -274,19 +297,19 @@ struct SubClientEditSheet: View {
                         } else {
                             // No conflicts, update fields
                             if !importedName.isEmpty {
-                                name = importedName
+                                viewModel.name = importedName
                             }
                             if let emailVal = importedEmail {
-                                email = emailVal
+                                viewModel.email = emailVal
                             }
                             if let phoneVal = importedPhone {
-                                phone = phoneVal
+                                viewModel.phone = phoneVal
                             }
                             if let addressVal = importedAddress {
-                                address = addressVal
+                                viewModel.address = addressVal
                             }
                             if let titleVal = importedTitle {
-                                title = titleVal
+                                viewModel.title = titleVal
                             }
                         }
                         
@@ -306,19 +329,9 @@ struct SubClientEditSheet: View {
     
     // MARK: - Helper Methods
     
-    private func loadSubClientData() {
-        if let subClient = subClient {
-            name = subClient.name
-            title = subClient.title ?? ""
-            email = subClient.email ?? ""
-            phone = subClient.phoneNumber ?? ""
-            address = subClient.address ?? ""
-        }
-    }
-    
     private func saveSubClient() {
         // Validate name
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedName = viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             errorMessage = "Name is required"
             showError = true
@@ -326,22 +339,22 @@ struct SubClientEditSheet: View {
         }
         
         // Extract phone digits only
-        let cleanedPhone = phone.isEmpty ? nil : phone.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        let cleanedPhone = viewModel.phone.isEmpty ? nil : viewModel.phone.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
         
         isSaving = true
         
         Task {
             await onSave(
                 trimmedName,
-                title.isEmpty ? nil : title,
-                email.isEmpty ? nil : email,
+                viewModel.title.isEmpty ? nil : viewModel.title,
+                viewModel.email.isEmpty ? nil : viewModel.email,
                 cleanedPhone,
-                address.isEmpty ? nil : address
+                viewModel.address.isEmpty ? nil : viewModel.address
             )
             
             await MainActor.run {
                 isSaving = false
-                isPresented = false
+                dismiss()
             }
         }
     }

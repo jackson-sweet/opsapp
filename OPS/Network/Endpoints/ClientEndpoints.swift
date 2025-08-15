@@ -104,9 +104,9 @@ extension APIService {
     func fetchCompanyClients(companyId: String) async throws -> [ClientDTO] {
         print("🔵 APIService: Fetching all clients for company: \(companyId)")
         
-        // Create constraint for company
+        // Create constraint for parent company
         let companyConstraint: [String: Any] = [
-            "key": BubbleFields.Client.company,
+            "key": BubbleFields.Client.parentCompany,
             "constraint_type": "equals",
             "value": companyId
         ]

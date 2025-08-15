@@ -11,12 +11,14 @@ import SwiftData
 struct TaskTestView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var dataController: DataController
     
     @State private var testProject: Project?
     @State private var testTasks: [ProjectTask] = []
     @State private var testTaskTypes: [TaskType] = []
     @State private var testCalendarEvents: [CalendarEvent] = []
     @State private var statusMessage = "Ready to test"
+    @State private var isSyncing = false
     
     var body: some View {
         NavigationView {
@@ -63,6 +65,28 @@ struct TaskTestView: View {
                         .buttonStyle(.bordered)
                         .foregroundColor(.red)
                         .disabled(testProject == nil)
+                        
+                        Divider()
+                            .padding(.vertical, 8)
+                        
+                        // API Sync Testing
+                        Text("API Sync Testing")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        Button(action: testTaskTypeSync) {
+                            Label("Test TaskType Sync", systemImage: "arrow.triangle.2.circlepath")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isSyncing)
+                        
+                        Button(action: testTaskSync) {
+                            Label("Test Task Sync", systemImage: "arrow.triangle.2.circlepath")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isSyncing || testProject == nil)
                     }
                     .padding(.horizontal)
                     
@@ -437,6 +461,98 @@ struct TaskTestView: View {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         return formatter.string(from: date)
+    }
+    
+    // MARK: - API Sync Test Functions
+    
+    private func testTaskTypeSync() {
+        guard let syncManager = dataController.syncManager else {
+            statusMessage = "❌ SyncManager not available"
+            return
+        }
+        
+        isSyncing = true
+        statusMessage = "Testing TaskType sync..."
+        
+        Task {
+            do {
+                // Get current user's company ID
+                guard let currentUser = dataController.currentUser else {
+                    await MainActor.run {
+                        statusMessage = "❌ No current user found"
+                        isSyncing = false
+                    }
+                    return
+                }
+                
+                guard let companyId = currentUser.companyId, !companyId.isEmpty else {
+                    await MainActor.run {
+                        statusMessage = "❌ No company ID found"
+                        isSyncing = false
+                    }
+                    return
+                }
+                
+                // Sync task types
+                try await syncManager.syncCompanyTaskTypes(companyId: companyId)
+                
+                // Fetch and display synced task types
+                let descriptor = FetchDescriptor<TaskType>(
+                    predicate: #Predicate<TaskType> { $0.companyId == companyId }
+                )
+                let syncedTypes = try modelContext.fetch(descriptor)
+                
+                await MainActor.run {
+                    testTaskTypes = syncedTypes
+                    statusMessage = "✅ Synced \(syncedTypes.count) task types"
+                    isSyncing = false
+                }
+                
+            } catch {
+                await MainActor.run {
+                    statusMessage = "❌ Sync failed: \(error.localizedDescription)"
+                    isSyncing = false
+                }
+            }
+        }
+    }
+    
+    private func testTaskSync() {
+        guard let syncManager = dataController.syncManager,
+              let project = testProject else {
+            statusMessage = "❌ SyncManager or project not available"
+            return
+        }
+        
+        isSyncing = true
+        statusMessage = "Testing Task sync for project..."
+        
+        Task {
+            do {
+                let projectId = project.id
+                
+                // Sync tasks for the test project
+                try await syncManager.syncProjectTasks(projectId: projectId)
+                
+                // Fetch and display synced tasks
+                let descriptor = FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate<ProjectTask> { $0.projectId == projectId }
+                )
+                let syncedTasks = try modelContext.fetch(descriptor)
+                
+                await MainActor.run {
+                    testTasks = syncedTasks
+                    statusMessage = "✅ Synced \(syncedTasks.count) tasks for project"
+                    isSyncing = false
+                }
+                
+            } catch {
+                await MainActor.run {
+                    statusMessage = "❌ Task sync failed: \(error.localizedDescription)"
+                    isSyncing = false
+                }
+            }
+        }
     }
 }
 

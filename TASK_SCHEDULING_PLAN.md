@@ -16,8 +16,9 @@ Company
 │   ├── Icon (symbol name)
 │   └── isDefault (bool)
 └── Projects
-    ├── CalendarEvent (if no tasks)
-    └── Tasks
+    ├── eventType (CalendarEventType: "Task" or "Project", defaults to "Project")
+    ├── CalendarEvent (if eventType == "Project")
+    └── Tasks (if eventType == "Task")
         ├── taskType → TaskType
         ├── taskColor (inherited from TaskType)
         ├── taskNotes
@@ -34,49 +35,99 @@ Company
 
 ## New Data Models
 
+### Project eventType Field
+```swift
+// Added to existing Project model
+var eventType: CalendarEventType // "Task" or "Project"
+```
+- **Purpose**: Determines scheduling mode for the project
+- **Default**: "Project" (traditional single-event scheduling)
+- **"Task"**: Enables task-based scheduling with multiple calendar events
+- **Migration**: All existing projects default to "Project" mode
+
 ### Task
 ```swift
 struct Task {
-    let id: String
-    let calendarEventId: String?  // Optional per requirement
-    let companyId: String
-    let projectId: String
-    let status: TaskStatus  // Scheduled, In Progress, Completed, Cancelled
-    let taskColor: String  // Hex color code
-    let taskNotes: String?
-    let teamMembers: [String]  // User IDs
-    let taskTypeId: String  // Reference to TaskType
+    let id: String ("_id" in Bubble)
+    let calendarEventId: String? ("calendarEventId" in Bubble)
+    let companyId: String? ("companyId" in Bubble)
+    let completionDate: String? ("completionDate" in Bubble)
+    let projectId: String? ("projectID" in Bubble - note capital ID)
+    let scheduledDate: String? ("scheduledDate" in Bubble)
+    let status: String? ("status" in Bubble - may be nil)
+    let taskColor: String? ("taskColor" in Bubble - defaults to company.defaultProjectColor if nil)
+    let taskIndex: Int? ("taskIndex" in Bubble - display order)
+    let taskNotes: String? ("taskNotes" in Bubble)
+    let teamMembers: [String]? ("Team Members" in Bubble)
+    let type: String? ("type" in Bubble - references TaskType)
 }
 ```
 
 ### TaskType
 ```swift
 struct TaskType {
-    let id: String
-    let color: String  // Hex color
-    let isDefault: Bool
-    let display: String  // Name like "Quote", "Installation"
-    let icon: String?  // SF Symbol name
-    let companyId: String
+    let id: String ("_id" in Bubble)
+    let color: String ("Color" in Bubble)
+    let display: String ("Display" in Bubble - name like "Quote", "Work", "Service Call", "Inspection", "Follow Up")
+    let isDefault: Bool? ("isDefault" in Bubble - yes/no field)
+    
+    // Note: TaskType is actually an Option Set in Bubble with these options:
+    // - Quote
+    // - Work
+    // - Service Call
+    // - Inspection
+    // - Follow Up
 }
 ```
 
 ### CalendarEvent
 ```swift
 struct CalendarEvent {
-    let id: String
-    let color: String  // Hex value
-    let companyId: String
-    let projectId: String
-    let taskId: String?  // Optional - nil means project-level event
-    let duration: Int  // Days
-    let endDate: Date
-    let startDate: Date
-    let teamMembers: [String]
-    let title: String
-    let type: CalendarEventType
+    let id: String ("_id" in Bubble)
+    let color: String? ("Color" in Bubble)
+    let companyId: String? ("companyId" in Bubble - lowercase 'c')
+    let duration: Int? ("Duration" in Bubble)
+    let endDate: String? ("End Date" in Bubble)
+    let projectId: String? ("projectId" in Bubble - lowercase 'p')
+    let startDate: String? ("Start Date" in Bubble)
+    let taskId: String? ("taskId" in Bubble - lowercase 't')
+    let teamMembers: [String]? ("Team Members" in Bubble)
+    let title: String? ("Title" in Bubble)
+    let type: String? ("Type" in Bubble - CalendarEventType: "project" or "task")
 }
 ```
+
+### CalendarEvent Display Rules
+```swift
+// Which CalendarEvents to display for a project:
+
+if project.eventType == "Project" {
+    // Traditional scheduling mode
+    // Show events where:
+    // - projectId == project.id
+    // - type == "project"
+    // - taskId == nil
+} else if project.eventType == "Task" {
+    // Task-based scheduling mode
+    // Show events where:
+    // - projectId == project.id
+    // - type == "task"
+    // - taskId != nil
+}
+```
+
+## API Field Mapping Notes
+
+### Bubble API Considerations
+1. **Field Naming**: Bubble uses exact case-sensitive field names:
+   - Task: "projectID" (capital ID), "companyId" (lowercase c)
+   - CalendarEvent: "companyId", "projectId", "taskId" (all lowercase first letter)
+   - Type name: "calendarevent" (all lowercase) for API endpoints
+2. **Missing Fields**: Many fields may be nil/missing in Bubble responses - handle gracefully
+3. **TaskType Scope**: TaskType is an Option Set in Bubble with predefined options (Quote, Work, Service Call, Inspection, Follow Up)
+4. **Task Status**: Option Set with values: Scheduled, In Progress, Completed, Cancelled
+5. **Color Defaults**: When taskColor is nil, use company.defaultProjectColor
+6. **Date Fields**: Task has scheduledDate and completionDate; CalendarEvent has Start Date and End Date
 
 ## Inheritance Rules
 

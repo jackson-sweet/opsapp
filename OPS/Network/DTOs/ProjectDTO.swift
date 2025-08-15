@@ -57,6 +57,14 @@ struct ProjectDTO: Codable {
         self.projectGrossCost = try container.decodeIfPresent(Double.self, forKey: .projectGrossCost)
         self.balance = try container.decodeIfPresent(Double.self, forKey: .balance)
         self.slug = try container.decodeIfPresent(String.self, forKey: .slug)
+        self.eventType = try container.decodeIfPresent(String.self, forKey: .eventType)
+        
+        // Log eventType for debugging
+        if let eventTypeValue = self.eventType {
+            print("📅 Project '\(projectName)' eventType: \(eventTypeValue)")
+        } else {
+            print("📅 Project '\(projectName)' eventType: nil (will default to 'Project')")
+        }
     }
     let company: BubbleReference?
     let completion: String?
@@ -73,6 +81,7 @@ struct ProjectDTO: Codable {
     let clientPhone: String?
     let projectImages: [String]?  // Added this field
     let duration: Int? // Duration in days
+    let eventType: String? // CalendarEventType - "Task" or "Project"
     
     // Additional fields from the actual API response
     let projectValue: Double?
@@ -104,6 +113,7 @@ struct ProjectDTO: Codable {
         case clientPhone = "Client Phone" // The client's phone number. type string.
         case projectImages = "Project Images" // list of type image, that have been uploaded to the project object.
         case duration = "Duration" // Duration in days for the project. type number.
+        case eventType = "eventType" // CalendarEventType - determines if project uses task-based or project scheduling
     }
     
     /// Convert DTO to SwiftData model
@@ -158,6 +168,14 @@ struct ProjectDTO: Codable {
         project.notes = teamNotes
         project.projectDescription = description
         project.allDay = allDay ?? false
+        
+        // Set eventType - default to .project if nil
+        if let eventTypeString = eventType {
+            project.eventType = CalendarEventType(rawValue: eventTypeString.lowercased()) ?? .project
+        } else {
+            project.eventType = .project // Default to project scheduling if not specified
+        }
+        
         project.lastSyncedAt = Date()
         project.syncPriority = 1
         

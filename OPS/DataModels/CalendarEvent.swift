@@ -29,6 +29,7 @@ final class CalendarEvent {
     var startDate: Date
     var title: String
     var type: CalendarEventType
+    var projectEventType: CalendarEventType? // Cached from parent project for efficient filtering
     
     // Store team member IDs as string (for compatibility)
     var teamMemberIdsString: String = ""
@@ -67,6 +68,7 @@ final class CalendarEvent {
         self.color = color
         self.type = type
         self.taskId = nil
+        self.projectEventType = nil // Will be set when linked to project
         self.duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
         self.teamMemberIdsString = ""
         self.teamMembers = []
@@ -130,6 +132,57 @@ final class CalendarEvent {
         return dates
     }
     
+    // MARK: - Display Logic
+    
+    /// Determines if this calendar event should be displayed (using cached projectEventType)
+    var shouldDisplay: Bool {
+        // If we have cached the project's eventType, use it for efficient filtering
+        if let projectEventType = projectEventType {
+            if projectEventType == .project {
+                // Project uses traditional scheduling - show only project-level events
+                return type == .project && taskId == nil
+            } else {
+                // Project uses task-based scheduling - show only task events
+                return type == .task && taskId != nil
+            }
+        }
+        
+        // Fallback: if projectEventType not cached, use the relationship
+        if let project = project {
+            return shouldDisplay(for: project)
+        }
+        
+        // Default: show project-level events if no project info available
+        return type == .project && taskId == nil
+    }
+    
+    /// Determines if this calendar event should be displayed for a given project
+    func shouldDisplay(for project: Project) -> Bool {
+        // Must belong to this project
+        guard projectId == project.id else { return false }
+        
+        // Cache the project's eventType for future use
+        self.projectEventType = project.effectiveEventType
+        
+        if project.effectiveEventType == .project {
+            // Project uses traditional scheduling - show only project-level events
+            return type == .project && taskId == nil
+        } else {
+            // Project uses task-based scheduling - show only task events
+            return type == .task && taskId != nil
+        }
+    }
+    
+    /// Check if this is a project-level event (not task-based)
+    var isProjectLevelEvent: Bool {
+        return type == .project && taskId == nil
+    }
+    
+    /// Check if this is a task-based event
+    var isTaskEvent: Bool {
+        return type == .task && taskId != nil
+    }
+    
     /// Create from a Project (for projects without tasks)
     static func fromProject(_ project: Project, companyDefaultColor: String) -> CalendarEvent? {
         guard let startDate = project.startDate else { return nil }
@@ -148,6 +201,7 @@ final class CalendarEvent {
         )
         
         event.project = project
+        event.projectEventType = project.effectiveEventType // Cache the project's scheduling mode
         event.teamMembers = project.teamMembers
         event.setTeamMemberIds(project.getTeamMemberIds())
         
@@ -170,6 +224,7 @@ final class CalendarEvent {
         event.taskId = task.id
         event.task = task
         event.project = task.project
+        event.projectEventType = task.project?.effectiveEventType // Cache the project's scheduling mode
         event.teamMembers = task.teamMembers
         event.setTeamMemberIds(task.getTeamMemberIds())
         

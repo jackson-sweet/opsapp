@@ -27,6 +27,7 @@ final class Project: Identifiable {
     var companyId: String
     var clientId: String? // Store the client's Bubble ID
     var allDay: Bool
+    var eventType: CalendarEventType? // Optional to handle migration - defaults to .project when nil
     
     // Relationship to Client object
     @Relationship(deleteRule: .nullify)
@@ -73,6 +74,7 @@ final class Project: Identifiable {
         self.unsyncedImagesString = ""
         self.teamMembers = []
         self.allDay = false
+        self.eventType = .project // Default to project scheduling
         self.client = nil
     }
     
@@ -187,6 +189,23 @@ final class Project: Identifiable {
     
     // Debug method to show project state
     func debugProjectState() {
+    }
+    
+    // MARK: - Task-Based Scheduling Properties
+    
+    /// Get the effective eventType (defaults to .project if nil)
+    var effectiveEventType: CalendarEventType {
+        return eventType ?? .project
+    }
+    
+    /// Check if this project uses task-based scheduling
+    var usesTaskBasedScheduling: Bool {
+        return effectiveEventType == .task
+    }
+    
+    /// Check if this project uses traditional project scheduling
+    var usesProjectScheduling: Bool {
+        return effectiveEventType == .project
     }
     
     // Computed property for location with validation

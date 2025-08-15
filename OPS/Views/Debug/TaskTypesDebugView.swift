@@ -88,11 +88,11 @@ struct TaskTypesDebugView: View {
                     Spacer()
                     
                     HStack(spacing: 12) {
-                        Button("Extract from Tasks") {
-                            extractTaskTypesFromTasks()
+                        Button("Sync from API") {
+                            syncTaskTypesFromAPI()
                         }
                         .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                        .foregroundColor(OPSStyle.Colors.successStatus)
                         
                         Button("Create Defaults") {
                             createDefaultTaskTypes()
@@ -129,100 +129,80 @@ struct TaskTypesDebugView: View {
         }
     }
     
-    private func extractTaskTypesFromTasks() {
+    private func syncTaskTypesFromAPI() {
         guard let companyId = dataController.currentUser?.companyId else {
             errorMessage = "No company ID found"
             return
         }
         
-        do {
-            // Fetch all tasks
-            let taskDescriptor = FetchDescriptor<ProjectTask>()
-            let allTasks = try modelContext.fetch(taskDescriptor)
-            
-            // Get unique task type IDs
-            let uniqueTypeIds = Set(allTasks.compactMap { $0.taskTypeId }.filter { !$0.isEmpty })
-            
-            // Create task types for IDs that don't exist
-            var createdCount = 0
-            for typeId in uniqueTypeIds {
-                // Check if this type already exists
-                let existing = taskTypes.first { $0.id == typeId }
-                if existing == nil {
-                    // Create a task type based on the ID
-                    let taskType = TaskType(
-                        id: typeId,
-                        display: formatTaskTypeDisplay(typeId),
-                        color: getColorForTaskType(typeId),
-                        companyId: companyId,
-                        isDefault: false,
-                        icon: getIconForTaskType(typeId)
-                    )
-                    modelContext.insert(taskType)
-                    createdCount += 1
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                // Fetch TaskTypes from API
+                let apiTaskTypes = try await dataController.apiService.fetchCompanyTaskTypes(companyId: companyId)
+                
+                await MainActor.run {
+                    // Process TaskTypes
+                    var syncedCount = 0
                     
-                    // Link existing tasks to this type
-                    for task in allTasks where task.taskTypeId == typeId {
-                        task.taskType = taskType
+                    for dto in apiTaskTypes {
+                        // Check if this type already exists
+                        let existing = taskTypes.first { $0.id == dto.id }
+                        if existing == nil {
+                            let taskType = dto.toModel()
+                            taskType.companyId = companyId // Set company ID since it's not in the DTO
+                            
+                            // Set default icon if not provided
+                            if taskType.icon == nil {
+                                taskType.icon = getDefaultIcon(for: taskType.display)
+                            }
+                            
+                            modelContext.insert(taskType)
+                            syncedCount += 1
+                        } else {
+                            // Update existing if needed
+                            existing?.display = dto.display
+                            existing?.color = dto.color
+                            existing?.isDefault = dto.isDefault ?? false
+                        }
+                    }
+                    
+                    do {
+                        try modelContext.save()
+                        errorMessage = "Synced \(syncedCount) new task types from API"
+                        fetchTaskTypes()
+                    } catch {
+                        errorMessage = "Failed to save: \(error.localizedDescription)"
+                        isLoading = false
                     }
                 }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "API sync failed: \(error.localizedDescription)"
+                    isLoading = false
+                }
             }
-            
-            try modelContext.save()
-            errorMessage = "Created \(createdCount) task types from existing tasks"
-            fetchTaskTypes()
-            
-        } catch {
-            errorMessage = "Failed to extract task types: \(error.localizedDescription)"
         }
     }
     
-    private func formatTaskTypeDisplay(_ typeId: String) -> String {
-        // Try to extract a meaningful name from the ID
-        // Common patterns in Bubble IDs
-        if typeId.lowercased().contains("quote") {
-            return "Quote/Proposal"
-        } else if typeId.lowercased().contains("install") {
-            return "Installation"
-        } else if typeId.lowercased().contains("service") {
-            return "Service Call"
-        } else if typeId.lowercased().contains("inspect") {
-            return "Inspection"
-        } else if typeId.lowercased().contains("follow") {
-            return "Follow Up"
-        } else {
-            // Use first 8-12 chars of ID as fallback
-            return "Task \(typeId.prefix(8))"
-        }
-    }
-    
-    private func getColorForTaskType(_ typeId: String) -> String {
-        // Assign colors based on type
-        if typeId.lowercased().contains("quote") {
-            return "#59779F" // Blue
-        } else if typeId.lowercased().contains("install") {
-            return "#931A32" // Red
-        } else if typeId.lowercased().contains("service") {
-            return "#C4A868" // Amber
-        } else if typeId.lowercased().contains("inspect") {
-            return "#A5B368" // Green
-        } else {
-            return "#59779F" // Default blue
-        }
-    }
-    
-    private func getIconForTaskType(_ typeId: String) -> String {
-        // Assign icons based on type
-        if typeId.lowercased().contains("quote") {
+    private func getDefaultIcon(for display: String) -> String {
+        let lowercased = display.lowercased()
+        if lowercased.contains("quote") || lowercased.contains("proposal") {
             return "doc.text.fill"
-        } else if typeId.lowercased().contains("install") {
+        } else if lowercased.contains("install") {
             return "hammer.fill"
-        } else if typeId.lowercased().contains("service") {
+        } else if lowercased.contains("service") || lowercased.contains("repair") {
             return "wrench.fill"
-        } else if typeId.lowercased().contains("inspect") {
+        } else if lowercased.contains("inspect") || lowercased.contains("review") {
             return "clipboard.fill"
+        } else if lowercased.contains("material") || lowercased.contains("order") {
+            return "shippingbox.fill"
+        } else if lowercased.contains("follow") || lowercased.contains("check") {
+            return "checkmark.circle.fill"
         } else {
-            return "hammer.fill" // Default
+            return "hammer.fill"
         }
     }
     

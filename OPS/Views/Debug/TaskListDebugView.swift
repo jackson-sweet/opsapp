@@ -151,11 +151,14 @@ struct TaskListDebugView: View {
         
         Task {
             do {
-                // Fetch from API
+                // First, fetch TaskTypes from API
+                let apiTaskTypes = try await dataController.apiService.fetchCompanyTaskTypes(companyId: companyId)
+                
+                // Then fetch Tasks from API
                 let apiTasks = try await dataController.apiService.fetchCompanyTasks(companyId: companyId)
                 
                 await MainActor.run {
-                    // First, ensure we have task types for all unique type IDs
+                    // Process TaskTypes first
                     var taskTypeMap: [String: TaskType] = [:]
                     
                     // Fetch existing task types
@@ -164,26 +167,20 @@ struct TaskListDebugView: View {
                         taskTypeMap[type.id] = type
                     }
                     
-                    // Create missing task types from task data
-                    let uniqueTypeIds = Set(apiTasks.compactMap { $0.type })
-                    for typeId in uniqueTypeIds {
-                        if taskTypeMap[typeId] == nil {
-                            // Create a basic task type for this ID
-                            let taskType = TaskType(
-                                id: typeId,
-                                display: "Task Type \(typeId.prefix(8))", // Use first 8 chars of ID as display
-                                color: "#59779F",
-                                companyId: companyId,
-                                isDefault: false,
-                                icon: "hammer.fill"
-                            )
+                    // Sync task types from API
+                    var syncedTypesCount = 0
+                    for dto in apiTaskTypes {
+                        if taskTypeMap[dto.id] == nil {
+                            let taskType = dto.toModel()
+                            taskType.companyId = companyId // Set company ID since it's not in the DTO
                             modelContext.insert(taskType)
-                            taskTypeMap[typeId] = taskType
+                            taskTypeMap[dto.id] = taskType
+                            syncedTypesCount += 1
                         }
                     }
                     
                     // Convert and save tasks
-                    var syncedCount = 0
+                    var syncedTasksCount = 0
                     let defaultColor = "#59779F"
                     
                     for dto in apiTasks {
@@ -198,15 +195,15 @@ struct TaskListDebugView: View {
                             }
                             
                             modelContext.insert(task)
-                            syncedCount += 1
+                            syncedTasksCount += 1
                         }
                     }
                     
                     do {
                         try modelContext.save()
-                        errorMessage = "Synced \(syncedCount) new tasks from API"
+                        errorMessage = "Synced \(syncedTypesCount) task types and \(syncedTasksCount) tasks from API"
                     } catch {
-                        errorMessage = "Failed to save tasks: \(error.localizedDescription)"
+                        errorMessage = "Failed to save: \(error.localizedDescription)"
                     }
                     
                     fetchTasks()

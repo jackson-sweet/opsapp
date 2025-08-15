@@ -19,8 +19,14 @@ struct AppSettingsView: View {
     @State private var showCalendarEvents = false
     @State private var showAPICallsDebug = false
     @State private var developerModeEnabled: Bool = false
+    @State private var developerModeExplicitlyDisabled: Bool = false
     
     private var shouldShowDeveloperOptions: Bool {
+        // If explicitly disabled, hide even in DEBUG builds
+        if developerModeExplicitlyDisabled {
+            return false
+        }
+        
         #if DEBUG
         return true
         #else
@@ -152,6 +158,7 @@ struct AppSettingsView: View {
                             UserDefaults.standard.set(false, forKey: "developerModeEnabled")
                             UserDefaults.standard.synchronize()
                             developerModeEnabled = false
+                            developerModeExplicitlyDisabled = true
                             print("🔧 Developer mode deactivated")
                         } label: {
                             HStack {
@@ -170,6 +177,36 @@ struct AppSettingsView: View {
                             )
                         }
                         .padding(.top, 8)
+                    } else if developerModeExplicitlyDisabled {
+                        // Show re-enable option when explicitly disabled in DEBUG builds
+                        #if DEBUG
+                        Divider()
+                            .background(OPSStyle.Colors.tertiaryText)
+                            .padding(.vertical, 8)
+                        
+                        Button {
+                            UserDefaults.standard.set(true, forKey: "developerModeEnabled")
+                            UserDefaults.standard.synchronize()
+                            developerModeEnabled = true
+                            developerModeExplicitlyDisabled = false
+                            print("🔧 Developer mode re-enabled")
+                        } label: {
+                            HStack {
+                                Image(systemName: "hammer.circle")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                Text("Re-enable Developer Mode")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                            )
+                        }
+                        #endif
                     }
                     
                     // App info at the bottom of scroll content
@@ -185,8 +222,14 @@ struct AppSettingsView: View {
         .navigationBarBackButtonHidden(true)
         .onAppear {
             // Load developer mode state
-            #if !DEBUG
             developerModeEnabled = UserDefaults.standard.bool(forKey: "developerModeEnabled")
+            
+            // Check if developer mode was explicitly disabled (even in DEBUG builds)
+            #if DEBUG
+            // In DEBUG builds, check if it was explicitly disabled
+            if !developerModeEnabled && UserDefaults.standard.object(forKey: "developerModeEnabled") != nil {
+                developerModeExplicitlyDisabled = true
+            }
             #endif
         }
         .fullScreenCover(isPresented: $showMapSettings) {

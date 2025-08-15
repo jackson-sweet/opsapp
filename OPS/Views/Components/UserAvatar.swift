@@ -118,14 +118,14 @@ struct UserAvatar: View {
                     .frame(width: size, height: size)
                     .clipShape(Circle())
             } else {
-                // Default avatar with initials
+                // Default avatar with initials - no background, just border
                 Circle()
-                    .fill(backgroundColor)
+                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
                     .frame(width: size, height: size)
                     .overlay(
                         Text(initials)
                             .font(.custom("Mohave-Bold", size: fontSize))
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .offset(x: 0, y: fontSize/15)
                     )
             }

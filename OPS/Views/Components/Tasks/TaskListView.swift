@@ -11,7 +11,6 @@ import SwiftData
 struct TaskListView: View {
     let project: Project
     @EnvironmentObject private var dataController: DataController
-    @State private var showingAddTask = false
     @State private var expandedTaskId: String? = nil
     
     // Group tasks by status
@@ -52,16 +51,6 @@ struct TaskListView: View {
                             .fill(OPSStyle.Colors.cardBackgroundDark)
                     )
                 
-                // Add task button (if user has permission)
-                if canEditTasks() {
-                    Button {
-                        showingAddTask = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
             }
             .padding(.horizontal)
             
@@ -72,15 +61,18 @@ struct TaskListView: View {
                         .font(.system(size: 48))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     
-                    Text("No tasks yet")
+                    Text("No tasks assigned")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
-                    if canEditTasks() {
-                        Text("Tap + to add your first task")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
+                    Text("Create tasks in the web app")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    
+                    Text("Defaulting to project-based scheduling")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
@@ -105,10 +97,6 @@ struct TaskListView: View {
                 }
                 .padding(.horizontal)
             }
-        }
-        .sheet(isPresented: $showingAddTask) {
-            AddTaskSheet(project: project)
-                .environmentObject(dataController)
         }
     }
     
@@ -148,6 +136,7 @@ struct TaskStatusGroup: View {
     @Binding var expandedTaskId: String?
     let onTaskTap: (ProjectTask) -> Void
     let onStatusChange: (ProjectTask, TaskStatus) -> Void
+    @EnvironmentObject private var dataController: DataController
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -177,6 +166,7 @@ struct TaskStatusGroup: View {
                             onStatusChange(task, newStatus)
                         }
                     )
+                    .environmentObject(dataController)
                 }
             }
         }
@@ -202,6 +192,9 @@ struct TaskCard: View {
     let isExpanded: Bool
     let onTap: () -> Void
     let onStatusChange: (TaskStatus) -> Void
+    @State private var editingNotes = false
+    @State private var editedNotes: String = ""
+    @EnvironmentObject private var dataController: DataController
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -275,16 +268,53 @@ struct TaskCard: View {
                         }
                     }
                     
-                    // Task notes
-                    if let notes = task.taskNotes, !notes.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
+                    // Task notes (editable)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
                             Text("NOTES")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            Text(notes)
+                            Spacer()
+                            
+                            Button(action: {
+                                editedNotes = task.taskNotes ?? ""
+                                editingNotes.toggle()
+                            }) {
+                                Image(systemName: editingNotes ? "checkmark.circle" : "pencil")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                        }
+                        
+                        if editingNotes {
+                            TextEditor(text: $editedNotes)
+                                .frame(minHeight: 80)
+                                .padding(8)
+                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .cornerRadius(8)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
+                            
+                            HStack {
+                                Spacer()
+                                
+                                Button("Cancel") {
+                                    editingNotes = false
+                                    editedNotes = task.taskNotes ?? ""
+                                }
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                
+                                Button("Save") {
+                                    saveTaskNotes()
+                                }
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                            .font(OPSStyle.Typography.bodyBold)
+                        } else {
+                            Text(task.taskNotes?.isEmpty == false ? task.taskNotes! : "No notes added")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(task.taskNotes?.isEmpty == false ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                         }
                     }
                     
@@ -331,6 +361,29 @@ struct TaskCard: View {
         }
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isExpanded)
+    }
+    
+    private func saveTaskNotes() {
+        // Update the task notes
+        task.taskNotes = editedNotes
+        task.needsSync = true
+        
+        // Save locally
+        do {
+            try dataController.modelContext?.save()
+            editingNotes = false
+            
+            // Sync to backend
+            Task {
+                if let syncManager = dataController.syncManager {
+                    // If we add a specific method for task notes, use it here
+                    // For now, mark for sync and it will sync on next sync cycle
+                    print("Task notes updated and marked for sync")
+                }
+            }
+        } catch {
+            print("Error saving task notes: \(error)")
+        }
     }
     
     private func formatDateRange(_ start: Date, _ end: Date) -> String {
@@ -380,16 +433,8 @@ struct TeamMemberPill: View {
     
     var body: some View {
         HStack(spacing: 6) {
-            // Simple circle with initials for now
-            ZStack {
-                Circle()
-                    .fill(OPSStyle.Colors.primaryAccent)
-                    .frame(width: 20, height: 20)
-                
-                Text(String(member.firstName.prefix(1)) + String(member.lastName.prefix(1)))
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
-            }
+            // Use UserAvatar component
+            UserAvatar(user: member, size: 20)
             
             Text(member.firstName)
                 .font(OPSStyle.Typography.caption)

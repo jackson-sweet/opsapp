@@ -530,6 +530,11 @@ class SyncManager {
                 project.endDate = Date()
             }
             
+            // Update task status if project uses task-based scheduling
+            if project.eventType == .task && !project.tasks.isEmpty {
+                updateTasksForProjectStatus(project: project, projectStatus: status)
+            }
+            
             // Save local changes
             try modelContext.save()
             
@@ -1378,6 +1383,22 @@ class SyncManager {
         let remoteTasks = try await apiService.fetchCompanyTasks(companyId: companyId)
         print("📥 Received \(remoteTasks.count) tasks from API")
         
+        // Check if any tasks have task types we don't recognize
+        let remoteTaskTypeIds = Set(remoteTasks.compactMap { $0.type })
+        var localTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
+        let localTaskTypeIds = Set(localTaskTypes.map { $0.id })
+        let unknownTaskTypeIds = remoteTaskTypeIds.subtracting(localTaskTypeIds)
+        
+        if !unknownTaskTypeIds.isEmpty {
+            print("🔄 Found \(unknownTaskTypeIds.count) unknown task types, syncing task types first...")
+            try await syncCompanyTaskTypes(companyId: companyId)
+            // Refresh local task types after sync
+            localTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
+        }
+        
+        // Create task type map for efficient lookups
+        let taskTypeMap = Dictionary(uniqueKeysWithValues: localTaskTypes.map { ($0.id, $0) })
+        
         // Get company's default color
         let companyDescriptor = FetchDescriptor<Company>(
             predicate: #Predicate<Company> { $0.id == companyId }
@@ -1397,12 +1418,19 @@ class SyncManager {
                 if localTaskIds.contains(remoteTask.id) {
                     // Update existing task
                     if let localTask = localTasks.first(where: { $0.id == remoteTask.id }) {
-                        updateTask(localTask, from: remoteTask, defaultColor: defaultColor)
+                        updateTask(localTask, from: remoteTask, defaultColor: defaultColor, taskTypeMap: taskTypeMap)
                     }
                 } else {
                     // Insert new task with company's default color
                     let newTask = remoteTask.toModel(defaultColor: defaultColor)
                     modelContext.insert(newTask)
+                    
+                    // Link to task type if available
+                    if let taskTypeId = remoteTask.type,
+                       let taskType = taskTypeMap[taskTypeId] {
+                        newTask.taskType = taskType
+                        newTask.taskTypeId = taskTypeId
+                    }
                     
                     // Link to project if available
                     if let projectId = remoteTask.projectId,
@@ -1436,7 +1464,7 @@ class SyncManager {
     }
     
     /// Update a local task from a remote DTO
-    private func updateTask(_ localTask: ProjectTask, from remoteTask: TaskDTO, defaultColor: String? = nil) {
+    private func updateTask(_ localTask: ProjectTask, from remoteTask: TaskDTO, defaultColor: String? = nil, taskTypeMap: [String: TaskType]? = nil) {
         if let status = remoteTask.status {
             localTask.status = TaskStatus(rawValue: status) ?? .scheduled
         }
@@ -1449,6 +1477,22 @@ class SyncManager {
         localTask.taskNotes = remoteTask.taskNotes
         localTask.displayOrder = remoteTask.taskIndex ?? 0
         localTask.calendarEventId = remoteTask.calendarEventId
+        
+        // Update task type if provided
+        if let taskTypeId = remoteTask.type {
+            localTask.taskTypeId = taskTypeId
+            // Try to link to actual task type object if available
+            if let taskTypeMap = taskTypeMap,
+               let taskType = taskTypeMap[taskTypeId] {
+                localTask.taskType = taskType
+            } else if let taskType = try? modelContext.fetch(
+                FetchDescriptor<TaskType>(
+                    predicate: #Predicate<TaskType> { $0.id == taskTypeId }
+                )
+            ).first {
+                localTask.taskType = taskType
+            }
+        }
         
         if let teamMembers = remoteTask.teamMembers {
             localTask.setTeamMemberIds(teamMembers)
@@ -1492,9 +1536,13 @@ class SyncManager {
                 if let localTaskType = localTaskTypes.first(where: { $0.id == remoteTaskType.id }) {
                     localTaskType.display = remoteTaskType.display
                     localTaskType.color = remoteTaskType.color
-                    localTaskType.icon = nil  // Icon field doesn't exist in Bubble
+                    // Keep existing icon if it exists (icon field doesn't exist in Bubble)
+                    // Icon will be assigned later if it's nil
                     localTaskType.isDefault = remoteTaskType.isDefault ?? false
-                    localTaskType.displayOrder = 0  // Display order field doesn't exist in Bubble
+                    // Keep existing display order or set to 0 if not set
+                    if localTaskType.displayOrder == 0 {
+                        localTaskType.displayOrder = 0
+                    }
                 }
             } else {
                 // Insert new task type
@@ -1512,8 +1560,42 @@ class SyncManager {
             }
         }
         
+        // After syncing, assign icons to task types that don't have them
+        let allTaskTypes = try modelContext.fetch(descriptor)
+        TaskType.assignIconsToTaskTypes(allTaskTypes)
+        
         try modelContext.save()
         print("✅ Task types synced successfully for company \(companyId)")
+    }
+    
+    /// Update tasks when project status changes
+    private func updateTasksForProjectStatus(project: Project, projectStatus: Status) {
+        switch projectStatus {
+        case .inProgress:
+            // When project starts, start the first scheduled task
+            if let firstScheduledTask = project.tasks
+                .filter({ $0.status == .scheduled })
+                .sorted(by: { $0.displayOrder < $1.displayOrder })
+                .first {
+                firstScheduledTask.status = .inProgress
+                firstScheduledTask.needsSync = true
+                print("🔵 Started task: \(firstScheduledTask.taskType?.display ?? "Task")")
+            }
+            
+        case .completed:
+            // When project completes, mark all non-cancelled tasks as completed
+            for task in project.tasks {
+                if task.status != .cancelled {
+                    task.status = .completed
+                    task.needsSync = true
+                }
+            }
+            print("✅ Marked \(project.tasks.filter { $0.status == .completed }.count) tasks as completed")
+            
+        default:
+            // No automatic task updates for other project statuses
+            break
+        }
     }
     
     /// Update task status on backend

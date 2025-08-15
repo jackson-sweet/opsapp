@@ -131,8 +131,8 @@ struct ProjectDetailsView: View {
                         // Project info with notes - streamlined cards
                         infoSection
                         
-                        // Tasks section (only for task-based scheduling)
-                        if project.usesTaskBasedScheduling {
+                        // Tasks section (show when project is task-based or could be)
+                        if project.eventType == .task {
                             tasksSection
                         }
                         
@@ -750,11 +750,11 @@ struct ProjectDetailsView: View {
         .zIndex(100)
     }
     
-    // Scheduling mode section
+    // Scheduling mode section - Read only display
     private var schedulingModeSection: some View {
         Group {
-            // Only show if user has permission to edit
-            if canEditProjectSettings() {
+            // Show current scheduling mode (determined by backend)
+            if shouldShowSchedulingInfo() {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Image(systemName: "calendar.badge.clock")
@@ -767,55 +767,26 @@ struct ProjectDetailsView: View {
                         
                         Spacer()
                         
-                        // Mode toggle
-                        Menu {
-                            Button {
-                                updateSchedulingMode(.project)
-                            } label: {
-                                Label(
-                                    "Project Scheduling",
-                                    systemImage: project.effectiveEventType == .project ? "checkmark" : ""
-                                )
-                            }
-                            
-                            Button {
-                                updateSchedulingMode(.task)
-                            } label: {
-                                Label(
-                                    "Task-Based Scheduling",
-                                    systemImage: project.effectiveEventType == .task ? "checkmark" : ""
-                                )
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Text(project.effectiveEventType == .task ? "Task-Based" : "Project")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                
-                                Image(systemName: "chevron.down.circle")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            }
+                        // Display current mode (read-only)
+                        Text(getSchedulingModeDisplay())
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                    .fill(OPSStyle.Colors.cardBackgroundDark)
                             )
-                        }
                     }
                     .padding()
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     
                     // Mode description
-                    Text(project.effectiveEventType == .task ? 
-                        "Schedule individual tasks with specific dates and team assignments" :
-                        "Schedule the entire project as a single calendar event"
-                    )
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.horizontal)
+                    Text(getSchedulingModeDescription())
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .padding(.horizontal)
                 }
                 .padding(.horizontal)
             }
@@ -834,19 +805,31 @@ struct ProjectDetailsView: View {
         return currentUser.role != .fieldCrew
     }
     
-    // Update scheduling mode
-    private func updateSchedulingMode(_ mode: CalendarEventType) {
-        guard mode != project.effectiveEventType else { return }
-        
-        // Update the project
-        project.eventType = mode
-        project.needsSync = true
-        
-        // Save changes
-        do {
-            try dataController.modelContext?.save()
-        } catch {
-            print("Error updating scheduling mode: \(error)")
+    // Determine if we should show scheduling info
+    private func shouldShowSchedulingInfo() -> Bool {
+        // Show scheduling mode info if project uses task-based scheduling
+        // or if it could use task-based but has no tasks
+        return project.eventType == .task || project.tasks.count > 0
+    }
+    
+    // Get display text for current scheduling mode
+    private func getSchedulingModeDisplay() -> String {
+        // Auto-detect based on eventType and task presence
+        if project.eventType == .task && !project.tasks.isEmpty {
+            return "Task-Based"
+        } else {
+            return "Project-Based"
+        }
+    }
+    
+    // Get description for current scheduling mode
+    private func getSchedulingModeDescription() -> String {
+        if project.eventType == .task && !project.tasks.isEmpty {
+            return "Tasks are scheduled individually with specific dates and team assignments"
+        } else if project.eventType == .task && project.tasks.isEmpty {
+            return "No tasks assigned. Create tasks in the web app to enable task-based scheduling"
+        } else {
+            return "Project is scheduled as a single calendar event"
         }
     }
     

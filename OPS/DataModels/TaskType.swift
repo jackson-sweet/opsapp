@@ -63,6 +63,36 @@ final class TaskType {
     
     // MARK: - Default Task Types
     
+    /// Predefined icons for task types (used in sequence)
+    static let predefinedIcons = [
+        "hammer.fill",         // General construction/installation
+        "wrench.fill",        // Service/repair
+        "paintbrush.fill",    // Painting/finishing
+        "ruler.fill",         // Measurement/planning
+        "doc.text.fill",      // Documentation/quotes
+        "checkmark.circle.fill", // Inspection/completion
+        "shippingbox.fill",   // Materials/delivery
+        "bolt.fill",          // Electrical
+        "drop.fill",          // Plumbing
+        "house.fill"          // General/other
+    ]
+    
+    /// Get an icon for a task type based on its display order or index
+    static func getIcon(for index: Int) -> String {
+        let iconIndex = index % predefinedIcons.count
+        return predefinedIcons[iconIndex]
+    }
+    
+    /// Assign icons to task types that don't have them
+    static func assignIconsToTaskTypes(_ taskTypes: [TaskType]) {
+        let sorted = taskTypes.sorted { $0.displayOrder < $1.displayOrder }
+        for (index, taskType) in sorted.enumerated() {
+            if taskType.icon == nil || taskType.icon?.isEmpty == true {
+                taskType.icon = getIcon(for: index)
+            }
+        }
+    }
+    
     /// Create default task types for a company
     static func createDefaults(companyId: String) -> [TaskType] {
         return [

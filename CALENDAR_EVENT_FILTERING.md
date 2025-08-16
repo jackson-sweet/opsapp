@@ -1,9 +1,12 @@
-# CalendarEvent Filtering Strategy
+# CalendarEvent Architecture & Filtering Strategy
 
-## Problem
-We need to efficiently determine which CalendarEvents to display without querying the parent project for each event.
+## Core Architecture
+CalendarEvents are the single source of truth for all calendar display and date management in the OPS app.
 
-## Solution: Multi-Tiered Approach
+## Problem Solved
+We need to efficiently determine which CalendarEvents to display without querying the parent project for each event, while maintaining a unified calendar display regardless of scheduling mode.
+
+## Solution: CalendarEvent-Centric Architecture
 
 ### 1. Cached Project EventType
 Each CalendarEvent now has a `projectEventType` field that caches the parent project's scheduling mode:
@@ -97,10 +100,27 @@ func loadCalendarEvents() async {
 
 ## Implementation Updates (Latest)
 
+### CalendarEvent-Centric Display
+- **Calendar View**: Now fetches and displays CalendarEvents instead of Projects directly
+- **Project Data**: Projects are loaded to provide rich detail data (photos, notes, etc.)
+- **Date Management**: CalendarEvents are the single source of truth for all dates
+- **Relationships**: 
+  - Project has `primaryCalendarEvent` for project-based scheduling
+  - Task has `calendarEvent` for task-based scheduling
+  - Dates sync bidirectionally between entities
+
 ### Calendar Event Sync Strategy
 - Calendar events are now synced during project sync operations
 - This ensures the calendar is always populated with current data
 - Events are never created locally - only synced from Bubble
+- Date changes in CalendarEvents propagate to Projects/Tasks automatically
+
+### Task Updates
+- **Real-time Sync**: Task status and notes changes sync immediately to API
+- **API Methods**: 
+  - `updateTaskStatus(id: String, status: String)` - Updates task status
+  - `updateTaskNotes(id: String, notes: String)` - Updates task notes
+- **Offline Support**: Changes marked with `needsSync` flag for retry when online
 
 ### Task Type Fetching Strategy
 - Task types are fetched by specific IDs rather than fetching all
@@ -111,3 +131,10 @@ func loadCalendarEvents() async {
 - All companies now have access to task features
 - No conditional checks for task functionality
 - Simplifies code and prevents bugs from feature flags
+
+## Data Flow
+
+1. **API → CalendarEvents**: Bubble creates CalendarEvents when projects/tasks are created
+2. **CalendarEvents → Display**: Calendar view shows CalendarEvents with their dates
+3. **CalendarEvents → Projects/Tasks**: Dates sync from CalendarEvents to related entities
+4. **UI Changes → API**: Task status/notes changes sync immediately to Bubble

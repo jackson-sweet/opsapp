@@ -227,6 +227,37 @@ func fetchCompanyByCode(code: String) async throws -> CompanyDTO?
 ```
 Fetches a company using its company code.
 
+### Task Endpoints
+
+#### Fetch Tasks
+```swift
+func fetchProjectTasks(projectId: String) async throws -> [TaskDTO]
+func fetchCompanyTasks(companyId: String) async throws -> [TaskDTO]
+func fetchUserTasks(userId: String) async throws -> [TaskDTO]
+```
+Fetch tasks by project, company, or user assignment.
+
+#### Update Task Status
+```swift
+func updateTaskStatus(id: String, status: String) async throws
+```
+Updates a task's status. Changes sync immediately to Bubble.
+
+#### Update Task Notes
+```swift
+func updateTaskNotes(id: String, notes: String) async throws
+```
+Updates a task's notes. Changes sync immediately to Bubble.
+
+### Task Type Endpoints
+
+#### Fetch Task Types
+```swift
+func fetchCompanyTaskTypes(companyId: String) async throws -> [TaskTypeDTO]
+func fetchTaskTypesByIds(ids: [String]) async throws -> [TaskTypeDTO]
+```
+Fetch task types for a company or by specific IDs.
+
 ## Admin Role Management
 
 ### Automatic Admin Detection
@@ -258,6 +289,8 @@ When syncing company data, the app automatically checks if the current user is l
 - **Task Types**: Fetched by specific IDs rather than fetching all
 - **No Feature Flags**: All companies have task features enabled
 - **Never Create Events Locally**: Calendar events are only synced from Bubble
+- **CalendarEvent-Centric Architecture**: CalendarEvents are the single source of truth for dates
+- **Real-time Task Updates**: Task status and notes changes sync immediately to API
 
 ### Offline Support
 - Local edits are tracked and synced when connectivity is restored

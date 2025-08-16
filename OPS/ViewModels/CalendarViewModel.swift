@@ -15,7 +15,8 @@ class CalendarViewModel: ObservableObject {
     // MARK: - Published Properties
     @Published var selectedDate: Date = Date()
     @Published var viewMode: CalendarViewMode = .week
-    @Published var projectsForSelectedDate: [Project] = []
+    @Published var projectsForSelectedDate: [Project] = []  // Keep for project detail data
+    @Published var calendarEventsForSelectedDate: [CalendarEvent] = []  // Primary display data
     @Published var isLoading = false
     @Published var userInitiatedDateSelection = false
     @Published var shouldShowDaySheet = false // New published property for explicit control
@@ -164,7 +165,7 @@ class CalendarViewModel: ObservableObject {
     func projectCount(for date: Date) -> Int {
             // If it's the currently selected date, we already have the data
             if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
-                return projectsForSelectedDate.count
+                return calendarEventsForSelectedDate.count
             }
             
             // Check the cache first
@@ -175,18 +176,18 @@ class CalendarViewModel: ObservableObject {
             
             // For other dates, get the count from DataController
             if let dataController = dataController {
-                // Get all projects active on this date (including multi-day projects)
-                var projects = dataController.getProjectsForCurrentUser(for: date)
+                // Get all calendar events active on this date
+                var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
                 
                 // Apply team member filter if selected
                 if let selectedMemberId = selectedTeamMemberId {
-                    projects = projects.filter { project in
-                        project.getTeamMemberIds().contains(selectedMemberId) ||
-                        project.teamMembers.contains(where: { $0.id == selectedMemberId })
+                    calendarEvents = calendarEvents.filter { event in
+                        event.getTeamMemberIds().contains(selectedMemberId) ||
+                        event.teamMembers.contains(where: { $0.id == selectedMemberId })
                     }
                 }
                 
-                let count = projects.count
+                let count = calendarEvents.count
                 
                 // Cache the result
                 projectCountCache[dateKey] = count
@@ -222,34 +223,45 @@ class CalendarViewModel: ObservableObject {
             return 
         }
         
-        print("📅 Loading projects for date: \(date)")
+        print("📅 Loading calendar events and projects for date: \(date)")
         isLoading = true
         
-        // Get projects for the selected date based on user role
-        var projects = dataController.getProjectsForCurrentUser(for: date)
-        print("📊 Found \(projects.count) projects from dataController")
+        // Get calendar events for the selected date
+        var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
+        print("📆 Found \(calendarEvents.count) calendar events from dataController")
         
         // Apply team member filter if selected
         if let selectedMemberId = selectedTeamMemberId {
             print("👤 Applying team member filter for: \(selectedMemberId)")
-            projects = projects.filter { project in
-                project.getTeamMemberIds().contains(selectedMemberId) ||
-                project.teamMembers.contains(where: { $0.id == selectedMemberId })
+            calendarEvents = calendarEvents.filter { event in
+                event.getTeamMemberIds().contains(selectedMemberId) ||
+                event.teamMembers.contains(where: { $0.id == selectedMemberId })
             }
-            print("📊 After filter: \(projects.count) projects")
+            print("📆 After filter: \(calendarEvents.count) calendar events")
         }
+        
+        // Get unique projects from the calendar events
+        let projectIds = Set(calendarEvents.compactMap { $0.projectId })
+        var projects: [Project] = []
+        for projectId in projectIds {
+            if let project = dataController.getProject(id: projectId) {
+                projects.append(project)
+            }
+        }
+        print("📊 Found \(projects.count) unique projects from calendar events")
         
         // Force UI update
         DispatchQueue.main.async { [weak self] in
             self?.objectWillChange.send()
+            self?.calendarEventsForSelectedDate = calendarEvents
             self?.projectsForSelectedDate = projects
             self?.isLoading = false
         }
         
-        // Update the cache for this date
+        // Update the cache for this date (based on calendar events now)
         let dateKey = formatDateKey(date)
-        projectCountCache[dateKey] = projects.count
-        print("💾 Updated cache for \(dateKey): \(projects.count) projects")
+        projectCountCache[dateKey] = calendarEvents.count
+        print("💾 Updated cache for \(dateKey): \(calendarEvents.count) calendar events")
         print("🔄 UI update triggered")
     }
     

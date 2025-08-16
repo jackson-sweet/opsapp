@@ -1420,6 +1420,44 @@ class DataController: ObservableObject {
         print("✅ Project refresh from backend completed")
     }
     
+    // MARK: - CalendarEvent Methods
+    
+    /// Get calendar events for a specific date for the current user
+    func getCalendarEventsForCurrentUser(for date: Date) -> [CalendarEvent] {
+        guard let user = currentUser else { return [] }
+        guard let context = modelContext else { return [] }
+        
+        let descriptor = FetchDescriptor<CalendarEvent>()
+        
+        do {
+            let allEvents = try context.fetch(descriptor)
+            
+            // Filter by date and user access
+            let filteredEvents = allEvents.filter { event in
+                // Check if event is active on this date
+                let isActiveOnDate = event.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
+                guard isActiveOnDate else { return false }
+                
+                // Check if event should be displayed based on project scheduling mode
+                guard event.shouldDisplay else { return false }
+                
+                // For Admin and Office Crew, show all company events
+                if user.role == .admin || user.role == .officeCrew {
+                    return event.companyId == user.companyId
+                } else {
+                    // For Field Crew, only show events they're assigned to
+                    return event.teamMembers.contains(where: { $0.id == user.id }) ||
+                           event.getTeamMemberIds().contains(user.id)
+                }
+            }
+            
+            return filteredEvents.sorted { $0.startDate < $1.startDate }
+        } catch {
+            print("❌ Error fetching calendar events: \(error)")
+            return []
+        }
+    }
+    
     func getProjectDetails(projectId: String) async throws -> Project {
         guard let context = modelContext else {
             throw NSError(domain: "DataController", code: 2,

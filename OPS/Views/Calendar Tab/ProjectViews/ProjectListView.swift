@@ -39,19 +39,19 @@ struct ProjectListView: View {
                         .frame(width: 60, height: 60)
                     
                     // Stacked cards effect for depth
-                    if viewModel.projectsForSelectedDate.count > 0 {
-                        ForEach(0..<min(3, viewModel.projectsForSelectedDate.count), id: \.self) { index in
-                            // Use project status color for the border if available
-                            let project = viewModel.projectsForSelectedDate[min(index, viewModel.projectsForSelectedDate.count - 1)]
+                    if viewModel.calendarEventsForSelectedDate.count > 0 {
+                        ForEach(0..<min(3, viewModel.calendarEventsForSelectedDate.count), id: \.self) { index in
+                            // Use event color for the border if available
+                            let event = viewModel.calendarEventsForSelectedDate[min(index, viewModel.calendarEventsForSelectedDate.count - 1)]
                             RoundedRectangle(cornerRadius: 6)
-                                .stroke(project.statusColor.opacity(0.6), lineWidth: 1)
+                                .stroke(event.swiftUIColor.opacity(0.6), lineWidth: 1)
                                 .fill(Color(OPSStyle.Colors.cardBackgroundDark))
                                 .frame(width: 50 + CGFloat(index * 2), height: 50 + CGFloat(index * 2))
                         }
                     }
                     
-                    // Project count number
-                    Text("\(viewModel.projectsForSelectedDate.count)")
+                    // Event count number
+                    Text("\(viewModel.calendarEventsForSelectedDate.count)")
                         .font(OPSStyle.Typography.largeTitle)
                         .foregroundColor(.white)
                 }
@@ -60,7 +60,7 @@ struct ProjectListView: View {
             .padding(.vertical, 16)
             
             // Only the content area should be in the ScrollView, not the header
-            if viewModel.projectsForSelectedDate.isEmpty {
+            if viewModel.calendarEventsForSelectedDate.isEmpty {
                 emptyStateView
             } else {
                 // Project list content in ScrollView
@@ -101,28 +101,31 @@ struct ProjectListView: View {
     }
     
     private var projectListView: some View {
-        ForEach(Array(viewModel.projectsForSelectedDate.enumerated()), id: \.element.id) { index, project in
-            CalendarProjectCard(
-                project: project,
-                isFirst: index == 0,
-                onTap: {
-                    // Print debug info
-                    
-                    // Use the notification approach to be consistent with how we show projects elsewhere
-                    // This ensures we're only using one mechanism for showing project details
-                    
-                    // Send only the projectID in the notification to avoid potential issues with sending objects
-                    let userInfo: [String: String] = ["projectID": project.id]
-                    
-                    // Post the notification with just the project ID
-                    // Post notification with just the ID
-                    NotificationCenter.default.post(
-                        name: Notification.Name("ShowCalendarProjectDetails"),
-                        object: nil,
-                        userInfo: userInfo
-                    )
-                }
-            )
+        ForEach(Array(viewModel.calendarEventsForSelectedDate.enumerated()), id: \.element.id) { index, event in
+            // Get the associated project for this calendar event
+            if let project = event.project {
+                CalendarProjectCard(
+                    project: project,
+                    isFirst: index == 0,
+                    onTap: {
+                        // Print debug info
+                        
+                        // Use the notification approach to be consistent with how we show projects elsewhere
+                        // This ensures we're only using one mechanism for showing project details
+                        
+                        // Send only the projectID in the notification to avoid potential issues with sending objects
+                        let userInfo: [String: String] = ["projectID": project.id]
+                        
+                        // Post the notification with just the project ID
+                        // Post notification with just the ID
+                        NotificationCenter.default.post(
+                            name: Notification.Name("ShowCalendarProjectDetails"),
+                            object: nil,
+                            userInfo: userInfo
+                        )
+                    }
+                )
+            }
         }
         .padding(.bottom, 20)
     }

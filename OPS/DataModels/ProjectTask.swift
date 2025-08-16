@@ -136,4 +136,27 @@ final class ProjectTask {
         guard let startDate = scheduledDate else { return false }
         return Calendar.current.isDateInToday(startDate)
     }
+    
+    // MARK: - Calendar Event Date Synchronization
+    
+    /// Update calendar event dates when task needs rescheduling
+    func updateCalendarEventDates(startDate: Date, endDate: Date) {
+        guard let calendarEvent = calendarEvent else { return }
+        
+        // Update calendar event to match new task dates
+        calendarEvent.startDate = startDate
+        calendarEvent.endDate = endDate
+        calendarEvent.duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
+    }
+    
+    /// Sync task metadata with calendar event
+    func syncWithCalendarEvent() {
+        guard let calendarEvent = calendarEvent else { return }
+        
+        // Update calendar event metadata
+        calendarEvent.title = displayTitle
+        calendarEvent.color = effectiveColor
+        calendarEvent.setTeamMemberIds(getTeamMemberIds())
+        calendarEvent.teamMembers = teamMembers
+    }
 }

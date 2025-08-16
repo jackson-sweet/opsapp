@@ -51,6 +51,10 @@ final class Project: Identifiable {
     @Relationship(deleteRule: .cascade, inverse: \ProjectTask.project)
     var tasks: [ProjectTask] = []
     
+    // Relationship to the project's primary calendar event (for project-based scheduling)
+    @Relationship(deleteRule: .nullify)
+    var primaryCalendarEvent: CalendarEvent?
+    
     // Offline/sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
@@ -206,6 +210,32 @@ final class Project: Identifiable {
     /// Check if this project uses traditional project scheduling
     var usesProjectScheduling: Bool {
         return effectiveEventType == .project
+    }
+    
+    // MARK: - Calendar Event Date Synchronization
+    
+    /// Sync dates with the primary calendar event (for project-based scheduling)
+    func syncDatesWithCalendarEvent() {
+        guard let calendarEvent = primaryCalendarEvent else { return }
+        
+        // Update project dates to match calendar event
+        self.startDate = calendarEvent.startDate
+        self.endDate = calendarEvent.endDate
+        self.duration = calendarEvent.duration
+    }
+    
+    /// Update calendar event dates when project dates change
+    func updateCalendarEventDates() {
+        guard let calendarEvent = primaryCalendarEvent else { return }
+        
+        // Update calendar event to match project dates
+        if let startDate = self.startDate {
+            calendarEvent.startDate = startDate
+        }
+        if let endDate = self.endDate {
+            calendarEvent.endDate = endDate
+        }
+        calendarEvent.duration = self.duration ?? 1
     }
     
     // Computed property for location with validation

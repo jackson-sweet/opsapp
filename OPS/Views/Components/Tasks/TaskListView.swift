@@ -126,6 +126,48 @@ struct TaskListView: View {
         
         // Save changes
         try? dataController.modelContext?.save()
+        
+        // Sync to API in background
+        Task {
+            await syncTaskToAPI(task, updateType: .status)
+        }
+    }
+    
+    // MARK: - API Sync
+    
+    private enum TaskUpdateType {
+        case status
+        case notes
+    }
+    
+    @MainActor
+    private func syncTaskToAPI(_ task: ProjectTask, updateType: TaskUpdateType) async {
+        guard let syncManager = dataController.syncManager else {
+            print("⚠️ No sync manager available for task sync")
+            return
+        }
+        
+        do {
+            switch updateType {
+            case .status:
+                print("📤 Syncing task status to API: \(task.status.rawValue)")
+                try await syncManager.updateTaskStatus(id: task.id, status: task.status.rawValue)
+                print("✅ Task status synced successfully")
+                
+            case .notes:
+                print("📤 Syncing task notes to API")
+                try await syncManager.updateTaskNotes(id: task.id, notes: task.taskNotes ?? "")
+                print("✅ Task notes synced successfully")
+            }
+            
+            // Clear sync flag after successful sync
+            task.needsSync = false
+            try? dataController.modelContext?.save()
+            
+        } catch {
+            print("❌ Failed to sync task to API: \(error)")
+            // Keep needsSync flag true so it can be retried later
+        }
     }
 }
 
@@ -375,11 +417,7 @@ struct TaskCard: View {
             
             // Sync to backend
             Task {
-                if let syncManager = dataController.syncManager {
-                    // If we add a specific method for task notes, use it here
-                    // For now, mark for sync and it will sync on next sync cycle
-                    print("Task notes updated and marked for sync")
-                }
+                await syncTaskNotesToAPI()
             }
         } catch {
             print("Error saving task notes: \(error)")
@@ -394,6 +432,28 @@ struct TaskCard: View {
             return formatter.string(from: start)
         } else {
             return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
+        }
+    }
+    
+    @MainActor
+    private func syncTaskNotesToAPI() async {
+        guard let syncManager = dataController.syncManager else {
+            print("⚠️ No sync manager available for task sync")
+            return
+        }
+        
+        do {
+            print("📤 Syncing task notes to API")
+            try await syncManager.updateTaskNotes(id: task.id, notes: task.taskNotes ?? "")
+            print("✅ Task notes synced successfully")
+            
+            // Clear sync flag after successful sync
+            task.needsSync = false
+            try? dataController.modelContext?.save()
+            
+        } catch {
+            print("❌ Failed to sync task notes to API: \(error)")
+            // Keep needsSync flag true so it can be retried later
         }
     }
 }

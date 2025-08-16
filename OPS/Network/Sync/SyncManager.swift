@@ -76,6 +76,18 @@ class SyncManager {
     
     // MARK: - Public Methods
     
+    // MARK: Task Update Methods
+    
+    /// Update task status via API
+    public func updateTaskStatus(id: String, status: String) async throws {
+        try await apiService.updateTaskStatus(id: id, status: status)
+    }
+    
+    /// Update task notes via API
+    public func updateTaskNotes(id: String, notes: String) async throws {
+        try await apiService.updateTaskNotes(id: id, notes: notes)
+    }
+    
     /// Sync a user to the API
     func syncUser(_ user: User) async {
         guard !syncInProgress, connectivityMonitor.isConnected else {
@@ -1582,6 +1594,13 @@ class SyncManager {
                         newEvent.project = project
                         // Cache the project's event type for efficient filtering
                         newEvent.projectEventType = project.effectiveEventType
+                        
+                        // If this is a project-level event, set it as the primary calendar event
+                        if newEvent.type == .project && project.effectiveEventType == .project {
+                            project.primaryCalendarEvent = newEvent
+                            // Sync dates from calendar event to project
+                            project.syncDatesWithCalendarEvent()
+                        }
                     }
                 }
                 
@@ -1629,6 +1648,11 @@ class SyncManager {
         
         if let teamMembers = remoteEvent.teamMembers {
             localEvent.setTeamMemberIds(teamMembers)
+        }
+        
+        // If this is a project-level event, sync dates back to the project
+        if localEvent.type == .project, let project = localEvent.project {
+            project.syncDatesWithCalendarEvent()
         }
         
         localEvent.lastSyncedAt = Date()

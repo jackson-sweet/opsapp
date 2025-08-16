@@ -122,9 +122,6 @@ struct ProjectDetailsView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         
-                        // Scheduling mode toggle (for projects with eventType support)
-                        schedulingModeSection
-                        
                         // Location map - more visual prominence
                         locationSection
                         
@@ -255,10 +252,28 @@ struct ProjectDetailsView: View {
     // Project header section with title and date  
     private var projectHeaderSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Project title in large, prominent type
-            Text(project.title)
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
+            // Project title with task count if applicable
+            HStack(alignment: .top, spacing: 12) {
+                Text(project.title)
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(.white)
+                
+                // Show task count if project has tasks
+                if project.eventType == .task && !project.tasks.isEmpty {
+                    Text("\(project.tasks.count) \(project.tasks.count == 1 ? "TASK" : "TASKS")")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(OPSStyle.Colors.cardBackgroundDark)
+                        )
+                        .padding(.top, 4)
+                }
+                
+                Spacer()
+            }
             
             // Client info
             VStack(alignment: .leading, spacing: 4) {
@@ -750,49 +765,6 @@ struct ProjectDetailsView: View {
         .zIndex(100)
     }
     
-    // Scheduling mode section - Read only display
-    private var schedulingModeSection: some View {
-        Group {
-            // Show current scheduling mode (determined by backend)
-            if shouldShowSchedulingInfo() {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: "calendar.badge.clock")
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                        
-                        Text("SCHEDULING MODE")
-                            .font(OPSStyle.Typography.cardTitle)
-                            .foregroundColor(.white)
-                        
-                        Spacer()
-                        
-                        // Display current mode (read-only)
-                        Text(getSchedulingModeDisplay())
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(OPSStyle.Colors.cardBackgroundDark)
-                            )
-                    }
-                    .padding()
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    
-                    // Mode description
-                    Text(getSchedulingModeDescription())
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.horizontal)
-                }
-                .padding(.horizontal)
-            }
-        }
-    }
-    
     // Tasks section
     private var tasksSection: some View {
         TaskListView(project: project)
@@ -803,34 +775,6 @@ struct ProjectDetailsView: View {
     private func canEditProjectSettings() -> Bool {
         guard let currentUser = dataController.currentUser else { return false }
         return currentUser.role != .fieldCrew
-    }
-    
-    // Determine if we should show scheduling info
-    private func shouldShowSchedulingInfo() -> Bool {
-        // Show scheduling mode info if project uses task-based scheduling
-        // or if it could use task-based but has no tasks
-        return project.eventType == .task || project.tasks.count > 0
-    }
-    
-    // Get display text for current scheduling mode
-    private func getSchedulingModeDisplay() -> String {
-        // Auto-detect based on eventType and task presence
-        if project.eventType == .task && !project.tasks.isEmpty {
-            return "Task-Based"
-        } else {
-            return "Project-Based"
-        }
-    }
-    
-    // Get description for current scheduling mode
-    private func getSchedulingModeDescription() -> String {
-        if project.eventType == .task && !project.tasks.isEmpty {
-            return "Tasks are scheduled individually with specific dates and team assignments"
-        } else if project.eventType == .task && project.tasks.isEmpty {
-            return "No tasks assigned. Create tasks in the web app to enable task-based scheduling"
-        } else {
-            return "Project is scheduled as a single calendar event"
-        }
     }
     
     // Helper to format date

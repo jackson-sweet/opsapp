@@ -94,3 +94,20 @@ func loadCalendarEvents() async {
 - Existing projects default to `.project` scheduling mode
 - CalendarEvents created before this update will have `projectEventType == nil` and use fallback logic
 - The cache will be populated on first access
+
+## Implementation Updates (Latest)
+
+### Calendar Event Sync Strategy
+- Calendar events are now synced during project sync operations
+- This ensures the calendar is always populated with current data
+- Events are never created locally - only synced from Bubble
+
+### Task Type Fetching Strategy
+- Task types are fetched by specific IDs rather than fetching all
+- When syncing tasks, only unknown task types are fetched
+- Reduces API calls and improves performance
+
+### Removed Restrictions
+- All companies now have access to task features
+- No conditional checks for task functionality
+- Simplifies code and prevents bugs from feature flags

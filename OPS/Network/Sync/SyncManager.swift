@@ -934,23 +934,20 @@ class SyncManager {
             try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
         }
         
-        // Sync task types for the company
-        if !companyId.isEmpty {
-            do {
-                try await syncCompanyTaskTypes(companyId: companyId)
-            } catch {
-                print("⚠️ Failed to sync task types: \(error)")
-            }
+        // Sync calendar events for the company (critical for calendar view)
+        print("📅 Syncing calendar events for company...")
+        do {
+            try await syncCompanyCalendarEvents(companyId: companyId)
+        } catch {
+            print("⚠️ Failed to sync calendar events: \(error)")
         }
         
-        // Sync tasks for all projects (if tasks are enabled)
-        // This could be made conditional based on a feature flag
-        if !companyId.isEmpty {
-            do {
-                try await syncCompanyTasks(companyId: companyId)
-            } catch {
-                print("⚠️ Failed to sync tasks: \(error)")
-            }
+        // Sync tasks for all companies (no longer conditional)
+        print("📋 Syncing tasks for company...")
+        do {
+            try await syncCompanyTasks(companyId: companyId)
+        } catch {
+            print("⚠️ Failed to sync tasks: \(error)")
         }
     }
     
@@ -1383,20 +1380,24 @@ class SyncManager {
         let remoteTasks = try await apiService.fetchCompanyTasks(companyId: companyId)
         print("📥 Received \(remoteTasks.count) tasks from API")
         
-        // Check if any tasks have task types we don't recognize
+        // Collect all unique task type IDs from remote tasks
         let remoteTaskTypeIds = Set(remoteTasks.compactMap { $0.type })
-        var localTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
-        let localTaskTypeIds = Set(localTaskTypes.map { $0.id })
-        let unknownTaskTypeIds = remoteTaskTypeIds.subtracting(localTaskTypeIds)
-        
-        if !unknownTaskTypeIds.isEmpty {
-            print("🔄 Found \(unknownTaskTypeIds.count) unknown task types, syncing task types first...")
-            try await syncCompanyTaskTypes(companyId: companyId)
-            // Refresh local task types after sync
-            localTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
+        if !remoteTaskTypeIds.isEmpty {
+            print("📋 Found \(remoteTaskTypeIds.count) unique task types in tasks")
+            
+            // Check which task types we don't have locally
+            let localTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
+            let localTaskTypeIds = Set(localTaskTypes.map { $0.id })
+            let unknownTaskTypeIds = remoteTaskTypeIds.subtracting(localTaskTypeIds)
+            
+            if !unknownTaskTypeIds.isEmpty {
+                print("🔄 Need to fetch \(unknownTaskTypeIds.count) missing task types")
+                try await syncSpecificTaskTypes(taskTypeIds: Array(unknownTaskTypeIds), companyId: companyId)
+            }
         }
         
-        // Create task type map for efficient lookups
+        // Refresh task types after potential sync
+        let localTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
         let taskTypeMap = Dictionary(uniqueKeysWithValues: localTaskTypes.map { ($0.id, $0) })
         
         // Get company's default color
@@ -1500,6 +1501,139 @@ class SyncManager {
     }
     
     /// Sync task types for a company
+    /// Sync specific task types by their IDs
+    func syncSpecificTaskTypes(taskTypeIds: [String], companyId: String) async throws {
+        guard !taskTypeIds.isEmpty else { return }
+        
+        print("🔵 SyncManager: Fetching \(taskTypeIds.count) specific task types")
+        
+        // Fetch specific task types from API
+        let remoteTaskTypes = try await apiService.fetchTaskTypesByIds(ids: taskTypeIds)
+        print("📥 Received \(remoteTaskTypes.count) task types from API")
+        
+        // Process each task type
+        for remoteTaskType in remoteTaskTypes {
+            // Check if exists locally
+            let descriptor = FetchDescriptor<TaskType>(
+                predicate: #Predicate<TaskType> { $0.id == remoteTaskType.id }
+            )
+            let existing = try modelContext.fetch(descriptor).first
+            
+            if let existingType = existing {
+                // Update existing
+                existingType.display = remoteTaskType.display
+                existingType.color = remoteTaskType.color
+                existingType.isDefault = remoteTaskType.isDefault ?? false
+                // Keep existing icon and display order
+            } else {
+                // Create new
+                let newTaskType = remoteTaskType.toModel()
+                newTaskType.companyId = companyId
+                modelContext.insert(newTaskType)
+            }
+        }
+        
+        // Assign icons to any task types that don't have them
+        let allTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>(
+            predicate: #Predicate<TaskType> { $0.companyId == companyId }
+        ))
+        TaskType.assignIconsToTaskTypes(allTaskTypes)
+        
+        try modelContext.save()
+        print("✅ Specific task types synced successfully")
+    }
+    
+    /// Sync calendar events for a company
+    func syncCompanyCalendarEvents(companyId: String) async throws {
+        print("🔵 SyncManager: Syncing calendar events for company \(companyId)")
+        
+        // Fetch calendar events from API
+        let remoteEvents = try await apiService.fetchCompanyCalendarEvents(companyId: companyId)
+        print("📥 Received \(remoteEvents.count) calendar events from API")
+        
+        // Get local events
+        let descriptor = FetchDescriptor<CalendarEvent>(
+            predicate: #Predicate<CalendarEvent> { $0.companyId == companyId }
+        )
+        let localEvents = try modelContext.fetch(descriptor)
+        let localEventIds = Set(localEvents.map { $0.id })
+        
+        // Process remote events
+        for remoteEvent in remoteEvents {
+            if localEventIds.contains(remoteEvent.id) {
+                // Update existing event
+                if let localEvent = localEvents.first(where: { $0.id == remoteEvent.id }) {
+                    updateCalendarEvent(localEvent, from: remoteEvent)
+                }
+            } else {
+                // Insert new event
+                guard let newEvent = remoteEvent.toModel() else {
+                    print("⚠️ Failed to create CalendarEvent from DTO: \(remoteEvent.id)")
+                    continue
+                }
+                modelContext.insert(newEvent)
+                
+                // Link to project if available
+                if let projectId = remoteEvent.projectId {
+                    let projectDescriptor = FetchDescriptor<Project>(
+                        predicate: #Predicate<Project> { $0.id == projectId }
+                    )
+                    if let project = try modelContext.fetch(projectDescriptor).first {
+                        newEvent.project = project
+                        // Cache the project's event type for efficient filtering
+                        newEvent.projectEventType = project.effectiveEventType
+                    }
+                }
+                
+                // Link to task if available
+                if let taskId = remoteEvent.taskId {
+                    let taskDescriptor = FetchDescriptor<ProjectTask>(
+                        predicate: #Predicate<ProjectTask> { $0.id == taskId }
+                    )
+                    if let task = try modelContext.fetch(taskDescriptor).first {
+                        newEvent.task = task
+                        task.calendarEvent = newEvent
+                    }
+                }
+            }
+        }
+        
+        // Remove local events not in remote
+        let remoteEventIds = Set(remoteEvents.map { $0.id })
+        for localEvent in localEvents {
+            if !remoteEventIds.contains(localEvent.id) {
+                modelContext.delete(localEvent)
+            }
+        }
+        
+        try modelContext.save()
+        print("✅ Calendar events synced successfully for company \(companyId)")
+    }
+    
+    /// Update a local calendar event from remote DTO
+    private func updateCalendarEvent(_ localEvent: CalendarEvent, from remoteEvent: CalendarEventDTO) {
+        localEvent.title = remoteEvent.title ?? ""
+        
+        let dateFormatter = ISO8601DateFormatter()
+        if let startDateStr = remoteEvent.startDate, let startDate = dateFormatter.date(from: startDateStr) {
+            localEvent.startDate = startDate
+        }
+        
+        if let endDateStr = remoteEvent.endDate, let endDate = dateFormatter.date(from: endDateStr) {
+            localEvent.endDate = endDate
+        }
+        
+        localEvent.type = CalendarEventType(rawValue: remoteEvent.type?.lowercased() ?? "project") ?? .project
+        localEvent.color = remoteEvent.color ?? "#59779F"
+        localEvent.duration = Int(remoteEvent.duration ?? 1)
+        
+        if let teamMembers = remoteEvent.teamMembers {
+            localEvent.setTeamMemberIds(teamMembers)
+        }
+        
+        localEvent.lastSyncedAt = Date()
+    }
+    
     func syncCompanyTaskTypes(companyId: String) async throws {
         print("🔵 SyncManager: Syncing task types for company \(companyId)")
         

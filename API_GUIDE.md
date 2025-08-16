@@ -247,6 +247,18 @@ When syncing company data, the app automatically checks if the current user is l
 - Changes are tracked with `lastSyncedAt` and `needsSync` flags
 - Sync operations are prioritized by importance
 
+### Updated Sync Flow (Latest)
+1. **Project Sync**: Fetch projects based on user role
+2. **Calendar Event Sync**: Fetch all calendar events for company (ensures calendar is populated)
+3. **Task Sync**: Fetch all tasks for company
+4. **Task Type Sync**: Fetch only specific task types that are referenced by tasks
+
+### Key Changes
+- **Calendar Events**: Now synced with projects to ensure calendar is always populated
+- **Task Types**: Fetched by specific IDs rather than fetching all
+- **No Feature Flags**: All companies have task features enabled
+- **Never Create Events Locally**: Calendar events are only synced from Bubble
+
 ### Offline Support
 - Local edits are tracked and synced when connectivity is restored
 - `ConnectivityMonitor` tracks network availability

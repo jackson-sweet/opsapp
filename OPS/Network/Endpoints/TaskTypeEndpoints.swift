@@ -39,6 +39,30 @@ extension APIService {
         )
     }
     
+    /// Fetch specific task types by their IDs
+    /// - Parameter ids: Array of task type IDs to fetch
+    /// - Returns: Array of task type DTOs
+    func fetchTaskTypesByIds(ids: [String]) async throws -> [TaskTypeDTO] {
+        guard !ids.isEmpty else { return [] }
+        
+        print("🔵 APIService: Fetching \(ids.count) specific task types")
+        
+        // Create constraint for fetching specific IDs
+        let constraints = [
+            [
+                "key": "_id",
+                "constraint_type": "in",
+                "value": ids
+            ]
+        ]
+        
+        return try await fetchBubbleObjectsWithArrayConstraints(
+            objectType: BubbleFields.Types.taskType,
+            constraints: constraints,
+            sortField: BubbleFields.TaskType.display
+        )
+    }
+    
     // MARK: - TaskType Creation
     
     /// Create a new task type

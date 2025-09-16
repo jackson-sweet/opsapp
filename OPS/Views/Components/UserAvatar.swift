@@ -74,7 +74,8 @@ struct UserAvatar: View {
         self.imageURL = client.profileImageURL
         self.imageData = nil
         self.size = size
-        self.backgroundColor = OPSStyle.Colors.primaryAccent
+        // Use white for client avatars
+        self.backgroundColor = .white
     }
     
     init(firstName: String, lastName: String, imageURL: String? = nil, imageData: Data? = nil, size: CGFloat = 40, backgroundColor: Color? = nil) {
@@ -120,12 +121,12 @@ struct UserAvatar: View {
             } else {
                 // Default avatar with initials - no background, just border
                 Circle()
-                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                    .stroke(backgroundColor, lineWidth: 2)
                     .frame(width: size, height: size)
                     .overlay(
                         Text(initials)
                             .font(.custom("Mohave-Bold", size: fontSize))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(backgroundColor)
                             .offset(x: 0, y: fontSize/15)
                     )
             }

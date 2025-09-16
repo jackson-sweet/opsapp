@@ -15,6 +15,7 @@ import SwiftData
 class AppState: ObservableObject {
     @Published var activeProjectID: String?
     @Published var activeProject: Project?
+    @Published var activeTask: ProjectTask? // Track active task for task-based navigation
     
     // New flag to differentiate between showing details and starting project
     @Published var isViewingDetailsOnly: Bool = false
@@ -98,6 +99,20 @@ class AppState: ObservableObject {
         }
     }
     
+    func viewTaskDetails(task: ProjectTask, project: Project) {
+        // Post notification to show task details
+        let userInfo: [String: Any] = [
+            "taskID": task.id,
+            "projectID": project.id
+        ]
+        
+        NotificationCenter.default.post(
+            name: Notification.Name("ShowTaskDetailsFromHome"),
+            object: nil,
+            userInfo: userInfo
+        )
+    }
+    
     func setActiveProject(_ project: Project) {
         self.activeProjectID = project.id
         
@@ -115,6 +130,7 @@ class AppState: ObservableObject {
         self.isViewingDetailsOnly = false // Reset viewing details flag
         self.activeProject = nil
         self.activeProjectID = nil
+        self.activeTask = nil // Clear active task
     }
     
     // Helper method to dismiss project details without exiting project mode

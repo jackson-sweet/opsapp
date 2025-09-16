@@ -52,23 +52,66 @@ struct CalendarEventDTO: Codable {
         print("   - TaskId: \(taskId ?? "nil")")
         print("   - Title: \(title ?? "nil")")
         print("   - Color: \(color ?? "nil")")
+        print("   - Start Date String: \(startDate ?? "nil")")
+        print("   - End Date String: \(endDate ?? "nil")")
         
         // Parse dates with validation
         let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        
+        // Also try without fractional seconds if first attempt fails
+        let alternativeFormatter = ISO8601DateFormatter()
+        alternativeFormatter.formatOptions = [.withInternetDateTime]
+        
         let startDateObj: Date
         var endDateObj: Date
         
         // Handle start date
-        if let startDate = startDate, let parsedStart = dateFormatter.date(from: startDate) {
-            startDateObj = parsedStart
+        if let startDateString = startDate {
+            if let parsedStart = dateFormatter.date(from: startDateString) {
+                startDateObj = parsedStart
+                print("   ✅ Parsed start date: \(startDateObj)")
+            } else if let parsedStart = alternativeFormatter.date(from: startDateString) {
+                startDateObj = parsedStart
+                print("   ✅ Parsed start date (alt format): \(startDateObj)")
+            } else {
+                // Try one more format - Bubble sometimes sends dates differently
+                let bubbleFormatter = DateFormatter()
+                bubbleFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+                if let parsedStart = bubbleFormatter.date(from: startDateString) {
+                    startDateObj = parsedStart
+                    print("   ✅ Parsed start date (Bubble format): \(startDateObj)")
+                } else {
+                    print("   ❌ Failed to parse start date: \(startDateString)")
+                    print("   ⚠️ Skipping event due to invalid start date")
+                    return nil // Don't create events with invalid dates
+                }
+            }
         } else {
-            print("   ⚠️ No start date, defaulting to today")
-            startDateObj = Date() // Default to today if missing
+            print("   ❌ No start date provided, skipping event")
+            return nil // Don't create events without dates
         }
         
         // Handle end date with validation
-        if let endDate = endDate, let parsedEnd = dateFormatter.date(from: endDate) {
-            endDateObj = parsedEnd
+        if let endDateString = endDate {
+            if let parsedEnd = dateFormatter.date(from: endDateString) {
+                endDateObj = parsedEnd
+                print("   ✅ Parsed end date: \(endDateObj)")
+            } else if let parsedEnd = alternativeFormatter.date(from: endDateString) {
+                endDateObj = parsedEnd
+                print("   ✅ Parsed end date (alt format): \(endDateObj)")
+            } else {
+                // Try Bubble format
+                let bubbleFormatter = DateFormatter()
+                bubbleFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+                if let parsedEnd = bubbleFormatter.date(from: endDateString) {
+                    endDateObj = parsedEnd
+                    print("   ✅ Parsed end date (Bubble format): \(endDateObj)")
+                } else {
+                    print("   ⚠️ Failed to parse end date: \(endDateString), using start date")
+                    endDateObj = startDateObj
+                }
+            }
         } else {
             print("   ⚠️ No end date, defaulting to start date")
             endDateObj = startDateObj // Default to start date if missing

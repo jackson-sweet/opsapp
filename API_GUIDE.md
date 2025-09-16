@@ -1,7 +1,7 @@
 # OPS App - API Integration Guide
 
-**Last Updated**: July 03, 2025  
-**Version**: 1.0.2
+**Last Updated**: August 2025  
+**Version**: 1.2.0
 
 ## Bubble.io API Integration
 
@@ -291,6 +291,27 @@ When syncing company data, the app automatically checks if the current user is l
 - **Never Create Events Locally**: Calendar events are only synced from Bubble
 - **CalendarEvent-Centric Architecture**: CalendarEvents are the single source of truth for dates
 - **Real-time Task Updates**: Task status and notes changes sync immediately to API
+
+### Calendar Implementation Details
+
+#### Continuous Scrolling Calendar
+The calendar uses an Apple Calendar-like continuous scrolling implementation:
+- **MonthGridView**: Implements vertical scrolling through multiple months (±12 months from today)
+- **Lazy Loading**: Calendar events are loaded only for visible months to optimize performance
+- **Month Snapping**: Calendar automatically snaps to the nearest month when scrolling ends
+- **Preference Keys**: Uses `ScrollOffsetPreferenceKey` and `MonthPositionPreferenceKey` to track scroll state
+
+#### Visible Month Tracking
+- **visibleMonth**: Property in CalendarViewModel tracks currently visible month
+- **Dynamic Updates**: Month picker displays visible month and updates as user scrolls
+- **Synchronization**: Selected date and visible month are synchronized in month view mode
+- **Today Card**: Always displays today's date regardless of selected/visible month
+
+#### Performance Optimizations
+- **Event Caching**: `eventCache` dictionary stores event counts by date key
+- **Batch Loading**: Events loaded in batches for visible and adjacent months
+- **Debug Logging**: Verbose logging removed from `DataController.getCalendarEventsForCurrentUser()`
+- **Scroll State Management**: `isScrolling` flag prevents circular updates between UI and data
 
 ### Offline Support
 - Local edits are tracked and synced when connectivity is restored

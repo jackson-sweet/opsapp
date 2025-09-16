@@ -104,14 +104,27 @@ struct ProjectSearchSheet: View {
                     projectListSection
                 }
             }
-            .navigationTitle("Search Projects")
+            .navigationTitle("SEARCH PROJECTS")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    Button(action: {
                         dismiss()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .medium))
+                            Text("CLOSE")
+                                .font(OPSStyle.Typography.captionBold)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+                
+                ToolbarItem(placement: .principal) {
+                    Text("SEARCH PROJECTS")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
         }
@@ -128,56 +141,117 @@ struct ProjectSearchSheet: View {
     // MARK: - View Components
     
     private var searchBarSection: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            
-            TextField("Search projects...", text: $searchText)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .autocorrectionDisabled()
-                .focused($isSearchFieldFocused)
-            
-            if !searchText.isEmpty {
-                Button(action: {
-                    searchText = ""
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+        HStack(spacing: 0) {
+            // Search field
+            HStack(spacing: 12) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                TextField("Search projects, clients, or addresses...", text: $searchText)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .autocorrectionDisabled()
+                    .focused($isSearchFieldFocused)
+                
+                if !searchText.isEmpty {
+                    Button(action: {
+                        searchText = ""
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
+            .frame(maxWidth: .infinity)
             
-            // Filter button
+            Spacer(minLength: 8)
+            
+            // Filter button with label and icon
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     showFilters.toggle()
                 }
             }) {
-                Image(systemName: showFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                HStack(spacing: 6) {
+                    Text("FILTERS")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    
+                    Image(systemName: showFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 16))
+                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    
+                    if hasActiveFilters {
+                        Circle()
+                            .fill(OPSStyle.Colors.primaryAccent)
+                            .frame(width: 6, height: 6)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .fill(showFilters ? OPSStyle.Colors.cardBackground : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(hasActiveFilters ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.clear, lineWidth: 1)
+                        )
+                )
             }
         }
-        .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
     }
     
     private var filterSection: some View {
         Group {
             if showFilters {
-                VStack(spacing: 12) {
+                VStack(spacing: 16) {
                     statusFilterSection
                     if !teamMembers.isEmpty {
                         teamMemberFilterSection
                     }
+                    
+                    // Clear filters button if any filters are active
+                    if hasActiveFilters {
+                        Button(action: {
+                            selectedStatus = nil
+                            selectedTeamMemberId = nil
+                        }) {
+                            HStack {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 14))
+                                
+                                Text("CLEAR ALL FILTERS")
+                                    .font(OPSStyle.Typography.captionBold)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                    )
+                            )
+                        }
+                        .padding(.horizontal)
+                    }
                 }
-                .padding(.vertical, 12)
-                .background(OPSStyle.Colors.cardBackground)
+                .padding(.vertical, 16)
+                .background(OPSStyle.Colors.cardBackground.opacity(0.5))
                 .transition(.asymmetric(
                     insertion: .move(edge: .top).combined(with: .opacity),
                     removal: .move(edge: .top).combined(with: .opacity)
@@ -187,89 +261,142 @@ struct ProjectSearchSheet: View {
     }
     
     private var statusFilterSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("STATUS")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "flag.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("STATUS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Spacer()
+            }
+            .padding(.horizontal)
             
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // All status option
-                    FilterChip(
-                        title: "All",
-                        isSelected: selectedStatus == nil,
-                        color: OPSStyle.Colors.primaryAccent
-                    ) {
-                        selectedStatus = nil
-                    }
-                    
-                    // Individual status options
-                    ForEach([Status.inProgress, .accepted, .estimated, .rfq, .completed, .closed], id: \.self) { status in
-                        FilterChip(
-                            title: status.displayName,
-                            isSelected: selectedStatus == status,
-                            color: status.color
-                        ) {
+            // Status dropdown
+            Menu {
+                Button(action: { selectedStatus = nil }) {
+                    Label("All Statuses", systemImage: selectedStatus == nil ? "checkmark" : "")
+                }
+                
+                Divider()
+                
+                ForEach([Status.inProgress, .accepted, .estimated, .rfq, .completed, .closed, .archived], id: \.self) { status in
+                    Button(action: { 
+                        selectedStatus = selectedStatus == status ? nil : status 
+                    }) {
+                        HStack {
+                            Circle()
+                                .fill(status.color)
+                                .frame(width: 8, height: 8)
+                            Text(status.displayName)
+                            Spacer()
                             if selectedStatus == status {
-                                selectedStatus = nil
-                            } else {
-                                selectedStatus = status
+                                Image(systemName: "checkmark")
                             }
                         }
                     }
                 }
-                .padding(.horizontal)
+            } label: {
+                HStack {
+                    if let selectedStatus = selectedStatus {
+                        Circle()
+                            .fill(selectedStatus.color)
+                            .frame(width: 8, height: 8)
+                    }
+                    
+                    Text(selectedStatus?.displayName ?? "All Statuses")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
             }
+            .padding(.horizontal)
         }
     }
     
     @ViewBuilder
     private var teamMemberFilterSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TEAM MEMBER")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("TEAM MEMBER")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Spacer()
+            }
+            .padding(.horizontal)
             
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // All team members option
-                    allTeamMembersChip
-                    
-                    // Individual team members
-                    ForEach(teamMembers, id: \.id) { member in
-                        teamMemberChip(for: member)
+            // Team member dropdown
+            Menu {
+                Button(action: { selectedTeamMemberId = nil }) {
+                    Label("All Team Members", systemImage: selectedTeamMemberId == nil ? "checkmark" : "")
+                }
+                
+                Divider()
+                
+                ForEach(teamMembers, id: \.id) { member in
+                    Button(action: { 
+                        selectedTeamMemberId = selectedTeamMemberId == member.id ? nil : member.id 
+                    }) {
+                        HStack {
+                            Text(member.fullName)
+                            Spacer()
+                            if selectedTeamMemberId == member.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
                     }
                 }
-                .padding(.horizontal)
+            } label: {
+                HStack {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    Text(teamMembers.first(where: { $0.id == selectedTeamMemberId })?.fullName ?? "All Team Members")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
             }
+            .padding(.horizontal)
         }
     }
     
-    private var allTeamMembersChip: some View {
-        FilterChip(
-            title: "All",
-            isSelected: selectedTeamMemberId == nil,
-            color: OPSStyle.Colors.primaryAccent
-        ) {
-            selectedTeamMemberId = nil
-        }
-    }
-    
-    private func teamMemberChip(for member: TeamMember) -> some View {
-        FilterChip(
-            title: member.fullName,
-            isSelected: selectedTeamMemberId == member.id,
-            color: OPSStyle.Colors.primaryAccent
-        ) {
-            if selectedTeamMemberId == member.id {
-                selectedTeamMemberId = nil
-            } else {
-                selectedTeamMemberId = member.id
-            }
-        }
-    }
     
     private var projectListSection: some View {
         Group {
@@ -413,21 +540,21 @@ struct ProjectSearchRow: View {
     
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                // Status indicator
-                Circle()
+            HStack(spacing: 0) {
+                // Status color bar on the left
+                Rectangle()
                     .fill(project.status.color)
-                    .frame(width: 10, height: 10)
+                    .frame(width: 4)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    // Project title
-                    Text(project.title)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
-                    
-                    // Client and date info
-                    HStack(spacing: 8) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 6) {
+                        // Project title
+                        Text(project.title.uppercased())
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+                        
+                        // Client name
                         if !project.clientName.isEmpty {
                             Text(project.clientName)
                                 .font(OPSStyle.Typography.caption)
@@ -435,36 +562,51 @@ struct ProjectSearchRow: View {
                                 .lineLimit(1)
                         }
                         
-                        if let startDate = project.startDate {
-                            Text("•")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        // Date and address info
+                        HStack(spacing: 8) {
+                            if let startDate = project.startDate {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "calendar")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    
+                                    Text(formatDate(startDate))
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+                            }
                             
-                            Text(formatDate(startDate))
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            if !project.address.isEmpty {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "location")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    
+                                    Text(project.address)
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                        .lineLimit(1)
+                                }
+                            }
                         }
                     }
                     
-                    // Address if available
-                    if !project.address.isEmpty {
-                        Text(project.address)
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .lineLimit(1)
-                    }
+                    Spacer()
+                    
+                    // Chevron
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                
-                Spacer()
-                
-                // Chevron
-                Image(systemName: "chevron.right")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
             }
-            .padding()
             .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
             .padding(.horizontal)
         }
     }

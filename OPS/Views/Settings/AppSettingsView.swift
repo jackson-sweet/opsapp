@@ -14,6 +14,7 @@ struct AppSettingsView: View {
     @State private var showNotificationSettings = false
     @State private var showDataSettings = false
     @State private var showSecuritySettings = false
+    @State private var showProjectSettings = false
     @State private var showDeveloperDashboard = false
     @State private var developerModeEnabled: Bool = false
     @State private var developerModeExplicitlyDisabled: Bool = false
@@ -91,6 +92,20 @@ struct AppSettingsView: View {
                         )
                     }
                     
+                    // Project Settings - only for admin and office crew
+                    if let user = dataController.currentUser,
+                       (user.role == .admin || user.role == .officeCrew) {
+                        Button {
+                            showProjectSettings = true
+                        } label: {
+                            SettingsRowCard(
+                                title: "Project Settings",
+                                description: "Manage task types and project defaults",
+                                iconName: "hammer.circle"
+                            )
+                        }
+                    }
+                    
                     // Developer Tools section - visible in debug builds or when developer mode is enabled
                     if shouldShowDeveloperOptions {
                         Divider()
@@ -154,6 +169,12 @@ struct AppSettingsView: View {
         .fullScreenCover(isPresented: $showSecuritySettings) {
             NavigationStack {
                 SecuritySettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showProjectSettings) {
+            NavigationStack {
+                ProjectSettingsView()
                     .environmentObject(dataController)
             }
         }

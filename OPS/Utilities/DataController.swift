@@ -1424,32 +1424,171 @@ class DataController: ObservableObject {
     
     /// Get calendar events for a specific date for the current user
     func getCalendarEventsForCurrentUser(for date: Date) -> [CalendarEvent] {
-        guard let user = currentUser else { return [] }
-        guard let context = modelContext else { return [] }
+        guard let user = currentUser else { 
+            print("❌ No current user for calendar events")
+            return [] 
+        }
+        guard let context = modelContext else { 
+            print("❌ No model context for calendar events")
+            return [] 
+        }
+        
+        // print("\n📅 === FETCHING CALENDAR EVENTS FOR DATE: \(date) ===")
+        // print("👤 Current user: \(user.fullName) (Role: \(user.role))")
         
         let descriptor = FetchDescriptor<CalendarEvent>()
         
         do {
             let allEvents = try context.fetch(descriptor)
+            // print("📊 DATA: Total calendar events in database: \(allEvents.count)")
+            
+            /*
+            // Search for any Railings events specifically
+            let railingsEvents = allEvents.filter { $0.title.lowercased().contains("railings") }
+            if !railingsEvents.isEmpty {
+                print("🔍 RAILINGS EVENTS FOUND: \(railingsEvents.count)")
+                for (index, event) in railingsEvents.enumerated() {
+                    print("  🎯 Railings Event \(index + 1): \(event.title)")
+                    print("    - ID: \(event.id)")
+                    print("    - Start: \(event.startDate)")
+                    print("    - End: \(event.endDate)")
+                    print("    - Type: \(event.type.rawValue)")
+                    print("    - Project ID: \(event.projectId)")
+                    print("    - Task ID: \(event.taskId ?? "nil")")
+                    print("    - Should Display: \(event.shouldDisplay)")
+                    print("    - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
+                    if let project = event.project {
+                        print("    - Project Title: \(project.title)")
+                        print("    - Project Effective Event Type: \(project.effectiveEventType.rawValue)")
+                    }
+                }
+            }
+            */
+            
+            /*
+            // Debug first few events for general context
+            print("📊 DATA: First 5 events in database:")
+            for (index, event) in allEvents.prefix(5).enumerated() {
+                print("  Event \(index + 1): \(event.title)")
+                print("    - Start: \(event.startDate)")
+                print("    - End: \(event.endDate)")
+                print("    - Type: \(event.type.rawValue)")
+                print("    - Project ID: \(event.projectId)")
+                print("    - Should Display: \(event.shouldDisplay)")
+                print("    - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
+            }
+            */
             
             // Filter by date and user access
+            // print("\n🔍 FILTERING EVENTS FOR DATE: \(date)")
+            var passedDateFilter = 0
+            var passedShouldDisplayFilter = 0
+            var passedUserAccessFilter = 0
+            
             let filteredEvents = allEvents.filter { event in
+                let isRailingsEvent = event.title.lowercased().contains("railings")
+                let logPrefix = isRailingsEvent ? "🎯 RAILINGS" : "📅"
+                
                 // Check if event is active on this date
-                let isActiveOnDate = event.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
-                guard isActiveOnDate else { return false }
+                let spannedDates = event.spannedDates
+                let isActiveOnDate = spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
+                
+                if !isActiveOnDate {
+                    // Commented out verbose logging to prevent console spam
+                    // print("  ❌ \(logPrefix) Event '\(event.title)' not active on \(date)")
+                    // let formatter = DateFormatter()
+                    // formatter.dateStyle = .short
+                    // print("    - Event spans \(spannedDates.count) days: \(spannedDates.map { formatter.string(from: $0) }.joined(separator: ", "))")
+                    return false
+                }
+                passedDateFilter += 1
+                if isRailingsEvent { print("  ✅ \(logPrefix) Event '\(event.title)' PASSED date filter") }
                 
                 // Check if event should be displayed based on project scheduling mode
-                guard event.shouldDisplay else { return false }
+                let shouldDisplay = event.shouldDisplay
+                if !shouldDisplay {
+                    // Commented out verbose logging to prevent console spam
+                    // print("  ❌ \(logPrefix) Event '\(event.title)' shouldDisplay = false")
+                    // print("    - Event type: \(event.type.rawValue), Task ID: \(event.taskId ?? "nil")")
+                    // print("    - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
+                    // print("    - Has Project: \(event.project != nil)")
+                    // if let project = event.project {
+                    //     print("    - Project '\(project.title)' effective event type: \(project.effectiveEventType.rawValue)")
+                    //     print("    - Analysis: Project scheduling mode requires \(project.effectiveEventType.rawValue) events")
+                    //     if project.effectiveEventType == .task {
+                    //         print("    - Analysis: This event type=\(event.type.rawValue) taskId=\(event.taskId ?? "nil") - task events need taskId != nil")
+                    //     } else {
+                    //         print("    - Analysis: This event type=\(event.type.rawValue) taskId=\(event.taskId ?? "nil") - project events need taskId == nil")
+                    //     }
+                    // }
+                    return false
+                }
+                passedShouldDisplayFilter += 1
+                if isRailingsEvent { print("  ✅ \(logPrefix) Event '\(event.title)' PASSED shouldDisplay filter") }
                 
                 // For Admin and Office Crew, show all company events
                 if user.role == .admin || user.role == .officeCrew {
-                    return event.companyId == user.companyId
+                    let matchesCompany = event.companyId == user.companyId
+                    if !matchesCompany {
+                        // print("  ❌ \(logPrefix) Event '\(event.title)' wrong company (event: \(event.companyId), user: \(user.companyId))")
+                        return false
+                    } else {
+                        passedUserAccessFilter += 1
+                        if isRailingsEvent { print("  ✅ \(logPrefix) Event '\(event.title)' PASSED company filter for admin/office user") }
+                        return true
+                    }
                 } else {
                     // For Field Crew, only show events they're assigned to
-                    return event.teamMembers.contains(where: { $0.id == user.id }) ||
-                           event.getTeamMemberIds().contains(user.id)
+                    let eventTeamMemberIds = event.getTeamMemberIds()
+                    let eventTeamMemberObjectIds = event.teamMembers.map { $0.id }
+                    let isAssignedViaIds = eventTeamMemberIds.contains(user.id)
+                    let isAssignedViaObjects = event.teamMembers.contains(where: { $0.id == user.id })
+                    let isAssigned = isAssignedViaIds || isAssignedViaObjects
+                    
+                    if !isAssigned {
+                        // Commented out verbose logging
+                        // print("  ❌ \(logPrefix) Event '\(event.title)' user \(user.fullName) (ID: \(user.id)) not assigned")
+                        // print("    - Event team member IDs: \(eventTeamMemberIds)")
+                        // print("    - Event team member objects: \(eventTeamMemberObjectIds)")
+                        // print("    - User ID in string list: \(isAssignedViaIds)")
+                        // print("    - User ID in object list: \(isAssignedViaObjects)")
+                        
+                        // Also check task assignment if this is a task event
+                        if let task = event.task {
+                            let taskTeamMemberIds = task.getTeamMemberIds()
+                            let taskTeamMemberObjectIds = task.teamMembers.map { $0.id }
+                            let isAssignedToTask = taskTeamMemberIds.contains(user.id) || task.teamMembers.contains(where: { $0.id == user.id })
+                            // print("    - Task team member IDs: \(taskTeamMemberIds)")
+                            // print("    - Task team member objects: \(taskTeamMemberObjectIds)")
+                            // print("    - User assigned to task: \(isAssignedToTask)")
+                            
+                            if isAssignedToTask {
+                                passedUserAccessFilter += 1
+                                // print("  ✅ \(logPrefix) Event '\(event.title)' user assigned via task")
+                                return true
+                            }
+                        }
+                        return false
+                    } else {
+                        passedUserAccessFilter += 1
+                        if isRailingsEvent { print("  ✅ \(logPrefix) Event '\(event.title)' PASSED assignment filter for field crew user") }
+                        return true
+                    }
                 }
             }
+            
+            // Commented out verbose logging to prevent console spam during calendar rendering
+            // print("\n📊 FILTER RESULTS:")
+            // print("   - Started with: \(allEvents.count) events")
+            // print("   - Passed date filter: \(passedDateFilter) events")
+            // print("   - Passed shouldDisplay filter: \(passedShouldDisplayFilter) events")
+            // print("   - Passed user access filter: \(passedUserAccessFilter) events")
+            // print("   - Final result: \(filteredEvents.count) events")
+            
+            // print("📊 Filtered events for date: \(filteredEvents.count)")
+            // for event in filteredEvents {
+            //     print("  ✅ Showing: \(event.title)")
+            // }
             
             return filteredEvents.sorted { $0.startDate < $1.startDate }
         } catch {
@@ -2005,6 +2144,146 @@ class DataController: ObservableObject {
             print("Error fetching project: \(error.localizedDescription)")
             return nil
         }
+    }
+    
+    // MARK: - Diagnostic Functions
+    
+    /// Diagnostic function to search for specific project and analyze calendar event issues
+    func diagnoseRailingsVinylProject() {
+        print("\n🧪 ========== DIAGNOSTIC: Railings and Vinyl Project ==========")
+        print("🧪 Timestamp: \(Date())")
+        
+        guard let context = modelContext else {
+            print("❌ No model context available")
+            return
+        }
+        
+        do {
+            // Search for projects with "Railings" in the title
+            let allProjects = try context.fetch(FetchDescriptor<Project>())
+            let railingsProjects = allProjects.filter { $0.title.lowercased().contains("railings") }
+            
+            print("🔍 SEARCH: Found \(railingsProjects.count) projects containing 'railings'")
+            
+            for (index, project) in railingsProjects.enumerated() {
+                print("\n📋 PROJECT \(index + 1):")
+                print("   - ID: \(project.id)")
+                print("   - Title: \(project.title)")
+                print("   - Client: \(project.clientName)")
+                print("   - Company ID: \(project.companyId)")
+                print("   - Start Date: \(project.startDate?.description ?? "nil")")
+                print("   - End Date: \(project.endDate?.description ?? "nil")")
+                print("   - Event Type: \(project.eventType?.rawValue ?? "nil")")
+                print("   - Effective Event Type: \(project.effectiveEventType.rawValue)")
+                print("   - Status: \(project.status.displayName)")
+                print("   - Team Members: \(project.teamMembers.count)")
+                print("   - Team Member IDs: \(project.getTeamMemberIds())")
+                
+                // Check for tasks
+                let tasks = project.tasks
+                print("   - Total Tasks: \(tasks.count)")
+                
+                for (taskIndex, task) in tasks.enumerated() {
+                    print("     📋 TASK \(taskIndex + 1):")
+                    print("        - ID: \(task.id)")
+                    print("        - Type: \(task.taskType?.display ?? "Unknown")")
+                    print("        - Scheduled Date: \(task.scheduledDate?.description ?? "nil")")
+                    print("        - Status: \(task.status.displayName)")
+                    print("        - Has Calendar Event: \(task.calendarEvent != nil)")
+                    if let calendarEvent = task.calendarEvent {
+                        print("        - Calendar Event ID: \(calendarEvent.id)")
+                        print("        - Calendar Event Start: \(calendarEvent.startDate)")
+                        print("        - Calendar Event End: \(calendarEvent.endDate)")
+                        print("        - Calendar Event Should Display: \(calendarEvent.shouldDisplay)")
+                    }
+                }
+                
+                // Search for associated calendar events
+                let projectId = project.id
+                let calendarEventDescriptor = FetchDescriptor<CalendarEvent>(
+                    predicate: #Predicate<CalendarEvent> { $0.projectId == projectId }
+                )
+                let projectCalendarEvents = try context.fetch(calendarEventDescriptor)
+                
+                print("   - Associated Calendar Events: \(projectCalendarEvents.count)")
+                for (eventIndex, event) in projectCalendarEvents.enumerated() {
+                    print("     📅 CALENDAR EVENT \(eventIndex + 1):")
+                    print("        - ID: \(event.id)")
+                    print("        - Title: \(event.title)")
+                    print("        - Type: \(event.type.rawValue)")
+                    print("        - Start Date: \(event.startDate)")
+                    print("        - End Date: \(event.endDate)")
+                    print("        - Task ID: \(event.taskId ?? "nil")")
+                    print("        - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
+                    print("        - Should Display: \(event.shouldDisplay)")
+                    print("        - Team Members: \(event.teamMembers.count)")
+                    print("        - Team Member IDs: \(event.getTeamMemberIds())")
+                    
+                    // Check spanned dates for Aug 17 and Aug 19
+                    let spannedDates = event.spannedDates
+                    let calendar = Calendar.current
+                    
+                    let aug17_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 17))!
+                    let aug19_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 19))!
+                    
+                    let coversAug17 = spannedDates.contains { calendar.isDate($0, inSameDayAs: aug17_2025) }
+                    let coversAug19 = spannedDates.contains { calendar.isDate($0, inSameDayAs: aug19_2025) }
+                    
+                    print("        - Spans Aug 17, 2025: \(coversAug17)")
+                    print("        - Spans Aug 19, 2025: \(coversAug19)")
+                    print("        - Total Spanned Days: \(spannedDates.count)")
+                }
+            }
+            
+            // Also search for tasks with "Railings" in project title
+            print("\n📋 SEARCHING FOR TASKS:")
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            let railingsTasks = allTasks.filter { task in
+                if let project = task.project {
+                    return project.title.lowercased().contains("railings")
+                }
+                return false
+            }
+            
+            print("🔍 Found \(railingsTasks.count) tasks for projects containing 'railings'")
+            
+            for (index, task) in railingsTasks.enumerated() {
+                print("\n   📋 TASK \(index + 1):")
+                print("      - Task ID: \(task.id)")
+                print("      - Task Type: \(task.taskType?.display ?? "Unknown")")
+                print("      - Project Title: \(task.project?.title ?? "nil")")
+                print("      - Scheduled Date: \(task.scheduledDate?.description ?? "nil")")
+                print("      - Status: \(task.status.displayName)")
+                print("      - Has Calendar Event: \(task.calendarEvent != nil)")
+                if let calendarEvent = task.calendarEvent {
+                    print("      - Calendar Event ID: \(calendarEvent.id)")
+                    print("      - Calendar Event Should Display: \(calendarEvent.shouldDisplay)")
+                }
+            }
+            
+            // Check for calendar events on specific dates
+            print("\n📅 CHECKING CALENDAR EVENTS FOR SPECIFIC DATES:")
+            let calendar = Calendar.current
+            let aug17_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 17))!
+            let aug19_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 19))!
+            
+            for date in [aug17_2025, aug19_2025] {
+                print("\n📅 Events for \(date):")
+                let eventsForDate = getCalendarEventsForCurrentUser(for: date)
+                print("   - Total events returned: \(eventsForDate.count)")
+                
+                for event in eventsForDate {
+                    if event.title.lowercased().contains("railings") {
+                        print("   ✅ FOUND RAILINGS EVENT: \(event.title)")
+                    }
+                }
+            }
+            
+        } catch {
+            print("❌ Error during diagnostic: \(error)")
+        }
+        
+        print("🧪 ========== END DIAGNOSTIC ==========\n")
     }
     
     

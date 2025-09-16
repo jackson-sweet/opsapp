@@ -24,6 +24,7 @@ struct ProjectActionBar: View {
     @State private var showImagePicker = false
     @State private var selectedImages: [UIImage] = []
     @State private var processingImage = false
+    @State private var isAddingPhotos = false // Prevent duplicate additions
     
     // Receipt scanner state - Keeping but not using (for future reference)
     // These properties are kept but commented out as they may be needed when expense functionality is added back
@@ -104,16 +105,25 @@ struct ProjectActionBar: View {
             }
         }
         // Photo Picker for project photos - modified to use both camera and library
-        .sheet(isPresented: $showImagePicker) {
+        .sheet(isPresented: $showImagePicker, onDismiss: {
+            // Reset the flag when sheet is dismissed
+            isAddingPhotos = false
+        }) {
             ImagePicker(
                 images: $selectedImages,
                 allowsEditing: true,
                 sourceType: .both, // Allow user to choose between camera and library
                 selectionLimit: 10, // Allow multiple photos
                 onSelectionComplete: {
-                    // Process images immediately when selection is complete
-                    if !selectedImages.isEmpty {
-                        addPhotosToProject()
+                    // Only process if not already processing
+                    if !isAddingPhotos && !selectedImages.isEmpty {
+                        isAddingPhotos = true
+                        // Dismiss sheet immediately
+                        showImagePicker = false
+                        // Process images after sheet dismisses
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            addPhotosToProject()
+                        }
                     }
                 }
             )
@@ -186,8 +196,23 @@ struct ProjectActionBar: View {
         // case .receipt: - Removed as part of shelving expense functionality
         //    showReceiptScanner = true
         case .details:
-            // Show project details
-            showProjectDetails = true
+            // Check if we have an active task
+            if let activeTask = appState.activeTask {
+                // Show task details
+                let userInfo: [String: Any] = [
+                    "taskID": activeTask.id,
+                    "projectID": project.id
+                ]
+                
+                NotificationCenter.default.post(
+                    name: Notification.Name("ShowTaskDetailsFromHome"),
+                    object: nil,
+                    userInfo: userInfo
+                )
+            } else {
+                // Show project details
+                showProjectDetails = true
+            }
         case .photo:
             // Take a photo for the project
             showImagePicker = true
@@ -219,6 +244,9 @@ struct ProjectActionBar: View {
     }
     
     private func addPhotosToProject() {
+        // Prevent duplicate calls
+        guard !processingImage else { return }
+        
         // Start loading indicator
         processingImage = true
         
@@ -254,10 +282,12 @@ struct ProjectActionBar: View {
                             // Reset state
                             selectedImages.removeAll()
                             processingImage = false
+                            isAddingPhotos = false
                         }
                     } else {
                         await MainActor.run {
                             processingImage = false
+                            isAddingPhotos = false
                         }
                     }
                 } else {
@@ -316,12 +346,15 @@ struct ProjectActionBar: View {
                         
                         selectedImages.removeAll()
                         processingImage = false
+                        isAddingPhotos = false
                     }
                 }
             } catch {
                 print("ProjectActionBar: ❌ Error processing images: \(error.localizedDescription)")
                 await MainActor.run {
                     processingImage = false
+                    isAddingPhotos = false
+                    selectedImages.removeAll()
                 }
             }
         }

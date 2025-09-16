@@ -10,17 +10,28 @@
 import SwiftUI
 import SwiftData
 
+// Helper struct to hold task and project together
+struct TaskDetailInfo: Identifiable {
+    let id = UUID()
+    let task: ProjectTask
+    let project: Project
+}
+
 struct ScheduleView: View {
     // This view no longer uses NavigationLink for project details
     // All project presentations are done via the sheet in ProjectSheetContainer
-    // Notification observer for direct project list selection
+    // Notification observers for direct project and task list selection
     private let projectSelectionObserver = NotificationCenter.default
         .publisher(for: Notification.Name("ShowCalendarProjectDetails"))
+    
+    private let taskSelectionObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("ShowCalendarTaskDetails"))
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel = CalendarViewModel()
     @State private var showDaySheet = false
     @State private var selectedProjectID: String? = nil
+    @State private var selectedTaskDetail: TaskDetailInfo? = nil
     @State private var showSearchSheet = false
     @State private var showingRefreshAlert = false
     
@@ -45,15 +56,15 @@ struct ScheduleView: View {
                         showSearchSheet = true
                     },
                     onRefreshTapped: {
-                        print("🔘 Refresh button tapped!")
+                        // print("🔘 Refresh button tapped!")
                         // Show indicator immediately
                         showingRefreshAlert = true
                         
                         // Refresh projects in background
                         Task {
-                            print("🚀 Starting refresh task...")
+                            // print("🚀 Starting refresh task...")
                             await viewModel.refreshProjects()
-                            print("🏁 Refresh task completed")
+                            // print("🏁 Refresh task completed")
                             // Indicator will auto-dismiss after showing success
                         }
                     }
@@ -167,13 +178,34 @@ struct ScheduleView: View {
             }
         }) {
             // Sheet displayed when selecting a day in month view
-            DayProjectSheet(
+            DayEventsSheet(
                 date: viewModel.selectedDate,
-                projects: viewModel.projectsForSelectedDate,
-                onProjectSelected: { project in
-                    // Set the selected project ID and dismiss this sheet
-                    self.selectedProjectID = project.id
-                    self.showDaySheet = false
+                calendarEvents: viewModel.calendarEventsForSelectedDate,
+                onEventSelected: { event in
+                    // Check if this is a task event or project event
+                    if event.type == .task, let task = event.task {
+                        // For task events, show task details
+                        let userInfo: [String: String] = [
+                            "taskID": task.id,
+                            "projectID": task.projectId
+                        ]
+                        
+                        // Dismiss sheet first
+                        self.showDaySheet = false
+                        
+                        // Post notification for task details after a delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            NotificationCenter.default.post(
+                                name: Notification.Name("ShowCalendarTaskDetails"),
+                                object: nil,
+                                userInfo: userInfo
+                            )
+                        }
+                    } else {
+                        // For project events, set the selected project ID and dismiss this sheet
+                        self.selectedProjectID = event.projectId
+                        self.showDaySheet = false
+                    }
                 }
             )
             .presentationDetents([.medium, .large])
@@ -201,22 +233,55 @@ struct ScheduleView: View {
         // We're using navigation instead of a sheet
         // Handle direct project selection from the project list
         .onReceive(projectSelectionObserver) { notification in
+            // print("📅 ScheduleView: Received ShowCalendarProjectDetails notification")
             if let projectID = notification.userInfo?["projectID"] as? String {
+                // print("📅 ScheduleView: Project ID = \(projectID)")
                 
                 // Set the project ID
                 self.selectedProjectID = projectID
                 
                 // Get the project and present it via the sheet
                 if let project = dataController.getProject(id: projectID) {
+                    // print("📅 ScheduleView: Found project: \(project.title), calling viewProjectDetails")
                     // Just use viewProjectDetails which handles all the necessary state updates
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         appState.viewProjectDetails(project)
                     }
                 } else {
+                    // print("📅 ScheduleView: ⚠️ Could not find project with ID: \(projectID)")
                 }
             } else {
                 print("ScheduleView: ⚠️ ERROR - Notification did not contain a projectID")
             }
+        }
+        // Handle direct task selection from the calendar
+        .onReceive(taskSelectionObserver) { notification in
+            if let taskID = notification.userInfo?["taskID"] as? String,
+               let projectID = notification.userInfo?["projectID"] as? String {
+                
+                // print("ScheduleView: Received task selection - TaskID: \(taskID), ProjectID: \(projectID)")
+                
+                // Get the task and project
+                if let project = dataController.getProject(id: projectID),
+                   let task = project.tasks.first(where: { $0.id == taskID }) {
+                    // Create the task detail info
+                    let taskDetail = TaskDetailInfo(task: task, project: project)
+                    // Set it to trigger the sheet
+                    self.selectedTaskDetail = taskDetail
+                    print("ScheduleView: ✅ Task and project found, showing task details")
+                } else {
+                    print("ScheduleView: ⚠️ ERROR - Could not find task or project")
+                }
+            } else {
+                print("ScheduleView: ⚠️ ERROR - Notification did not contain required taskID/projectID")
+            }
+        }
+        // Add task details sheet using item binding
+        .sheet(item: $selectedTaskDetail) { taskDetail in
+            TaskDetailsView(task: taskDetail.task, project: taskDetail.project)
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environment(\.modelContext, dataController.modelContext!)
         }
         // Add refresh indicator
         .refreshIndicator(isPresented: $showingRefreshAlert)

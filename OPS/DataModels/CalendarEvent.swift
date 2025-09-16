@@ -134,8 +134,11 @@ final class CalendarEvent {
     
     // MARK: - Display Logic
     
-    /// Determines if this calendar event should be displayed (using cached projectEventType)
+    /// Determines if this calendar event should be displayed
     var shouldDisplay: Bool {
+        // We need to check the parent project's scheduling mode to determine
+        // which type of calendar events to show
+        
         // If we have cached the project's eventType, use it for efficient filtering
         if let projectEventType = projectEventType {
             if projectEventType == .project {
@@ -147,13 +150,28 @@ final class CalendarEvent {
             }
         }
         
-        // Fallback: if projectEventType not cached, use the relationship
+        // Fallback: if projectEventType not cached, try to get it from the relationship
         if let project = project {
-            return shouldDisplay(for: project)
+            // Note: We cannot cache here since this is a computed property
+            // The caching should happen during sync in SyncManager
+            
+            if project.effectiveEventType == .project {
+                // Project uses traditional scheduling - show only project-level events
+                return type == .project && taskId == nil
+            } else {
+                // Project uses task-based scheduling - show only task events
+                return type == .task && taskId != nil
+            }
         }
         
-        // Default: show project-level events if no project info available
+        // If we can't determine the project's scheduling mode, default to showing
+        // project-level events only (to avoid duplication)
         return type == .project && taskId == nil
+    }
+    
+    /// Updates the cached project event type for efficient filtering
+    func updateProjectEventTypeCache(from project: Project) {
+        self.projectEventType = project.effectiveEventType
     }
     
     /// Determines if this calendar event should be displayed for a given project
@@ -162,7 +180,7 @@ final class CalendarEvent {
         guard projectId == project.id else { return false }
         
         // Cache the project's eventType for future use
-        self.projectEventType = project.effectiveEventType
+        updateProjectEventTypeCache(from: project)
         
         if project.effectiveEventType == .project {
             // Project uses traditional scheduling - show only project-level events

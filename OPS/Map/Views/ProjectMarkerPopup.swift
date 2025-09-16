@@ -52,38 +52,62 @@ struct ProjectMarkerPopup: View {
                     .scaleEffect(0.8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 
-                // Action button
-                if isActiveProject {
-                    // Show current project indicator
-                    HStack(spacing: 4) {
-                        Image(systemName: "location.circle.fill")
-                            .font(.system(size: 12))
-                        Text("Current Project")
-                            .font(OPSStyle.Typography.caption)
-                    }
-                    .foregroundColor(OPSStyle.Colors.secondaryAccent)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(OPSStyle.Colors.secondaryAccent.opacity(0.2))
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    .padding(.top, 4)
-                } else {
-                    // Navigate button for non-active projects
-                    Button(action: onNavigate) {
+                // Action buttons
+                HStack(spacing: 8) {
+                    if isActiveProject {
+                        // Show current project indicator
                         HStack(spacing: 4) {
-                            Image(systemName: "location.fill")
+                            Image(systemName: "location.circle.fill")
                                 .font(.system(size: 12))
-                            Text("Navigate Here")
+                            Text("Current Project")
                                 .font(OPSStyle.Typography.caption)
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.secondaryAccent)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(OPSStyle.Colors.primaryAccent)
+                        .background(OPSStyle.Colors.secondaryAccent.opacity(0.2))
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    } else {
+                        // View details button
+                        Button(action: {
+                            // Post notification to show project details
+                            NotificationCenter.default.post(
+                                name: Notification.Name("ShowProjectDetails"),
+                                object: nil,
+                                userInfo: ["projectID": project.id]
+                            )
+                            onDismiss()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.system(size: 12))
+                                Text("Details")
+                                    .font(OPSStyle.Typography.caption)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                        }
+                        
+                        // Navigate button
+                        Button(action: onNavigate) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "location.fill")
+                                    .font(.system(size: 12))
+                                Text("Navigate")
+                                    .font(OPSStyle.Typography.caption)
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(OPSStyle.Colors.primaryAccent)
+                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                        }
                     }
-                    .padding(.top, 4)
                 }
+                .padding(.top, 4)
             }
             .padding(12)
             .frame(width: 200)

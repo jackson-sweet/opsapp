@@ -12,6 +12,21 @@ import SwiftUI
 struct ProjectListView: View {
     @ObservedObject var viewModel: CalendarViewModel
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var dataController: DataController
+    
+    // Separate new and ongoing events
+    private var newEvents: [CalendarEvent] {
+        viewModel.calendarEventsForSelectedDate.filter { event in
+            Calendar.current.isDate(event.startDate ?? Date(), inSameDayAs: viewModel.selectedDate)
+        }
+    }
+    
+    private var ongoingEvents: [CalendarEvent] {
+        viewModel.calendarEventsForSelectedDate.filter { event in
+            let startDate = event.startDate ?? Date()
+            return !Calendar.current.isDate(startDate, inSameDayAs: viewModel.selectedDate)
+        }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -31,30 +46,24 @@ struct ProjectListView: View {
                 
                 Spacer()
                 
-                // Card with project count - not tappable
+                // Card with project count - showing total count (new + ongoing)
                 ZStack {
                     // Project count card with softer edges
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.black.opacity(0.5))
+                        .fill(OPSStyle.Colors.cardBackgroundDark)
                         .frame(width: 60, height: 60)
                     
-                    // Stacked cards effect for depth
-                    if viewModel.calendarEventsForSelectedDate.count > 0 {
-                        ForEach(0..<min(3, viewModel.calendarEventsForSelectedDate.count), id: \.self) { index in
-                            // Use event color for the border if available
-                            let event = viewModel.calendarEventsForSelectedDate[min(index, viewModel.calendarEventsForSelectedDate.count - 1)]
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(event.swiftUIColor.opacity(0.6), lineWidth: 1)
-                                .fill(Color(OPSStyle.Colors.cardBackgroundDark))
-                                .frame(width: 50 + CGFloat(index * 2), height: 50 + CGFloat(index * 2))
-                        }
-                    }
-                    
-                    // Event count number
+                    // Total event count number (new + ongoing)
                     Text("\(viewModel.calendarEventsForSelectedDate.count)")
                         .font(OPSStyle.Typography.largeTitle)
                         .foregroundColor(.white)
                 }
+                .frame(width: 60, height: 60)
+                .segmentedEventBorder(
+                    events: viewModel.calendarEventsForSelectedDate,  // Show border for all events
+                    isSelected: false,
+                    cornerRadius: 10
+                )
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
@@ -101,32 +110,81 @@ struct ProjectListView: View {
     }
     
     private var projectListView: some View {
-        ForEach(Array(viewModel.calendarEventsForSelectedDate.enumerated()), id: \.element.id) { index, event in
-            // Get the associated project for this calendar event
-            if let project = event.project {
-                CalendarProjectCard(
-                    project: project,
+        VStack(spacing: 16) {
+            // New events section
+            ForEach(Array(newEvents.enumerated()), id: \.element.id) { index, event in
+                CalendarEventCard(
+                    event: event,
                     isFirst: index == 0,
+                    isOngoing: false,
                     onTap: {
-                        // Print debug info
-                        
-                        // Use the notification approach to be consistent with how we show projects elsewhere
-                        // This ensures we're only using one mechanism for showing project details
-                        
-                        // Send only the projectID in the notification to avoid potential issues with sending objects
-                        let userInfo: [String: String] = ["projectID": project.id]
-                        
-                        // Post the notification with just the project ID
-                        // Post notification with just the ID
-                        NotificationCenter.default.post(
-                            name: Notification.Name("ShowCalendarProjectDetails"),
-                            object: nil,
-                            userInfo: userInfo
-                        )
+                        handleEventTap(event)
                     }
                 )
             }
+            
+            // Ongoing section divider and events
+            if !ongoingEvents.isEmpty {
+                // Divider with count
+                HStack(spacing: 8) {
+                    Text("ONGOING")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    // Horizontal line
+                    Rectangle()
+                        .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
+                        .frame(height: 1)
+                    
+                    // Count
+                    Text("[\(ongoingEvents.count)]")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                
+                // Ongoing events
+                ForEach(Array(ongoingEvents.enumerated()), id: \.element.id) { index, event in
+                    CalendarEventCard(
+                        event: event,
+                        isFirst: false,
+                        isOngoing: true,
+                        onTap: {
+                            handleEventTap(event)
+                        }
+                    )
+                }
+            }
         }
         .padding(.bottom, 20)
+    }
+    
+    private func handleEventTap(_ event: CalendarEvent) {
+        // Check if this is a task event or project event
+        if event.type == .task, let task = event.task {
+            // For task events, send task ID and project ID
+            let userInfo: [String: String] = [
+                "taskID": task.id,
+                "projectID": task.projectId
+            ]
+            
+            // Post notification for task details
+            NotificationCenter.default.post(
+                name: Notification.Name("ShowCalendarTaskDetails"),
+                object: nil,
+                userInfo: userInfo
+            )
+        } else {
+            // For project events, send just project ID
+            let userInfo: [String: String] = ["projectID": event.projectId]
+            
+            // Post notification for project details
+            NotificationCenter.default.post(
+                name: Notification.Name("ShowCalendarProjectDetails"),
+                object: nil,
+                userInfo: userInfo
+            )
+        }
     }
 }

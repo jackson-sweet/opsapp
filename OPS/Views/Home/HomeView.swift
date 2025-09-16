@@ -22,8 +22,9 @@ struct HomeView: View {
     @State private var locationStatus: CLAuthorizationStatus = .notDetermined
     
     // No map region state needed - ProjectMapView manages internally
-    @State private var todaysProjects: [Project] = []
-    @State private var selectedProjectIndex = 0
+    @State private var todaysCalendarEvents: [CalendarEvent] = []
+    @State private var todaysProjects: [Project] = [] // Keep for map display
+    @State private var selectedEventIndex = 0
     @State private var showStartConfirmation = false
     @State private var isLoading = true
     @State private var showLocationPrompt = false
@@ -40,8 +41,9 @@ struct HomeView: View {
     var body: some View {
         // Extract to smaller components to help compiler
         HomeContentView(
+            todaysCalendarEvents: todaysCalendarEvents,
             todaysProjects: todaysProjects,
-            selectedProjectIndex: $selectedProjectIndex,
+            selectedEventIndex: $selectedEventIndex,
             showStartConfirmation: $showStartConfirmation,
             selectedProject: $selectedProject,
             showFullDirectionsView: $showFullDirectionsView,
@@ -54,7 +56,39 @@ struct HomeView: View {
             getActiveProject: getActiveProject
         )
         .environmentObject(locationManager)
+        .environmentObject(dataController)
         .preferredColorScheme(.dark) // Enforce dark mode for the entire view
+        // Listen for task navigation from event carousel
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowCalendarTaskDetails"))) { notification in
+            if let userInfo = notification.userInfo,
+               let taskID = userInfo["taskID"] as? String,
+               let projectID = userInfo["projectID"] as? String {
+                
+                // Find the project and task
+                if let project = dataController.getProject(id: projectID),
+                   let task = project.tasks.first(where: { $0.id == taskID }) {
+                    // Show task details using appState
+                    appState.viewTaskDetails(task: task, project: project)
+                }
+            }
+        }
+        // Listen for task navigation start
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartTaskNavigation"))) { notification in
+            if let userInfo = notification.userInfo,
+               let task = userInfo["task"] as? ProjectTask,
+               let project = userInfo["project"] as? Project {
+                
+                // Start routing to the project location (tasks use project location)
+                if let coordinate = project.coordinate,
+                   let userLocation = locationManager.userLocation {
+                    print("🗺️ Starting navigation to task: \(task.taskType?.display ?? "Task")")
+                    inProgressManager.startRouting(to: coordinate, from: userLocation)
+                }
+                
+                // Hide confirmation
+                showStartConfirmation = false
+            }
+        }
         // Listen for complete project stop
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("EndNavigation"))) { _ in
             if let activeProject = getActiveProject() {
@@ -163,9 +197,9 @@ struct HomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartProjectFromMap"))) { notification in
             if let project = notification.userInfo?["project"] as? Project {
                 print("🟢 HomeView: Received StartProjectFromMap for: \(project.title)")
-                // Find and select the project
-                if let index = todaysProjects.firstIndex(where: { $0.id == project.id }) {
-                    selectedProjectIndex = index
+                // Find and select the event for this project
+                if let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == project.id }) {
+                    selectedEventIndex = index
                     // Start the project
                     startProject(project)
                 }
@@ -188,18 +222,31 @@ struct HomeView: View {
         Task {
             let today = Calendar.current.startOfDay(for: Date())
             
-            // Get projects for today based on user role
-            let userProjects = dataController.getProjectsForCurrentUser(for: today)
+            // Get calendar events for today
+            let calendarEvents = dataController.getCalendarEventsForCurrentUser(for: today)
+            
+            // Extract unique projects from calendar events
+            var uniqueProjects: [Project] = []
+            var seenProjectIds = Set<String>()
+            
+            for event in calendarEvents {
+                if !seenProjectIds.contains(event.projectId),
+                   let project = dataController.getProject(id: event.projectId) {
+                    seenProjectIds.insert(event.projectId)
+                    uniqueProjects.append(project)
+                }
+            }
             
             await MainActor.run {
-                self.todaysProjects = userProjects
+                self.todaysCalendarEvents = calendarEvents
+                self.todaysProjects = uniqueProjects
                 
                 // No manual map region calculation needed - ProjectMapView handles all zoom automatically
                 
-                // Setup active project if needed
+                // Setup active event if needed
                 if let activeProjectID = appState.activeProjectID,
-                   let index = todaysProjects.firstIndex(where: { $0.id == activeProjectID }) {
-                    self.selectedProjectIndex = index
+                   let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == activeProjectID }) {
+                    self.selectedEventIndex = index
                 }
                 
                 self.isLoading = false

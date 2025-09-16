@@ -1,8 +1,8 @@
 # OPS App - Project Overview
 
-**Last Updated**: July 03, 2025  
-**Version**: 1.0.2  
-**Status**: Production
+**Last Updated**: August 2025  
+**Version**: 1.2.0 (In Development)  
+**Status**: Production (v1.1.0) with Active Development (v1.2.0)
 
 ## App Purpose
 OPS (Operational Project System) is a specialized project management app built specifically for trade workers. It focuses on providing reliable, field-first functionality that works in challenging job site conditions with minimal complexity. The app has been designed "by trades, for trades" with every feature optimized for real-world field operations.
@@ -119,12 +119,18 @@ OPS (Operational Project System) is a specialized project management app built s
      - Single source of truth pattern
 
 6. **Calendar & Scheduling**
-   - Three view modes: Month grid, Week list, Day detail
-   - Project count indicators on calendar days
-   - Snapping scroll behavior for smooth navigation
+   - **Apple Calendar-like Experience**: Continuous vertical scrolling through months with seamless transitions
+   - **Three view modes**: Month grid with lazy loading, Week list, Day detail
+   - **Smart Month Detection**: Visible month automatically updates as user scrolls
+   - **Month Snapping**: Calendar intelligently snaps to nearest month when scrolling ends
+   - **Performance Optimized**: Lazy loading of events only for visible months
+   - **Event Caching**: Efficient caching system for calendar event counts
+   - **Today Card**: Always displays today's date with event count
+   - **Dynamic Month Picker**: Shows currently visible month, updates while scrolling
+   - Project count indicators on calendar days with subtle dots
    - Today highlighting with blue accent
    - Smart date picker with popover presentation
-   - Project filtering by date
+   - Project filtering by date with role-based visibility
 
 7. **Settings & Configuration (13+ screens)**
    - Profile management with home address

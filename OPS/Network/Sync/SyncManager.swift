@@ -961,6 +961,11 @@ class SyncManager {
         } catch {
             print("⚠️ Failed to sync tasks: \(error)")
         }
+        
+        // FINAL CALENDAR DISPLAY DIAGNOSTIC SUMMARY
+        print("\n🔍 ============ FINAL SYNC DIAGNOSTIC SUMMARY ============")
+        try await logFinalCalendarDisplayStatus(companyId: companyId)
+        print("🔍 ============ SYNC DIAGNOSTIC COMPLETE ============\n")
     }
     
     /// Remove local projects that the user is no longer assigned to
@@ -1235,6 +1240,37 @@ class SyncManager {
         }
     }
     
+    /// Populate CalendarEvent team members from team member IDs
+    private func populateCalendarEventTeamMembers(_ calendarEvent: CalendarEvent, teamMemberIds: [String]) {
+        // Clear existing team members to avoid duplicates
+        calendarEvent.teamMembers = []
+        
+        // Filter out non-existent users from team member IDs
+        let validTeamMemberIds = teamMemberIds.filter { !nonExistentUserIds.contains($0) }
+        
+        // Always set the team member IDs string (with filtered list)
+        calendarEvent.setTeamMemberIds(validTeamMemberIds)
+        
+        // Add users by fetching from the model context
+        for memberId in validTeamMemberIds {
+            do {
+                let userDescriptor = FetchDescriptor<User>(
+                    predicate: #Predicate<User> { $0.id == memberId }
+                )
+                if let user = try modelContext.fetch(userDescriptor).first {
+                    calendarEvent.teamMembers.append(user)
+                    print("   ✅ Added team member \(user.fullName) to calendar event")
+                } else {
+                    // Track users that don't exist locally
+                    nonExistentUserIds.insert(memberId)
+                    print("   ⚠️ Team member \(memberId) not found for calendar event")
+                }
+            } catch {
+                print("   ❌ Failed to fetch team member \(memberId): \(error)")
+            }
+        }
+    }
+    
     /// Update a local project with remote data
     private func updateLocalProjectFromRemote(_ localProject: Project, remoteDTO: ProjectDTO) {
         // Update project title and basic info
@@ -1311,6 +1347,34 @@ class SyncManager {
             localProject.companyId = companyRef.stringValue
         }
         
+        // Update eventType - this determines if project uses task-based or project-based scheduling
+        if let eventTypeString = remoteDTO.eventType {
+            let newEventType = CalendarEventType(rawValue: eventTypeString.lowercased()) ?? .project
+            if localProject.eventType != newEventType {
+                print("📅 Project '\(localProject.title)' eventType changed from \(localProject.eventType?.rawValue ?? "nil") to \(newEventType.rawValue)")
+                localProject.eventType = newEventType
+                
+                // Clear the cached eventType on all related CalendarEvents since the project's scheduling mode changed
+                // This forces them to re-evaluate their shouldDisplay logic
+                let projectId = localProject.id
+                let eventDescriptor = FetchDescriptor<CalendarEvent>(
+                    predicate: #Predicate<CalendarEvent> { $0.projectId == projectId }
+                )
+                if let events = try? modelContext.fetch(eventDescriptor) {
+                    for event in events {
+                        event.projectEventType = newEventType
+                        print("   📅 Updated cached eventType on CalendarEvent \(event.id)")
+                    }
+                }
+            }
+        } else {
+            // Default to project scheduling if not specified
+            if localProject.eventType == nil {
+                localProject.eventType = .project
+                print("📅 Project '\(localProject.title)' eventType defaulted to 'project'")
+            }
+        }
+        
         // IMPORTANT: Only update status if project is not already being modified locally
         // This prevents automatic status updates when app is opened
         if !localProject.needsSync || !preventAutoStatusUpdates {
@@ -1369,6 +1433,60 @@ class SyncManager {
                     newTask.project = project
                     project.tasks.append(newTask)
                 }
+                
+                // Link team members for new task
+                if let teamMemberIds = remoteTask.teamMembers {
+                    print("   🔵 API: Remote task has team member IDs: \(teamMemberIds)")
+                    newTask.setTeamMemberIds(teamMemberIds)
+                    print("   📊 DATA: Set teamMemberIdsString to: '\(newTask.teamMemberIdsString)'")
+                    
+                    newTask.teamMembers = []
+                    for memberId in teamMemberIds {
+                        if let user = try? modelContext.fetch(
+                            FetchDescriptor<User>(
+                                predicate: #Predicate<User> { $0.id == memberId }
+                            )
+                        ).first {
+                            newTask.teamMembers.append(user)
+                            print("   ✅ Linked team member \(user.fullName) (ID: \(user.id)) to new task")
+                        } else {
+                            print("   ❌ Team member with ID \(memberId) not found in local database")
+                        }
+                    }
+                    print("   📋 New task final team member count: \(newTask.teamMembers.count)")
+                    print("   📋 Team member IDs stored: \(newTask.getTeamMemberIds())")
+                } else {
+                    print("   💡 Remote task has no team members")
+                }
+                
+                // ENHANCED CALENDAR EVENT LINKING FOR NEW TASK
+                print("   🔍 NEW TASK CALENDAR EVENT ANALYSIS:")
+                print("      - Remote calendarEventId: \(remoteTask.calendarEventId ?? "nil")")
+                print("      - Remote scheduledDate: \(remoteTask.scheduledDate ?? "nil")")
+                
+                if let calendarEventId = newTask.calendarEventId, !calendarEventId.isEmpty {
+                    if let calendarEvent = try? modelContext.fetch(
+                        FetchDescriptor<CalendarEvent>(
+                            predicate: #Predicate<CalendarEvent> { $0.id == calendarEventId }
+                        )
+                    ).first {
+                        newTask.calendarEvent = calendarEvent
+                        calendarEvent.task = newTask
+                        print("   ✅ CALENDAR EVENT LINKED: New task linked to existing CalendarEvent \(calendarEventId)")
+                        print("      - Event dates: \(calendarEvent.startDate) - \(calendarEvent.endDate)")
+                        print("      - Event shouldDisplay: \(calendarEvent.shouldDisplay)")
+                    } else {
+                        print("   ❌ CALENDAR EVENT NOT FOUND: CalendarEvent \(calendarEventId) not found for new task")
+                        print("      - This new task will NOT appear on calendar")
+                        print("      - CalendarEvent may not have been synced yet")
+                    }
+                } else if let scheduledDateStr = remoteTask.scheduledDate, !scheduledDateStr.isEmpty {
+                    print("   ❌ MISSING CALENDAR EVENT: New task has scheduledDate \(scheduledDateStr) but no calendarEventId")
+                    print("      - This new task will NOT appear on calendar")
+                    print("      - CalendarEvent MUST be created in Bubble for task ID: \(newTask.id)")
+                } else {
+                    print("   💡 NO CALENDAR LINKAGE: New task has no scheduled date (this is normal for unscheduled tasks)")
+                }
             }
         }
         
@@ -1386,11 +1504,58 @@ class SyncManager {
     
     /// Sync all tasks for a company
     func syncCompanyTasks(companyId: String) async throws {
-        print("🔵 SyncManager: Syncing all tasks for company \(companyId)")
+        print("\n🔵 ============ TASK SYNC START ============")
+        print("🔵 Company ID: \(companyId)")
+        print("🔵 Timestamp: \(Date())")
         
         // Fetch all tasks from API
         let remoteTasks = try await apiService.fetchCompanyTasks(companyId: companyId)
-        print("📥 Received \(remoteTasks.count) tasks from API")
+        print("📥 API RESPONSE: Received \(remoteTasks.count) tasks from API")
+        
+        // CRITICAL DIAGNOSTIC: Analyze task CalendarEvent linkage from Bubble
+        print("\n📊 ============ TASK CALENDAR EVENT ANALYSIS ============")
+        print("📊 DATA: Total Tasks from Bubble: \(remoteTasks.count)")
+        
+        let tasksWithCalendarEventId = remoteTasks.filter { $0.calendarEventId != nil && !($0.calendarEventId?.isEmpty ?? true) }
+        let tasksWithScheduledDate = remoteTasks.filter { $0.scheduledDate != nil && !($0.scheduledDate?.isEmpty ?? true) }
+        let tasksWithBothCalendarAndScheduled = remoteTasks.filter { 
+            ($0.calendarEventId != nil && !($0.calendarEventId?.isEmpty ?? true)) && 
+            ($0.scheduledDate != nil && !($0.scheduledDate?.isEmpty ?? true))
+        }
+        let tasksWithScheduledButNoCalendarEvent = remoteTasks.filter {
+            ($0.scheduledDate != nil && !($0.scheduledDate?.isEmpty ?? true)) &&
+            ($0.calendarEventId == nil || ($0.calendarEventId?.isEmpty ?? false))
+        }
+        
+        print("📊 DATA: Tasks with calendarEventId: \(tasksWithCalendarEventId.count)")
+        print("📊 DATA: Tasks with scheduledDate: \(tasksWithScheduledDate.count)")
+        print("📊 DATA: Tasks with BOTH calendarEventId AND scheduledDate: \(tasksWithBothCalendarAndScheduled.count)")
+        print("⚠️ DATA: Tasks with scheduledDate but NO calendarEventId: \(tasksWithScheduledButNoCalendarEvent.count)")
+        
+        // Log problematic tasks
+        if !tasksWithScheduledButNoCalendarEvent.isEmpty {
+            print("\n❌ CRITICAL CALENDAR EVENT ISSUES:")
+            for (index, task) in tasksWithScheduledButNoCalendarEvent.prefix(10).enumerated() {
+                print("  ❌ Task \(index + 1): '\(task.taskNotes ?? "No notes")' (Project: \(task.projectId ?? "nil"))")
+                print("     - Has scheduledDate: \(task.scheduledDate ?? "nil")")
+                print("     - Missing calendarEventId - MUST be created in Bubble")
+            }
+            if tasksWithScheduledButNoCalendarEvent.count > 10 {
+                print("  ... and \(tasksWithScheduledButNoCalendarEvent.count - 10) more tasks with this issue")
+            }
+        }
+        
+        // Group tasks by project for analysis
+        let tasksByProject = Dictionary(grouping: remoteTasks) { $0.projectId ?? "unknown" }
+        print("\n📊 DATA: Tasks for \(tasksByProject.count) unique projects:")
+        for (projectId, projectTasks) in tasksByProject.prefix(10) {
+            let scheduledTasks = projectTasks.filter { $0.scheduledDate != nil && !($0.scheduledDate?.isEmpty ?? true) }
+            let tasksWithEvents = projectTasks.filter { $0.calendarEventId != nil && !($0.calendarEventId?.isEmpty ?? true) }
+            print("  📋 Project \(projectId): \(projectTasks.count) total (\(scheduledTasks.count) scheduled, \(tasksWithEvents.count) with CalendarEvents)")
+        }
+        if tasksByProject.count > 10 {
+            print("  ... and \(tasksByProject.count - 10) more projects")
+        }
         
         // Collect all unique task type IDs from remote tasks
         let remoteTaskTypeIds = Set(remoteTasks.compactMap { $0.type })
@@ -1457,6 +1622,48 @@ class SyncManager {
                             project.tasks.append(newTask)
                         }
                     }
+                    
+                    // Link team members for new task
+                    if let teamMemberIds = remoteTask.teamMembers {
+                        print("   🔵 API: Remote task (batch sync) has team member IDs: \(teamMemberIds)")
+                        newTask.setTeamMemberIds(teamMemberIds)
+                        print("   📊 DATA: Set teamMemberIdsString to: '\(newTask.teamMemberIdsString)'")
+                        
+                        newTask.teamMembers = []
+                        for memberId in teamMemberIds {
+                            if let user = try? modelContext.fetch(
+                                FetchDescriptor<User>(
+                                    predicate: #Predicate<User> { $0.id == memberId }
+                                )
+                            ).first {
+                                newTask.teamMembers.append(user)
+                                print("   ✅ Linked team member \(user.fullName) (ID: \(user.id)) to new task")
+                            } else {
+                                print("   ❌ Team member with ID \(memberId) not found in local database")
+                            }
+                        }
+                        print("   📋 New task final team member count: \(newTask.teamMembers.count)")
+                        print("   📋 Team member IDs stored: \(newTask.getTeamMemberIds())")
+                    } else {
+                        print("   💡 Remote task (batch sync) has no team members")
+                    }
+                    
+                    // ENHANCED CALENDAR EVENT LINKING FOR BATCH NEW TASK
+                    if let calendarEventId = newTask.calendarEventId, !calendarEventId.isEmpty {
+                        if let calendarEvent = try? modelContext.fetch(
+                            FetchDescriptor<CalendarEvent>(
+                                predicate: #Predicate<CalendarEvent> { $0.id == calendarEventId }
+                            )
+                        ).first {
+                            newTask.calendarEvent = calendarEvent
+                            calendarEvent.task = newTask
+                            print("   ✅ Linked CalendarEvent \(calendarEventId) to batch new task")
+                        } else {
+                            print("   ❌ CalendarEvent \(calendarEventId) not found for batch new task")
+                        }
+                    } else if let scheduledDateStr = remoteTask.scheduledDate, !scheduledDateStr.isEmpty {
+                        print("   ❌ Batch new task has scheduledDate \(scheduledDateStr) but no calendarEventId - CalendarEvent must be created in Bubble")
+                    }
                 }
             }
             
@@ -1473,6 +1680,43 @@ class SyncManager {
         }
         
         try modelContext.save()
+        
+        // POST-SYNC TASK ANALYSIS: Verify CalendarEvent linkage
+        print("\n📊 ============ POST-SYNC TASK ANALYSIS ============")
+        
+        let allTasksDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.companyId == companyId }
+        )
+        let finalTasks = try modelContext.fetch(allTasksDescriptor)
+        
+        let finalTasksWithCalendarEvent = finalTasks.filter { $0.calendarEvent != nil }
+        let finalTasksWithCalendarEventId = finalTasks.filter { $0.calendarEventId != nil && !$0.calendarEventId!.isEmpty }
+        let finalTasksWithScheduledDate = finalTasks.filter { $0.scheduledDate != nil }
+        let finalTasksWithScheduledButNoEvent = finalTasks.filter { 
+            $0.scheduledDate != nil && ($0.calendarEvent == nil || $0.calendarEventId?.isEmpty == true)
+        }
+        
+        print("📊 Final Task State:")
+        print("   📋 Total tasks in database: \(finalTasks.count)")
+        print("   📅 Tasks linked to CalendarEvent: \(finalTasksWithCalendarEvent.count)")
+        print("   🆔 Tasks with calendarEventId: \(finalTasksWithCalendarEventId.count)")
+        print("   📅 Tasks with scheduledDate: \(finalTasksWithScheduledDate.count)")
+        print("   ⚠️ Tasks scheduled but not linked to CalendarEvent: \(finalTasksWithScheduledButNoEvent.count)")
+        
+        if !finalTasksWithScheduledButNoEvent.isEmpty {
+            print("\n❌ UNLINKED SCHEDULED TASKS (Calendar won't display):")
+            for (index, task) in finalTasksWithScheduledButNoEvent.prefix(5).enumerated() {
+                print("  ❌ Task \(index + 1): '\(task.taskType?.display ?? "Unknown")' (Project: \(task.project?.title ?? "nil"))")
+                print("     - Scheduled: \(task.scheduledDate?.description ?? "nil")")
+                print("     - CalendarEventId: \(task.calendarEventId ?? "nil")")
+                print("     - CalendarEvent linked: \(task.calendarEvent != nil)")
+            }
+            if finalTasksWithScheduledButNoEvent.count > 5 {
+                print("  ... and \(finalTasksWithScheduledButNoEvent.count - 5) more unlinked tasks")
+            }
+        }
+        
+        print("✅ ============ TASK SYNC COMPLETE ============\n")
         print("✅ All tasks synced successfully for company \(companyId)")
     }
     
@@ -1507,8 +1751,69 @@ class SyncManager {
             }
         }
         
-        if let teamMembers = remoteTask.teamMembers {
-            localTask.setTeamMemberIds(teamMembers)
+        // Update team members
+        if let teamMemberIds = remoteTask.teamMembers {
+            print("   🔄 UPDATE: Task \(localTask.id) - Remote has team member IDs: \(teamMemberIds)")
+            print("   📊 DATA: Current teamMemberIdsString: '\(localTask.teamMemberIdsString)'")
+            print("   📊 DATA: Current teamMembers count: \(localTask.teamMembers.count)")
+            
+            localTask.setTeamMemberIds(teamMemberIds)
+            print("   📊 DATA: Updated teamMemberIdsString to: '\(localTask.teamMemberIdsString)'")
+            
+            // Clear and populate actual User objects
+            localTask.teamMembers = []
+            var linkedCount = 0
+            for memberId in teamMemberIds {
+                if let user = try? modelContext.fetch(
+                    FetchDescriptor<User>(
+                        predicate: #Predicate<User> { $0.id == memberId }
+                    )
+                ).first {
+                    localTask.teamMembers.append(user)
+                    linkedCount += 1
+                    print("   ✅ Linked team member \(user.fullName) (ID: \(user.id)) to task")
+                } else {
+                    print("   ❌ Team member with ID \(memberId) not found in local database")
+                }
+            }
+            print("   📋 Task now has \(localTask.teamMembers.count) team members (\(linkedCount)/\(teamMemberIds.count) linked)")
+        } else {
+            print("   💡 Remote task update has no team members - clearing local team members")
+            localTask.setTeamMemberIds([])
+            localTask.teamMembers = []
+        }
+        
+        // ENHANCED CALENDAR EVENT LINKING WITH DETAILED DIAGNOSTICS
+        print("   🔍 CALENDAR EVENT LINKING ANALYSIS:")
+        print("      - Remote calendarEventId: \(remoteTask.calendarEventId ?? "nil")")
+        print("      - Remote scheduledDate: \(remoteTask.scheduledDate ?? "nil")")
+        print("      - Local task current calendarEventId: \(localTask.calendarEventId ?? "nil")")
+        print("      - Local task current calendarEvent linked: \(localTask.calendarEvent != nil)")
+        
+        if let calendarEventId = localTask.calendarEventId, !calendarEventId.isEmpty {
+            if let calendarEvent = try? modelContext.fetch(
+                FetchDescriptor<CalendarEvent>(
+                    predicate: #Predicate<CalendarEvent> { $0.id == calendarEventId }
+                )
+            ).first {
+                localTask.calendarEvent = calendarEvent
+                calendarEvent.task = localTask
+                print("   ✅ CALENDAR EVENT LINKED: Task now linked to CalendarEvent \(calendarEventId)")
+                print("      - Event dates: \(calendarEvent.startDate) - \(calendarEvent.endDate)")
+                print("      - Event type: \(calendarEvent.type.rawValue)")
+                print("      - Event shouldDisplay: \(calendarEvent.shouldDisplay)")
+            } else {
+                print("   ❌ CALENDAR EVENT NOT FOUND: CalendarEvent \(calendarEventId) not found in local database")
+                print("      - This task will NOT appear on calendar")
+                print("      - Verify CalendarEvent exists in Bubble and was synced")
+            }
+        } else if let scheduledDateStr = remoteTask.scheduledDate, !scheduledDateStr.isEmpty {
+            print("   ❌ MISSING CALENDAR EVENT: Task has scheduledDate \(scheduledDateStr) but no calendarEventId")
+            print("      - This task will NOT appear on calendar")
+            print("      - CalendarEvent MUST be created in Bubble with matching taskId")
+            print("      - Cannot create CalendarEvents locally - they must come from Bubble API")
+        } else {
+            print("   💡 NO CALENDAR LINKAGE: Task has no scheduled date or CalendarEvent (this is normal for unscheduled tasks)")
         }
     }
     
@@ -1557,11 +1862,73 @@ class SyncManager {
     
     /// Sync calendar events for a company
     func syncCompanyCalendarEvents(companyId: String) async throws {
-        print("🔵 SyncManager: Syncing calendar events for company \(companyId)")
+        print("\n🔵 ============ CALENDAR EVENT SYNC START ============")
+        print("🔵 Company ID: \(companyId)")
+        print("🔵 Timestamp: \(Date())")
         
         // Fetch calendar events from API
         let remoteEvents = try await apiService.fetchCompanyCalendarEvents(companyId: companyId)
-        print("📥 Received \(remoteEvents.count) calendar events from API")
+        print("📥 API RESPONSE: Received \(remoteEvents.count) calendar events from API")
+        
+        // CRITICAL DIAGNOSTIC: Analyze CalendarEvent data from Bubble
+        print("\n📊 ============ CALENDAR EVENT ANALYSIS ============")
+        print("📊 DATA: Total CalendarEvents from Bubble: \(remoteEvents.count)")
+        
+        // Analyze event types and task associations
+        let projectTypeEvents = remoteEvents.filter { $0.type?.lowercased() == "project" }
+        let taskTypeEvents = remoteEvents.filter { $0.type?.lowercased() == "task" }
+        let eventsWithTasks = remoteEvents.filter { $0.taskId != nil && !($0.taskId?.isEmpty ?? true) }
+        let eventsWithoutTasks = remoteEvents.filter { $0.taskId == nil || ($0.taskId?.isEmpty ?? false) }
+        
+        print("📊 DATA: Project-type events: \(projectTypeEvents.count)")
+        print("📊 DATA: Task-type events: \(taskTypeEvents.count)")
+        print("📊 DATA: Events with taskId: \(eventsWithTasks.count)")
+        print("📊 DATA: Events without taskId: \(eventsWithoutTasks.count)")
+        
+        // Analyze by project
+        let projectGroups = Dictionary(grouping: remoteEvents) { $0.projectId ?? "unknown" }
+        print("📊 DATA: Events for \(projectGroups.count) unique projects:")
+        for (projectId, events) in projectGroups.prefix(10) {
+            let projectEvents = events.filter { $0.type?.lowercased() == "project" }
+            let taskEvents = events.filter { $0.type?.lowercased() == "task" }
+            print("  📋 Project \(projectId): \(events.count) total (\(projectEvents.count) project-type, \(taskEvents.count) task-type)")
+        }
+        if projectGroups.count > 10 {
+            print("  ... and \(projectGroups.count - 10) more projects")
+        }
+        
+        // Search for any Railings events in the remote response
+        let railingsRemoteEvents = remoteEvents.filter { ($0.title ?? "").lowercased().contains("railings") }
+        if !railingsRemoteEvents.isEmpty {
+            print("🎯 RAILINGS EVENTS IN API RESPONSE: \(railingsRemoteEvents.count)")
+            for (index, event) in railingsRemoteEvents.enumerated() {
+                print("  🎯 Railings Remote Event \(index + 1):")
+                print("     - ID: \(event.id)")
+                print("     - Title: \(event.title ?? "nil")")
+                print("     - Type: \(event.type ?? "nil")")
+                print("     - Start Date: \(event.startDate ?? "nil")")
+                print("     - End Date: \(event.endDate ?? "nil")")
+                print("     - Project ID: \(event.projectId ?? "nil")")
+                print("     - Task ID: \(event.taskId ?? "nil")")
+                print("     - Team Members: \(event.teamMembers ?? [])")
+            }
+        }
+        
+        // Log summary of remote events
+        print("📊 API DATA: First 10 remote events:")
+        for (index, event) in remoteEvents.prefix(10).enumerated() {
+            print("  📅 Remote Event \(index + 1):")
+            print("     - ID: \(event.id)")
+            print("     - Title: \(event.title ?? "nil")")
+            print("     - Type: \(event.type ?? "nil")")
+            print("     - Start Date: \(event.startDate ?? "nil")")
+            print("     - End Date: \(event.endDate ?? "nil")")
+            print("     - Project ID: \(event.projectId ?? "nil")")
+            print("     - Task ID: \(event.taskId ?? "nil")")
+        }
+        if remoteEvents.count > 10 {
+            print("  ... and \(remoteEvents.count - 10) more events")
+        }
         
         // Get local events
         let descriptor = FetchDescriptor<CalendarEvent>(
@@ -1571,47 +1938,136 @@ class SyncManager {
         let localEventIds = Set(localEvents.map { $0.id })
         
         // Process remote events
-        for remoteEvent in remoteEvents {
+        print("\n🔄 PROCESSING REMOTE EVENTS:")
+        for (index, remoteEvent) in remoteEvents.enumerated() {
+            let isRailingsEvent = (remoteEvent.title ?? "").lowercased().contains("railings")
+            let logPrefix = isRailingsEvent ? "🎯 RAILINGS" : "📅"
+            
             if localEventIds.contains(remoteEvent.id) {
                 // Update existing event
                 if let localEvent = localEvents.first(where: { $0.id == remoteEvent.id }) {
+                    print("  🔄 \(logPrefix) Updating existing event [\(index + 1)/\(remoteEvents.count)]: \(remoteEvent.title ?? "nil")")
+                    if isRailingsEvent {
+                        print("    - Before update - Local event shouldDisplay: \(localEvent.shouldDisplay)")
+                        print("    - Before update - Local event projectEventType: \(localEvent.projectEventType?.rawValue ?? "nil")")
+                    }
                     updateCalendarEvent(localEvent, from: remoteEvent)
+                    if isRailingsEvent {
+                        print("    - After update - Local event shouldDisplay: \(localEvent.shouldDisplay)")
+                        print("    - After update - Local event projectEventType: \(localEvent.projectEventType?.rawValue ?? "nil")")
+                    }
                 }
             } else {
                 // Insert new event
+                print("  ➕ \(logPrefix) Creating new event [\(index + 1)/\(remoteEvents.count)]: \(remoteEvent.title ?? "nil")")
                 guard let newEvent = remoteEvent.toModel() else {
                     print("⚠️ Failed to create CalendarEvent from DTO: \(remoteEvent.id)")
                     continue
                 }
                 modelContext.insert(newEvent)
                 
+                if isRailingsEvent {
+                    print("    - New event created with:")
+                    print("      - ID: \(newEvent.id)")
+                    print("      - Type: \(newEvent.type.rawValue)")
+                    print("      - Task ID: \(newEvent.taskId ?? "nil")")
+                    print("      - Project ID: \(newEvent.projectId)")
+                    print("      - Start Date: \(newEvent.startDate)")
+                    print("      - End Date: \(newEvent.endDate)")
+                }
+                
+                // Populate team members from IDs if available
+                if let teamMemberIds = remoteEvent.teamMembers, !teamMemberIds.isEmpty {
+                    newEvent.setTeamMemberIds(teamMemberIds)
+                    populateCalendarEventTeamMembers(newEvent, teamMemberIds: teamMemberIds)
+                }
+                
                 // Link to project if available
                 if let projectId = remoteEvent.projectId {
+                    if isRailingsEvent { print("    - Linking to project ID: \(projectId)") }
                     let projectDescriptor = FetchDescriptor<Project>(
                         predicate: #Predicate<Project> { $0.id == projectId }
                     )
                     if let project = try modelContext.fetch(projectDescriptor).first {
                         newEvent.project = project
-                        // Cache the project's event type for efficient filtering
+                        // CRITICAL: Cache the project's event type for efficient filtering
+                        // This must be set for shouldDisplay to work correctly
                         newEvent.projectEventType = project.effectiveEventType
+                        
+                        if isRailingsEvent {
+                            print("    - ✅ Project found and linked: \(project.title)")
+                            print("    - Project effective event type: \(project.effectiveEventType.rawValue)")
+                            print("    - Cached project event type on calendar event: \(newEvent.projectEventType?.rawValue ?? "nil")")
+                            print("    - New event shouldDisplay after project link: \(newEvent.shouldDisplay)")
+                        }
+                        
+                        // Copy team members from project if not already set from API
+                        if newEvent.teamMembers.isEmpty && !project.teamMembers.isEmpty {
+                            newEvent.teamMembers = project.teamMembers
+                            newEvent.setTeamMemberIds(project.getTeamMemberIds())
+                            if isRailingsEvent {
+                                print("    - Copied team members from project: \(project.teamMembers.map { $0.fullName })")
+                            }
+                        } else if !newEvent.getTeamMemberIds().isEmpty && newEvent.teamMembers.isEmpty {
+                            // Populate team members from stored IDs if not already populated
+                            populateCalendarEventTeamMembers(newEvent, teamMemberIds: newEvent.getTeamMemberIds())
+                            if isRailingsEvent {
+                                print("    - Populated team members from stored IDs: \(newEvent.getTeamMemberIds())")
+                            }
+                        }
                         
                         // If this is a project-level event, set it as the primary calendar event
                         if newEvent.type == .project && project.effectiveEventType == .project {
                             project.primaryCalendarEvent = newEvent
                             // Sync dates from calendar event to project
                             project.syncDatesWithCalendarEvent()
+                            if isRailingsEvent {
+                                print("    - Set as primary calendar event for project")
+                            }
+                        }
+                    } else {
+                        print("⚠️ WARNING: Project \(projectId) not found for calendar event \(newEvent.id)")
+                        if isRailingsEvent {
+                            print("    - ❌ Project linking failed - project not found in local database")
                         }
                     }
                 }
                 
                 // Link to task if available
                 if let taskId = remoteEvent.taskId {
+                    if isRailingsEvent { print("    - Linking to task ID: \(taskId)") }
                     let taskDescriptor = FetchDescriptor<ProjectTask>(
                         predicate: #Predicate<ProjectTask> { $0.id == taskId }
                     )
                     if let task = try modelContext.fetch(taskDescriptor).first {
                         newEvent.task = task
                         task.calendarEvent = newEvent
+                        
+                        if isRailingsEvent {
+                            print("    - ✅ Task found and linked: \(task.taskType?.display ?? "Unknown")")
+                            print("    - Task scheduled date: \(task.scheduledDate?.description ?? "nil")")
+                            print("    - New event shouldDisplay after task link: \(newEvent.shouldDisplay)")
+                        }
+                        
+                        // Copy team members from task if not already set from API
+                        if newEvent.teamMembers.isEmpty && !task.teamMembers.isEmpty {
+                            newEvent.teamMembers = task.teamMembers
+                            newEvent.setTeamMemberIds(task.getTeamMemberIds())
+                            if isRailingsEvent {
+                                print("    - Copied team members from task: \(task.teamMembers.map { $0.fullName })")
+                            }
+                        } else if !newEvent.getTeamMemberIds().isEmpty && newEvent.teamMembers.isEmpty {
+                            // Populate team members from stored IDs if not already populated
+                            populateCalendarEventTeamMembers(newEvent, teamMemberIds: newEvent.getTeamMemberIds())
+                            if isRailingsEvent {
+                                print("    - Populated team members from stored IDs: \(newEvent.getTeamMemberIds())")
+                            }
+                        }
+                    } else {
+                        print("⚠️ WARNING: Task \(taskId) not found for calendar event \(newEvent.id)")
+                        if isRailingsEvent {
+                            print("    - ❌ Task linking failed - task not found in local database")
+                        }
                     }
                 }
             }
@@ -1626,33 +2082,423 @@ class SyncManager {
         }
         
         try modelContext.save()
-        print("✅ Calendar events synced successfully for company \(companyId)")
+        
+        // Post-sync pass: Ensure all events have projectEventType cached for efficient filtering
+        for localEvent in localEvents {
+            if localEvent.projectEventType == nil, let project = localEvent.project {
+                localEvent.updateProjectEventTypeCache(from: project)
+                print("   📝 Cached projectEventType for event \(localEvent.id)")
+            }
+        }
+        
+        // Save any caching updates
+        try modelContext.save()
+        
+        // Log final state
+        let finalDescriptor = FetchDescriptor<CalendarEvent>(
+            predicate: #Predicate<CalendarEvent> { $0.companyId == companyId }
+        )
+        let finalEvents = try modelContext.fetch(finalDescriptor)
+        
+        print("\n📊 ============ CALENDAR EVENT SYNC SUMMARY ============")
+        print("📊 Total events in local database: \(finalEvents.count)")
+        
+        // POST-SYNC PROJECT ANALYSIS: Critical for understanding calendar display issues
+        try await analyzeProjectCalendarEventStatus(companyId: companyId)
+        print("📊 Events by type:")
+        let projectEvents = finalEvents.filter { $0.type == .project }
+        let taskEvents = finalEvents.filter { $0.type == .task }
+        print("   - Project events: \(projectEvents.count)")
+        print("   - Task events: \(taskEvents.count)")
+        
+        // Special focus on Railings events
+        let finalRailingsEvents = finalEvents.filter { $0.title.lowercased().contains("railings") }
+        if !finalRailingsEvents.isEmpty {
+            print("\n🎯 RAILINGS EVENTS FINAL STATUS: \(finalRailingsEvents.count)")
+            for (index, event) in finalRailingsEvents.enumerated() {
+                print("  🎯 Railings Event \(index + 1):")
+                print("     - ID: \(event.id)")
+                print("     - Title: \(event.title)")
+                print("     - Type: \(event.type.rawValue)")
+                print("     - Task ID: \(event.taskId ?? "nil")")
+                print("     - Start Date: \(event.startDate)")
+                print("     - End Date: \(event.endDate)")
+                print("     - Should Display: \(event.shouldDisplay)")
+                print("     - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
+                if let project = event.project {
+                    print("     - Project: \(project.title)")
+                    print("     - Project Effective Event Type: \(project.effectiveEventType.rawValue)")
+                }
+                if let task = event.task {
+                    print("     - Task: \(task.taskType?.display ?? "Unknown")")
+                    print("     - Task Scheduled Date: \(task.scheduledDate?.description ?? "nil")")
+                }
+            }
+        } else {
+            print("\n🎯 NO RAILINGS EVENTS FOUND IN FINAL DATABASE")
+        }
+        
+        // Log events that shouldDisplay
+        let shouldDisplayEvents = finalEvents.filter { $0.shouldDisplay }
+        print("\n📊 Events that shouldDisplay: \(shouldDisplayEvents.count)")
+        
+        // Log events that should NOT display
+        let shouldNotDisplayEvents = finalEvents.filter { !$0.shouldDisplay }
+        if !shouldNotDisplayEvents.isEmpty {
+            print("⚠️ Events that should NOT display: \(shouldNotDisplayEvents.count)")
+            for event in shouldNotDisplayEvents.prefix(5) {
+                print("   - \(event.title) (type: \(event.type.rawValue), taskId: \(event.taskId ?? "nil"))")
+            }
+        }
+        
+        // Log date distribution
+        let calendar = Calendar.current
+        var dateDistribution: [String: Int] = [:]
+        for event in finalEvents {
+            let dateKey = DateFormatter.localizedString(from: event.startDate, dateStyle: .short, timeStyle: .none)
+            dateDistribution[dateKey, default: 0] += 1
+        }
+        print("\n📊 Events by date:")
+        for (date, count) in dateDistribution.sorted(by: { $0.key < $1.key }).prefix(10) {
+            print("   - \(date): \(count) events")
+        }
+        
+        print("✅ ============ CALENDAR EVENT SYNC COMPLETE ============\n")
+    }
+    
+    /// Analyze project calendar event status for diagnostic purposes
+    /// This function provides critical insights for understanding why projects might not appear on the calendar
+    private func analyzeProjectCalendarEventStatus(companyId: String) async throws {
+        print("\n🔍 ============ PROJECT CALENDAR EVENT ANALYSIS ============")
+        
+        // Fetch all projects for the company
+        let projectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.companyId == companyId }
+        )
+        let projects = try modelContext.fetch(projectDescriptor)
+        
+        // Fetch all calendar events for the company
+        let eventDescriptor = FetchDescriptor<CalendarEvent>(
+            predicate: #Predicate<CalendarEvent> { $0.companyId == companyId }
+        )
+        let calendarEvents = try modelContext.fetch(eventDescriptor)
+        
+        // Fetch all tasks for the company
+        let taskDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.companyId == companyId }
+        )
+        let tasks = try modelContext.fetch(taskDescriptor)
+        
+        print("🔍 DATA SUMMARY:")
+        print("   📋 Total Projects: \(projects.count)")
+        print("   📅 Total CalendarEvents: \(calendarEvents.count)")
+        print("   📝 Total Tasks: \(tasks.count)")
+        
+        // Analyze each project's calendar event status
+        print("\n🔍 PROJECT ANALYSIS:")
+        var projectsWithEvents = 0
+        var projectsWithoutEvents = 0
+        var taskBasedProjectsWithTaskEvents = 0
+        var taskBasedProjectsWithoutTaskEvents = 0
+        var tasksWithScheduledButNoCalendarEvent = 0
+        
+        for project in projects {
+            let projectEvents = calendarEvents.filter { $0.projectId == project.id }
+            let projectTasks = tasks.filter { $0.projectId == project.id }
+            
+            print("\n  📋 Project: \(project.title) [\(project.id)]")
+            print("     💡 Event Type: \(project.effectiveEventType.rawValue) (\(project.usesTaskBasedScheduling ? "task-based" : "traditional"))")
+            print("     📅 CalendarEvents: \(projectEvents.count)")
+            print("     📝 Tasks: \(projectTasks.count)")
+            
+            if project.usesTaskBasedScheduling {
+                // Task-based project - should have task-level CalendarEvents
+                let taskEvents = projectEvents.filter { $0.type == .task && $0.taskId != nil }
+                let projectLevelEvents = projectEvents.filter { $0.type == .project && $0.taskId == nil }
+                
+                print("     🎯 Task Events: \(taskEvents.count)")
+                print("     ⚠️ Project Events (should be 0): \(projectLevelEvents.count)")
+                
+                if taskEvents.count > 0 {
+                    taskBasedProjectsWithTaskEvents += 1
+                    print("     ✅ HAS TASK EVENTS - Will display on calendar")
+                } else {
+                    taskBasedProjectsWithoutTaskEvents += 1
+                    print("     ❌ NO TASK EVENTS - Will NOT display on calendar")
+                    print("     ⚠️ BUBBLE ISSUE: Tasks need CalendarEvents created in Bubble")
+                }
+                
+                // Analyze individual tasks
+                for task in projectTasks {
+                    let taskEvent = calendarEvents.first { $0.taskId == task.id }
+                    if let scheduledDate = task.scheduledDate {
+                        if taskEvent == nil {
+                            tasksWithScheduledButNoCalendarEvent += 1
+                            print("     ⚠️ Task '\(task.taskType?.display ?? "Unknown")' has scheduledDate \(scheduledDate) but NO CalendarEvent (ID: \(task.calendarEventId ?? "nil"))")
+                        } else {
+                            print("     ✅ Task '\(task.taskType?.display ?? "Unknown")' has CalendarEvent \(taskEvent!.id)")
+                        }
+                    } else if let calendarEventId = task.calendarEventId, !calendarEventId.isEmpty {
+                        if taskEvent == nil {
+                            print("     ⚠️ Task '\(task.taskType?.display ?? "Unknown")' references CalendarEvent \(calendarEventId) but event not found")
+                        }
+                    }
+                }
+                
+            } else {
+                // Traditional project - should have project-level CalendarEvents
+                let projectLevelEvents = projectEvents.filter { $0.type == .project && $0.taskId == nil }
+                let taskEvents = projectEvents.filter { $0.type == .task && $0.taskId != nil }
+                
+                print("     🎯 Project Events: \(projectLevelEvents.count)")
+                print("     ⚠️ Task Events (should be 0): \(taskEvents.count)")
+                
+                if projectLevelEvents.count > 0 {
+                    projectsWithEvents += 1
+                    print("     ✅ HAS PROJECT EVENTS - Will display on calendar")
+                } else {
+                    projectsWithoutEvents += 1
+                    print("     ❌ NO PROJECT EVENTS - Will NOT display on calendar")
+                    print("     ⚠️ BUBBLE ISSUE: Project needs CalendarEvent created in Bubble")
+                }
+            }
+        }
+        
+        // Summary statistics
+        print("\n🔍 ============ DIAGNOSTIC SUMMARY ============")
+        print("📊 TRADITIONAL PROJECTS:")
+        print("   ✅ With CalendarEvents: \(projectsWithEvents)")
+        print("   ❌ Without CalendarEvents: \(projectsWithoutEvents)")
+        
+        print("📊 TASK-BASED PROJECTS:")
+        print("   ✅ With Task CalendarEvents: \(taskBasedProjectsWithTaskEvents)")
+        print("   ❌ Without Task CalendarEvents: \(taskBasedProjectsWithoutTaskEvents)")
+        
+        print("📊 TASK ISSUES:")
+        print("   ⚠️ Tasks with scheduledDate but no CalendarEvent: \(tasksWithScheduledButNoCalendarEvent)")
+        
+        // Warning messages for common issues
+        if projectsWithoutEvents > 0 {
+            print("\n⚠️ WARNING: \(projectsWithoutEvents) traditional projects have no CalendarEvents from Bubble")
+            print("   🔧 SOLUTION: Create CalendarEvents for these projects in Bubble with type='project'")
+        }
+        
+        if taskBasedProjectsWithoutTaskEvents > 0 {
+            print("\n⚠️ WARNING: \(taskBasedProjectsWithoutTaskEvents) task-based projects have no task CalendarEvents from Bubble")
+            print("   🔧 SOLUTION: Create CalendarEvents for scheduled tasks in Bubble with type='task'")
+        }
+        
+        if tasksWithScheduledButNoCalendarEvent > 0 {
+            print("\n❌ CRITICAL: \(tasksWithScheduledButNoCalendarEvent) tasks have scheduled dates but no CalendarEvents")
+            print("   🔧 SOLUTION: Tasks with scheduledDate MUST have corresponding CalendarEvents in Bubble")
+            print("   📝 NOTE: CalendarEvents cannot be created locally - they must come from Bubble API")
+        }
+        
+        print("🔍 ============ PROJECT ANALYSIS COMPLETE ============\n")
+    }
+    
+    /// Log final calendar display status for diagnostic purposes
+    /// This provides a complete picture of what will and won't show on the calendar
+    private func logFinalCalendarDisplayStatus(companyId: String) async throws {
+        // Fetch all relevant data
+        let projectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.companyId == companyId }
+        )
+        let projects = try modelContext.fetch(projectDescriptor)
+        
+        let eventDescriptor = FetchDescriptor<CalendarEvent>(
+            predicate: #Predicate<CalendarEvent> { $0.companyId == companyId }
+        )
+        let calendarEvents = try modelContext.fetch(eventDescriptor)
+        
+        let taskDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.companyId == companyId }
+        )
+        let tasks = try modelContext.fetch(taskDescriptor)
+        
+        print("📊 FINAL CALENDAR DISPLAY STATUS:")
+        print("   📋 Total Projects: \(projects.count)")
+        print("   📅 Total CalendarEvents: \(calendarEvents.count)")
+        print("   📝 Total Tasks: \(tasks.count)")
+        
+        // Events that will display on calendar
+        let displayableEvents = calendarEvents.filter { $0.shouldDisplay }
+        let nonDisplayableEvents = calendarEvents.filter { !$0.shouldDisplay }
+        
+        print("\n📅 CALENDAR DISPLAY RESULTS:")
+        print("   ✅ Events that WILL display: \(displayableEvents.count)")
+        print("   ❌ Events that will NOT display: \(nonDisplayableEvents.count)")
+        
+        // Analyze projects that will show vs won't show
+        var projectsWithDisplayableEvents = 0
+        var projectsWithoutDisplayableEvents = 0
+        
+        for project in projects {
+            let projectDisplayableEvents = displayableEvents.filter { $0.projectId == project.id }
+            
+            if projectDisplayableEvents.count > 0 {
+                projectsWithDisplayableEvents += 1
+            } else {
+                projectsWithoutDisplayableEvents += 1
+                print("   ❌ Project WON'T appear: '\(project.title)' (\(project.effectiveEventType.rawValue) scheduling)")
+            }
+        }
+        
+        print("\n📋 PROJECT VISIBILITY:")
+        print("   ✅ Projects that WILL appear on calendar: \(projectsWithDisplayableEvents)")
+        print("   ❌ Projects that WON'T appear on calendar: \(projectsWithoutDisplayableEvents)")
+        
+        // Critical issues summary
+        let tasksWithScheduledButNoEvents = tasks.filter { 
+            $0.scheduledDate != nil && $0.calendarEvent == nil 
+        }
+        
+        if !tasksWithScheduledButNoEvents.isEmpty || projectsWithoutDisplayableEvents > 0 {
+            print("\n❌ CRITICAL ISSUES PREVENTING CALENDAR DISPLAY:")
+            
+            if projectsWithoutDisplayableEvents > 0 {
+                print("   ⚠️ \(projectsWithoutDisplayableEvents) projects have no displayable CalendarEvents")
+                print("       🔧 SOLUTION: Verify CalendarEvents exist in Bubble for these projects")
+            }
+            
+            if !tasksWithScheduledButNoEvents.isEmpty {
+                print("   ⚠️ \(tasksWithScheduledButNoEvents.count) scheduled tasks have no CalendarEvents")
+                print("       🔧 SOLUTION: Create CalendarEvents in Bubble for scheduled tasks")
+            }
+        } else {
+            print("\n✅ NO CRITICAL ISSUES: All projects with scheduling should display correctly")
+        }
+        
+        // Quick sample of what will display
+        if !displayableEvents.isEmpty {
+            print("\n📅 SAMPLE DISPLAYABLE EVENTS (first 5):")
+            for (index, event) in displayableEvents.prefix(5).enumerated() {
+                print("  \(index + 1). '\(event.title)' (\(event.type.rawValue), \(event.startDate))")
+            }
+        }
     }
     
     /// Update a local calendar event from remote DTO
     private func updateCalendarEvent(_ localEvent: CalendarEvent, from remoteEvent: CalendarEventDTO) {
         localEvent.title = remoteEvent.title ?? ""
         
+        // Use multiple date formatters to handle different formats from Bubble
         let dateFormatter = ISO8601DateFormatter()
-        if let startDateStr = remoteEvent.startDate, let startDate = dateFormatter.date(from: startDateStr) {
-            localEvent.startDate = startDate
+        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        
+        let alternativeFormatter = ISO8601DateFormatter()
+        alternativeFormatter.formatOptions = [.withInternetDateTime]
+        
+        let bubbleFormatter = DateFormatter()
+        bubbleFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        
+        // Parse start date
+        if let startDateStr = remoteEvent.startDate {
+            if let startDate = dateFormatter.date(from: startDateStr) {
+                localEvent.startDate = startDate
+                print("   ✅ Updated start date: \(startDate)")
+            } else if let startDate = alternativeFormatter.date(from: startDateStr) {
+                localEvent.startDate = startDate
+                print("   ✅ Updated start date (alt): \(startDate)")
+            } else if let startDate = bubbleFormatter.date(from: startDateStr) {
+                localEvent.startDate = startDate
+                print("   ✅ Updated start date (Bubble): \(startDate)")
+            } else {
+                print("   ⚠️ Failed to parse start date: \(startDateStr)")
+            }
         }
         
-        if let endDateStr = remoteEvent.endDate, let endDate = dateFormatter.date(from: endDateStr) {
-            localEvent.endDate = endDate
+        // Parse end date
+        if let endDateStr = remoteEvent.endDate {
+            if let endDate = dateFormatter.date(from: endDateStr) {
+                localEvent.endDate = endDate
+                print("   ✅ Updated end date: \(endDate)")
+            } else if let endDate = alternativeFormatter.date(from: endDateStr) {
+                localEvent.endDate = endDate
+                print("   ✅ Updated end date (alt): \(endDate)")
+            } else if let endDate = bubbleFormatter.date(from: endDateStr) {
+                localEvent.endDate = endDate
+                print("   ✅ Updated end date (Bubble): \(endDate)")
+            } else {
+                print("   ⚠️ Failed to parse end date: \(endDateStr)")
+            }
         }
         
         localEvent.type = CalendarEventType(rawValue: remoteEvent.type?.lowercased() ?? "project") ?? .project
         localEvent.color = remoteEvent.color ?? "#59779F"
         localEvent.duration = Int(remoteEvent.duration ?? 1)
         
-        if let teamMembers = remoteEvent.teamMembers {
-            localEvent.setTeamMemberIds(teamMembers)
+        // Populate team members from IDs
+        if let teamMemberIds = remoteEvent.teamMembers {
+            localEvent.setTeamMemberIds(teamMemberIds)
+            populateCalendarEventTeamMembers(localEvent, teamMemberIds: teamMemberIds)
         }
         
-        // If this is a project-level event, sync dates back to the project
-        if localEvent.type == .project, let project = localEvent.project {
-            project.syncDatesWithCalendarEvent()
+        // Ensure projectEventType is set if we have a project relationship
+        if let project = localEvent.project {
+            // CRITICAL: Cache the project's event type for efficient filtering
+            localEvent.projectEventType = project.effectiveEventType
+            
+            // Copy team members from project if event has no team members
+            if localEvent.teamMembers.isEmpty && !project.teamMembers.isEmpty {
+                localEvent.teamMembers = project.teamMembers
+                localEvent.setTeamMemberIds(project.getTeamMemberIds())
+            } else if !localEvent.getTeamMemberIds().isEmpty && localEvent.teamMembers.isEmpty {
+                // Populate team members from stored IDs if not already populated
+                populateCalendarEventTeamMembers(localEvent, teamMemberIds: localEvent.getTeamMemberIds())
+            }
+            
+            // If this is a project-level event, sync dates back to the project
+            if localEvent.type == .project {
+                project.syncDatesWithCalendarEvent()
+            }
+        } else if !localEvent.projectId.isEmpty {
+            // Try to link project if not already linked
+            let projectId = localEvent.projectId
+            do {
+                let projectDescriptor = FetchDescriptor<Project>(
+                    predicate: #Predicate<Project> { $0.id == projectId }
+                )
+                if let project = try modelContext.fetch(projectDescriptor).first {
+                    localEvent.project = project
+                    localEvent.projectEventType = project.effectiveEventType
+                    
+                    // Copy team members from project if event has no team members
+                    if localEvent.teamMembers.isEmpty && !project.teamMembers.isEmpty {
+                        localEvent.teamMembers = project.teamMembers
+                        localEvent.setTeamMemberIds(project.getTeamMemberIds())
+                    } else if !localEvent.getTeamMemberIds().isEmpty && localEvent.teamMembers.isEmpty {
+                        // Populate team members from stored IDs if not already populated
+                        populateCalendarEventTeamMembers(localEvent, teamMemberIds: localEvent.getTeamMemberIds())
+                    }
+                }
+            } catch {
+                print("⚠️ Failed to link project \(projectId) to calendar event: \(error)")
+            }
+        }
+        
+        // Also ensure task is linked if this is a task event
+        if localEvent.task == nil, let taskId = localEvent.taskId, !taskId.isEmpty {
+            do {
+                let taskDescriptor = FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate<ProjectTask> { $0.id == taskId }
+                )
+                if let task = try modelContext.fetch(taskDescriptor).first {
+                    localEvent.task = task
+                    task.calendarEvent = localEvent
+                    
+                    // Copy team members from task if event has no team members
+                    if localEvent.teamMembers.isEmpty && !task.teamMembers.isEmpty {
+                        localEvent.teamMembers = task.teamMembers
+                        localEvent.setTeamMemberIds(task.getTeamMemberIds())
+                    } else if !localEvent.getTeamMemberIds().isEmpty && localEvent.teamMembers.isEmpty {
+                        // Populate team members from stored IDs if not already populated
+                        populateCalendarEventTeamMembers(localEvent, teamMemberIds: localEvent.getTeamMemberIds())
+                    }
+                }
+            } catch {
+                print("⚠️ Failed to link task \(taskId) to calendar event: \(error)")
+            }
         }
         
         localEvent.lastSyncedAt = Date()

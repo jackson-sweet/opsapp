@@ -14,7 +14,7 @@ struct CalendarToggleView: View {
     @State private var showDatePicker = false
     
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .center, spacing: 16) {
             // Week/Month toggle with segmented control style
             SegmentedControl(
                 selection: Binding(
@@ -33,30 +33,35 @@ struct CalendarToggleView: View {
                 ]
             )
             .frame(width: 200)
-            .frame(height: 36)
+            // Remove explicit height to let SegmentedControl use its natural height
             
             Spacer()
             
-            // Period display with picker - simplified
+            // Period display with picker - fixed width and matching segmented control
             Button(action: {
                 showDatePicker = true
             }) {
                 Text(periodString)
-                    .font(OPSStyle.Typography.body)
+                    .font(.bodyBold) // Match the font used in SegmentedControl
                     .foregroundColor(.black)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    .frame(width: 150) // Fixed width to accommodate "September" and week ranges
+                    .padding(.vertical, 12) // Match the padding in SegmentedControl
                     .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
-            .frame(height: 36)
             .popover(isPresented: $showDatePicker) {
                 DatePickerPopover(
                     mode: viewModel.viewMode == .week ? .week : .month,
-                    selectedDate: viewModel.selectedDate,
+                    selectedDate: viewModel.viewMode == .month ? viewModel.visibleMonth : viewModel.selectedDate,
                     onSelectDate: { date in
                         withAnimation {
-                            viewModel.selectDate(date)
+                            if viewModel.viewMode == .month {
+                                // In month view, update visible month when selecting from picker
+                                viewModel.visibleMonth = date
+                                viewModel.selectDate(date)
+                            } else {
+                                viewModel.selectDate(date)
+                            }
                         }
                     }
                 )
@@ -97,9 +102,9 @@ struct CalendarToggleView: View {
             return "\(startString)-\(endString)"
             
         case .month:
-            // For month view, show just the month name
+            // For month view, show the currently visible month
             formatter.dateFormat = "MMMM"
-            return formatter.string(from: viewModel.selectedDate)
+            return formatter.string(from: viewModel.visibleMonth)
         }
     }
 }

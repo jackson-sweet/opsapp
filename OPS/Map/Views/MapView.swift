@@ -49,7 +49,7 @@ struct MapView: View {
                                     project: project,
                                     isActiveProject: appState.activeProjectID == project.id,
                                     onNavigate: {
-                                        // print("🗺️ MapView: Navigate to project from popup")
+                                        print("🗺️ MapView: Navigate to project from popup")
                                         showingMarkerPopup = nil
                                         
                                         // Exit current project mode
@@ -66,11 +66,14 @@ struct MapView: View {
                                         )
                                     },
                                     onDismiss: {
-                                        showingMarkerPopup = nil
+                                        withAnimation(.easeOut(duration: 0.2)) {
+                                            showingMarkerPopup = nil
+                                        }
                                     }
                                 )
-                                .offset(y: 40) // Position below marker
-                                .zIndex(1000) // Ensure it's on top
+                                .offset(y: 35) // Position below marker
+                                .zIndex(2000) // Ensure it's on top
+                                .transition(.scale.combined(with: .opacity))
                             }
                         }
                     }
@@ -87,10 +90,12 @@ struct MapView: View {
         .onTapGesture { location in
             // Only dismiss popup when tapping on map background
             // This ensures the tap doesn't interfere with annotation taps
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 if showingMarkerPopup != nil {
-                    // print("🗺️ MapView: Dismissing popup on map tap")
-                    showingMarkerPopup = nil
+                    print("🗺️ MapView: Dismissing popup on map tap")
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showingMarkerPopup = nil
+                    }
                 }
             }
         }
@@ -142,9 +147,12 @@ struct MapView: View {
         // If in project mode, always show popup instead of project details
         if appState.isInProjectMode {
             // print("🗺️ MapView: Showing popup during active project session")
-            showingMarkerPopup = project.id
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showingMarkerPopup = project.id
+            }
         } else {
             // Normal selection behavior when no project is active
+            // print("🗺️ MapView: Selecting project: \(project.title)")
             coordinator.selectProject(project)
         }
     }

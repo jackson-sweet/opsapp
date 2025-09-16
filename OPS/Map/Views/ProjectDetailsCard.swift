@@ -20,13 +20,31 @@ struct ProjectDetailsCard: View {
     var body: some View {
         // let _ = print("🟡 ProjectDetailsCard: Rendering for project: \(project.title)")
         VStack(alignment: .leading, spacing: 0) {
-            // Handle to drag
+            // Handle to drag and dismiss button
             HStack {
+                // Dismiss button
+                Button(action: {
+                    // print("🟡 Dismiss button tapped")
+                    coordinator.showingProjectDetails = false
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .padding(.leading, 16)
+                
                 Spacer()
+                
                 RoundedRectangle(cornerRadius: 2.5)
                     .fill(OPSStyle.Colors.secondaryText.opacity(0.5))
                     .frame(width: 40, height: 5)
+                
                 Spacer()
+                
+                // Balance the dismiss button
+                Color.clear
+                    .frame(width: 22, height: 22)
+                    .padding(.trailing, 16)
             }
             .padding(.vertical, 8)
             .contentShape(Rectangle())

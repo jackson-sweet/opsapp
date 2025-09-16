@@ -51,13 +51,13 @@ struct CalendarHeaderView: View {
                 
                 Spacer()
                 
-                // Right side - project count
+                // Right side - event count
                 VStack(spacing: 4) {
-                    Text("PROJECTS")
+                    Text("EVENTS")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
-                    Text("\(todaysProjectCount)")
+                    Text("\(todaysEventCount)")
                         .font(OPSStyle.Typography.largeTitle)
                         .fontWeight(.bold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -96,19 +96,37 @@ struct CalendarHeaderView: View {
         DateHelper.monthYearString(from: viewModel.selectedDate)
     }
     
-    // Get projects for today specifically, not the selected date
-    private var todaysProjectCount: Int {
-        // Get projects based on user role
-        var projects = dataController.getProjectsForCurrentUser(for: today)
+    private var visibleMonthText: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: viewModel.visibleMonth)
+    }
+    
+    private var visibleMonthName: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM"
+        return formatter.string(from: viewModel.visibleMonth).uppercased()
+    }
+    
+    // Get calendar events for today specifically, not the selected date
+    private var todaysEventCount: Int {
+        // Get calendar events based on user role
+        var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: today)
         
         // Apply team member filter if selected
         if let selectedMemberId = viewModel.selectedTeamMemberId {
-            projects = projects.filter { project in
-                project.getTeamMemberIds().contains(selectedMemberId) ||
-                project.teamMembers.contains(where: { $0.id == selectedMemberId })
+            calendarEvents = calendarEvents.filter { event in
+                // Check if member is in the event or its task
+                let hasInEvent = event.getTeamMemberIds().contains(selectedMemberId) ||
+                                event.teamMembers.contains(where: { $0.id == selectedMemberId })
+                
+                let hasInTask = event.task?.getTeamMemberIds().contains(selectedMemberId) == true ||
+                               event.task?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
+                
+                return hasInEvent || hasInTask
             }
         }
         
-        return projects.count
+        return calendarEvents.count
     }
 }

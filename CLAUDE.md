@@ -2,6 +2,27 @@
 
 This guide serves as the primary reference for maintaining OPS brand consistency and design philosophy throughout development. All code changes should align with these principles.
 
+## Recent Implementation Updates (August 2025)
+
+### CalendarEvent-Centric Architecture
+- **CalendarEvents as Single Source of Truth**: All calendar display logic now flows through CalendarEvent entities
+- **Filtering Based on Project Scheduling Mode**: 
+  - If `project.eventType == .project`, only project-level CalendarEvents are displayed
+  - If `project.eventType == .task`, only task-level CalendarEvents are displayed
+- **shouldDisplay Property**: CalendarEvent.shouldDisplay handles complex filtering logic based on project scheduling mode
+
+### TaskDetailsView Implementation
+- **Matches ProjectDetailsView Structure**: Header with status badge, breadcrumb navigation, and color stripe
+- **Reusable Card Components**: LocationCard, ClientInfoCard, NotesCard, TeamMembersCard
+- **Navigation Between Tasks**: Previous/Next task cards at bottom for easy navigation
+- **Status Updates**: Haptic feedback on status changes, respects user permissions (no cancel for field crew)
+
+### UI Consistency Updates
+- **Card Styling**: All cards use `OPSStyle.Colors.cardBackgroundDark` with white 10% opacity border
+- **Section Headers**: Icons + uppercase text in `OPSStyle.Typography.captionBold`
+- **Info Rows**: Consistent pattern with icon, title/value stack, and optional chevron
+- **Task List**: Redesigned to match ProjectDetailsView card aesthetic with grouped rows
+
 ## Quick Reference
 
 ### Brand Essence: Dependable Field Partner

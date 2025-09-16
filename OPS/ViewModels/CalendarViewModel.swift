@@ -15,6 +15,7 @@ class CalendarViewModel: ObservableObject {
     // MARK: - Published Properties
     @Published var selectedDate: Date = Date()
     @Published var viewMode: CalendarViewMode = .week
+    @Published var visibleMonth: Date = Date() // Track visible month in month grid view
     @Published var projectsForSelectedDate: [Project] = []  // Keep for project detail data
     @Published var calendarEventsForSelectedDate: [CalendarEvent] = []  // Primary display data
     @Published var isLoading = false
@@ -90,6 +91,16 @@ class CalendarViewModel: ObservableObject {
         
         selectedDate = date
         loadProjectsForDate(date)
+        
+        // In month view, ensure visible month is synchronized with selected date
+        if viewMode == .month {
+            let calendar = Calendar.current
+            if let monthStart = calendar.dateInterval(of: .month, for: date)?.start {
+                if !calendar.isDate(visibleMonth, equalTo: monthStart, toGranularity: .month) {
+                    visibleMonth = monthStart
+                }
+            }
+        }
     }
     
     func toggleViewMode() {
@@ -162,96 +173,201 @@ class CalendarViewModel: ObservableObject {
     
     private var projectCountCache: [String: Int] = [:]
     
+    // Get calendar events for a specific date (for border display)
+    func calendarEvents(for date: Date) -> [CalendarEvent] {
+        // If it's the currently selected date, return cached events
+        if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
+            return calendarEventsForSelectedDate
+        }
+        
+        // Otherwise fetch from DataController
+        if let dataController = dataController {
+            var events = dataController.getCalendarEventsForCurrentUser(for: date)
+            
+            // Apply team member filter if selected
+            if let selectedMemberId = selectedTeamMemberId {
+                events = events.filter { event in
+                    let hasInEvent = event.getTeamMemberIds().contains(selectedMemberId) ||
+                    event.teamMembers.contains(where: { $0.id == selectedMemberId })
+                    let hasInTask = event.task?.getTeamMemberIds().contains(selectedMemberId) == true ||
+                    event.task?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
+                    let hasInProject = event.project?.getTeamMemberIds().contains(selectedMemberId) == true ||
+                    event.project?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
+                    
+                    return hasInEvent || hasInTask || hasInProject
+                }
+            }
+            
+            // Filter by shouldDisplay
+            return events.filter { $0.shouldDisplay }
+        }
+        
+        return []
+    }
+    
     func projectCount(for date: Date) -> Int {
-            // If it's the currently selected date, we already have the data
-            if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
-                return calendarEventsForSelectedDate.count
-            }
+        // If it's the currently selected date, we already have the data
+        if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
+            return calendarEventsForSelectedDate.count
+        }
+        
+        // Check the cache first
+        let dateKey = formatDateKey(date)
+        if let cachedCount = projectCountCache[dateKey] {
+            return cachedCount
+        }
+        
+        // For other dates, get the count from DataController
+        if let dataController = dataController {
+            // Get all calendar events active on this date
+            var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
             
-            // Check the cache first
-            let dateKey = formatDateKey(date)
-            if let cachedCount = projectCountCache[dateKey] {
-                return cachedCount
-            }
-            
-            // For other dates, get the count from DataController
-            if let dataController = dataController {
-                // Get all calendar events active on this date
-                var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
+            // Apply team member filter if selected
+            if let selectedMemberId = selectedTeamMemberId {
+                // print("🔍 FILTER: Applying team member filter for \(selectedMemberId) to \(calendarEvents.count) events on \(dateKey)")
                 
-                // Apply team member filter if selected
-                if let selectedMemberId = selectedTeamMemberId {
-                    calendarEvents = calendarEvents.filter { event in
-                        event.getTeamMemberIds().contains(selectedMemberId) ||
-                        event.teamMembers.contains(where: { $0.id == selectedMemberId })
+                let preFilterCount = calendarEvents.count
+                calendarEvents = calendarEvents.filter { event in
+                    let hasInEvent = event.getTeamMemberIds().contains(selectedMemberId) ||
+                    event.teamMembers.contains(where: { $0.id == selectedMemberId })
+                    
+                    // Also check task team members if this is a task event
+                    let hasInTask = event.task?.getTeamMemberIds().contains(selectedMemberId) == true ||
+                    event.task?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
+                    
+                    let matches = hasInEvent || hasInTask
+                    if !matches {
+                        // print("🔍 FILTER: Event '\(event.title)' filtered out")
                     }
+                    return matches
                 }
                 
-                let count = calendarEvents.count
-                
-                // Cache the result
-                projectCountCache[dateKey] = count
-                return count
+                // print("🔍 FILTER: Filtered from \(preFilterCount) to \(calendarEvents.count) events")
             }
             
-            return 0
+            let count = calendarEvents.count
+            
+            // Cache the result
+            projectCountCache[dateKey] = count
+            return count
         }
         
-        private func formatDateKey(_ date: Date) -> String {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd"
-            return formatter.string(from: date)
-        }
-        
-        func clearProjectCountCache() {
-            projectCountCache = [:]
-        }
-        
-        // Update selected team member filter
-        func updateTeamMemberFilter(_ memberId: String?) {
-            selectedTeamMemberId = memberId
-            clearProjectCountCache()
-            loadProjectsForDate(selectedDate)
-        }
+        return 0
+    }
+    
+    private func formatDateKey(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+    
+    func clearProjectCountCache() {
+        projectCountCache = [:]
+    }
+    
+    // Update selected team member filter
+    func updateTeamMemberFilter(_ memberId: String?) {
+        selectedTeamMemberId = memberId
+        clearProjectCountCache()
+        loadProjectsForDate(selectedDate)
+    }
     
     
     
     // MARK: - Private Methods
     func loadProjectsForDate(_ date: Date) {
-        guard let dataController = dataController else { 
+        guard let dataController = dataController else {
             print("❌ loadProjectsForDate: No dataController")
-            return 
+            return
         }
         
-        print("📅 Loading calendar events and projects for date: \(date)")
+        print("\n🔵 === CALENDAR VIEW MODEL: Loading for date: \(date) ===")
+        print("🔵 Current User: \(dataController.currentUser?.fullName ?? "None") (Role: \(dataController.currentUser?.role.rawValue ?? "None"))")
+        print("🔵 Team Member Filter: \(selectedTeamMemberId ?? "None")")
         isLoading = true
+        
+        // First run the diagnostic if we're looking for Aug 17 or Aug 19
+        let calendar = Calendar.current
+        if calendar.component(.month, from: date) == 8 &&
+            (calendar.component(.day, from: date) == 17 || calendar.component(.day, from: date) == 19) &&
+            calendar.component(.year, from: date) == 2025 {
+            dataController.diagnoseRailingsVinylProject()
+        }
         
         // Get calendar events for the selected date
         var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
-        print("📆 Found \(calendarEvents.count) calendar events from dataController")
+        print("📆 CalendarViewModel received \(calendarEvents.count) calendar events from DataController")
+        
+        // Commented out verbose event logging for performance
+        /*
+         // Debug the events we got with detailed shouldDisplay analysis
+         for (index, event) in calendarEvents.enumerated() {
+         print("\n  📅 EVENT \(index + 1): \(event.title)")
+         print("    📊 DATA: Type: \(event.type.rawValue)")
+         print("    📊 DATA: Project ID: \(event.projectId)")
+         print("    📊 DATA: Task ID: \(event.taskId ?? "nil")")
+         print("    📊 DATA: Has Project: \(event.project != nil)")
+         print("    📊 DATA: Has Task: \(event.task != nil)")
+         print("    📊 DATA: Start Date: \(event.startDate)")
+         print("    📊 DATA: End Date: \(event.endDate)")
+         print("    📊 DATA: Company ID: \(event.companyId)")
+         }
+         */
         
         // Apply team member filter if selected
         if let selectedMemberId = selectedTeamMemberId {
             print("👤 Applying team member filter for: \(selectedMemberId)")
+            
+            // Debug each event's team member data before filtering
+            for (index, event) in calendarEvents.enumerated() {
+                let eventTeamMemberIds = event.getTeamMemberIds()
+                let eventTeamMemberObjects = event.teamMembers.map { $0.id }
+                print("  Event \(index + 1) '\(event.title)':")
+                print("    📊 DATA: Team member IDs in string: \(eventTeamMemberIds)")
+                print("    📊 DATA: Team member object IDs: \(eventTeamMemberObjects)")
+                print("    📊 DATA: Contains selected member ID: \(eventTeamMemberIds.contains(selectedMemberId) || eventTeamMemberObjects.contains(selectedMemberId))")
+                
+                // If this is a task event, also check the task team members
+                if let task = event.task {
+                    let taskTeamMemberIds = task.getTeamMemberIds()
+                    let taskTeamMemberObjects = task.teamMembers.map { $0.id }
+                    print("    📋 TASK: Team member IDs in string: \(taskTeamMemberIds)")
+                    print("    📋 TASK: Team member object IDs: \(taskTeamMemberObjects)")
+                    print("    📋 TASK: Contains selected member ID: \(taskTeamMemberIds.contains(selectedMemberId) || taskTeamMemberObjects.contains(selectedMemberId))")
+                }
+            }
+            
             calendarEvents = calendarEvents.filter { event in
-                event.getTeamMemberIds().contains(selectedMemberId) ||
+                let hasInEvent = event.getTeamMemberIds().contains(selectedMemberId) ||
                 event.teamMembers.contains(where: { $0.id == selectedMemberId })
+                
+                // Also check task team members if this is a task event
+                let hasInTask = event.task?.getTeamMemberIds().contains(selectedMemberId) == true ||
+                event.task?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
+                
+                return hasInEvent || hasInTask
             }
             print("📆 After filter: \(calendarEvents.count) calendar events")
         }
         
         // Get unique projects from the calendar events
         let projectIds = Set(calendarEvents.compactMap { $0.projectId })
+        print("📊 Unique project IDs from events: \(projectIds)")
+        
         var projects: [Project] = []
         for projectId in projectIds {
             if let project = dataController.getProject(id: projectId) {
                 projects.append(project)
+                print("  ✅ Found project: \(project.title)")
+            } else {
+                print("  ❌ Could not find project with ID: \(projectId)")
             }
         }
-        print("📊 Found \(projects.count) unique projects from calendar events")
+        print("📊 Loaded \(projects.count) unique projects from calendar events")
         
         // Force UI update
         DispatchQueue.main.async { [weak self] in
+            // print("🔄 Updating UI with \(calendarEvents.count) events and \(projects.count) projects")
             self?.objectWillChange.send()
             self?.calendarEventsForSelectedDate = calendarEvents
             self?.projectsForSelectedDate = projects
@@ -262,15 +378,14 @@ class CalendarViewModel: ObservableObject {
         let dateKey = formatDateKey(date)
         projectCountCache[dateKey] = calendarEvents.count
         print("💾 Updated cache for \(dateKey): \(calendarEvents.count) calendar events")
-        print("🔄 UI update triggered")
     }
     
     // Refresh projects from the data source
     @MainActor
     func refreshProjects() async {
-        guard let dataController = dataController else { 
+        guard let dataController = dataController else {
             print("❌ Refresh failed: No dataController")
-            return 
+            return
         }
         
         print("🔄 Starting project refresh...")
@@ -308,61 +423,58 @@ class CalendarViewModel: ObservableObject {
     }
     
     private func getMonthDays() -> [Date] {
-            var calendar = Calendar.current
-            // Set first weekday to Monday
-            calendar.firstWeekday = 2
-            
-            let selectedMonth = calendar.dateComponents([.year, .month], from: selectedDate)
-            guard let startOfMonth = calendar.date(from: selectedMonth) else { return [] }
-            
-            // Get first day of the month
-            let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: startOfMonth))!
-            
-            // Get the weekday of the first day (1 = Sunday, 2 = Monday, etc.)
-            let firstWeekday = calendar.component(.weekday, from: firstDay)
-            
-            // Calculate offset to start grid with Monday as first day
-            // Convert to Monday-based index (0 = Monday, 6 = Sunday)
-            let mondayBasedWeekday = (firstWeekday + 5) % 7
-            let weekdayOffset = mondayBasedWeekday
-            
-            // Get number of days in the month
-            let daysInMonth = calendar.range(of: .day, in: .month, for: startOfMonth)?.count ?? 30
-            
-            // Generate dates for a full 42-day grid (6 weeks)
-            // Start with days from previous month to fill first week
-            var dayComponents = DateComponents()
-            var allDates: [Date] = []
-            
-            // Add days from previous month if needed
-            for i in -weekdayOffset..<0 {
-                dayComponents.day = i
-                if let date = calendar.date(byAdding: dayComponents, to: firstDay) {
-                    allDates.append(date)
-                }
+        var calendar = Calendar.current
+        // Set first weekday to Monday
+        calendar.firstWeekday = 2
+        
+        let selectedMonth = calendar.dateComponents([.year, .month], from: selectedDate)
+        guard let startOfMonth = calendar.date(from: selectedMonth) else { return [] }
+        
+        // Get first day of the month
+        let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: startOfMonth))!
+        
+        // Get the weekday of the first day (1 = Sunday, 2 = Monday, etc.)
+        let firstWeekday = calendar.component(.weekday, from: firstDay)
+        
+        // Calculate offset to start grid with Monday as first day
+        // Convert to Monday-based index (0 = Monday, 6 = Sunday)
+        let mondayBasedWeekday = (firstWeekday + 5) % 7
+        let weekdayOffset = mondayBasedWeekday
+        
+        // Get number of days in the month
+        let daysInMonth = calendar.range(of: .day, in: .month, for: startOfMonth)?.count ?? 30
+        
+        // Generate dates for a full 42-day grid (6 weeks)
+        // Start with days from previous month to fill first week
+        var dayComponents = DateComponents()
+        var allDates: [Date] = []
+        
+        // Add days from previous month if needed
+        for i in -weekdayOffset..<0 {
+            dayComponents.day = i
+            if let date = calendar.date(byAdding: dayComponents, to: firstDay) {
+                allDates.append(date)
             }
-            
-            // Add all days in current month
-            for i in 0..<daysInMonth {
-                dayComponents.day = i
-                if let date = calendar.date(byAdding: dayComponents, to: firstDay) {
-                    allDates.append(date)
-                }
-            }
-            
-            // Fill remaining grid with days from next month
-            let remainingDays = 42 - allDates.count
-            for i in 0..<remainingDays {
-                dayComponents.day = daysInMonth + i
-                if let date = calendar.date(byAdding: dayComponents, to: firstDay) {
-                    allDates.append(date)
-                }
-            }
-            
-            return allDates
         }
-    
-    
-    
+        
+        // Add all days in current month
+        for i in 0..<daysInMonth {
+            dayComponents.day = i
+            if let date = calendar.date(byAdding: dayComponents, to: firstDay) {
+                allDates.append(date)
+            }
+        }
+        
+        // Fill remaining grid with days from next month
+        let remainingDays = 42 - allDates.count
+        for i in 0..<remainingDays {
+            dayComponents.day = daysInMonth + i
+            if let date = calendar.date(byAdding: dayComponents, to: firstDay) {
+                allDates.append(date)
+            }
+        }
+        
+        return allDates
     }
-
+    
+}

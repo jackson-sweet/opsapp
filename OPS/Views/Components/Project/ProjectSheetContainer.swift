@@ -10,6 +10,7 @@ import SwiftUI
 struct ProjectSheetContainer: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @State private var selectedTaskDetail: TaskDetailInfo? = nil
     
     var body: some View {
         // Using item presentation pattern instead of isPresented
@@ -19,6 +20,7 @@ struct ProjectSheetContainer: View {
         }
         // Project details sheet - uses isPresented and item together for more reliable presentation
         .sheet(isPresented: $appState.showProjectDetails, onDismiss: {
+            // print("📋 ProjectSheetContainer: Project details sheet dismissed")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 appState.dismissProjectDetails()
             }
@@ -26,6 +28,9 @@ struct ProjectSheetContainer: View {
             if let project = appState.activeProject {
                 NavigationView {
                     ProjectDetailsView(project: project)
+                        .onAppear {
+                            // print("📋 ProjectSheetContainer: Showing PROJECT details for: \(project.title)")
+                        }
                 }
                 .interactiveDismissDisabled(false)
             } else {
@@ -59,7 +64,32 @@ struct ProjectSheetContainer: View {
                 }
             }
         }
-        
+        // Task details sheet
+        .sheet(item: $selectedTaskDetail) { taskDetail in
+            NavigationView {
+                TaskDetailsView(task: taskDetail.task, project: taskDetail.project)
+                    .environmentObject(dataController)
+                    .environmentObject(appState)
+                    .onAppear {
+                        // print("📋 ProjectSheetContainer: Showing TASK details for: \(taskDetail.task.displayTitle)")
+                    }
+            }
+            .interactiveDismissDisabled(false)
+        }
+        // Listen for task details from home
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowTaskDetailsFromHome"))) { notification in
+            if let userInfo = notification.userInfo,
+               let taskID = userInfo["taskID"] as? String,
+               let projectID = userInfo["projectID"] as? String {
+                
+                // Find the project and task
+                if let project = dataController.getProject(id: projectID),
+                   let task = project.tasks.first(where: { $0.id == taskID }) {
+                    // Show task details
+                    selectedTaskDetail = TaskDetailInfo(task: task, project: project)
+                }
+            }
+        }
         // Debug output to track active project changes
         .onChange(of: appState.activeProject) { _, newProject in
             if let project = newProject {

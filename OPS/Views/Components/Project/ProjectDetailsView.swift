@@ -17,6 +17,7 @@ struct ProjectDetailsView: View {
     @State private var originalNoteText: String
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var locationManager: LocationManager
+    @EnvironmentObject private var appState: AppState
     @State private var showingPhotoViewer = false
     @State private var selectedPhotoIndex: Int = 0
     @State private var showingImagePicker = false
@@ -769,6 +770,7 @@ struct ProjectDetailsView: View {
     private var tasksSection: some View {
         TaskListView(project: project)
             .environmentObject(dataController)
+            .environmentObject(appState)
     }
     
     // Check if user can edit project settings

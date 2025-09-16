@@ -14,8 +14,9 @@ import CoreLocation
 /// Used to reduce expression complexity in HomeView
 struct HomeContentView: View {
     // Bindings - mapRegion removed, now handled internally by ProjectMapView
-    let todaysProjects: [Project]
-    @Binding var selectedProjectIndex: Int
+    let todaysCalendarEvents: [CalendarEvent]
+    let todaysProjects: [Project] // Keep for map
+    @Binding var selectedEventIndex: Int
     @Binding var showStartConfirmation: Bool
     @Binding var selectedProject: Project? // Not used anymore but keeping for backward compatibility
     @Binding var showFullDirectionsView: Bool
@@ -66,13 +67,15 @@ struct HomeContentView: View {
             // New map implementation with safety wrapper
             SafeMapContainer(
                 projects: todaysProjects,
-                selectedIndex: selectedProjectIndex,
+                selectedIndex: todaysProjects.isEmpty ? 0 : 
+                    (todaysCalendarEvents.indices.contains(selectedEventIndex) ? 
+                        todaysProjects.firstIndex(where: { $0.id == todaysCalendarEvents[selectedEventIndex].projectId }) ?? 0 : 0),
                 onProjectSelected: { project in
                     print("🟢 HomeContentView: onProjectSelected called for: \(project.title)")
-                    // Find project index
-                    if let index = todaysProjects.firstIndex(where: { $0.id == project.id }) {
-                        print("🟢 HomeContentView: Found project at index \(index)")
-                        selectedProjectIndex = index
+                    // Find event index for this project
+                    if let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == project.id }) {
+                        print("🟢 HomeContentView: Found event at index \(index)")
+                        selectedEventIndex = index
                         // Reset confirmation when selecting via map
                         showStartConfirmation = false
                         print("🟢 HomeContentView: showStartConfirmation = \(showStartConfirmation)")
@@ -202,10 +205,10 @@ struct HomeContentView: View {
     private var projectCarouselView: some View {
         Group {
             if !appState.isInProjectMode {
-                if !todaysProjects.isEmpty {
-                    ProjectCarousel(
-                        projects: todaysProjects,
-                        selectedIndex: $selectedProjectIndex,
+                if !todaysCalendarEvents.isEmpty {
+                    EventCarousel(
+                        events: todaysCalendarEvents,
+                        selectedIndex: $selectedEventIndex,
                         showStartConfirmation: $showStartConfirmation,
                         isInProjectMode: appState.isInProjectMode,
                         activeProjectID: appState.activeProjectID,

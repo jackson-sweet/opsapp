@@ -34,7 +34,8 @@ struct CalendarDaySelector: View {
                         WeekDayCell(
                             date: date,
                             isSelected: DateHelper.isSameDay(date, viewModel.selectedDate),
-                            projectCount: viewModel.projectCount(for: date),
+                            eventCount: viewModel.projectCount(for: date),
+                            events: viewModel.calendarEvents(for: date),
                             onTap: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     viewModel.selectDate(date, userInitiated: true)

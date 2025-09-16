@@ -1,6 +1,74 @@
 # OPS Changelog
 
-## Version 1.1.0 (Current)
+## Version 1.2.0 (In Development)
+*Target Release: August 2025*
+
+### Major Features
+- **CalendarEvent-Centric Architecture**
+  - CalendarEvents now serve as single source of truth for all calendar display logic
+  - Efficient filtering based on project scheduling mode (traditional vs task-based)
+  - Cached `projectEventType` for performance optimization
+  - Batch processing for calendar view loading
+
+- **Task-Based Scheduling System** (In Progress)
+  - New `ProjectTask` model for sub-component project management
+  - `TaskType` model for reusable task templates with colors and icons
+  - Task status workflow: Scheduled → In Progress → Completed → Cancelled
+  - Real-time task status and notes sync with API
+  - `TaskDetailsView` matching ProjectDetailsView structure
+  - Previous/Next task navigation cards
+  - Team member assignment per task
+
+- **Calendar & Schedule Improvements**
+  - **Apple Calendar-like Continuous Scrolling**: Implemented smooth vertical scrolling through months with lazy loading
+  - **Month Snapping**: Calendar automatically snaps to nearest month when scrolling ends
+  - **Visible Month Tracking**: Month picker now displays currently visible month, updates dynamically while scrolling
+  - **Performance Optimizations**: Fixed infinite loop issues in MonthGridView, removed verbose debug logging
+  - **Efficient Event Loading**: Lazy loading of calendar events only for visible months
+  - **Today Card Enhancement**: Today card always shows today's date regardless of selected month
+  - **Improved Month Navigation**: Seamless transition between months with proper synchronization
+  - CalendarEventCard displays appropriate task/project information
+  - Team member filtering for admin/office crew users
+  - Improved calendar event display logic with shouldDisplay property
+  - Task count badges in project headers
+
+### New Components
+- `ProjectTask` data model with status tracking
+- `TaskType` model with predefined icons and colors
+- `TaskDetailsView` for detailed task information
+- `TaskListView` with card-based design
+- `CalendarEventCard` for unified event display
+- `TaskTeamMemberCard` for team display
+
+### API Integration
+- Task status update endpoint: `updateTaskStatus(id: String, status: String)`
+- Task notes update endpoint: `updateTaskNotes(id: String, notes: String)`
+- Selective TaskType fetching by ID for efficiency
+- CalendarEvent sync during project operations
+
+### Technical Improvements
+- Removed company-specific task feature flags
+- Unified calendar display regardless of scheduling mode
+- Batch fetching for projects to avoid N+1 queries
+- Developer dashboard with centralized debug tools
+- Enhanced sync workflow for calendar events
+
+### Bug Fixes
+- **Fixed infinite loop in MonthGridView**: Resolved circular dependency between scroll updates and date changes
+- **Fixed console spam**: Removed verbose debug logging from DataController.getCalendarEventsForCurrentUser()
+- **Fixed month synchronization**: Visible month now properly syncs with selected date in month view
+- **Fixed scroll performance**: Eliminated performance issues with continuous calendar scrolling
+- Fixed task types not appearing due to API integration issues
+- Resolved TaskType extraction from existing tasks
+- Fixed developer mode exit button functionality
+- Corrected client loading in project search
+
+### Known Issues (In Progress)
+- Task-based scheduling not fully implemented on home page
+- Multiple bugs in task display and scheduling logic
+- CalendarEvent filtering requires further refinement
+
+## Version 1.1.0
 *Release Date: January 2025*
 
 ### Major Features

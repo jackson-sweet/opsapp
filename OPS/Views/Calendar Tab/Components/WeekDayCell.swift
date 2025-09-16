@@ -10,8 +10,32 @@ import SwiftUI
 struct WeekDayCell: View {
     let date: Date
     let isSelected: Bool
-    let projectCount: Int
+    let eventCount: Int
+    let events: [CalendarEvent]
     let onTap: () -> Void
+    
+    // Computed counts for new vs ongoing
+    private var newEventCount: Int {
+        events.filter { event in
+            Calendar.current.isDate(event.startDate ?? Date(), inSameDayAs: date)
+        }.count
+    }
+    
+    private var ongoingEventCount: Int {
+        events.filter { event in
+            let startDate = event.startDate ?? Date()
+            let endDate = event.endDate ?? Date()
+            return startDate < date && date <= endDate
+        }.count
+    }
+    
+    init(date: Date, isSelected: Bool, eventCount: Int, events: [CalendarEvent] = [], onTap: @escaping () -> Void) {
+        self.date = date
+        self.isSelected = isSelected
+        self.eventCount = eventCount
+        self.events = events
+        self.onTap = onTap
+    }
     
     var body: some View {
         Button(action: onTap) {
@@ -28,24 +52,45 @@ struct WeekDayCell: View {
                         .foregroundColor(textColor)
                 }
                 
-                // Project count in top-right corner
-                if projectCount > 0 {
+                // New event count in top-right corner
+                if newEventCount > 0 {
                     VStack {
                         HStack {
                             Spacer()
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.primaryAccent)
+                                    .fill(Color.white.opacity(0.8))
                                     .frame(width: 16, height: 16)
                                 
-                                Text("\(projectCount)")
+                                Text("\(newEventCount)")
                                     .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(Color.black)
                             }
                             .padding(.top, 4)
-                            .padding(.trailing, 4)
+                            .padding(.trailing, 2)
                         }
                         Spacer()
+                    }
+                }
+                
+                // Ongoing event count in bottom-right corner
+                if ongoingEventCount > 0 {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            ZStack {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 14, height: 14)
+                                
+                                Text("\(ongoingEventCount)")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(Color.white.opacity(0.7))
+                            }
+                            .padding(.bottom, 4)
+                            .padding(.trailing, 2)
+                        }
                     }
                 }
             }
@@ -112,21 +157,21 @@ struct WeekDayCell_Previews: PreviewProvider {
             WeekDayCell(
                 date: Date(),
                 isSelected: false,
-                projectCount: 2,
+                eventCount: 2,
                 onTap: {}
             )
             
             WeekDayCell(
                 date: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date(),
                 isSelected: true,
-                projectCount: 0,
+                eventCount: 0,
                 onTap: {}
             )
             
             WeekDayCell(
                 date: Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date(),
                 isSelected: false,
-                projectCount: 5,
+                eventCount: 5,
                 onTap: {}
             )
         }

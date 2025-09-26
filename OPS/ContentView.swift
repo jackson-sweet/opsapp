@@ -11,6 +11,7 @@ import Combine
 
 struct ContentView: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @StateObject private var appState = AppState()
     @StateObject private var locationManager = LocationManager()
     
@@ -39,6 +40,10 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("LogoutInitiated"))) { _ in
+            // Reset app state when logout is initiated
+            appState.resetForLogout()
+        }
         .onAppear {
             // DO NOT request location permissions here - wait for proper context in onboarding or when needed
             // Removed: locationManager.requestPermissionIfNeeded(requestAlways: true)
@@ -101,6 +106,7 @@ struct ContentView: View {
 // Separate view to properly observe PIN manager state
 struct PINGatedView: View {
     @ObservedObject var pinManager: SimplePINManager
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     let dataController: DataController
     let appState: AppState
     let locationManager: LocationManager
@@ -113,30 +119,37 @@ struct PINGatedView: View {
     }
     
     var body: some View {
-        let _ = print("PINGatedView: body called - requiresPIN=\(pinManager.requiresPIN), isAuthenticated=\(pinManager.isAuthenticated)")
         
-        ZStack {
-            // Main app content (always rendered but hidden when PIN required)
-            MainTabView()
-                .environmentObject(appState)
-                .environmentObject(locationManager)
-                .onAppear {
-                    // Set the appState reference in DataController for cross-component access
-                    dataController.appState = appState
+        // Check subscription lockout first
+        if subscriptionManager.shouldShowLockout {
+            SubscriptionLockoutView()
+                .environmentObject(subscriptionManager)
+                .environmentObject(dataController)
+        } else {
+            ZStack {
+                // Main app content with grace period banner
+                MainTabView()
+                    .environmentObject(appState)
+                    .environmentObject(locationManager)
+                    .gracePeriodBanner() // Add grace period banner overlay
+                    .onAppear {
+                        // Set the appState reference in DataController for cross-component access
+                        dataController.appState = appState
+                    }
+                    .opacity(pinManager.requiresPIN && !pinManager.isAuthenticated ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.3), value: pinManager.isAuthenticated)
+                
+                // PIN overlay
+                if pinManager.requiresPIN && !pinManager.isAuthenticated {
+                    SimplePINEntryView(pinManager: pinManager)
+                        .environmentObject(dataController)
+                        .transition(.opacity)
+                        .zIndex(1)
+                        .onReceive(pinManager.$isAuthenticated) { newValue in
+                        }
+                        .onReceive(pinManager.objectWillChange) { _ in
+                        }
                 }
-                .opacity(pinManager.requiresPIN && !pinManager.isAuthenticated ? 0 : 1)
-                .animation(.easeInOut(duration: 0.3), value: pinManager.isAuthenticated)
-            
-            // PIN overlay
-            if pinManager.requiresPIN && !pinManager.isAuthenticated {
-                SimplePINEntryView(pinManager: pinManager)
-                    .environmentObject(dataController)
-                    .transition(.opacity)
-                    .zIndex(1)
-                    .onReceive(pinManager.$isAuthenticated) { newValue in
-                    }
-                    .onReceive(pinManager.objectWillChange) { _ in
-                    }
             }
         }
     }

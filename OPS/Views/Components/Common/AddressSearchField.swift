@@ -203,7 +203,6 @@ class AddressLocationProvider: NSObject, ObservableObject, CLLocationManagerDele
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location error: \(error.localizedDescription)")
     }
     
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {

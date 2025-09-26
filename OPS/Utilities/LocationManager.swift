@@ -252,7 +252,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     /// Enable high accuracy mode for navigation
     func enableNavigationMode() {
-        print("📍 Enabling navigation mode with higher accuracy")
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.distanceFilter = 5  // More frequent updates during navigation
         locationManager.headingFilter = 3.0 // More responsive heading during navigation
@@ -266,7 +265,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     /// Return to normal accuracy mode
     func disableNavigationMode() {
-        print("📍 Disabling navigation mode, returning to normal accuracy")
         locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         locationManager.distanceFilter = 10
         locationManager.headingFilter = 5.0

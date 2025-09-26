@@ -17,6 +17,7 @@ struct OPSApp: App {
     // Setup shared instances for app-wide use
     @StateObject private var dataController = DataController()
     @StateObject private var notificationManager = NotificationManager.shared
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
     
     // Create the model container for SwiftData
     var sharedModelContainer: ModelContainer = {
@@ -46,6 +47,7 @@ struct OPSApp: App {
             ContentView()
                 .environmentObject(dataController)
                 .environmentObject(notificationManager)
+                .environmentObject(subscriptionManager)
                 .onAppear {
                     // Check if this is a fresh install
                     if !UserDefaults.standard.bool(forKey: "has_launched_before") {
@@ -61,11 +63,19 @@ struct OPSApp: App {
                     let context = sharedModelContainer.mainContext
                     dataController.setModelContext(context)
                     
+                    // Initialize SubscriptionManager with DataController
+                    subscriptionManager.setDataController(dataController)
+                    
                     // Check notification authorization status
                     notificationManager.getAuthorizationStatus()
                     
                     // Sync to Bubble on app launch
                     dataController.performAppLaunchSync()
+                    
+                    // Check subscription status
+                    Task {
+                        await subscriptionManager.checkSubscriptionStatus()
+                    }
                     
                     // Migrate images from UserDefaults to file system
                     Task {
@@ -94,6 +104,12 @@ struct OPSApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
                     // App going to background - reset PIN authentication for next launch
                     dataController.simplePINManager.resetAuthentication()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    // App became active - check subscription status
+                    Task {
+                        await subscriptionManager.checkSubscriptionStatus()
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didRegisterForRemoteNotificationsWithDeviceTokenNotification)) { notification in
                     // Handle the device token when registered

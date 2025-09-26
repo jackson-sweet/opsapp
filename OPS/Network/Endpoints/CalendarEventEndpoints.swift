@@ -16,8 +16,6 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of calendar event DTOs
     func fetchCompanyCalendarEvents(companyId: String) async throws -> [CalendarEventDTO] {
-        print("\n🔵 ==== FETCHING CALENDAR EVENTS ====")
-        print("🔵 APIService: Fetching calendar events for company \(companyId)")
         
         let constraints: [[String: Any]] = [
             [
@@ -33,14 +31,10 @@ extension APIService {
             sortField: BubbleFields.CalendarEvent.startDate
         )
         
-        print("🔵 Found \(events.count) calendar events")
         
         // Summary statistics (case-insensitive comparison)
         let projectEvents = events.filter { $0.type?.lowercased() == "project" && $0.taskId == nil }
         let taskEvents = events.filter { $0.type?.lowercased() == "task" && $0.taskId != nil }
-        print("   - Project-level events: \(projectEvents.count)")
-        print("   - Task-based events: \(taskEvents.count)")
-        print("🔵 ==== END CALENDAR EVENTS ====\n")
         
         return events
     }
@@ -49,7 +43,6 @@ extension APIService {
     /// - Parameter projectId: The project ID
     /// - Returns: Array of calendar event DTOs
     func fetchProjectCalendarEvents(projectId: String) async throws -> [CalendarEventDTO] {
-        print("🔵 APIService: Fetching calendar events for project \(projectId)")
         
         let constraints: [[String: Any]] = [
             [
@@ -73,7 +66,6 @@ extension APIService {
     ///   - endDate: End of date range
     /// - Returns: Array of calendar event DTOs
     func fetchCalendarEvents(companyId: String, from startDate: Date, to endDate: Date) async throws -> [CalendarEventDTO] {
-        print("🔵 APIService: Fetching calendar events from \(startDate) to \(endDate)")
         
         let dateFormatter = ISO8601DateFormatter()
         
@@ -118,7 +110,6 @@ extension APIService {
     /// - Parameter event: The calendar event DTO to create
     /// - Returns: The created calendar event DTO with server-assigned ID
     func createCalendarEvent(_ event: CalendarEventDTO) async throws -> CalendarEventDTO {
-        print("🔵 APIService: Creating new calendar event")
         
         let dateFormatter = ISO8601DateFormatter()
         
@@ -153,7 +144,6 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Calendar event created successfully with ID: \(response.response.id)")
         return response.response
     }
     
@@ -164,7 +154,6 @@ extension APIService {
     ///   - id: The calendar event ID
     ///   - updates: Dictionary of fields to update
     func updateCalendarEvent(id: String, updates: [String: Any]) async throws {
-        print("🔵 APIService: Updating calendar event \(id)")
         
         let bodyData = try JSONSerialization.data(withJSONObject: updates)
         
@@ -175,13 +164,11 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Calendar event updated successfully")
     }
     
     /// Delete a calendar event
     /// - Parameter id: The calendar event ID to delete
     func deleteCalendarEvent(id: String) async throws {
-        print("🔵 APIService: Deleting calendar event \(id)")
         
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.calendarEvent)/\(id)",
@@ -190,6 +177,5 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Calendar event deleted successfully")
     }
 }

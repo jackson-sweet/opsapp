@@ -59,7 +59,6 @@ class InProgressManager: ObservableObject {
         
         // Validate request before creating directions
         guard request.source != nil && request.destination != nil else {
-            // print("InProgressManager: ⚠️ Invalid request - source or destination is nil")
             self.isRouting = false
             return
         }
@@ -71,7 +70,6 @@ class InProgressManager: ObservableObject {
             
             DispatchQueue.main.async {
                 if let error = error {
-                    // print("InProgressManager: ⚠️ Routing error: \(error.localizedDescription)")
                     self.isRouting = false
                     
                     // Retry after a delay if it's a network issue

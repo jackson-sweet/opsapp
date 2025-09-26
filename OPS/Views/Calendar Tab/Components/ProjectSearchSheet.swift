@@ -18,30 +18,79 @@ struct ProjectSearchSheet: View {
     @State private var isLoading = true
     @FocusState private var isSearchFieldFocused: Bool
     
-    // Filter states
-    @State private var selectedStatus: Status? = nil
-    @State private var selectedTeamMemberId: String? = nil
+    // Filter states - now using Sets for multi-select
+    @State private var selectedStatuses: Set<Status> = []
+    @State private var selectedTeamMemberIds: Set<String> = []
+    @State private var selectedTaskTypeIds: Set<String> = []
+    @State private var selectedClientIds: Set<String> = []
+    @State private var selectedSchedulingTypes: Set<CalendarEventType> = []
     @State private var teamMembers: [TeamMember] = []
+    @State private var availableTaskTypes: [TaskType] = []
+    @State private var availableClients: [Client] = []
     @State private var showFilters = false
+    @State private var showFilterSheet = false
     
     // Check if any filters are active
     private var hasActiveFilters: Bool {
-        selectedStatus != nil || selectedTeamMemberId != nil
+        !selectedStatuses.isEmpty || !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty || !selectedSchedulingTypes.isEmpty
+    }
+    
+    // Count of active filter categories
+    private var activeFilterCount: Int {
+        var count = 0
+        if !selectedStatuses.isEmpty { count += 1 }
+        if !selectedTeamMemberIds.isEmpty { count += 1 }
+        if !selectedTaskTypeIds.isEmpty { count += 1 }
+        if !selectedClientIds.isEmpty { count += 1 }
+        if !selectedSchedulingTypes.isEmpty { count += 1 }
+        return count
     }
     
     // Filtered projects based on search text and filters
     private var filteredProjects: [Project] {
         var projects = allProjects
         
-        // Filter by status
-        if let selectedStatus = selectedStatus {
-            projects = projects.filter { $0.status == selectedStatus }
+        // Filter by statuses (multi-select)
+        if !selectedStatuses.isEmpty {
+            projects = projects.filter { selectedStatuses.contains($0.status) }
         }
         
-        // Filter by team member
-        if let selectedTeamMemberId = selectedTeamMemberId {
+        // Filter by team members (multi-select)
+        if !selectedTeamMemberIds.isEmpty {
             projects = projects.filter { project in
-                project.getTeamMemberIds().contains(selectedTeamMemberId)
+                let projectTeamIds = Set(project.getTeamMemberIds())
+                return !selectedTeamMemberIds.isDisjoint(with: projectTeamIds)
+            }
+        }
+        
+        // Filter by task types (multi-select)
+        if !selectedTaskTypeIds.isEmpty {
+            projects = projects.filter { project in
+                project.tasks.contains { task in
+                    if let taskTypeId = task.taskType?.id {
+                        return selectedTaskTypeIds.contains(taskTypeId)
+                    }
+                    return false
+                }
+            }
+        }
+        
+        // Filter by clients (multi-select)
+        if !selectedClientIds.isEmpty {
+            projects = projects.filter { project in
+                if let clientId = project.client?.id {
+                    return selectedClientIds.contains(clientId)
+                }
+                return false
+            }
+        }
+        
+        // Filter by scheduling types (multi-select)
+        if !selectedSchedulingTypes.isEmpty {
+            projects = projects.filter { project in
+                // Use effectiveEventType which defaults to .project if nil
+                let eventType = project.eventType ?? .project
+                return selectedSchedulingTypes.contains(eventType)
             }
         }
         
@@ -66,6 +115,26 @@ struct ProjectSearchSheet: View {
                 // Search in status
                 if project.status.displayName.localizedCaseInsensitiveContains(searchText) {
                     return true
+                }
+                
+                // Always search in tasks (no longer optional)
+                for task in project.tasks {
+                        // Search in task type display name
+                        if let taskType = task.taskType?.display,
+                           taskType.localizedCaseInsensitiveContains(searchText) {
+                            return true
+                        }
+                        
+                        // Search in task notes
+                        if let notes = task.taskNotes,
+                           notes.localizedCaseInsensitiveContains(searchText) {
+                            return true
+                        }
+                        
+                    // Search in task status
+                    if task.status.displayName.localizedCaseInsensitiveContains(searchText) {
+                        return true
+                    }
                 }
                 
                 return false
@@ -100,7 +169,7 @@ struct ProjectSearchSheet: View {
                 
                 VStack(spacing: 0) {
                     searchBarSection
-                    filterSection
+                    // filterSection - removed, using filter sheet instead
                     projectListSection
                 }
             }
@@ -135,6 +204,19 @@ struct ProjectSearchSheet: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isSearchFieldFocused = true
             }
+        }
+        .sheet(isPresented: $showFilterSheet) {
+            ProjectSearchFilterView(
+                selectedStatuses: $selectedStatuses,
+                selectedTeamMemberIds: $selectedTeamMemberIds,
+                selectedTaskTypeIds: $selectedTaskTypeIds,
+                selectedClientIds: $selectedClientIds,
+                selectedSchedulingTypes: $selectedSchedulingTypes,
+                availableTeamMembers: teamMembers,
+                availableTaskTypes: availableTaskTypes,
+                availableClients: availableClients
+            )
+            .environmentObject(dataController)
         }
     }
     
@@ -178,23 +260,27 @@ struct ProjectSearchSheet: View {
             
             // Filter button with label and icon
             Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showFilters.toggle()
-                }
+                showFilterSheet = true
             }) {
                 HStack(spacing: 6) {
                     Text("FILTERS")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
                     
-                    Image(systemName: showFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                        .font(.system(size: 16))
-                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-                    
-                    if hasActiveFilters {
-                        Circle()
-                            .fill(OPSStyle.Colors.primaryAccent)
-                            .frame(width: 6, height: 6)
+                    ZStack {
+                        Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 16))
+                            .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                        
+                        if activeFilterCount > 0 {
+                            Text("\(activeFilterCount)")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(2)
+                                .background(OPSStyle.Colors.primaryAccent)
+                                .clipShape(Circle())
+                                .offset(x: 8, y: -8)
+                        }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -213,11 +299,17 @@ struct ProjectSearchSheet: View {
         .padding(.vertical, 12)
     }
     
+    /*
+    // Removed - using filter sheet instead
     private var filterSection: some View {
         Group {
-            if showFilters {
+            if false {
                 VStack(spacing: 16) {
+                    taskSearchToggleSection
                     statusFilterSection
+                    if !availableTaskTypes.isEmpty {
+                        taskTypeFilterSection
+                    }
                     if !teamMembers.isEmpty {
                         teamMemberFilterSection
                     }
@@ -225,8 +317,11 @@ struct ProjectSearchSheet: View {
                     // Clear filters button if any filters are active
                     if hasActiveFilters {
                         Button(action: {
-                            selectedStatus = nil
-                            selectedTeamMemberId = nil
+                            selectedStatuses.removeAll()
+                            selectedTeamMemberIds.removeAll()
+                            selectedTaskTypeIds.removeAll()
+                            selectedClientIds.removeAll()
+                            selectedSchedulingTypes.removeAll()
                         }) {
                             HStack {
                                 Image(systemName: "xmark.circle.fill")
@@ -257,6 +352,64 @@ struct ProjectSearchSheet: View {
                     removal: .move(edge: .top).combined(with: .opacity)
                 ))
             }
+        }
+    }
+    
+    private var taskSearchToggleSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "checklist")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("SEARCH OPTIONS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Spacer()
+            }
+            .padding(.horizontal)
+            
+            // Task search toggle
+            Button(action: {
+                searchInTasks.toggle()
+            }) {
+                HStack {
+                    // Checkbox
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 2)
+                            .frame(width: 20, height: 20)
+                        
+                        if searchInTasks {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(OPSStyle.Colors.primaryAccent)
+                                .frame(width: 14, height: 14)
+                            
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    
+                    Text("Include task names and notes in search")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .fill(searchInTasks ? OPSStyle.Colors.cardBackgroundDark.opacity(0.8) : OPSStyle.Colors.cardBackgroundDark)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent.opacity(0.2) : Color.white.opacity(0.1), lineWidth: 1)
+                        )
+                )
+            }
+            .padding(.horizontal)
         }
     }
     
@@ -310,6 +463,72 @@ struct ProjectSearchSheet: View {
                     Text(selectedStatus?.displayName ?? "All Statuses")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+            }
+            .padding(.horizontal)
+        }
+    }
+    
+    private var taskTypeFilterSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "hammer.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                
+                Text("TASK TYPE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                
+                Spacer()
+            }
+            .padding(.horizontal)
+            
+            // Task type dropdown
+            Menu {
+                Button(action: { selectedTaskTypeId = nil }) {
+                    Label("All Task Types", systemImage: selectedTaskTypeId == nil ? "checkmark" : "")
+                }
+                
+                Divider()
+                
+                ForEach(availableTaskTypes, id: \.id) { taskType in
+                    Button(action: { 
+                        selectedTaskTypeId = selectedTaskTypeId == taskType.id ? nil : taskType.id 
+                    }) {
+                        HStack {
+                            Text(taskType.display)
+                            Spacer()
+                            if selectedTaskTypeId == taskType.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "hammer")
+                        .font(.system(size: 14))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    
+                    Text(availableTaskTypes.first(where: { $0.id == selectedTaskTypeId })?.display ?? "All Task Types")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
                     
                     Spacer()
                     
@@ -396,7 +615,7 @@ struct ProjectSearchSheet: View {
             .padding(.horizontal)
         }
     }
-    
+    */
     
     private var projectListSection: some View {
         Group {
@@ -516,9 +735,21 @@ struct ProjectSearchSheet: View {
                     }.sorted { member1, member2 in
                         member1.fullName < member2.fullName
                     }
+                    
+                    // Load task types from company
+                    if let company = dataController.getCompany(id: companyId) {
+                        availableTaskTypes = company.taskTypes.sorted { $0.displayOrder < $1.displayOrder }
+                    } else {
+                        availableTaskTypes = []
+                    }
+                    
+                    // Load clients
+                    availableClients = dataController.getAllClients(for: companyId).sorted { $0.name < $1.name }
                 } else {
-                    // No company, no team members
+                    // No company, no team members, task types or clients
                     teamMembers = []
+                    availableTaskTypes = []
+                    availableClients = []
                 }
                 
                 isLoading = false

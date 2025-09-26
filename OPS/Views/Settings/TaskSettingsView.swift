@@ -126,7 +126,6 @@ struct TaskSettingsView: View {
             taskTypes = try modelContext.fetch(descriptor)
             isLoading = false
         } catch {
-            print("Failed to fetch task types: \(error)")
             isLoading = false
         }
     }
@@ -143,7 +142,6 @@ struct TaskSettingsView: View {
             try modelContext.save()
             fetchTaskTypes()
         } catch {
-            print("Failed to create defaults: \(error)")
         }
     }
 }
@@ -426,7 +424,6 @@ struct EditTaskTypeSheet: View {
             onSave()
             dismiss()
         } catch {
-            print("Failed to save task type icon change: \(error)")
         }
     }
 }
@@ -604,7 +601,6 @@ struct AddTaskTypeSettingsSheet: View {
             onSave()
             dismiss()
         } catch {
-            print("Failed to add task type: \(error)")
         }
     }
 }

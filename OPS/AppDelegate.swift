@@ -13,6 +13,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         
+        // Configure Stripe SDK
+        StripeConfiguration.shared.configure()
         
         // Register for remote notifications
         // The actual permission request happens elsewhere through the NotificationManager
@@ -43,7 +45,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Only log in debug builds - this is expected when push notification entitlements aren't configured
         #if DEBUG
         if (error as NSError).code != 3000 { // 3000 = no valid aps-environment entitlement
-            print("AppDelegate: Failed to register for remote notifications: \(error.localizedDescription)")
         }
         #endif
         

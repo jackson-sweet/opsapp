@@ -433,20 +433,16 @@ struct LoginView: View {
                                     // First check if user has explicit userType
                                     if let userType = currentUser.userType {
                                         UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
-                                        print("🔵 LoginView: Set user type from user model: \(userType.rawValue)")
                                     } else {
                                         // Fall back to determining from role
                                         if currentUser.role == .fieldCrew || currentUser.role == .officeCrew {
                                             UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
-                                            print("🔵 LoginView: Defaulted to employee based on role")
                                         } else if currentUser.role == .admin {
                                             // Admin users might be company owners
                                             UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
-                                            print("🔵 LoginView: Defaulted to company based on admin role")
                                         }
                                     }
                                 } else {
-                                    print("🔵 LoginView: User type already saved as: \(savedUserType)")
                                 }
                                 
                                 // Pre-populate user data if available
@@ -600,19 +596,14 @@ struct LoginView: View {
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
                 } else {
-                    print("🟢 Apple login successful")
                     
                     // Check if the user has completed onboarding
                     let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
                     let hasCompany = !(dataController.currentUser?.companyId ?? "").isEmpty
                     let hasUserType = dataController.currentUser?.userType != nil
                     
-                    print("   Has completed onboarding: \(hasCompletedOnboarding)")
-                    print("   Has company: \(hasCompany)")
-                    print("   Has user type: \(hasUserType)")
                     
                     if !hasCompletedOnboarding || !hasCompany || !hasUserType {
-                        print("🟡 User needs onboarding after Apple login")
                         
                         // Dismiss keyboard first
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -627,7 +618,6 @@ struct LoginView: View {
                         }
                     } else {
                         // Only now set isAuthenticated to trigger the transition
-                        print("🟢 User has completed onboarding, transitioning to main app")
                         dataController.isAuthenticated = true
                     }
                 }
@@ -637,11 +627,9 @@ struct LoginView: View {
                 // Check if it was a cancellation
                 if let authError = error as? ASAuthorizationError, authError.code == .canceled {
                     // User canceled, don't show error
-                    print("🟡 Apple Sign-In canceled by user")
                 } else {
                     errorMessage = "Apple Sign-In failed: \(error.localizedDescription)"
                     showError = true
-                    print("🔴 Apple Sign-In error: \(error)")
                 }
             }
         }
@@ -674,17 +662,13 @@ struct LoginView: View {
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
                 } else {
-                    print("🟢 Google login successful")
                     
                     // Check if the user has completed onboarding
                     let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
                     let hasCompany = !(dataController.currentUser?.companyId ?? "").isEmpty
                     
-                    print("   Has completed onboarding: \(hasCompletedOnboarding)")
-                    print("   Has company: \(hasCompany)")
                     
                     if !hasCompletedOnboarding || !hasCompany {
-                        print("🟡 User needs onboarding after Google login")
                         
                         // Dismiss keyboard first
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -699,7 +683,6 @@ struct LoginView: View {
                         }
                     } else {
                         // Only now set isAuthenticated to trigger the transition
-                        print("🟢 User has completed onboarding, transitioning to main app")
                         dataController.isAuthenticated = true
                     }
                 }
@@ -709,11 +692,9 @@ struct LoginView: View {
                 // Check if it was a cancellation
                 if let gidError = error as? GIDSignInError, gidError.code == .canceled {
                     // User canceled, don't show error
-                    print("🟡 Google Sign-In canceled by user")
                 } else {
                     errorMessage = "Google Sign-In failed: \(error.localizedDescription)"
                     showError = true
-                    print("🔴 Google Sign-In error: \(error)")
                 }
             }
         }
@@ -784,50 +765,93 @@ struct LoginSuccessView: View {
     
     var body: some View {
         ZStack {
-            // Full screen background
-            Color.black.opacity(0.8)
+            // Pure black background with subtle opacity
+            Color.black.opacity(0.95)
                 .edgesIgnoringSafeArea(.all)
             
-            VStack(spacing: 24) {
-                // Success icon
-                ZStack {
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent)
-                        .frame(width: 80, height: 80)
-                        .scaleEffect(showCheckmark ? 1 : 0)
+            // Tactical content container
+            VStack(spacing: 0) {
+                // Top accent line
+                Rectangle()
+                    .fill(OPSStyle.Colors.primaryAccent)
+                    .frame(height: 2)
+                    .opacity(0.8)
+                
+                // Main content
+                VStack(spacing: 24) {
+                    // Tactical success indicator
+                    ZStack {
+                        // Background circle with subtle accent
+                        Circle()
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 2)
+                            .frame(width: 56, height: 56)
+                            .scaleEffect(showCheckmark ? 1 : 0.8)
+                        
+                        // Inner checkmark
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .scaleEffect(showCheckmark ? 1 : 0)
+                            .rotationEffect(.degrees(showCheckmark ? 0 : -30))
+                    }
+                    .animation(.easeOut(duration: 0.3), value: showCheckmark)
                     
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 40, weight: .bold))
-                        .foregroundColor(.white)
-                        .scaleEffect(showCheckmark ? 1 : 0)
-                        .rotationEffect(.degrees(showCheckmark ? 0 : -30))
+                    // Status text stack
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            Text("STATUS:")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            
+                            Text("ACCESS GRANTED")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                        .opacity(showCheckmark ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.2).delay(0.2), value: showCheckmark)
+                        
+                        Text("AUTHENTICATION SUCCESSFUL")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .opacity(showCheckmark ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.2).delay(0.3), value: showCheckmark)
+                    }
+                    
+                    // User identifier (minimal info)
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        
+                        Text("WELCOME BACK")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    .opacity(showCheckmark ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.2).delay(0.4), value: showCheckmark)
                 }
-                .animation(.spring(response: 0.6, dampingFraction: 0.6, blendDuration: 0), value: showCheckmark)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 28)
                 
-                // Success text
-                Text("Login Successful")
-                    .font(OPSStyle.Typography.title.weight(.semibold))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .opacity(showCheckmark ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.3).delay(0.3), value: showCheckmark)
-                
-                Text("Welcome back!")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .opacity(showCheckmark ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.3).delay(0.4), value: showCheckmark)
+                // Bottom accent line
+                Rectangle()
+                    .fill(OPSStyle.Colors.primaryAccent)
+                    .frame(height: 2)
+                    .opacity(0.8)
             }
-            .padding(40)
-            .background(
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackground)
-                    .shadow(color: Color.black.opacity(0.3), radius: 20, x: 0, y: 10)
+                    .stroke(Color.white.opacity(0.05), lineWidth: 1)
             )
-            .scaleEffect(showCheckmark ? 1 : 0.8)
-            .animation(.spring(response: 0.5, dampingFraction: 0.7, blendDuration: 0), value: showCheckmark)
+            .padding(.horizontal, 60)
+            .scaleEffect(showCheckmark ? 1 : 0.95)
+            .opacity(showCheckmark ? 1 : 0)
+            .animation(.easeOut(duration: 0.25), value: showCheckmark)
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(.easeOut(duration: 0.15)) {
                 showCheckmark = true
             }
         }

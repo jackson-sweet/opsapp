@@ -43,13 +43,6 @@ class OnboardingService {
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
         
         // DEBUG: Log the request
-        print("\n🔵 SIGNUP API REQUEST:")
-        print("Endpoint: \(endpoint)")
-        print("URL: \(url.absoluteString)")
-        print("Parameters sent:")
-        print("  - email: \(email)")
-        print("  - password: [REDACTED]")
-        print("  - userType: \(userType.rawValue)")
         
         do {
             // Execute network request
@@ -69,7 +62,6 @@ class OnboardingService {
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let message = json["message"] as? String {
                     // Extract error message for display in UI
-                    print("HTTP 400 error - Message: \(message)")
                     throw SignUpError.serverError(message)
                 }
             }
@@ -78,10 +70,6 @@ class OnboardingService {
             let signUpResponse = try JSONDecoder().decode(SignUpResponse.self, from: data)
             
             // For debugging, print the structure of the response
-            print("\n🟡 SIGNUP - Decoded Response:")
-            print("  - wasSuccessful: \(signUpResponse.wasSuccessful)")
-            print("  - user_id: \(signUpResponse.extractedUserId ?? "nil")")
-            print("  - error_message: \(signUpResponse.error_message ?? "nil")")
             
             if signUpResponse.wasSuccessful {
                 if let userId = signUpResponse.extractedUserId {
@@ -94,12 +82,10 @@ class OnboardingService {
             } else if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
                 // We have a successful HTTP response but our API indicates failure
                 // For Bubble API, we should return the response anyway and let the ViewModel handle it
-                print("Signup NOTE: HTTP success but API indicates failure or incomplete response")
                 return signUpResponse
             } else {
                 // True API failure with error message
                 let errorMsg = signUpResponse.error_message ?? "Unknown error during signup"
-                print("Signup FAILED: \(errorMsg)")
                 throw SignUpError.serverError(errorMsg)
             }
             
@@ -107,10 +93,8 @@ class OnboardingService {
         } catch let error as SignUpError {
             throw error
         } catch let decodingError as DecodingError {
-            print("JSON Decoding error: \(decodingError)")
             throw SignUpError.serverError("Failed to process server response: \(decodingError.localizedDescription)")
         } catch {
-            print("Network error during signup: \(error.localizedDescription)")
             throw SignUpError.networkError(error)
         }
     }
@@ -144,14 +128,6 @@ class OnboardingService {
         ]
         
         // DEBUG: Log the request
-        print("\n🔵 JOIN COMPANY API REQUEST:")
-        print("URL: \(url.absoluteString)")
-        print("Parameters sent:")
-        print("  - user: \(userId)")
-        print("  - name_first: \(firstName)")
-        print("  - name_last: \(lastName)")
-        print("  - phone: \(phoneNumber)")
-        print("  - company_code: \(companyCode)")
         
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
         
@@ -173,7 +149,6 @@ class OnboardingService {
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let message = json["message"] as? String {
                     // Extract error message for display in UI
-                    print("HTTP 400 error - Message: \(message)")
                     throw SignUpError.serverError(message)
                 }
             }
@@ -182,11 +157,6 @@ class OnboardingService {
             let joinResponse = try JSONDecoder().decode(JoinCompanyResponse.self, from: data)
             
             // For debugging, print the structure of the response
-            print("\n🟢 JOIN COMPANY API RESPONSE:")
-            print("Status Code: \(httpResponse.statusCode)")
-            print("Raw Response: \(responseText)")
-            print("\n🟡 JOIN COMPANY - Decoded Response:")
-            print("  - wasSuccessful: \(joinResponse.wasSuccessful)")
             
             // Print detailed company data for debugging
             if let companyData = joinResponse.extractedCompanyData {
@@ -209,7 +179,6 @@ class OnboardingService {
             } else {
                 // True API failure with error message
                 let errorMsg = joinResponse.error_message ?? "Failed to join company"
-                print("Company join FAILED: \(errorMsg)")
                 throw SignUpError.companyJoinFailed
             }
             
@@ -217,10 +186,8 @@ class OnboardingService {
         } catch let error as SignUpError {
             throw error
         } catch let decodingError as DecodingError {
-            print("JSON Decoding error: \(decodingError)")
             throw SignUpError.serverError("Failed to process server response: \(decodingError.localizedDescription)")
         } catch {
-            print("Network error during company join: \(error.localizedDescription)")
             throw SignUpError.networkError(error)
         }
     }
@@ -265,9 +232,7 @@ class OnboardingService {
         // Include company ID if updating existing company
         if let companyId = companyId, !companyId.isEmpty {
             parameters["company_id"] = companyId
-            print("🔵 Updating existing company with ID: \(companyId)")
         } else {
-            print("🟡 Creating new company (no existing ID provided)")
         }
         
         if let phone = phone, !phone.isEmpty {
@@ -277,16 +242,10 @@ class OnboardingService {
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
         
         // DEBUG: Log the complete request
-        print("\n🔵 UPDATE COMPANY API REQUEST:")
-        print("URL: \(url.absoluteString)")
-        print("Parameters sent:")
         for (key, value) in parameters {
             if key == "user" {
-                print("  - \(key): '\(value)' \(userId.isEmpty ? "(EMPTY STRING!)" : "")")
             } else if key == "user_phone" || key == "name_first" || key == "name_last" {
-                print("  - \(key): \(value)")
             } else {
-                print("  - \(key): \(value)")
             }
         }
         
@@ -299,9 +258,6 @@ class OnboardingService {
             
             
             if let responseString = String(data: data, encoding: .utf8) {
-                print("\n🟢 UPDATE COMPANY API RESPONSE:")
-                print("Status Code: \(httpResponse.statusCode)")
-                print("Raw Response: \(responseString)")
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {
@@ -325,7 +281,6 @@ class OnboardingService {
                 
                 return updateResponse
             } catch {
-                print("ERROR: Failed to decode CompanyUpdateResponse: \(error)")
                 
                 // Try a simpler response structure
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {

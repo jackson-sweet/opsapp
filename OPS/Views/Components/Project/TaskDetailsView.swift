@@ -529,36 +529,65 @@ struct TaskDetailsView: View {
             }
             .padding(.horizontal)
             
-            // Status buttons
-            HStack(spacing: 12) {
+            // Tactical status list
+            VStack(spacing: 1) {
                 ForEach(availableStatuses, id: \.self) { status in
                     Button(action: {
                         updateTaskStatus(to: status)
                     }) {
-                        VStack(spacing: 8) {
-                            Circle()
-                                .fill(task.status == status ? 
-                                     statusColor(for: status) : 
-                                     OPSStyle.Colors.cardBackgroundDark)
-                                .frame(width: 50, height: 50)
-                                .overlay(
-                                    Image(systemName: statusIcon(for: status))
-                                        .font(.system(size: 20))
-                                        .foregroundColor(task.status == status ? 
-                                                       .white : 
-                                                       OPSStyle.Colors.secondaryText)
-                                )
+                        HStack(spacing: 16) {
+                            // Status indicator - checkmark for current, circle for others
+                            ZStack {
+                                if task.status == status {
+                                    Circle()
+                                        .fill(statusColor(for: status))
+                                        .frame(width: 24, height: 24)
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.white)
+                                } else {
+                                    Circle()
+                                        .stroke(OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 2)
+                                        .frame(width: 24, height: 24)
+                                }
+                            }
                             
-                            Text(status.displayName)
-                                .font(OPSStyle.Typography.smallCaption)
+                            // Status icon and text
+                            Image(systemName: statusIcon(for: status))
+                                .font(.system(size: 16))
                                 .foregroundColor(task.status == status ?
                                                OPSStyle.Colors.primaryText :
                                                OPSStyle.Colors.secondaryText)
+                                .frame(width: 20)
+                            
+                            Text(status.displayName.uppercased())
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(task.status == status ?
+                                               OPSStyle.Colors.primaryText :
+                                               OPSStyle.Colors.secondaryText)
+                            
+                            Spacer()
+                            
+                            // Status color accent bar
+                            Rectangle()
+                                .fill(statusColor(for: status))
+                                .frame(width: 3, height: 30)
+                                .opacity(task.status == status ? 1.0 : 0.3)
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(task.status == status ? 
+                                  OPSStyle.Colors.cardBackgroundDark.opacity(0.8) :
+                                  OPSStyle.Colors.cardBackgroundDark)
                     }
                     .disabled(task.status == status)
                 }
             }
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
             .padding(.horizontal)
         }
     }

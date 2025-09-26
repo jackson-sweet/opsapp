@@ -347,13 +347,11 @@ struct PhotoThumbnail: View {
                 self.isLoading = false
                 
                 if let error = error {
-                    print("PhotoThumbnail: Error loading image: \(error.localizedDescription)")
                     return
                 }
                 
                 if let httpResponse = response as? HTTPURLResponse, 
                    !(200...299).contains(httpResponse.statusCode) {
-                    print("PhotoThumbnail: HTTP Error: \(httpResponse.statusCode)")
                     return
                 }
                 
@@ -366,7 +364,6 @@ struct PhotoThumbnail: View {
                     // Also cache in memory
                     ImageCache.shared.set(loadedImage, forKey: normalizedURL)
                 } else {
-                    print("PhotoThumbnail: Failed to create image from data")
                 }
             }
         }.resume()
@@ -529,13 +526,11 @@ struct SinglePhotoView: View {
                 self.isLoading = false
                 
                 if let error = error {
-                    print("SinglePhotoView: Error loading image: \(error.localizedDescription)")
                     return
                 }
                 
                 if let httpResponse = response as? HTTPURLResponse, 
                    !(200...299).contains(httpResponse.statusCode) {
-                    print("SinglePhotoView: HTTP Error: \(httpResponse.statusCode)")
                     return
                 }
                 
@@ -548,7 +543,6 @@ struct SinglePhotoView: View {
                     // Also cache in memory
                     ImageCache.shared.set(loadedImage, forKey: normalizedURL)
                 } else {
-                    print("SinglePhotoView: Failed to create image from data")
                 }
             }
         }.resume()
@@ -578,7 +572,6 @@ extension ProjectPhotosGrid {
                     
                     if success {
                     } else {
-                        print("ProjectPhotosGrid: ⚠️ ImageSyncManager failed to delete the image, but we'll update the project anyway")
                     }
                 } else {
                     // Fallback to direct file deletion if ImageSyncManager is not available
@@ -586,7 +579,6 @@ extension ProjectPhotosGrid {
                     // Clean up file storage
                     if url.hasPrefix("local://") {
                         let deleted = ImageFileManager.shared.deleteImage(localID: url)
-                        print("ProjectPhotosGrid: Deleted image from FileManager: \(deleted ? "success" : "failed")")
                     }
                     
                     // Also clean up UserDefaults (for legacy support)
@@ -605,7 +597,6 @@ extension ProjectPhotosGrid {
                         do {
                             try modelContext.save()
                         } catch {
-                            print("ProjectPhotosGrid: ⚠️ Error saving changes after deletion: \(error.localizedDescription)")
                         }
                     } else {
                     }
@@ -649,7 +640,6 @@ extension ProjectPhotosGrid {
                 
                 // Compress image for storage
                 guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-                    print("ProjectPhotosGrid: ⚠️ Failed to compress image")
                     await MainActor.run {
                         processingImage = false
                     }
@@ -679,7 +669,6 @@ extension ProjectPhotosGrid {
                             do {
                                 try modelContext.save()
                             } catch {
-                                print("ProjectPhotosGrid: ⚠️ Error saving to model context: \(error.localizedDescription)")
                             }
                         }
                         
@@ -689,7 +678,6 @@ extension ProjectPhotosGrid {
                     }
                 } else {
                     await MainActor.run {
-                        print("ProjectPhotosGrid: ❌ Failed to save image with ImageFileManager")
                         processingImage = false
                     }
                 }

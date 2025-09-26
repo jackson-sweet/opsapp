@@ -3,6 +3,26 @@
 ## Version 1.2.0 (In Development)
 *Target Release: August 2025*
 
+### Critical Stability Fixes (2025-09-20)
+- **SwiftData Model Invalidation Prevention**
+  - Fixed crashes caused by passing SwiftData models to background tasks
+  - Solution: Now pass only IDs to background operations, fetch fresh instances in context
+  - Files: `SyncManager.swift`, `DataController.swift`
+  - Impact: Prevents "object is invalidated" crashes during sync operations
+  
+- **Company Admin Detection Enhancement**
+  - Added `isCompanyAdmin` property to `User` model for proper admin role detection
+  - Fixed admin-only features not showing for company admins
+  - Files: `User.swift`, `DataController.swift`
+  - Impact: Ensures company admins have access to all administrative features
+  
+- **Complete Data Wipe on Logout**
+  - Implemented `performCompleteDataWipe()` with proper deletion order
+  - Ensures all SwiftData entities are removed in correct dependency order
+  - Added memory management safeguards during data cleanup
+  - Files: `DataController.swift`
+  - Impact: Prevents data contamination between user sessions and reduces memory usage
+
 ### Major Features
 - **CalendarEvent-Centric Architecture**
   - CalendarEvents now serve as single source of truth for all calendar display logic

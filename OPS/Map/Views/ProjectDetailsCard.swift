@@ -18,13 +18,11 @@ struct ProjectDetailsCard: View {
     @State private var errorMessage: String?
     
     var body: some View {
-        // let _ = print("🟡 ProjectDetailsCard: Rendering for project: \(project.title)")
         VStack(alignment: .leading, spacing: 0) {
             // Handle to drag and dismiss button
             HStack {
                 // Dismiss button
                 Button(action: {
-                    // print("🟡 Dismiss button tapped")
                     coordinator.showingProjectDetails = false
                 }) {
                     Image(systemName: "xmark.circle.fill")
@@ -49,7 +47,6 @@ struct ProjectDetailsCard: View {
             .padding(.vertical, 8)
             .contentShape(Rectangle())
             .onTapGesture {
-                // print("🟡 Drag handle tapped - dismissing card")
                 // Allow tapping the handle to dismiss
                 coordinator.showingProjectDetails = false
             }
@@ -126,33 +123,27 @@ struct ProjectDetailsCard: View {
                         .onTapGesture {
                             guard !isStarting else { return }
                             
-                            // print("🔵 START button tapped for project: \(project.title)")
                             isStarting = true
                             errorMessage = nil
                             
                             // Validate project has coordinates
                             guard project.coordinate != nil else {
-                                // print("❌ Project has no coordinates!")
                                 errorMessage = "Project location not available"
                                 isStarting = false
                                 return
                             }
                             
                             // Start the project
-                            // print("🔵 Calling onStartProject callback")
                             onStart(project)
                             
                             // Also start navigation
                             Task {
                                 do {
-                                    // print("🔵 Starting navigation...")
                                     try await coordinator.startNavigation()
-                                    // print("✅ Navigation started successfully")
                                     isStarting = false
                                 } catch {
                                     isStarting = false
                                     errorMessage = error.localizedDescription
-                                    // print("❌ Navigation error: \(error)")
                                 }
                             }
                         }
@@ -173,7 +164,6 @@ struct ProjectDetailsCard: View {
                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
                     )
                     .onTapGesture { 
-                        // print("🔵 DETAILS button tapped for project: \(project.title)")
                         showFullDetails = true 
                     }
                     
@@ -208,7 +198,6 @@ struct ProjectDetailsCard: View {
         }
         .onTapGesture {
             // Catch any taps on the card itself (not buttons)
-            // print("🟡 ProjectDetailsCard: Card background tapped")
         }
     }
     

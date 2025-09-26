@@ -446,7 +446,6 @@ struct AddTaskTypeSheet: View {
             try modelContext.save()
             dismiss()
         } catch {
-            print("Error saving task type: \(error)")
         }
     }
 }

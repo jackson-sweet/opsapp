@@ -16,7 +16,6 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of task type DTOs
     func fetchCompanyTaskTypes(companyId: String) async throws -> [TaskTypeDTO] {
-        print("🔵 APIService: Fetching task types for company \(companyId)")
         
         // Note: TaskType doesn't have a company field in Bubble
         // We'll need to fetch all task types and filter client-side
@@ -45,7 +44,6 @@ extension APIService {
     func fetchTaskTypesByIds(ids: [String]) async throws -> [TaskTypeDTO] {
         guard !ids.isEmpty else { return [] }
         
-        print("🔵 APIService: Fetching \(ids.count) specific task types")
         
         // Create constraint for fetching specific IDs
         let constraints = [
@@ -69,7 +67,6 @@ extension APIService {
     /// - Parameter taskType: The task type DTO to create
     /// - Returns: The created task type DTO with server-assigned ID
     func createTaskType(_ taskType: TaskTypeDTO) async throws -> TaskTypeDTO {
-        print("🔵 APIService: Creating new task type '\(taskType.display)'")
         
         // Prepare task type data for creation
         var taskTypeData: [String: Any] = [
@@ -90,7 +87,6 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Task type created successfully with ID: \(response.response.id)")
         return response.response
     }
     
@@ -103,7 +99,6 @@ extension APIService {
     ///   - color: New color (optional)
     ///   - icon: New icon (optional)
     func updateTaskType(id: String, display: String? = nil, color: String? = nil, icon: String? = nil) async throws {
-        print("🔵 APIService: Updating task type \(id)")
         
         var updateData: [String: Any] = [:]
         
@@ -118,7 +113,6 @@ extension APIService {
         // Note: Icon field doesn't exist in Bubble TaskType
         
         guard !updateData.isEmpty else {
-            print("⚠️ No fields to update")
             return
         }
         
@@ -131,7 +125,6 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Task type updated successfully")
     }
     
     // MARK: - TaskType Deletion
@@ -139,7 +132,6 @@ extension APIService {
     /// Delete a task type (only if not default and not in use)
     /// - Parameter id: The task type ID to delete
     func deleteTaskType(id: String) async throws {
-        print("🔵 APIService: Deleting task type \(id)")
         
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.taskType)/\(id)",
@@ -148,6 +140,5 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Task type deleted successfully")
     }
 }

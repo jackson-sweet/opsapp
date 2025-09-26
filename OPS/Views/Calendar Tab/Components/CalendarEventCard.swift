@@ -92,42 +92,47 @@ struct CalendarEventCard: View {
                 .frame(width: 4)
             
             // Content area with badges overlaid
-            ZStack {
-                // Main content
-                VStack(alignment: .leading, spacing: 6) {
-                    // Show project name as the main title
-                    if let project = associatedProject {
-                        Text(project.title)
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .lineLimit(1)
-                            .textCase(.uppercase)
-                        
-                        // For task events, show task name as subtitle
-                        if event.type == .task, let task = event.task {
-                            Text(task.displayTitle)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+            ZStack(alignment: .topLeading) {
+                // Main content - fills available space
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        // Show project name as the main title
+                        if let project = associatedProject {
+                            Text(project.title)
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .lineLimit(1)
-                        } else {
-                            // For project events, show client name as subtitle
-                            Text(project.effectiveClientName)
+                                .textCase(.uppercase)
+                            
+                            // For task events, show task name as subtitle
+                            if event.type == .task, let task = event.task {
+                                Text(task.displayTitle)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .lineLimit(1)
+                            } else {
+                                // For project events, show client name as subtitle
+                                Text(project.effectiveClientName)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .lineLimit(1)
+                            }
+                            
+                            // Formatted address (street number, street name, municipality)
+                            Text(formattedAddress)
                                 .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .lineLimit(1)
                         }
-                        
-                        // Formatted address (street number, street name, municipality)
-                        Text(formattedAddress)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .lineLimit(1)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // Invisible spacer to reserve space for badges
+                    Color.clear
+                        .frame(width: 80) // Reserve space for badges
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 16)
-                .padding(.trailing, 80) // Add padding to prevent text from being cut off by badges
                 
                 // Task type or "PROJECT" badge in top right corner
                 VStack {

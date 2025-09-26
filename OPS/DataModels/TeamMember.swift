@@ -58,9 +58,7 @@ final class TeamMember {
         
         // Debug: Log phone data
         if let phone = dto.phone, !phone.isEmpty {
-            print("📱 TeamMember.fromUserDTO: Found phone number for \(dto.nameFirst ?? "") \(dto.nameLast ?? ""): \(phone)")
         } else {
-            print("📱 TeamMember.fromUserDTO: No phone number for \(dto.nameFirst ?? "") \(dto.nameLast ?? "")")
         }
         
         return TeamMember(

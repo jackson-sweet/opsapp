@@ -22,23 +22,6 @@ struct ProjectTeamView: View {
             // Use refreshedProject if available, otherwise use original project
             let activeProject = refreshedProject ?? project
             
-            // See all button in top right if there are more than 3 members
-            if activeProject.teamMembers.count > 3 {
-                HStack {
-                    Spacer()
-                    
-                    Button(action: {
-                        // Show full team member list
-                        showingTeamMemberDetails = true
-                        selectedTeamMember = nil
-                    }) {
-                        Text("See All")
-                            .font(OPSStyle.Typography.smallButton)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-            }
-            
             // Show team member info or loading state
             if !teamsRefreshed && activeProject.getTeamMemberIds().count > 0 && activeProject.teamMembers.isEmpty {
                 // Loading state - team members are loading
@@ -59,10 +42,8 @@ struct ProjectTeamView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                     .padding(.vertical, 8)
             } else {
-                // Show only first 3 team members with avatars for compact view
-                let visibleMembers = activeProject.teamMembers.prefix(3)
-                
-                ForEach(Array(visibleMembers), id: \.id) { member in
+                // Show ALL team members - no limit
+                ForEach(activeProject.teamMembers, id: \.id) { member in
                     HStack(spacing: 12) {
                         // Avatar - using unified UserAvatar component
                         UserAvatar(user: member, size: 40)
@@ -88,11 +69,6 @@ struct ProjectTeamView: View {
                     .contentShape(Rectangle())
                     .padding(.vertical, 6)
                     .onTapGesture {
-                        print("🔍 ProjectTeamView: Tapped on team member")
-                        print("   - Name: \(member.fullName)")
-                        print("   - Email: \(member.email ?? "nil")")
-                        print("   - Phone: \(member.phone ?? "nil")")
-                        print("   - Role: \(member.role.displayName)")
                         selectedTeamMember = member
                         showingTeamMemberDetails = true
                     }
@@ -101,14 +77,6 @@ struct ProjectTeamView: View {
                         selectedTeamMember = member
                         showingTeamMemberDetails = true
                     }
-                }
-                
-                // Show the count of additional members if any
-                if activeProject.teamMembers.count > 3 {
-                    Text("+ \(activeProject.teamMembers.count - 3) more team members...")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.top, 4)
                 }
             }
         }
@@ -152,11 +120,6 @@ struct ProjectTeamView: View {
                             if freshProject.teamMembers.isEmpty {
                             } else {
                                 for (index, member) in freshProject.teamMembers.enumerated() {
-                                print("  Member \(index + 1):")
-                                print("    - Name: \(member.fullName)")
-                                print("    - Email: \(member.email ?? "nil")")
-                                print("    - Phone: \(member.phone ?? "nil")")
-                                print("    - ID: \(member.id)")
                             }
                             
                             }
@@ -164,7 +127,6 @@ struct ProjectTeamView: View {
                             // Update the refreshed project to trigger UI refresh
                             refreshedProject = freshProject
                         } else {
-                            print("⚠️ Failed to retrieve fresh project from DataController")
                         }
                         
                         // Update state to refresh the view

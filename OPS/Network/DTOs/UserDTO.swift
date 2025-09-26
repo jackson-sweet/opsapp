@@ -20,6 +20,7 @@ struct UserDTO: Codable {
     let devPermission: Bool?
     let hasCompletedAppOnboarding: Bool?
     let authentication: Authentication?
+    let stripeCustomerId: String?
     
     // Authentication information
     struct Authentication: Codable {
@@ -52,21 +53,24 @@ struct UserDTO: Codable {
         case userColor = "User Color" // The user's unique color in HEX.
         case devPermission = "Dev Permission" // Bool indicating if user has dev permission for testing features.
         case hasCompletedAppOnboarding = "hasCompletedAppOnboarding" // Bool indicating if user has completed app onboarding.
+        case stripeCustomerId = "stripeCustomerId" // User's Stripe customer ID
     }
     
     /// Convert DTO to SwiftData model
-    func toModel() -> User {
-        // Extract the role from Bubble's user type and employee type
+    /// - Parameter companyAdminIds: Optional array of admin user IDs from the company. If provided, 
+    ///   takes precedence over userType for determining admin role.
+    func toModel(companyAdminIds: [String]? = nil) -> User {
+        // Extract the role from company admin status first, then user type and employee type
         let role: UserRole
         
-        // Check if user is an Admin based on User Type
-        if userType == BubbleFields.UserType.admin {
+        // FIRST: Check if user ID is in company.adminIds array → set to UserRole.admin
+        if let adminIds = companyAdminIds, adminIds.contains(id) {
             role = .admin
         } else if let employeeTypeString = employeeType {
-            // Otherwise use Employee Type
+            // If NOT in company.adminIds, then check employeeType field
             role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
         } else {
-            // Default to field crew if no role specified
+            // If employeeType is empty/nil, default to Field Crew
             role = .fieldCrew
         }
         
@@ -99,6 +103,9 @@ struct UserDTO: Codable {
         user.userColor = userColor
         user.devPermission = devPermission ?? false
         user.hasCompletedAppOnboarding = hasCompletedAppOnboarding ?? false
+        
+        // Handle Stripe customer ID
+        user.stripeCustomerId = stripeCustomerId
         
         // Handle phone number if available
         if let phoneNumber = phone {

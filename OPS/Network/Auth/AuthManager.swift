@@ -66,7 +66,6 @@ class AuthManager {
                 return try await authenticate()
             } catch {
                 // If authentication fails, fall back to API token
-                print("Authentication failed, falling back to API token: \(error.localizedDescription)")
                 return AppConfiguration.bubbleAPIToken
             }
         }
@@ -117,7 +116,6 @@ class AuthManager {
             
             // Debug response
             if let responseString = String(data: data, encoding: .utf8) {
-                print("🔵 Google Login Response: \(responseString)")
             }
             
             // Check HTTP status
@@ -169,14 +167,11 @@ class AuthManager {
                 
                 return authResponse.response.token
             } catch {
-                print("Failed to decode login response: \(error.localizedDescription)")
-                print("Decoding error details: \(error)")
                 if let responseString = String(data: data, encoding: .utf8) {
                 }
                 throw AuthError.decodingFailed
             }
         } catch {
-            print("Login error details: \(error)")
             throw error
         }
     }
@@ -217,10 +212,6 @@ class AuthManager {
                 throw AuthError.invalidURL
             }
             
-            print("🔵 Apple Sign-In Request:")
-            print("   URL: \(fullURLString)")
-            print("   User Identifier: \(userIdentifier)")
-            print("   Email: \(email ?? "not provided")")
             
             // Create request
             var request = URLRequest(url: url)
@@ -251,12 +242,10 @@ class AuthManager {
             
             // Log response details
             if let httpResponse = response as? HTTPURLResponse {
-                print("🔶 API RESPONSE: Status \(httpResponse.statusCode)")
             }
             
             // Debug: Print raw response
             if let responseString = String(data: data, encoding: .utf8) {
-                print("🔵 Apple Login Response: \(responseString)")
             }
             
             // Parse response
@@ -278,40 +267,27 @@ class AuthManager {
                 
                 // Check status
                 guard loginResponse.status == "success" else {
-                    print("🔴 Apple login failed: Status not success")
                     throw AuthError.invalidCredentials
                 }
                 
                 // Parse the response - we only expect user data, no company
                 if let userDTO = loginResponse.response?.user {
-                    print("🟢 Successfully parsed Apple login response")
-                    print("   User ID: \(userDTO.id)")
-                    print("   Has completed onboarding: \(userDTO.hasCompletedAppOnboarding)")
                     
                     return AppleLoginResult(user: userDTO)
                 } else {
-                    print("🔴 No user data in Apple login response")
                     throw AuthError.invalidResponse
                 }
                 
             } catch DecodingError.keyNotFound(let key, let context) {
-                print("🔴 Decoding error - missing key: \(key.stringValue)")
-                print("   Context: \(context.debugDescription)")
                 throw AuthError.decodingFailed
             } catch DecodingError.typeMismatch(let type, let context) {
-                print("🔴 Decoding error - type mismatch: \(type)")
-                print("   Context: \(context.debugDescription)")
                 throw AuthError.decodingFailed
             } catch DecodingError.valueNotFound(let type, let context) {
-                print("🔴 Decoding error - value not found: \(type)")
-                print("   Context: \(context.debugDescription)")
                 throw AuthError.decodingFailed
             } catch {
-                print("🔴 Unexpected decoding error: \(error)")
                 throw error
             }
         } catch {
-            print("🔴 Apple login error: \(error)")
             throw error
         }
     }
@@ -364,7 +340,6 @@ class AuthManager {
             
             // Debug response
             if let responseString = String(data: data, encoding: .utf8) {
-                print("🔵 Google Login Response: \(responseString)")
             }
             
             // Check HTTP status
@@ -402,11 +377,6 @@ class AuthManager {
                 if let loginResponse = try? decoder.decode(GoogleLoginResponse.self, from: data),
                    let userData = loginResponse.response?.user {
                     
-                    print("🟢 Successfully parsed Google login wrapped response")
-                    print("   User ID: \(userData.id)")
-                    print("   User Email: \(userData.email ?? "none")")
-                    print("   Company ID: \(userData.company ?? "none")")
-                    print("   Has Company in response: \(loginResponse.response?.company != nil)")
                     
                     // Store user info
                     self.userId = userData.id
@@ -431,11 +401,6 @@ class AuthManager {
                 }
                 
                 if let directResponse = try? decoder.decode(DirectGoogleLoginResponse.self, from: data) {
-                    print("🟢 Successfully parsed Google login direct response")
-                    print("   User ID: \(directResponse.user.id)")
-                    print("   User Email: \(directResponse.user.email ?? "none")")
-                    print("   Company ID: \(directResponse.user.company ?? "none")")
-                    print("   Has Company object: \(directResponse.company != nil)")
                     
                     // Store user info
                     self.userId = directResponse.user.id
@@ -449,19 +414,14 @@ class AuthManager {
                 }
                 
                 // If we can't decode, throw an error
-                print("🔴 Failed to parse Google login response with either format")
                 throw AuthError.decodingFailed
                 
             } catch {
-                print("🔴 Failed to decode Google login response: \(error.localizedDescription)")
-                print("Decoding error details: \(error)")
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("🔵 Raw response that failed to parse: \(responseString)")
                 }
                 throw AuthError.decodingFailed
             }
         } catch {
-            print("Google login error details: \(error)")
             throw error
         }
     }
@@ -514,7 +474,6 @@ class AuthManager {
             
             return true
         } catch {
-            print("Password reset request error: \(error.localizedDescription)")
             throw error
         }
     }
@@ -612,7 +571,6 @@ class AuthManager {
                     return AppConfiguration.bubbleAPIToken
                 }
             } catch {
-                print("Failed to decode login response: \(error)")
                 // Print the response for debugging
                 if let responseString = String(data: data, encoding: .utf8) {
                 }

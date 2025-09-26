@@ -528,7 +528,6 @@ enum OnboardingStep: Int, CaseIterable {
     
     // Get the next step in the flow
     func nextStep(userType: UserType? = nil) -> OnboardingStep? {
-        print("🔵 OnboardingStep.nextStep called - current: \(self), userType: \(userType?.rawValue ?? "nil")")
         switch self {
         case .welcome:
             return .userTypeSelection
@@ -562,11 +561,9 @@ enum OnboardingStep: Int, CaseIterable {
         case .companyCode:
             // For business owners, show team invites after company code
             if let userType = userType, userType == .company {
-                print("🔵 OnboardingStep.nextStep - companyCode -> teamInvites (user type is company)")
                 return .teamInvites
             }
             // For employees, go to permissions
-            print("🔵 OnboardingStep.nextStep - companyCode -> permissions (user type is \(userType?.rawValue ?? "nil"))")
             return .permissions
         case .teamInvites:
             return .permissions

@@ -292,26 +292,11 @@ struct APICallsDebugView: View {
             responseText = formatResponse(tasks, count: tasks.count, type: "Tasks")
             
             // Print to console for debugging
-            print("📊 API DEBUG: Fetched \(tasks.count) tasks")
             for (index, task) in tasks.enumerated() {
-                print("Task \(index + 1):")
-                print("  - ID: \(task.id)")
-                print("  - Status: \(task.status ?? "nil")")
-                print("  - Color: \(task.taskColor ?? "nil")")
-                print("  - Type: \(task.type ?? "nil")")
-                print("  - ProjectID: \(task.projectId ?? "nil")")
-                print("  - CompanyID: \(task.companyId ?? "nil")")
-                print("  - CalendarEventID: \(task.calendarEventId ?? "nil")")
-                print("  - ScheduledDate: \(task.scheduledDate ?? "nil")")
-                print("  - CompletionDate: \(task.completionDate ?? "nil")")
-                print("  - Notes: \(task.taskNotes ?? "nil")")
-                print("  - TaskIndex: \(task.taskIndex?.description ?? "nil")")
-                print("  - Team Members: \(task.teamMembers?.joined(separator: ", ") ?? "nil")")
             }
         } catch {
             responseStatus = "Error"
             responseText = "Error: \(error.localizedDescription)\n\nThis likely means the Task type doesn't exist in Bubble yet."
-            print("❌ API DEBUG: Error fetching tasks: \(error)")
         }
         
         isLoading = false
@@ -384,18 +369,11 @@ struct APICallsDebugView: View {
             responseText = formatResponse(taskTypes, count: taskTypes.count, type: "Task Types")
             
             // Print to console for debugging
-            print("📊 API DEBUG: Fetched \(taskTypes.count) task types")
             for (index, taskType) in taskTypes.enumerated() {
-                print("TaskType \(index + 1):")
-                print("  - ID: \(taskType.id)")
-                print("  - Display: \(taskType.display)")
-                print("  - Color: \(taskType.color)")
-                print("  - IsDefault: \(taskType.isDefault?.description ?? "nil")")
             }
         } catch {
             responseStatus = "Error"
             responseText = "Error: \(error.localizedDescription)"
-            print("❌ API DEBUG: Error fetching task types: \(error)")
         }
         
         isLoading = false
@@ -449,25 +427,11 @@ struct APICallsDebugView: View {
             responseText = formatResponse(events, count: events.count, type: "Calendar Events")
             
             // Print to console for debugging
-            print("📊 API DEBUG: Fetched \(events.count) calendar events")
             for (index, event) in events.enumerated() {
-                print("CalendarEvent \(index + 1):")
-                print("  - ID: \(event.id)")
-                print("  - Title: \(event.title ?? "nil")")
-                print("  - ProjectId: \(event.projectId ?? "nil")")
-                print("  - CompanyId: \(event.companyId ?? "nil")")
-                print("  - StartDate: \(event.startDate ?? "nil")")
-                print("  - EndDate: \(event.endDate ?? "nil")")
-                print("  - Duration: \(event.duration?.description ?? "nil")")
-                print("  - Color: \(event.color ?? "nil")")
-                print("  - Type: \(event.type ?? "nil")")
-                print("  - TaskId: \(event.taskId ?? "nil")")
-                print("  - Team Members: \(event.teamMembers?.joined(separator: ", ") ?? "nil")")
             }
         } catch {
             responseStatus = "Error"
             responseText = "Error: \(error.localizedDescription)\n\nThis likely means the CalendarEvent type doesn't exist in Bubble yet."
-            print("❌ API DEBUG: Error fetching calendar events: \(error)")
         }
         
         isLoading = false
@@ -568,7 +532,6 @@ struct APICallsDebugView: View {
     // MARK: - Helper Functions
     
     private func clearLocalTaskData() {
-        print("🗑️ API DEBUG: Clearing local task data...")
         
         guard let modelContext = dataController.modelContext else {
             responseText = "Error: No model context available"
@@ -582,21 +545,18 @@ struct APICallsDebugView: View {
             for task in tasks {
                 modelContext.delete(task)
             }
-            print("  - Deleted \(tasks.count) tasks")
             
             // Clear Calendar Events
             let events = try modelContext.fetch(FetchDescriptor<CalendarEvent>())
             for event in events {
                 modelContext.delete(event)
             }
-            print("  - Deleted \(events.count) calendar events")
             
             // Clear Task Types
             let taskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
             for taskType in taskTypes {
                 modelContext.delete(taskType)
             }
-            print("  - Deleted \(taskTypes.count) task types")
             
             // Save changes
             try modelContext.save()
@@ -604,11 +564,9 @@ struct APICallsDebugView: View {
             responseText = "Successfully cleared all local task data:\n- \(tasks.count) tasks\n- \(events.count) calendar events\n- \(taskTypes.count) task types"
             responseStatus = "Cleared"
             
-            print("✅ API DEBUG: Local task data cleared successfully")
         } catch {
             responseText = "Error clearing data: \(error.localizedDescription)"
             responseStatus = "Error"
-            print("❌ API DEBUG: Error clearing local data: \(error)")
         }
     }
     

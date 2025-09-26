@@ -44,14 +44,14 @@ struct CalendarDaySelector: View {
                         )
                         .frame(maxWidth: .infinity)
                     }
+                    
                 }
-                .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .padding(.horizontal, 6)
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .offset(x: dragOffset)
             }
-            .padding(.horizontal, 16)
             .clipped() // Prevent content from going outside safe area
             .gesture(
                 DragGesture()

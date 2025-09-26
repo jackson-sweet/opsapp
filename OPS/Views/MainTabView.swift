@@ -142,7 +142,6 @@ struct MainTabView: View {
                         // Set the active project before setting showProjectDetails
                         appState.isViewingDetailsOnly = true
                         appState.activeProjectID = project.id
-                        appState.activeProject = project
                         
                         // The important part - we set the flag AFTER setting the project
                         appState.showProjectDetails = true

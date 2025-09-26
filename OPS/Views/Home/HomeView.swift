@@ -75,13 +75,14 @@ struct HomeView: View {
         // Listen for task navigation start
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartTaskNavigation"))) { notification in
             if let userInfo = notification.userInfo,
-               let task = userInfo["task"] as? ProjectTask,
-               let project = userInfo["project"] as? Project {
+               let taskId = userInfo["taskId"] as? String,
+               let projectId = userInfo["projectId"] as? String,
+               let project = dataController.getProject(id: projectId),
+               let task = project.tasks.first(where: { $0.id == taskId }) {
                 
                 // Start routing to the project location (tasks use project location)
                 if let coordinate = project.coordinate,
                    let userLocation = locationManager.userLocation {
-                    print("🗺️ Starting navigation to task: \(task.taskType?.display ?? "Task")")
                     inProgressManager.startRouting(to: coordinate, from: userLocation)
                 }
                 
@@ -195,10 +196,10 @@ struct HomeView: View {
             stopRouteRefreshTimer()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartProjectFromMap"))) { notification in
-            if let project = notification.userInfo?["project"] as? Project {
-                print("🟢 HomeView: Received StartProjectFromMap for: \(project.title)")
+            if let projectId = notification.userInfo?["projectId"] as? String,
+               let project = dataController.getProject(id: projectId) {
                 // Find and select the event for this project
-                if let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == project.id }) {
+                if let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == projectId }) {
                     selectedEventIndex = index
                     // Start the project
                     startProject(project)
@@ -255,7 +256,6 @@ struct HomeView: View {
     }
     
     private func startProject(_ project: Project) {
-        print("🟢 HomeView: startProject called for: \(project.title)")
         
         // Enter project mode
         appState.enterProjectMode(projectID: project.id)
@@ -291,7 +291,6 @@ struct HomeView: View {
                     }
                 } catch {
                     // If API call fails, fall back to local update via SyncManager
-                    print("HomeView: ⚠️ API call failed, using SyncManager as fallback: \(error.localizedDescription)")
                     dataController.syncManager.updateProjectStatus(
                         projectId: project.id,
                         status: .inProgress,
@@ -313,12 +312,9 @@ struct HomeView: View {
         
         // Start routing if we have coordinates and permissions
         if let coordinate = project.coordinate {
-            print("🟢 HomeView: Project has coordinates, checking location permissions...")
-            print("🟢 HomeView: Location authorization status: \(locationManager.authorizationStatus)")
             
             switch locationManager.authorizationStatus {
             case .authorizedWhenInUse, .authorizedAlways:
-                print("🟢 HomeView: Location authorized, starting routing...")
                 
                 // Post notification to start navigation in the new map
                 NotificationCenter.default.post(
@@ -333,18 +329,15 @@ struct HomeView: View {
                 startRouteRefreshTimer()
                 
             case .notDetermined:
-                print("⚠️ HomeView: Location permission not determined")
                 break
                 
             case .denied, .restricted:
-                print("⚠️ HomeView: Location permission denied or restricted")
                 break
                 
             @unknown default:
                 break
             }
         } else {
-            print("⚠️ HomeView: Project has no coordinates")
         }
     }
     

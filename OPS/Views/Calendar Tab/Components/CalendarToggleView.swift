@@ -32,7 +32,7 @@ struct CalendarToggleView: View {
                     (CalendarViewModel.CalendarViewMode.month, "Month")
                 ]
             )
-            .frame(width: 200)
+            //.frame(width: 200)
             // Remove explicit height to let SegmentedControl use its natural height
             
             Spacer()
@@ -44,7 +44,7 @@ struct CalendarToggleView: View {
                 Text(periodString)
                     .font(.bodyBold) // Match the font used in SegmentedControl
                     .foregroundColor(.black)
-                    .frame(width: 150) // Fixed width to accommodate "September" and week ranges
+                    .frame(width: 100) // Fixed width to accommodate "September" and week ranges
                     .padding(.vertical, 12) // Match the padding in SegmentedControl
                     .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -68,7 +68,6 @@ struct CalendarToggleView: View {
                 .presentationCompactAdaptation(.popover)
             }
         }
-        .padding(.horizontal)
         .padding(.vertical, 8)
     }
     

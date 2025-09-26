@@ -35,7 +35,6 @@ class ImageFileManager {
             do {
                 try fileManager.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
             } catch {
-                print("ImageFileManager: Error creating directory: \(error.localizedDescription)")
             }
         }
     }
@@ -90,7 +89,6 @@ class ImageFileManager {
             try data.write(to: fileURL)
             return true
         } catch {
-            print("ImageFileManager: Error saving image: \(error.localizedDescription)")
             return false
         }
     }
@@ -109,7 +107,6 @@ class ImageFileManager {
                     let data = try Data(contentsOf: fileURL)
                     return UIImage(data: data)
                 } catch {
-                    print("ImageFileManager: Error loading remote image from file: \(error.localizedDescription)")
                 }
             }
             
@@ -136,7 +133,6 @@ class ImageFileManager {
                 let data = try Data(contentsOf: fileURL)
                 return UIImage(data: data)
             } catch {
-                print("ImageFileManager: Error loading image: \(error.localizedDescription)")
                 return nil
             }
         }
@@ -172,7 +168,6 @@ class ImageFileManager {
                 try FileManager.default.removeItem(at: fileURL)
                 return true
             } catch {
-                print("ImageFileManager: Error deleting image: \(error.localizedDescription)")
                 return false
             }
         }
@@ -191,7 +186,6 @@ class ImageFileManager {
             do {
                 return try Data(contentsOf: fileURL)
             } catch {
-                print("ImageFileManager: Error loading image data: \(error.localizedDescription)")
                 return nil
             }
         }
@@ -258,7 +252,6 @@ class ImageFileManager {
             }
         }
         
-        print("ImageFileManager: Migration complete - \(migratedCount) images migrated, \(failedCount) failed")
     }
     
     /// Clear all cached remote images (useful for fixing cache issues)
@@ -276,7 +269,6 @@ class ImageFileManager {
             }
             
         } catch {
-            print("ImageFileManager: Error clearing remote cache: \(error.localizedDescription)")
         }
     }
 }

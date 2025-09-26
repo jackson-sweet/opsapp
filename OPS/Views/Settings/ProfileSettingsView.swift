@@ -540,7 +540,6 @@ struct ProfileSettingsView: View {
                 if success {
                     passwordResetSuccess = true
                 } else {
-                    print("ProfileSettingsView: Password reset request failed: \(errorMessage ?? "Unknown error")")
                     passwordResetError = errorMessage ?? "Failed to send reset link. Please try again."
                 }
             }
@@ -590,7 +589,6 @@ struct ProfileSettingsView: View {
                     
                     if await loadImage(from: profileImageURL) != nil {
                     } else {
-                        print("ProfileSettingsView: Failed to load image from URL")
                     }
                 }
             } else {
@@ -623,7 +621,6 @@ struct ProfileSettingsView: View {
                 return image
             }
         } catch {
-            print("Failed to load image: \(error.localizedDescription)")
         }
         
         return nil
@@ -654,7 +651,6 @@ struct ProfileSettingsView: View {
                 } else {
                     saveErrorMessage = "Failed to save profile changes. Please try again."
                     showSaveError = true
-                    print("ProfileSettingsView: Failed to save profile changes")
                 }
             }
         }

@@ -16,13 +16,29 @@ class CalendarViewModel: ObservableObject {
     @Published var selectedDate: Date = Date()
     @Published var viewMode: CalendarViewMode = .week
     @Published var visibleMonth: Date = Date() // Track visible month in month grid view
-    @Published var projectsForSelectedDate: [Project] = []  // Keep for project detail data
-    @Published var calendarEventsForSelectedDate: [CalendarEvent] = []  // Primary display data
+    @Published var projectIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
+    @Published var calendarEventIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
+    
+    // Computed properties to get fresh models
+    var projectsForSelectedDate: [Project] {
+        guard let dataController = dataController else { return [] }
+        return projectIdsForSelectedDate.compactMap { dataController.getProject(id: $0) }
+    }
+    
+    var calendarEventsForSelectedDate: [CalendarEvent] {
+        guard let dataController = dataController else { return [] }
+        return calendarEventIdsForSelectedDate.compactMap { dataController.getCalendarEvent(id: $0) }
+    }
     @Published var isLoading = false
     @Published var userInitiatedDateSelection = false
     @Published var shouldShowDaySheet = false // New published property for explicit control
-    @Published var selectedTeamMemberId: String? = nil
+    @Published var selectedTeamMemberId: String? = nil  // Single selection for backward compatibility
     @Published var availableTeamMembers: [TeamMember] = []
+    
+    // New comprehensive filter properties
+    @Published var selectedTeamMemberIds: Set<String> = []
+    @Published var selectedTaskTypeIds: Set<String> = []
+    @Published var selectedClientIds: Set<String> = []
     
     // MARK: - Private Properties
     var dataController: DataController?
@@ -184,19 +200,8 @@ class CalendarViewModel: ObservableObject {
         if let dataController = dataController {
             var events = dataController.getCalendarEventsForCurrentUser(for: date)
             
-            // Apply team member filter if selected
-            if let selectedMemberId = selectedTeamMemberId {
-                events = events.filter { event in
-                    let hasInEvent = event.getTeamMemberIds().contains(selectedMemberId) ||
-                    event.teamMembers.contains(where: { $0.id == selectedMemberId })
-                    let hasInTask = event.task?.getTeamMemberIds().contains(selectedMemberId) == true ||
-                    event.task?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
-                    let hasInProject = event.project?.getTeamMemberIds().contains(selectedMemberId) == true ||
-                    event.project?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
-                    
-                    return hasInEvent || hasInTask || hasInProject
-                }
-            }
+            // Apply comprehensive filters
+            events = applyEventFilters(to: events)
             
             // Filter by shouldDisplay
             return events.filter { $0.shouldDisplay }
@@ -222,28 +227,8 @@ class CalendarViewModel: ObservableObject {
             // Get all calendar events active on this date
             var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
             
-            // Apply team member filter if selected
-            if let selectedMemberId = selectedTeamMemberId {
-                // print("🔍 FILTER: Applying team member filter for \(selectedMemberId) to \(calendarEvents.count) events on \(dateKey)")
-                
-                let preFilterCount = calendarEvents.count
-                calendarEvents = calendarEvents.filter { event in
-                    let hasInEvent = event.getTeamMemberIds().contains(selectedMemberId) ||
-                    event.teamMembers.contains(where: { $0.id == selectedMemberId })
-                    
-                    // Also check task team members if this is a task event
-                    let hasInTask = event.task?.getTeamMemberIds().contains(selectedMemberId) == true ||
-                    event.task?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
-                    
-                    let matches = hasInEvent || hasInTask
-                    if !matches {
-                        // print("🔍 FILTER: Event '\(event.title)' filtered out")
-                    }
-                    return matches
-                }
-                
-                // print("🔍 FILTER: Filtered from \(preFilterCount) to \(calendarEvents.count) events")
-            }
+            // Apply comprehensive filters
+            calendarEvents = applyEventFilters(to: calendarEvents)
             
             let count = calendarEvents.count
             
@@ -265,11 +250,115 @@ class CalendarViewModel: ObservableObject {
         projectCountCache = [:]
     }
     
-    // Update selected team member filter
+    // Update selected team member filter (legacy single selection)
     func updateTeamMemberFilter(_ memberId: String?) {
         selectedTeamMemberId = memberId
+        // Update the new set-based filter
+        if let memberId = memberId {
+            selectedTeamMemberIds = [memberId]
+        } else {
+            selectedTeamMemberIds = []
+        }
         clearProjectCountCache()
         loadProjectsForDate(selectedDate)
+    }
+    
+    // Apply comprehensive filters
+    func applyFilters(teamMemberIds: Set<String>, taskTypeIds: Set<String>, clientIds: Set<String>) {
+        selectedTeamMemberIds = teamMemberIds
+        selectedTaskTypeIds = taskTypeIds
+        selectedClientIds = clientIds
+        
+        // Update legacy single selection for compatibility
+        selectedTeamMemberId = teamMemberIds.first
+        
+        clearProjectCountCache()
+        loadProjectsForDate(selectedDate)
+    }
+    
+    // Check if any filters are active
+    var hasActiveFilters: Bool {
+        !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty
+    }
+    
+    // Count of active filters
+    var activeFilterCount: Int {
+        var count = 0
+        if !selectedTeamMemberIds.isEmpty { count += 1 }
+        if !selectedTaskTypeIds.isEmpty { count += 1 }
+        if !selectedClientIds.isEmpty { count += 1 }
+        return count
+    }
+    
+    // Helper method to apply all filters to calendar events
+    private func applyEventFilters(to events: [CalendarEvent]) -> [CalendarEvent] {
+        var filteredEvents = events
+        
+        // Apply team member filter
+        if !selectedTeamMemberIds.isEmpty {
+            filteredEvents = filteredEvents.filter { event in
+                // Check event team members
+                let hasInEvent = event.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } ||
+                    event.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) }
+                
+                // Check task team members
+                let hasInTask = event.task?.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } == true ||
+                    event.task?.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) } == true
+                
+                // Check project team members
+                let hasInProject = event.project?.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } == true ||
+                    event.project?.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) } == true
+                
+                return hasInEvent || hasInTask || hasInProject
+            }
+        }
+        
+        // Apply task type filter
+        if !selectedTaskTypeIds.isEmpty {
+            filteredEvents = filteredEvents.filter { event in
+                // Check if event's task has a matching task type
+                if let taskTypeId = event.task?.taskTypeId {
+                    return selectedTaskTypeIds.contains(taskTypeId)
+                }
+                // For project events without tasks, include them if no task filter is applied
+                // or exclude them if a specific task type filter is active
+                return false
+            }
+        }
+        
+        // Apply client filter
+        if !selectedClientIds.isEmpty {
+            filteredEvents = filteredEvents.filter { event in
+                // Check if event's project has a matching client
+                if let clientId = event.project?.clientId {
+                    return selectedClientIds.contains(clientId)
+                }
+                return false
+            }
+        }
+        
+        return filteredEvents
+    }
+    
+    // Get filter summary text
+    var filterSummaryText: String {
+        var components: [String] = []
+        
+        if !selectedTeamMemberIds.isEmpty {
+            components.append("\(selectedTeamMemberIds.count) team member\(selectedTeamMemberIds.count == 1 ? "" : "s")")
+        }
+        if !selectedTaskTypeIds.isEmpty {
+            components.append("\(selectedTaskTypeIds.count) task type\(selectedTaskTypeIds.count == 1 ? "" : "s")")
+        }
+        if !selectedClientIds.isEmpty {
+            components.append("\(selectedClientIds.count) client\(selectedClientIds.count == 1 ? "" : "s")")
+        }
+        
+        if components.isEmpty {
+            return "No Filters"
+        } else {
+            return components.joined(separator: ", ")
+        }
     }
     
     
@@ -277,13 +366,9 @@ class CalendarViewModel: ObservableObject {
     // MARK: - Private Methods
     func loadProjectsForDate(_ date: Date) {
         guard let dataController = dataController else {
-            print("❌ loadProjectsForDate: No dataController")
             return
         }
         
-        print("\n🔵 === CALENDAR VIEW MODEL: Loading for date: \(date) ===")
-        print("🔵 Current User: \(dataController.currentUser?.fullName ?? "None") (Role: \(dataController.currentUser?.role.rawValue ?? "None"))")
-        print("🔵 Team Member Filter: \(selectedTeamMemberId ?? "None")")
         isLoading = true
         
         // First run the diagnostic if we're looking for Aug 17 or Aug 19
@@ -296,115 +381,59 @@ class CalendarViewModel: ObservableObject {
         
         // Get calendar events for the selected date
         var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
-        print("📆 CalendarViewModel received \(calendarEvents.count) calendar events from DataController")
         
         // Commented out verbose event logging for performance
         /*
          // Debug the events we got with detailed shouldDisplay analysis
          for (index, event) in calendarEvents.enumerated() {
-         print("\n  📅 EVENT \(index + 1): \(event.title)")
-         print("    📊 DATA: Type: \(event.type.rawValue)")
-         print("    📊 DATA: Project ID: \(event.projectId)")
-         print("    📊 DATA: Task ID: \(event.taskId ?? "nil")")
-         print("    📊 DATA: Has Project: \(event.project != nil)")
-         print("    📊 DATA: Has Task: \(event.task != nil)")
-         print("    📊 DATA: Start Date: \(event.startDate)")
-         print("    📊 DATA: End Date: \(event.endDate)")
-         print("    📊 DATA: Company ID: \(event.companyId)")
          }
          */
         
-        // Apply team member filter if selected
-        if let selectedMemberId = selectedTeamMemberId {
-            print("👤 Applying team member filter for: \(selectedMemberId)")
-            
-            // Debug each event's team member data before filtering
-            for (index, event) in calendarEvents.enumerated() {
-                let eventTeamMemberIds = event.getTeamMemberIds()
-                let eventTeamMemberObjects = event.teamMembers.map { $0.id }
-                print("  Event \(index + 1) '\(event.title)':")
-                print("    📊 DATA: Team member IDs in string: \(eventTeamMemberIds)")
-                print("    📊 DATA: Team member object IDs: \(eventTeamMemberObjects)")
-                print("    📊 DATA: Contains selected member ID: \(eventTeamMemberIds.contains(selectedMemberId) || eventTeamMemberObjects.contains(selectedMemberId))")
-                
-                // If this is a task event, also check the task team members
-                if let task = event.task {
-                    let taskTeamMemberIds = task.getTeamMemberIds()
-                    let taskTeamMemberObjects = task.teamMembers.map { $0.id }
-                    print("    📋 TASK: Team member IDs in string: \(taskTeamMemberIds)")
-                    print("    📋 TASK: Team member object IDs: \(taskTeamMemberObjects)")
-                    print("    📋 TASK: Contains selected member ID: \(taskTeamMemberIds.contains(selectedMemberId) || taskTeamMemberObjects.contains(selectedMemberId))")
-                }
-            }
-            
-            calendarEvents = calendarEvents.filter { event in
-                let hasInEvent = event.getTeamMemberIds().contains(selectedMemberId) ||
-                event.teamMembers.contains(where: { $0.id == selectedMemberId })
-                
-                // Also check task team members if this is a task event
-                let hasInTask = event.task?.getTeamMemberIds().contains(selectedMemberId) == true ||
-                event.task?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
-                
-                return hasInEvent || hasInTask
-            }
-            print("📆 After filter: \(calendarEvents.count) calendar events")
-        }
+        // Apply comprehensive filters
+        calendarEvents = applyEventFilters(to: calendarEvents)
         
         // Get unique projects from the calendar events
         let projectIds = Set(calendarEvents.compactMap { $0.projectId })
-        print("📊 Unique project IDs from events: \(projectIds)")
         
         var projects: [Project] = []
         for projectId in projectIds {
             if let project = dataController.getProject(id: projectId) {
                 projects.append(project)
-                print("  ✅ Found project: \(project.title)")
             } else {
-                print("  ❌ Could not find project with ID: \(projectId)")
             }
         }
-        print("📊 Loaded \(projects.count) unique projects from calendar events")
         
-        // Force UI update
+        // Force UI update - Store IDs instead of models to avoid invalidation
         DispatchQueue.main.async { [weak self] in
-            // print("🔄 Updating UI with \(calendarEvents.count) events and \(projects.count) projects")
             self?.objectWillChange.send()
-            self?.calendarEventsForSelectedDate = calendarEvents
-            self?.projectsForSelectedDate = projects
+            self?.calendarEventIdsForSelectedDate = calendarEvents.map { $0.id }
+            self?.projectIdsForSelectedDate = projects.map { $0.id }
             self?.isLoading = false
         }
         
         // Update the cache for this date (based on calendar events now)
         let dateKey = formatDateKey(date)
         projectCountCache[dateKey] = calendarEvents.count
-        print("💾 Updated cache for \(dateKey): \(calendarEvents.count) calendar events")
     }
     
     // Refresh projects from the data source
     @MainActor
     func refreshProjects() async {
         guard let dataController = dataController else {
-            print("❌ Refresh failed: No dataController")
             return
         }
         
-        print("🔄 Starting project refresh...")
-        print("📅 Current selected date: \(selectedDate)")
         
         // Clear the cache to force fresh data
         projectCountCache.removeAll()
-        print("🗑️ Cleared project cache")
         
         // Sync with Bubble backend to get latest project data
-        print("🌐 Fetching latest data from Bubble...")
         await dataController.refreshProjectsFromBackend()
         
         // Reload projects for the current selected date with fresh data
         loadProjectsForDate(selectedDate)
         
-        print("✅ Refresh complete. Found \(projectsForSelectedDate.count) projects")
         for project in projectsForSelectedDate {
-            print("  📋 Project: \(project.title) - Status: \(project.status.displayName)")
         }
     }
     

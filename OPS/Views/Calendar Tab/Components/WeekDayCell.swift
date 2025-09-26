@@ -96,7 +96,7 @@ struct WeekDayCell: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 60)
-            .background(cellBackground)
+            //.background(cellBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 // White border for selected day

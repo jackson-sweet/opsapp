@@ -108,7 +108,6 @@ struct MonthGridView: View {
                                     .frame(maxWidth: .infinity)
                             }
                         }
-                        .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(OPSStyle.Colors.background)
                         
@@ -121,12 +120,11 @@ struct MonthGridView: View {
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                         .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 16)
-                                        .padding(.top, 8)
+                                                                        .padding(.top, 8)
                                         .id(monthStart) // For ScrollViewReader
                                     
                                     // Days grid for this month
-                                    LazyVGrid(columns: columns, spacing: 4) {
+                                    LazyVGrid(columns: columns, spacing: 2) {
                                         ForEach(datesForMonth(monthStart), id: \.timeIntervalSince1970) { date in
                                             CalendarDayCell(
                                                 date: date,
@@ -137,8 +135,7 @@ struct MonthGridView: View {
                                             )
                                         }
                                     }
-                                    .padding(.horizontal, 16)
-                                    .background(
+                                                .background(
                                         GeometryReader { monthGeometry in
                                             Color.clear
                                                 .preference(
@@ -198,6 +195,28 @@ struct MonthGridView: View {
                                 // Use shorter delay just to reset scroll flag
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                                     isScrolling = false
+                                }
+                            }
+                        }
+                    }
+                    .onChange(of: viewModel.visibleMonth) { oldMonth, newMonth in
+                        // Scroll when visibleMonth changes (from month picker)
+                        let calendar = Calendar.current
+                        // Only scroll if the month actually changed
+                        if !calendar.isDate(oldMonth, equalTo: newMonth, toGranularity: .month) {
+                            if let targetMonth = monthForDate(newMonth) {
+                                // Check if we're not already at this month position
+                                let needsScroll = !isScrolling
+                                
+                                if needsScroll {
+                                    isScrolling = true
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        proxy.scrollTo(targetMonth, anchor: .top)
+                                    }
+                                    // Use shorter delay just to reset scroll flag
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                        isScrolling = false
+                                    }
                                 }
                             }
                         }
@@ -328,7 +347,23 @@ struct CalendarDayCell: View {
     let monthOfCell: Date
     
     @State private var eventCount: Int = 0
+    @State private var events: [CalendarEvent] = []
     @State private var hasLoadedEvents = false
+    
+    // Computed counts for new vs ongoing
+    private var newEventCount: Int {
+        events.filter { event in
+            Calendar.current.isDate(event.startDate ?? Date(), inSameDayAs: date)
+        }.count
+    }
+    
+    private var ongoingEventCount: Int {
+        events.filter { event in
+            let startDate = event.startDate ?? Date()
+            let endDate = event.endDate ?? Date()
+            return startDate < date && date <= endDate
+        }.count
+    }
     
     private var dateKey: String {
         let formatter = DateFormatter()
@@ -377,28 +412,54 @@ struct CalendarDayCell: View {
             }
         }) {
             ZStack {
-                // Day number
-                Text(DateHelper.dayString(from: date))
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(textColor)
+                // Day number centered with event indicators
+                VStack(spacing: 4) {
+                    // Day number centered
+                    Text(DateHelper.dayString(from: date))
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(textColor)
+                        .frame(maxWidth: .infinity)
+                    
+                }
                 
-                // Event indicator (only if events exist)
-                if eventCount > 0 {
-                    VStack {
+                // Event count indicators in horizontal stack
+                if (newEventCount > 0 || ongoingEventCount > 0) && isInCellMonth {
+                    HStack(spacing: 4) {
+                        
                         Spacer()
-                        HStack {
-                            Spacer()
-                            Circle()
-                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.8))
-                                .frame(width: 6, height: 6)
-                                .padding(.bottom, 2)
-                                .padding(.trailing, 2)
+                        
+                        VStack(spacing: 4) {
+                            // New event count (white)
+                            if newEventCount > 0 {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.white.opacity(0.8))
+                                        .frame(width: 14, height: 14)
+                                    
+                                    Text("\(newEventCount)")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(Color.black)
+                                }
+                            }
+                            
+                            // Ongoing event count (gray)
+                            if ongoingEventCount > 0 {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                        .frame(width: 12, height: 12)
+                                    
+                                    Text("\(ongoingEventCount)")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(Color.white.opacity(0.9))
+                                }
+                            }
                         }
                     }
-                }
+                    }
             }
-            .frame(height: 44)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .aspectRatio(1, contentMode: .fit)
             .background(cellBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -429,14 +490,20 @@ struct CalendarDayCell: View {
         if let cachedCount = eventCache[dateKey] {
             eventCount = cachedCount
             hasLoadedEvents = true
+            // Still need to load full events for new/ongoing counts
+            Task { @MainActor in
+                let eventsForDate = viewModel.calendarEvents(for: date)
+                events = eventsForDate
+            }
             return
         }
         
         // Load from data source
         Task { @MainActor in
-            let count = viewModel.projectCount(for: date)
-            eventCount = count
-            eventCache[dateKey] = count
+            let eventsForDate = viewModel.calendarEvents(for: date)
+            events = eventsForDate
+            eventCount = eventsForDate.count
+            eventCache[dateKey] = eventCount
             hasLoadedEvents = true
         }
     }

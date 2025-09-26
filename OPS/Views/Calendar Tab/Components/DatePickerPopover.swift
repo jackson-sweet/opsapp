@@ -162,7 +162,7 @@ struct DatePickerPopover: View {
                 let calendar = Calendar.current
                 let year = calendar.component(.year, from: displayDate)
                 Text("\(year)")
-                    .font(OPSStyle.Typography.bodyBold)
+                    .font(OPSStyle.Typography.cardSubtitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Spacer()
@@ -193,11 +193,11 @@ struct DatePickerPopover: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .fill(isSelected ? .white : Color.clear)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(isSelected ? .white : OPSStyle.Colors.secondaryText, lineWidth: 1)
                             )
                     }
@@ -210,17 +210,17 @@ struct DatePickerPopover: View {
                 onSelectDate(today)
                 dismiss()
             } label: {
-                Text("Today")
+                Text("RETURN TO CURRENT DATE")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .padding(.vertical, 10)
                     .padding(.horizontal, 30)
                     .background(Color.clear)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                     )
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .padding(.top, 8)
         }

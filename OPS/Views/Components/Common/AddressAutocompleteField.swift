@@ -182,6 +182,5 @@ class SearchCompleterDelegate: NSObject, ObservableObject, MKLocalSearchComplete
     }
     
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        print("Address search error: \(error.localizedDescription)")
     }
 }

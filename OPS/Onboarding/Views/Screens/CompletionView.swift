@@ -84,7 +84,6 @@ struct CompletionView: View {
                 
                 // Company data successfully fetched
             } catch {
-                print("CompletionView: Error fetching company data: \(error.localizedDescription)")
                 // Don't block the user from continuing even if fetch fails
                 // They can still proceed and data will be fetched on next app launch
             }
@@ -96,7 +95,6 @@ struct CompletionView: View {
         guard !projectsSynced,
               let companyId = UserDefaults.standard.string(forKey: "company_id"),
               !companyId.isEmpty else {
-            print("CompletionView: Cannot sync projects - no company ID found")
             return
         }
         
@@ -106,18 +104,14 @@ struct CompletionView: View {
             do {
                 // Trigger a sync to fetch projects from the server
                 if let syncManager = dataController.syncManager {
-                    print("CompletionView: Triggering project sync for company: \(companyId)")
                     await syncManager.triggerBackgroundSync()
                     
                     // Wait a bit for sync to complete
                     try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                     
-                    print("CompletionView: Project sync triggered successfully")
                 } else {
-                    print("CompletionView: Sync manager not available yet")
                 }
             } catch {
-                print("CompletionView: Error syncing projects: \(error.localizedDescription)")
                 // Don't block the user from continuing
             }
         }

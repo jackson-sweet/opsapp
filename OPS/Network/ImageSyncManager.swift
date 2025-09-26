@@ -132,7 +132,6 @@ class ImageSyncManager: ObservableObject {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    print("❌ Bubble API Error: Invalid response type")
                     // S3 upload succeeded but Bubble failed - clean up S3
                     for result in s3Results {
                         try? await s3Service.deleteImageFromS3(url: result.url, companyId: companyId, projectId: project.id)
@@ -145,9 +144,7 @@ class ImageSyncManager: ObservableObject {
                 }
                 
                 guard (200...299).contains(httpResponse.statusCode) else {
-                    print("❌ Bubble API failed with status \(httpResponse.statusCode)")
                     if let errorBody = String(data: data, encoding: .utf8) {
-                        print("❌ Error Response: \(errorBody)")
                     }
                     // S3 upload succeeded but Bubble failed - clean up S3
                     for result in s3Results {
@@ -175,16 +172,12 @@ class ImageSyncManager: ObservableObject {
                     do {
                         try modelContext.save()
                     } catch {
-                        print("❌ Error saving to model context: \(error)")
                     }
                 } else {
                 }
                 
                 
             } catch {
-                print("❌ ImageSyncManager: Error uploading images: \(error)")
-                print("  - Error type: \(type(of: error))")
-                print("  - Will fall back to offline storage")
                 
                 // For offline mode, save locally and queue for later
                 for (index, image) in images.enumerated() {
@@ -215,7 +208,6 @@ class ImageSyncManager: ObservableObject {
         let compressionQuality = getAdaptiveCompressionQuality(for: resizedImage)
         
         guard let imageData = resizedImage.jpegData(compressionQuality: compressionQuality) else {
-            print("ImageSyncManager: Failed to compress image")
             return nil
         }
         
@@ -282,7 +274,6 @@ class ImageSyncManager: ObservableObject {
                 
                 return true
             } catch {
-                print("ImageSyncManager: Error deleting from S3: \(error.localizedDescription)")
                 return false
             }
         }
@@ -420,7 +411,6 @@ class ImageSyncManager: ObservableObject {
             
             
         } catch {
-            print("ImageSyncManager: Error syncing images: \(error.localizedDescription)")
         }
     }
     
@@ -435,7 +425,6 @@ class ImageSyncManager: ObservableObject {
             let projects = try modelContext.fetch(descriptor)
             return projects.first
         } catch {
-            print("ImageSyncManager: Error fetching project: \(error.localizedDescription)")
             return nil
         }
     }

@@ -11,7 +11,7 @@ import CoreLocation
 /// Project model - central entity for field crew
 @Model
 final class Project: Identifiable {
-    var id: String
+    var id: String    
     var title: String
     var clientName: String // Keep for backward compatibility and quick access
     var clientEmail: String? // Keep for backward compatibility
@@ -27,7 +27,7 @@ final class Project: Identifiable {
     var companyId: String
     var clientId: String? // Store the client's Bubble ID
     var allDay: Bool
-    var eventType: CalendarEventType? // Optional to handle migration - defaults to .project when nil
+    var eventType: CalendarEventType? // Optional to handle migration - defaults to .pr   oject when nil
     
     // Relationship to Client object
     @Relationship(deleteRule: .nullify)
@@ -37,7 +37,7 @@ final class Project: Identifiable {
     var teamMemberIdsString: String = ""
     var projectDescription: String?
     
-    // Store project images as comma-separated string
+    // Store project images as comma-s eparated string
     var projectImagesString: String = ""
     
     // Store unsynced images (those captured while offline) as comma-separated string

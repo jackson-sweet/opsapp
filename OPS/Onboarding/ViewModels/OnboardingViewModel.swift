@@ -27,7 +27,6 @@ class OnboardingViewModel: ObservableObject {
             // Also ensure user type is loaded if not already set
             if selectedUserType == nil {
                 selectedUserType = Self.loadStoredUserType()
-                print("🔵 Loaded user type in dataController didSet: \(selectedUserType?.rawValue ?? "nil")")
             }
         }
     }
@@ -40,7 +39,6 @@ class OnboardingViewModel: ObservableObject {
         didSet {
             if let userType = selectedUserType {
                 // Don't save to UserDefaults immediately - wait until after signup
-                print("🔵 OnboardingViewModel: User type changed to \(userType.rawValue)")
             }
         }
     }
@@ -117,11 +115,6 @@ class OnboardingViewModel: ObservableObject {
             self.password = UserDefaults.standard.string(forKey: "user_password") ?? ""
             self.userId = UserDefaults.standard.string(forKey: "user_id") ?? ""
             
-            print("\n🔍 OnboardingViewModel init (shouldLoadExistingData = true):")
-            print("  - Loaded userId: '\(self.userId)'")
-            print("  - userId is empty: \(self.userId.isEmpty)")
-            print("  - email: \(self.email)")
-            print("  - isAuthenticated: \(isAuthenticated)")
             
             // Mark as signed up if we have a valid user ID OR if authenticated
             self.isSignedUp = (!self.userId.isEmpty && !self.email.isEmpty) || isAuthenticated
@@ -146,9 +139,7 @@ class OnboardingViewModel: ObservableObject {
             // User type is already loaded at the beginning of init, so we don't need to load it again here
             // Just log the current state
             if let userType = selectedUserType {
-                print("✅ OnboardingViewModel: User type is already set to: \(userType.rawValue)")
             } else {
-                print("⚠️ OnboardingViewModel: No user type set after loading from storage")
             }
             
             // Load the last saved step if available
@@ -204,7 +195,6 @@ class OnboardingViewModel: ObservableObject {
         if let userType = user.userType {
             // Only override if we don't already have the correct type
             if self.selectedUserType != userType {
-                print("🔵 OnboardingViewModel: Updating user type from User object: \(userType.rawValue)")
                 self.selectedUserType = userType
             }
         }
@@ -253,7 +243,6 @@ class OnboardingViewModel: ObservableObject {
     
     // Populate data from an existing company
     func populateFromCompany(_ company: Company) {
-        print("🔵 OnboardingViewModel: Populating from company: \(company.name)")
         
         // Populate company basic info
         if !company.name.isEmpty {
@@ -526,9 +515,6 @@ class OnboardingViewModel: ObservableObject {
                         UserDefaults.standard.set(userIdValue, forKey: "user_id")
                         
                         // Print detailed success information for debugging
-                        print("\n✅ SIGNUP SUCCESS - userId stored:")
-                        print("  - userId instance variable: '\(userId)'")
-                        print("  - UserDefaults user_id: '\(UserDefaults.standard.string(forKey: "user_id") ?? "nil")'")
                         
                         // Store email and password in UserDefaults for later (crucial for API calls)
                         UserDefaults.standard.set(email, forKey: "user_email")
@@ -537,7 +523,6 @@ class OnboardingViewModel: ObservableObject {
                         // Save user type now that signup is successful
                         if let userType = selectedUserType {
                             UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
-                            print("🔵 Saved user type to UserDefaults after successful signup: \(userType.rawValue)")
                         }
                         
                         // Log that we've saved these important credentials
@@ -553,7 +538,6 @@ class OnboardingViewModel: ObservableObject {
                         // API reported success but didn't provide a user ID - this is a failure
                         isSignedUp = false
                         errorMessage = "Account creation failed. Server did not return a user ID."
-                        print("ERROR: API reported success but no user_id was returned")
                     }
                 } else {
                     isSignedUp = false
@@ -562,7 +546,6 @@ class OnboardingViewModel: ObservableObject {
                     } else {
                         errorMessage = "Account creation failed. Please try a different email."
                     }
-                    print("API returned error message: \(errorMessage)")
                 }
             }
             
@@ -577,10 +560,8 @@ class OnboardingViewModel: ObservableObject {
                 case .serverError(let message):
                     // This will display the "message" field from 400 errors
                     errorMessage = message
-                    print("Server error during signup: \(message)")
                 default:
                     errorMessage = signupError.localizedDescription
-                    print("Signup error: \(signupError)")
                 }
             }
             return false
@@ -588,7 +569,6 @@ class OnboardingViewModel: ObservableObject {
             await MainActor.run {
                 isSignedUp = false
                 errorMessage = "Network error: \(error.localizedDescription)"
-                print("Network error during signup: \(error)")
             }
             return false
         }
@@ -630,12 +610,10 @@ class OnboardingViewModel: ObservableObject {
         guard !currentUserId.isEmpty else {
             await MainActor.run {
                 errorMessage = "User ID is missing. Please restart the onboarding process."
-                print("🔴 ERROR: No user ID available for join_company")
             }
             return false
         }
         
-        print("🔵 Using user ID for join_company: \(currentUserId)")
         
         // Update the userId property if we loaded it from UserDefaults
         if userId.isEmpty && !currentUserId.isEmpty {
@@ -751,7 +729,6 @@ class OnboardingViewModel: ObservableObject {
                     } else {
                         errorMessage = "Failed to join company. Please check your company code and try again."
                     }
-                    print("Company join failed: \(errorMessage)")
                 }
             }
             
@@ -766,13 +743,10 @@ class OnboardingViewModel: ObservableObject {
                 case .serverError(let message):
                     // This will display the "message" field from 400 errors
                     errorMessage = message
-                    print("Server error during company join: \(message)")
                 case .companyJoinFailed:
                     errorMessage = "Failed to join company. Please check your company code."
-                    print("Company join failed error")
                 default:
                     errorMessage = joinError.localizedDescription
-                    print("Company join error: \(joinError)")
                 }
             }
             return false
@@ -780,7 +754,6 @@ class OnboardingViewModel: ObservableObject {
             await MainActor.run {
                 isCompanyJoined = false
                 errorMessage = "Network error: \(error.localizedDescription)"
-                print("Network error during company join: \(error)")
             }
             return false
         }
@@ -867,30 +840,24 @@ class OnboardingViewModel: ObservableObject {
         // First check the selected_user_type key
         if let savedType = UserDefaults.standard.string(forKey: "selected_user_type"),
            let userType = UserType(rawValue: savedType) {
-            print("🔵 OnboardingViewModel: Loaded user type from 'selected_user_type': \(userType.rawValue)")
             return userType
         }
         
         // Check the alternate user_type key
         if let savedType = UserDefaults.standard.string(forKey: "user_type"),
            let userType = UserType(rawValue: savedType) {
-            print("🔵 OnboardingViewModel: Loaded user type from 'user_type': \(userType.rawValue)")
             return userType
         }
         
         // Check the raw API response
         if let rawType = UserDefaults.standard.string(forKey: "user_type_raw") {
-            print("🟡 OnboardingViewModel: Found raw user type: \(rawType)")
             if rawType.lowercased() == "company" {
-                print("🟢 OnboardingViewModel: Loaded user type as company from raw value")
                 return .company
             } else if rawType.lowercased() == "employee" {
-                print("🟢 OnboardingViewModel: Loaded user type as employee from raw value")
                 return .employee
             }
         }
         
-        print("⚠️ OnboardingViewModel: No stored user type found")
         return nil
     }
     
@@ -948,8 +915,6 @@ class OnboardingViewModel: ObservableObject {
     
     // Move to the next step in the flow
     func moveToNextStep() {
-        print("🔵 moveToNextStep called from step: \(currentStep)")
-        print("🔵 selectedUserType: \(selectedUserType?.rawValue ?? "nil")")
         
         // Special handling for resuming onboarding or existing users
         let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
@@ -1063,25 +1028,20 @@ class OnboardingViewModel: ObservableObject {
         
         // Normal flow - get the next step
         if var nextStep = currentStep.nextStep(userType: selectedUserType) {
-            print("🔵 Next step determined: \(nextStep)")
-            print("🔵 Current step: \(currentStep), User type: \(selectedUserType?.rawValue ?? "nil")")
             
             // Special check: if the next step is company code but user already has a company, skip to permissions
             // Only apply this logic for employees, not company owners
             if nextStep == .companyCode && selectedUserType == .employee && isCompanyJoined {
-                print("🔵 Skipping company code for employee with company")
                 nextStep = .permissions
             }
             
             // Save the step to UserDefaults for potential resume later
             UserDefaults.standard.set(nextStep.rawValue, forKey: "last_onboarding_step_v2")
             
-            print("🔵 Moving to step: \(nextStep)")
             DispatchQueue.main.async {
                 self.currentStep = nextStep
             }
         } else {
-            print("⚠️ No next step available from \(currentStep) for user type \(selectedUserType?.rawValue ?? "nil")")
         }
     }
     
@@ -1172,12 +1132,6 @@ class OnboardingViewModel: ObservableObject {
             let existingCompanyId = UserDefaults.standard.string(forKey: "company_id")
             
             // DEBUG: Log what userId we're sending
-            print("\n🔍 OnboardingViewModel - updateCompany:")
-            print("  - userId from instance variable: '\(userId)'")
-            print("  - userId is empty: \(userId.isEmpty)")
-            print("  - firstName: \(firstName)")
-            print("  - lastName: \(lastName)")
-            print("  - existingCompanyId: \(existingCompanyId ?? "nil")")
             
             let response = try await onboardingService.updateCompany(
                 companyId: existingCompanyId,
@@ -1255,8 +1209,6 @@ class OnboardingViewModel: ObservableObject {
                         UserDefaults.standard.set(companyId, forKey: "company_code")
                     }
                 } else {
-                    print("ERROR: No company object in update_company response")
-                    print("ERROR: Unable to store company code - response.extractedCompany is nil")
                 }
             }
         } catch {
@@ -1321,7 +1273,6 @@ class OnboardingViewModel: ObservableObject {
                         }
                     }
                 } catch {
-                    print("Failed to update server with onboarding status: \(error)")
                     // Continue anyway - we don't want to block the user
                 }
             }
@@ -1339,7 +1290,6 @@ class OnboardingViewModel: ObservableObject {
     }
     
     func logoutAndReturnToLogin() {
-        print("🔵 OnboardingViewModel: User tapped sign out during onboarding")
         
         // Use DataController's logout method to properly clean everything
         if let dataController = dataController {

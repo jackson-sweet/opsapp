@@ -130,7 +130,6 @@ struct CompanyDetailsView: View {
                                         } catch {
                                             await MainActor.run {
                                                 // Error is already set in viewModel
-                                                print("Failed to create company: \(error)")
                                             }
                                         }
                                     }

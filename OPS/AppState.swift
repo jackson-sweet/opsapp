@@ -14,8 +14,7 @@ import SwiftData
 
 class AppState: ObservableObject {
     @Published var activeProjectID: String?
-    @Published var activeProject: Project?
-    @Published var activeTask: ProjectTask? // Track active task for task-based navigation
+    @Published var activeTaskID: String? // Store only task ID, not the model
     
     // New flag to differentiate between showing details and starting project
     @Published var isViewingDetailsOnly: Bool = false
@@ -43,43 +42,45 @@ class AppState: ObservableObject {
     
     // Function to set a project for viewing details
     func viewProjectDetails(_ project: Project) {
-        
+        viewProjectDetailsById(project.id)
+    }
+    
+    func viewProjectDetailsById(_ projectId: String) {
         // IMPORTANT: Make sure we're not already showing this project to avoid sheet flicker
-        if self.showProjectDetails && self.activeProject?.id == project.id {
+        if self.showProjectDetails && self.activeProjectID == projectId {
             return
         }
         
         // Step 1: Reset sheet state if needed to avoid transition conflicts
         if self.showProjectDetails {
             self.showProjectDetails = false
-            self.activeProject = nil
             
             // Use a delay before showing the new project to allow animation to complete
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                self.showProjectDetailsAfterReset(project)
+                self.showProjectDetailsAfterResetById(projectId)
             }
             return
         }
         
         // Normal case - no sheet is currently showing
-        self.showProjectDetailsAfterReset(project)
+        self.showProjectDetailsAfterResetById(projectId)
     }
     
     // Helper method to show project details after any needed reset
-    private func showProjectDetailsAfterReset(_ project: Project) {
+    private func showProjectDetailsAfterResetById(_ projectId: String) {
         
         // Check if we're already in project mode for this project
-        let wasInProjectMode = self.activeProjectID == project.id && !self.isViewingDetailsOnly
+        let wasInProjectMode = self.activeProjectID == projectId && !self.isViewingDetailsOnly
         
         // Check if we're in project mode for a different project
         let isInProjectModeForDifferentProject = self.activeProjectID != nil && 
-                                                 self.activeProjectID != project.id && 
+                                                 self.activeProjectID != projectId && 
                                                  !self.isViewingDetailsOnly
         
         // If we're in project mode for a different project, don't change activeProjectID
         if isInProjectModeForDifferentProject {
             // Just show the details without changing the active project
-            self.activeProject = project
+            self.activeProjectID = projectId
             self.showProjectDetails = true
             return
         }
@@ -89,9 +90,8 @@ class AppState: ObservableObject {
             self.isViewingDetailsOnly = true
         }
         
-        // Set active project ID and project object BEFORE showing the sheet
-        self.activeProjectID = project.id
-        self.activeProject = project
+        // Set active project ID BEFORE showing the sheet
+        self.activeProjectID = projectId
         
         // Use a very short delay to ensure UI updates properly
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -116,21 +116,25 @@ class AppState: ObservableObject {
     func setActiveProject(_ project: Project) {
         self.activeProjectID = project.id
         
-        // Only set activeProject (which triggers sheet) if showProjectDetails is true
+        // Only trigger sheet display if showProjectDetails is true
         if showProjectDetails {
-            self.activeProject = project
-        } else {
-            // Don't set activeProject, only set ID - prevents sheet from showing
-            self.activeProject = nil
+            self.showProjectDetails = true
         }
     }
     
     func exitProjectMode() {
         self.showProjectDetails = false // Reset the details flag
         self.isViewingDetailsOnly = false // Reset viewing details flag
-        self.activeProject = nil
         self.activeProjectID = nil
-        self.activeTask = nil // Clear active task
+        self.activeTaskID = nil // Clear active task ID
+    }
+    
+    // Reset all state on logout to prevent stale references
+    func resetForLogout() {
+        self.showProjectDetails = false
+        self.isViewingDetailsOnly = false
+        self.activeProjectID = nil
+        self.activeTaskID = nil
     }
     
     // Helper method to dismiss project details without exiting project mode
@@ -139,9 +143,6 @@ class AppState: ObservableObject {
         
         // Store the current active project ID if we're in project mode
         let currentActiveProjectID = self.isInProjectMode ? self.activeProjectID : nil
-        
-        // Clear the displayed project
-        self.activeProject = nil
         
         // If we were just viewing details and there's no active project mode, clear everything
         if isViewingDetailsOnly && currentActiveProjectID == nil {

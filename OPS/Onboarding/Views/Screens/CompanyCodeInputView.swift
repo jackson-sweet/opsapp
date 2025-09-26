@@ -253,11 +253,9 @@ struct CompanyCodeInputView: View {
         let userId = viewModel.userId.isEmpty ? UserDefaults.standard.string(forKey: "user_id") ?? "" : viewModel.userId
         guard !userId.isEmpty else {
             viewModel.errorMessage = "User ID is missing. Please restart the onboarding process."
-            print("🔴 ERROR: No user ID available in CompanyCodeInputView")
             return
         }
         
-        print("🔵 CompanyCodeInputView: User ID is available: \(userId)")
         
         // Set loading state
         viewModel.isLoading = true
@@ -285,7 +283,6 @@ struct CompanyCodeInputView: View {
                     }
                 } else {
                     // Error message is already set by the joinCompany method
-                    print("Company join failed: \(viewModel.errorMessage)")
                     
                     // Make sure error message is user-friendly
                     if viewModel.errorMessage.isEmpty {

@@ -82,7 +82,6 @@ class GoogleSignInManager: ObservableObject {
             let user = try await GIDSignIn.sharedInstance.restorePreviousSignIn()
             return user
         } catch {
-            print("No previous Google sign-in to restore")
             return nil
         }
     }

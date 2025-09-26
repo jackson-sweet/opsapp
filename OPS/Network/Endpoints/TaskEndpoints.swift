@@ -16,7 +16,6 @@ extension APIService {
     /// - Parameter projectId: The project ID
     /// - Returns: Array of task DTOs
     func fetchProjectTasks(projectId: String) async throws -> [TaskDTO] {
-        print("🔵 APIService: Fetching tasks for project \(projectId)")
         
         let constraints: [[String: Any]] = [
             [
@@ -37,8 +36,6 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of task DTOs
     func fetchCompanyTasks(companyId: String) async throws -> [TaskDTO] {
-        print("\n📋 ==== FETCHING TASKS ====")
-        print("🔵 APIService: Fetching all tasks for company \(companyId)")
         
         let constraints: [[String: Any]] = [
             [
@@ -54,7 +51,6 @@ extension APIService {
             sortField: BubbleFields.Task.taskIndex
         )
         
-        print("📋 Found \(tasks.count) tasks")
         
         // Group by status
         let scheduled = tasks.filter { $0.status == "Scheduled" }
@@ -62,16 +58,10 @@ extension APIService {
         let completed = tasks.filter { $0.status == "Completed" }
         let cancelled = tasks.filter { $0.status == "Cancelled" }
         
-        print("   - Scheduled: \(scheduled.count)")
-        print("   - In Progress: \(inProgress.count)")
-        print("   - Completed: \(completed.count)")
-        print("   - Cancelled: \(cancelled.count)")
         
         // Group by project
         let projectIds = Set(tasks.compactMap { $0.projectId })
-        print("   - Across \(projectIds.count) unique projects")
         
-        print("📋 ==== END TASKS ====\n")
         
         return tasks
     }
@@ -80,7 +70,6 @@ extension APIService {
     /// - Parameter userId: The user ID
     /// - Returns: Array of task DTOs
     func fetchUserTasks(userId: String) async throws -> [TaskDTO] {
-        print("🔵 APIService: Fetching tasks for user \(userId)")
         
         let constraints: [[String: Any]] = [
             [
@@ -114,7 +103,6 @@ extension APIService {
     ///   - id: The task ID
     ///   - status: The new status string
     func updateTaskStatus(id: String, status: String) async throws {
-        print("🔵 APIService: Updating task \(id) status to \(status)")
         
         let statusData = [BubbleFields.Task.status: status]
         let bodyData = try JSONSerialization.data(withJSONObject: statusData)
@@ -126,7 +114,6 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Task status updated successfully")
     }
     
     /// Update task notes
@@ -134,7 +121,6 @@ extension APIService {
     ///   - id: The task ID
     ///   - notes: The new notes text
     func updateTaskNotes(id: String, notes: String) async throws {
-        print("🔵 APIService: Updating task \(id) notes")
         
         let updateData = [BubbleFields.Task.taskNotes: notes]
         let bodyData = try JSONSerialization.data(withJSONObject: updateData)
@@ -146,7 +132,6 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Task notes updated successfully")
     }
     
     /// Update task team members
@@ -154,7 +139,6 @@ extension APIService {
     ///   - id: The task ID
     ///   - teamMemberIds: Array of user IDs assigned to the task
     func updateTaskTeamMembers(id: String, teamMemberIds: [String]) async throws {
-        print("🔵 APIService: Updating task \(id) team members")
         
         let updateData = [BubbleFields.Task.teamMembers: teamMemberIds]
         let bodyData = try JSONSerialization.data(withJSONObject: updateData)
@@ -166,7 +150,6 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Task team members updated successfully")
     }
     
     // MARK: - Task Creation
@@ -175,7 +158,6 @@ extension APIService {
     /// - Parameter task: The task DTO to create
     /// - Returns: The created task DTO with server-assigned ID
     func createTask(_ task: TaskDTO) async throws -> TaskDTO {
-        print("🔵 APIService: Creating new task")
         
         // Prepare task data for creation
         var taskData: [String: Any] = [:]
@@ -224,7 +206,6 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Task created successfully with ID: \(response.response.id)")
         return response.response
     }
     
@@ -233,7 +214,6 @@ extension APIService {
     /// Delete a task
     /// - Parameter id: The task ID to delete
     func deleteTask(id: String) async throws {
-        print("🔵 APIService: Deleting task \(id)")
         
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.task)/\(id)",
@@ -242,6 +222,5 @@ extension APIService {
             requiresAuth: false
         )
         
-        print("✅ Task deleted successfully")
     }
 }

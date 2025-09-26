@@ -69,7 +69,6 @@ struct CalendarHeaderView: View {
         .buttonStyle(PlainButtonStyle())
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .padding(.horizontal)
         .contentShape(Rectangle()) // Makes entire area tappable
     }
     

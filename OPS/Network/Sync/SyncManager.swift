@@ -134,7 +134,6 @@ class SyncManager {
             // Remove profile image upload handling - we'll only sync profile data now
             // We will rely on the API to fetch profile images instead of uploading them
         } catch {
-            print("SyncManager: Error syncing user: \(error.localizedDescription)")
         }
         
         syncInProgress = false
@@ -150,7 +149,6 @@ class SyncManager {
             let resizedImage = image.resized(to: targetSize)
             
             guard let imageData = resizedImage.jpegData(compressionQuality: 0.8) else {
-                print("❌ SyncManager: Failed to compress profile image")
                 return
             }
             
@@ -231,7 +229,6 @@ class SyncManager {
             
             // 13. Only proceed if we got a success response
             guard (200...299).contains(httpResponse.statusCode) else {
-                print("❌ SyncManager: Profile image upload FAILED (HTTP \(httpResponse.statusCode))")
                 return
             }
             
@@ -248,7 +245,6 @@ class SyncManager {
             
             // If there's a status field in the response and it's an error, log it
             if responseString.contains("\"status\":\"ERROR\"") || responseString.contains("\"statusCode\":400") {
-                print("❌ SyncManager: Error in response: \(responseString)")
             }
             
             // 15. Try ALL possible response formats that Bubble might use
@@ -262,7 +258,6 @@ class SyncManager {
                 if let body = json["body"] as? [String: Any] {
                     if let status = body["status"] as? String, 
                        let message = body["message"] as? String {
-                        print("❌ SyncManager: API Error - Status: \(status), Message: \(message)")
                     }
                 }
                 
@@ -321,7 +316,6 @@ class SyncManager {
             
             
         } catch {
-            print("❌ SyncManager: Error uploading profile image: \(error.localizedDescription)")
         }
     }
     
@@ -332,7 +326,6 @@ class SyncManager {
         do {
             // Compress image again
             guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-                print("❌ SyncManager: Failed to compress profile image in fallback")
                 return false
             }
             
@@ -426,11 +419,9 @@ class SyncManager {
                     return false
                 }
             } else {
-                print("❌ FALLBACK: Upload failed with status \(httpResponse.statusCode)")
                 return false
             }
         } catch {
-            print("❌ FALLBACK: Error during upload: \(error.localizedDescription)")
             return false
         }
     }
@@ -440,52 +431,41 @@ class SyncManager {
     func triggerBackgroundSync(forceProjectSync: Bool = false) {
         guard !syncInProgress, connectivityMonitor.isConnected else {
             if syncInProgress {
-                print("🟡 SyncManager: Sync already in progress, skipping")
             } else if !connectivityMonitor.isConnected {
-                print("🟡 SyncManager: No internet connection, skipping sync")
             }
             return
         }
         
-        print("🔵 SyncManager: Starting background sync (forceProjectSync: \(forceProjectSync))")
         syncInProgress = true
         syncStateSubject.send(true)
         
         Task {
             do {
+                // First sync company data to get latest subscription info
+                await syncCompanyData()
+                
                 // First sync users that need sync (always allowed)
-                print("🔵 SyncManager: Syncing pending user changes...")
                 let userSyncCount = await syncPendingUserChanges()
-                print("🔵 SyncManager: Synced \(userSyncCount) users")
                 
                 // Then sync high-priority project items (status changes) if auto-updates are enabled
                 var highPriorityCount = 0
                 if !preventAutoStatusUpdates {
-                    print("🔵 SyncManager: Syncing pending project status changes...")
                     highPriorityCount = await syncPendingProjectStatusChanges()
-                    print("🔵 SyncManager: Synced \(highPriorityCount) project status changes")
                 } else {
-                    print("🟡 SyncManager: Auto status updates disabled, skipping project status sync")
                 }
                 
                 // Finally, fetch remote data if we didn't exhaust our sync budget OR if forced
                 if forceProjectSync || (userSyncCount + highPriorityCount) < 10 {
-                    print("🔵 SyncManager: Fetching remote projects...")
                     try await syncProjects()
-                    print("🟢 SyncManager: Project sync completed")
                 } else {
-                    print("🟡 SyncManager: Sync budget exhausted, skipping project fetch")
                 }
                 
                 // Schedule notifications for future projects after sync
-                print("🔵 SyncManager: Scheduling project notifications...")
                 await NotificationManager.shared.scheduleNotificationsForAllProjects(using: modelContext)
                 
                 syncInProgress = false
                 syncStateSubject.send(false)
-                print("🟢 SyncManager: Background sync completed")
             } catch {
-                print("🔴 SyncManager: Background sync failed: \(error.localizedDescription)")
                 syncInProgress = false
                 syncStateSubject.send(false)
             }
@@ -513,7 +493,6 @@ class SyncManager {
             
             return successCount
         } catch {
-            print("SyncManager: Failed to fetch pending users: \(error.localizedDescription)")
             return 0
         }
     }
@@ -563,7 +542,6 @@ class SyncManager {
             
             return true
         } catch {
-            print("SyncManager: Failed to update project status locally: \(error.localizedDescription)")
             return false
         }
     }
@@ -607,7 +585,6 @@ class SyncManager {
                         }
                         
                     } catch {
-                        print("❌ SyncManager: Failed to sync project notes: \(error.localizedDescription)")
                         // Leave needsSync=true to retry later in background sync
                     }
                 }
@@ -616,7 +593,6 @@ class SyncManager {
             
             return true
         } catch {
-            print("❌ SyncManager: Failed to update project notes locally: \(error.localizedDescription)")
             return false
         }
     }
@@ -642,7 +618,6 @@ class SyncManager {
             
             return true
         } catch {
-            print("SyncManager: Failed to update user name locally: \(error.localizedDescription)")
             return false
         }
     }
@@ -667,7 +642,6 @@ class SyncManager {
             
             return true
         } catch {
-            print("SyncManager: Failed to update user phone locally: \(error.localizedDescription)")
             return false
         }
     }
@@ -678,7 +652,6 @@ class SyncManager {
         do {
             // Compress image for storage
             guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-                print("SyncManager: Failed to compress user profile image")
                 return false
             }
             
@@ -698,12 +671,184 @@ class SyncManager {
             
             return true
         } catch {
-            print("SyncManager: Failed to update user profile image locally: \(error.localizedDescription)")
             return false
         }
     }
     
     // MARK: - Private Sync Methods
+    
+    /// Sync company data from Bubble to get latest subscription info
+    private func syncCompanyData() async {
+        print("[SUBSCRIPTION] syncCompanyData: Starting company sync...")
+        
+        // Get the current user
+        let userDescriptor = FetchDescriptor<User>()
+        let users = (try? modelContext.fetch(userDescriptor)) ?? []
+        guard let user = users.first(where: { $0.id == UserDefaults.standard.string(forKey: "user_id") }),
+              let companyId = user.companyId else {
+            print("[SUBSCRIPTION] syncCompanyData: No user or companyId found")
+            return
+        }
+        
+        print("[SUBSCRIPTION] syncCompanyData: Fetching company \(companyId) from API...")
+        
+        // Fetch company data from Bubble
+        do {
+            print("[SUBSCRIPTION] syncCompanyData: Calling API to fetch company...")
+            let companyDTO = try await apiService.fetchCompany(id: companyId)
+            print("[SUBSCRIPTION] Company sync complete - Status: \(companyDTO.subscriptionStatus ?? "nil"), Plan: \(companyDTO.subscriptionPlan ?? "nil"), Seats: \(companyDTO.seatedEmployees?.count ?? 0)/\(companyDTO.maxSeats ?? 0)")
+            
+            // Check if company exists locally
+            let descriptor = FetchDescriptor<Company>()
+            let allCompanies = (try? modelContext.fetch(descriptor)) ?? []
+            let existingCompany = allCompanies.first { $0.id == companyId }
+            
+            if let company = existingCompany {
+                // Update existing company
+                print("[SUBSCRIPTION] syncCompanyData: Updating existing company")
+                updateCompanyFromDTO(company, companyDTO)
+            } else {
+                // First time sync - create the company
+                print("[SUBSCRIPTION] syncCompanyData: First sync - creating company locally")
+                let newCompany = companyDTO.toModel()
+                modelContext.insert(newCompany)
+            }
+            
+            try modelContext.save()
+            
+            // Post notification that company was synced
+            NotificationCenter.default.post(name: .companySynced, object: nil)
+            
+        } catch let decodingError as DecodingError {
+            print("[SUBSCRIPTION] syncCompanyData: Decoding error fetching company")
+            switch decodingError {
+            case .keyNotFound(let key, let context):
+                print("[SUBSCRIPTION] Missing key: \(key.stringValue)")
+                print("[SUBSCRIPTION] Context: \(context.debugDescription)")
+            case .typeMismatch(let type, let context):
+                print("[SUBSCRIPTION] Type mismatch: expected \(type)")
+                print("[SUBSCRIPTION] Context: \(context.debugDescription)")
+                print("[SUBSCRIPTION] Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
+            case .valueNotFound(let type, let context):
+                print("[SUBSCRIPTION] Value not found: \(type)")
+                print("[SUBSCRIPTION] Context: \(context.debugDescription)")
+            case .dataCorrupted(let context):
+                print("[SUBSCRIPTION] Data corrupted: \(context.debugDescription)")
+            @unknown default:
+                print("[SUBSCRIPTION] Unknown decoding error")
+            }
+            // Don't force logout on decoding errors - this could be a temporary issue
+            print("[SUBSCRIPTION] Company fetch failed due to decoding error - will retry on next sync")
+        } catch {
+            print("[SUBSCRIPTION] syncCompanyData: Failed to fetch company: \(error)")
+            // Check if it's a 404 (company doesn't exist) vs other errors
+            if let apiError = error as? APIError, case .httpError(let statusCode) = apiError, statusCode == 404 {
+                // Company truly doesn't exist - this is critical
+                await handleNoCompanyError()
+            } else {
+                // Other errors (network, etc) - don't force logout
+                print("[SUBSCRIPTION] Company fetch failed due to network/API error - will retry on next sync")
+            }
+        }
+    }
+    
+    /// Update existing company with data from DTO
+    private func updateCompanyFromDTO(_ company: Company, _ companyDTO: CompanyDTO) {
+        // Convert DTO to model to get all the processed values
+        let updatedCompany = companyDTO.toModel()
+            
+            // Copy ALL fields from updated company to existing company
+            // Basic info
+            company.name = updatedCompany.name
+            company.externalId = updatedCompany.externalId
+            company.companyDescription = updatedCompany.companyDescription
+            company.address = updatedCompany.address
+            company.latitude = updatedCompany.latitude
+            company.longitude = updatedCompany.longitude
+            company.phone = updatedCompany.phone
+            company.email = updatedCompany.email
+            company.website = updatedCompany.website
+            company.logoURL = updatedCompany.logoURL
+            company.openHour = updatedCompany.openHour
+            company.closeHour = updatedCompany.closeHour
+            
+            // Team and admin management
+            company.projectIdsString = updatedCompany.projectIdsString
+            company.teamIdsString = updatedCompany.teamIdsString
+            company.adminIdsString = updatedCompany.adminIdsString  // CRITICAL - was missing!
+            
+            // Company details
+            company.industryString = updatedCompany.industryString
+            company.companySize = updatedCompany.companySize
+            company.companyAge = updatedCompany.companyAge
+            
+            // Subscription fields
+            company.subscriptionStatus = updatedCompany.subscriptionStatus
+            company.subscriptionPlan = updatedCompany.subscriptionPlan
+            company.subscriptionEnd = updatedCompany.subscriptionEnd
+            company.subscriptionPeriod = updatedCompany.subscriptionPeriod
+            company.maxSeats = updatedCompany.maxSeats
+            company.seatedEmployeeIds = updatedCompany.seatedEmployeeIds  // CRITICAL - seated employees list
+            company.seatGraceStartDate = updatedCompany.seatGraceStartDate
+            // seatGraceEndDate and reactivatedSubscription don't exist in Company model
+            company.subscriptionIdsJson = updatedCompany.subscriptionIdsJson
+            
+            // Trial fields
+            company.trialStartDate = updatedCompany.trialStartDate
+            company.trialEndDate = updatedCompany.trialEndDate
+            
+            // Add-ons
+            company.hasPrioritySupport = updatedCompany.hasPrioritySupport
+            company.dataSetupPurchased = updatedCompany.dataSetupPurchased
+            company.dataSetupCompleted = updatedCompany.dataSetupCompleted
+            company.dataSetupScheduledDate = updatedCompany.dataSetupScheduledDate
+            // prioritySupportPurchaseDate doesn't exist in Company model
+            
+            // Stripe
+            company.stripeCustomerId = updatedCompany.stripeCustomerId
+            
+            // Update sync timestamp
+            company.lastSyncedAt = Date()
+    }
+    
+    /// Handle critical error when no company is found
+    @MainActor
+    private func handleNoCompanyError() async {
+        print("[SUBSCRIPTION] WARNING: No company found for user")
+        
+        // Check if user has completed onboarding - if not, this is expected
+        let userDescriptor = FetchDescriptor<User>()
+        let users = (try? modelContext.fetch(userDescriptor)) ?? []
+        if let user = users.first(where: { $0.id == UserDefaults.standard.string(forKey: "user_id") }) {
+            // If user has no company ID, this might be normal during onboarding
+            if user.companyId == nil {
+                print("[SUBSCRIPTION] User has no company ID - may be in onboarding")
+                return
+            }
+        }
+        
+        // Only force logout if this is truly an error (user has company ID but company doesn't exist)
+        print("[SUBSCRIPTION] CRITICAL ERROR: Company ID exists but company not found - logging out")
+        
+        // Clear user session
+        UserDefaults.standard.set(false, forKey: "is_authenticated")
+        UserDefaults.standard.removeObject(forKey: "user_id")
+        UserDefaults.standard.removeObject(forKey: "company_id")
+        
+        // Post notification to trigger logout in DataController
+        NotificationCenter.default.post(
+            name: .forceLogout,
+            object: nil,
+            userInfo: ["reason": "Company not found"]
+        )
+        
+        // Post notification to show error to user
+        NotificationCenter.default.post(
+            name: .criticalError,
+            object: nil,
+            userInfo: ["message": "No company found for your account. Please contact support."]
+        )
+    }
     
     /// Sync a specific project's status and notes to the backend
     private func syncProjectStatus(_ project: Project) async {
@@ -731,7 +876,6 @@ class SyncManager {
             try modelContext.save()
         } catch {
             // Leave as needsSync=true to retry later
-            print("❌ SyncManager: Failed to sync project status or notes: \(error.localizedDescription)")
         }
     }
     
@@ -775,23 +919,19 @@ class SyncManager {
             
             return successCount
         } catch {
-            print("Failed to fetch pending projects: \(error.localizedDescription)")
             return 0
         }
     }
     
     /// Force sync projects immediately, bypassing sync budget
     func forceSyncProjects() async {
-        print("🔵 SyncManager: Force syncing projects...")
         do {
             try await syncProjects()
             
             // Also refresh any placeholder clients
             await refreshPlaceholderClients()
             
-            print("🟢 SyncManager: Force project sync completed")
         } catch {
-            print("🔴 SyncManager: Force project sync failed: \(error.localizedDescription)")
         }
     }
     
@@ -808,7 +948,6 @@ class SyncManager {
             let placeholderClients = try modelContext.fetch(descriptor)
             
             if !placeholderClients.isEmpty {
-                print("🔄 SyncManager: Found \(placeholderClients.count) placeholder clients to refresh")
                 
                 var failedClients: [String] = []
                 
@@ -823,9 +962,7 @@ class SyncManager {
                         client.address = clientDTO.address?.formattedAddress
                         client.profileImageURL = clientDTO.thumbnail
                         
-                        print("✅ Updated placeholder client to '\(client.name)'")
                     } catch {
-                        print("⚠️ Failed to refresh client \(client.id): \(error)")
                         failedClients.append(client.id)
                     }
                 }
@@ -835,22 +972,17 @@ class SyncManager {
                 
                 // If we had failures, try syncing all company clients as a fallback
                 if !failedClients.isEmpty {
-                    print("⚠️ SyncManager: \(failedClients.count) clients failed to sync individually")
-                    print("🔄 SyncManager: Attempting to sync all company clients as fallback...")
                     
                     // Get company ID from the first project or user's company
                     if let companyId = try getCompanyId() {
                         await syncCompanyClients(companyId: companyId)
                     } else {
-                        print("❌ SyncManager: Could not determine company ID for fallback sync")
                     }
                 }
             }
         } catch {
-            print("🔴 Failed to refresh placeholder clients: \(error)")
             
             // Even if the placeholder refresh fails, try to sync all clients as last resort
-            print("🔄 SyncManager: Attempting fallback sync of all company clients...")
             if let companyId = try? getCompanyId() {
                 await syncCompanyClients(companyId: companyId)
             }
@@ -883,15 +1015,12 @@ class SyncManager {
     
     /// Sync projects between local storage and backend
     private func syncProjects() async throws {
-        print("🔵 SyncManager: Starting project sync...")
         
         // Get user ID from the provider closure
         guard let userId = userIdProvider() else {
-            print("🔴 SyncManager: No user ID available from provider")
             return
         }
         
-        print("🔵 SyncManager: User ID: \(userId)")
         
         // Get current user to check role
         let currentUser: User? = await MainActor.run {
@@ -909,27 +1038,21 @@ class SyncManager {
         let companyId = currentUser?.companyId ?? UserDefaults.standard.string(forKey: "currentUserCompanyId")
         
         guard let companyId = companyId else {
-            print("🔴 SyncManager: No company ID available for user")
             return
         }
         
-        print("🔵 SyncManager: Company ID: \(companyId)")
-        print("🔵 SyncManager: User role: \(currentUser?.role.displayName ?? "unknown")")
         
         var remoteProjects: [ProjectDTO] = []
         
         // Fetch projects based on user role
         if let user = currentUser, (user.role == UserRole.admin || user.role == UserRole.officeCrew) {
             // Admin and Office Crew get ALL company projects
-            print("🔵 SyncManager: Fetching ALL company projects (admin/office role)")
             remoteProjects = try await apiService.fetchCompanyProjects(companyId: companyId)
         } else {
             // Field Crew only gets assigned projects
-            print("🔵 SyncManager: Fetching user's assigned projects (field crew role)")
             remoteProjects = try await apiService.fetchUserProjects(userId: userId)
         }
         
-        print("🟢 SyncManager: Fetched \(remoteProjects.count) projects from API")
         
         // Get IDs of all remote projects
         let remoteProjectIds = Set(remoteProjects.map { $0.id })
@@ -947,25 +1070,20 @@ class SyncManager {
         }
         
         // Sync calendar events for the company (critical for calendar view)
-        print("📅 Syncing calendar events for company...")
+        // Syncing calendar events for company
         do {
             try await syncCompanyCalendarEvents(companyId: companyId)
         } catch {
-            print("⚠️ Failed to sync calendar events: \(error)")
         }
         
         // Sync tasks for all companies (no longer conditional)
-        print("📋 Syncing tasks for company...")
+        // Syncing tasks for company
         do {
             try await syncCompanyTasks(companyId: companyId)
         } catch {
-            print("⚠️ Failed to sync tasks: \(error)")
         }
         
-        // FINAL CALENDAR DISPLAY DIAGNOSTIC SUMMARY
-        print("\n🔍 ============ FINAL SYNC DIAGNOSTIC SUMMARY ============")
-        try await logFinalCalendarDisplayStatus(companyId: companyId)
-        print("🔍 ============ SYNC DIAGNOSTIC COMPLETE ============\n")
+        // Final sync diagnostic summary (removed excessive logging)
     }
     
     /// Remove local projects that the user is no longer assigned to
@@ -975,28 +1093,20 @@ class SyncManager {
             let descriptor = FetchDescriptor<Project>()
             let localProjects = try modelContext.fetch(descriptor)
             
-            print("🔍 Checking for unassigned projects...")
-            print("  - Local projects: \(localProjects.count)")
-            print("  - Remote projects: \(remoteIds.count)")
             
             // Find projects to remove (local projects not in remote list)
             let projectsToRemove = localProjects.filter { !remoteIds.contains($0.id) }
             
             if !projectsToRemove.isEmpty {
-                print("🗑️ Removing \(projectsToRemove.count) unassigned projects:")
                 for project in projectsToRemove {
-                    print("  - Removing: \(project.title) (ID: \(project.id))")
                     modelContext.delete(project)
                 }
                 
                 // Save the deletions
                 try modelContext.save()
-                print("✅ Successfully removed unassigned projects")
             } else {
-                print("✅ No unassigned projects to remove")
             }
         } catch {
-            print("❌ Error removing unassigned projects: \(error)")
         }
     }
     
@@ -1026,31 +1136,21 @@ class SyncManager {
     
     /// Process remote projects and update local database
     private func processRemoteProjects(_ remoteProjects: [ProjectDTO]) async {
-        print("🔵 SyncManager: Processing \(remoteProjects.count) remote projects")
         
         do {
             // Efficiently handle the projects in memory to reduce database pressure
             let localProjectIds = try fetchLocalProjectIds()
             let usersMap = try fetchUsersMap()
             
-            print("🔵 SyncManager: Found \(localProjectIds.count) existing local projects")
             
             // Pre-fetch clients for all projects to ensure they're available
             // This prevents "Loading..." placeholder clients from persisting
             let uniqueClientIds = Set(remoteProjects.compactMap { $0.client })
             if !uniqueClientIds.isEmpty {
-                print("🔵 SyncManager: Pre-fetching \(uniqueClientIds.count) unique clients")
                 await prefetchClients(clientIds: Array(uniqueClientIds))
             }
             
             for remoteProject in remoteProjects {
-                // Debug: Check if this project has a client
-                if let clientId = remoteProject.client {
-                    print("📋 Project '\(remoteProject.projectName)' has client ID: \(clientId)")
-                } else {
-                    print("📋 Project '\(remoteProject.projectName)' has NO client ID")
-                }
-                
                 if localProjectIds.contains(remoteProject.id) {
                     await updateExistingProject(remoteProject, usersMap: usersMap)
                 } else {
@@ -1061,7 +1161,6 @@ class SyncManager {
             // Save once at the end for better performance
             try modelContext.save()
         } catch {
-            print("Failed to process remote projects: \(error)")
         }
     }
     
@@ -1113,17 +1212,15 @@ class SyncManager {
             if let localProject = try modelContext.fetch(descriptor).first {
                 // Check if project needs sync
                 if localProject.needsSync {
-                    print("⚠️ Skipping update for '\(remoteDTO.projectName)' - has local changes")
                 } else {
                     // Only update if not modified locally
                     updateLocalProjectFromRemote(localProject, remoteDTO: remoteDTO)
                     
                     // Sync and link the client if available
                     if let clientId = remoteDTO.client {
-                        print("🔗 Linking client \(clientId) to project '\(remoteDTO.projectName)'")
+                        // Link client to project
                         await linkProjectToClient(project: localProject, clientId: clientId)
                     } else {
-                        print("⚠️ No client to link for project '\(remoteDTO.projectName)'")
                     }
                 }
                 
@@ -1135,7 +1232,6 @@ class SyncManager {
                 }
             }
         } catch {
-            print("Error updating project \(remoteDTO.id): \(error.localizedDescription)")
         }
     }
     
@@ -1192,7 +1288,6 @@ class SyncManager {
     private func refreshUserData(_ user: User) async {
         // Skip if we already know this user doesn't exist
         if nonExistentUserIds.contains(user.id) {
-            print("⏭️ SyncManager: Skipping fetch for known non-existent user \(user.id)")
             modelContext.delete(user)
             try? modelContext.save()
             return
@@ -1204,7 +1299,6 @@ class SyncManager {
             // Update user properties that might be missing
             if let phone = userDTO.phone, user.phone == nil {
                 user.phone = phone
-                print("📱 SyncManager: Updated phone number for \(user.fullName): \(phone)")
             }
             
             // Update other potentially missing fields
@@ -1221,7 +1315,6 @@ class SyncManager {
         } catch {
             // Check if this is a 404 error (user deleted from Bubble)
             if let apiError = error as? APIError, case .httpError(let statusCode) = apiError, statusCode == 404 {
-                print("🗑️ SyncManager: User \(user.id) not found (404), deleting from local database")
                 
                 // Add to non-existent cache to prevent future fetch attempts
                 nonExistentUserIds.insert(user.id)
@@ -1230,12 +1323,9 @@ class SyncManager {
                 modelContext.delete(user)
                 do {
                     try modelContext.save()
-                    print("✅ SyncManager: Deleted user \(user.id) from local database")
                 } catch {
-                    print("❌ SyncManager: Failed to delete user \(user.id): \(error)")
                 }
             } else {
-                print("⚠️ SyncManager: Failed to refresh user \(user.id): \(error)")
             }
         }
     }
@@ -1259,14 +1349,14 @@ class SyncManager {
                 )
                 if let user = try modelContext.fetch(userDescriptor).first {
                     calendarEvent.teamMembers.append(user)
-                    print("   ✅ Added team member \(user.fullName) to calendar event")
+                    // Added team member to calendar event
                 } else {
                     // Track users that don't exist locally
                     nonExistentUserIds.insert(memberId)
-                    print("   ⚠️ Team member \(memberId) not found for calendar event")
+                    // Team member not found for calendar event
                 }
             } catch {
-                print("   ❌ Failed to fetch team member \(memberId): \(error)")
+                // Failed to fetch team member
             }
         }
     }
@@ -1325,16 +1415,14 @@ class SyncManager {
         // Update dates
         if let startDateString = remoteDTO.startDate {
             localProject.startDate = DateFormatter.dateFromBubble(startDateString)
-            print("📅 Project '\(localProject.title)' - Start date: \(startDateString) -> \(localProject.startDate?.description ?? "nil")")
+            // Updated project start date
         } else {
-            print("⚠️ Project '\(localProject.title)' - No start date in API response")
         }
         
         if let completionString = remoteDTO.completion {
             localProject.endDate = DateFormatter.dateFromBubble(completionString)
-            print("📅 Project '\(localProject.title)' - End date: \(completionString) -> \(localProject.endDate?.description ?? "nil")")
+            // Updated project end date
         } else {
-            print("⚠️ Project '\(localProject.title)' - No completion date in API response")
         }
         
         // Update notes and description fields
@@ -1351,7 +1439,7 @@ class SyncManager {
         if let eventTypeString = remoteDTO.eventType {
             let newEventType = CalendarEventType(rawValue: eventTypeString.lowercased()) ?? .project
             if localProject.eventType != newEventType {
-                print("📅 Project '\(localProject.title)' eventType changed from \(localProject.eventType?.rawValue ?? "nil") to \(newEventType.rawValue)")
+                // Project eventType updated
                 localProject.eventType = newEventType
                 
                 // Clear the cached eventType on all related CalendarEvents since the project's scheduling mode changed
@@ -1363,7 +1451,7 @@ class SyncManager {
                 if let events = try? modelContext.fetch(eventDescriptor) {
                     for event in events {
                         event.projectEventType = newEventType
-                        print("   📅 Updated cached eventType on CalendarEvent \(event.id)")
+                        // Updated cached eventType on CalendarEvent
                     }
                 }
             }
@@ -1371,7 +1459,7 @@ class SyncManager {
             // Default to project scheduling if not specified
             if localProject.eventType == nil {
                 localProject.eventType = .project
-                print("📅 Project '\(localProject.title)' eventType defaulted to 'project'")
+                // Project eventType defaulted to 'project'
             }
         }
         
@@ -1387,11 +1475,9 @@ class SyncManager {
     
     /// Sync tasks for a project
     func syncProjectTasks(projectId: String) async throws {
-        print("🔵 SyncManager: Syncing tasks for project \(projectId)")
         
         // Fetch tasks from API
         let remoteTasks = try await apiService.fetchProjectTasks(projectId: projectId)
-        print("📥 Received \(remoteTasks.count) tasks from API")
         
         // Get company's default color (projects don't have their own color)
         let projectDescriptor = FetchDescriptor<Project>(
@@ -1436,9 +1522,8 @@ class SyncManager {
                 
                 // Link team members for new task
                 if let teamMemberIds = remoteTask.teamMembers {
-                    print("   🔵 API: Remote task has team member IDs: \(teamMemberIds)")
+                    // Remote task has team member IDs
                     newTask.setTeamMemberIds(teamMemberIds)
-                    print("   📊 DATA: Set teamMemberIdsString to: '\(newTask.teamMemberIdsString)'")
                     
                     newTask.teamMembers = []
                     for memberId in teamMemberIds {
@@ -1448,21 +1533,13 @@ class SyncManager {
                             )
                         ).first {
                             newTask.teamMembers.append(user)
-                            print("   ✅ Linked team member \(user.fullName) (ID: \(user.id)) to new task")
                         } else {
-                            print("   ❌ Team member with ID \(memberId) not found in local database")
+                            // Team member not found in local database
                         }
                     }
-                    print("   📋 New task final team member count: \(newTask.teamMembers.count)")
-                    print("   📋 Team member IDs stored: \(newTask.getTeamMemberIds())")
                 } else {
-                    print("   💡 Remote task has no team members")
                 }
                 
-                // ENHANCED CALENDAR EVENT LINKING FOR NEW TASK
-                print("   🔍 NEW TASK CALENDAR EVENT ANALYSIS:")
-                print("      - Remote calendarEventId: \(remoteTask.calendarEventId ?? "nil")")
-                print("      - Remote scheduledDate: \(remoteTask.scheduledDate ?? "nil")")
                 
                 if let calendarEventId = newTask.calendarEventId, !calendarEventId.isEmpty {
                     if let calendarEvent = try? modelContext.fetch(
@@ -1472,20 +1549,9 @@ class SyncManager {
                     ).first {
                         newTask.calendarEvent = calendarEvent
                         calendarEvent.task = newTask
-                        print("   ✅ CALENDAR EVENT LINKED: New task linked to existing CalendarEvent \(calendarEventId)")
-                        print("      - Event dates: \(calendarEvent.startDate) - \(calendarEvent.endDate)")
-                        print("      - Event shouldDisplay: \(calendarEvent.shouldDisplay)")
                     } else {
-                        print("   ❌ CALENDAR EVENT NOT FOUND: CalendarEvent \(calendarEventId) not found for new task")
-                        print("      - This new task will NOT appear on calendar")
-                        print("      - CalendarEvent may not have been synced yet")
                     }
                 } else if let scheduledDateStr = remoteTask.scheduledDate, !scheduledDateStr.isEmpty {
-                    print("   ❌ MISSING CALENDAR EVENT: New task has scheduledDate \(scheduledDateStr) but no calendarEventId")
-                    print("      - This new task will NOT appear on calendar")
-                    print("      - CalendarEvent MUST be created in Bubble for task ID: \(newTask.id)")
-                } else {
-                    print("   💡 NO CALENDAR LINKAGE: New task has no scheduled date (this is normal for unscheduled tasks)")
                 }
             }
         }
@@ -1499,22 +1565,17 @@ class SyncManager {
         }
         
         try modelContext.save()
-        print("✅ Tasks synced successfully for project \(projectId)")
     }
     
     /// Sync all tasks for a company
     func syncCompanyTasks(companyId: String) async throws {
-        print("\n🔵 ============ TASK SYNC START ============")
-        print("🔵 Company ID: \(companyId)")
-        print("🔵 Timestamp: \(Date())")
         
         // Fetch all tasks from API
         let remoteTasks = try await apiService.fetchCompanyTasks(companyId: companyId)
-        print("📥 API RESPONSE: Received \(remoteTasks.count) tasks from API")
+        // API RESPONSE: Received tasks from API
         
         // CRITICAL DIAGNOSTIC: Analyze task CalendarEvent linkage from Bubble
-        print("\n📊 ============ TASK CALENDAR EVENT ANALYSIS ============")
-        print("📊 DATA: Total Tasks from Bubble: \(remoteTasks.count)")
+        // DATA: Total Tasks from Bubble
         
         let tasksWithCalendarEventId = remoteTasks.filter { $0.calendarEventId != nil && !($0.calendarEventId?.isEmpty ?? true) }
         let tasksWithScheduledDate = remoteTasks.filter { $0.scheduledDate != nil && !($0.scheduledDate?.isEmpty ?? true) }
@@ -1527,40 +1588,36 @@ class SyncManager {
             ($0.calendarEventId == nil || ($0.calendarEventId?.isEmpty ?? false))
         }
         
-        print("📊 DATA: Tasks with calendarEventId: \(tasksWithCalendarEventId.count)")
-        print("📊 DATA: Tasks with scheduledDate: \(tasksWithScheduledDate.count)")
-        print("📊 DATA: Tasks with BOTH calendarEventId AND scheduledDate: \(tasksWithBothCalendarAndScheduled.count)")
-        print("⚠️ DATA: Tasks with scheduledDate but NO calendarEventId: \(tasksWithScheduledButNoCalendarEvent.count)")
+        // DATA: Tasks with calendarEventId
+        // DATA: Tasks with scheduledDate
+        // DATA: Tasks with BOTH calendarEventId AND scheduledDate
+        // WARNING: Tasks with scheduledDate but NO calendarEventId
         
         // Log problematic tasks
         if !tasksWithScheduledButNoCalendarEvent.isEmpty {
-            print("\n❌ CRITICAL CALENDAR EVENT ISSUES:")
+            // CRITICAL CALENDAR EVENT ISSUES:
             for (index, task) in tasksWithScheduledButNoCalendarEvent.prefix(10).enumerated() {
-                print("  ❌ Task \(index + 1): '\(task.taskNotes ?? "No notes")' (Project: \(task.projectId ?? "nil"))")
-                print("     - Has scheduledDate: \(task.scheduledDate ?? "nil")")
-                print("     - Missing calendarEventId - MUST be created in Bubble")
+                // Critical task issue
             }
             if tasksWithScheduledButNoCalendarEvent.count > 10 {
-                print("  ... and \(tasksWithScheduledButNoCalendarEvent.count - 10) more tasks with this issue")
             }
         }
         
         // Group tasks by project for analysis
         let tasksByProject = Dictionary(grouping: remoteTasks) { $0.projectId ?? "unknown" }
-        print("\n📊 DATA: Tasks for \(tasksByProject.count) unique projects:")
+        // DATA: Tasks for unique projects
         for (projectId, projectTasks) in tasksByProject.prefix(10) {
             let scheduledTasks = projectTasks.filter { $0.scheduledDate != nil && !($0.scheduledDate?.isEmpty ?? true) }
             let tasksWithEvents = projectTasks.filter { $0.calendarEventId != nil && !($0.calendarEventId?.isEmpty ?? true) }
-            print("  📋 Project \(projectId): \(projectTasks.count) total (\(scheduledTasks.count) scheduled, \(tasksWithEvents.count) with CalendarEvents)")
+            // Project task summary
         }
         if tasksByProject.count > 10 {
-            print("  ... and \(tasksByProject.count - 10) more projects")
         }
         
         // Collect all unique task type IDs from remote tasks
         let remoteTaskTypeIds = Set(remoteTasks.compactMap { $0.type })
         if !remoteTaskTypeIds.isEmpty {
-            print("📋 Found \(remoteTaskTypeIds.count) unique task types in tasks")
+            // Found unique task types in tasks
             
             // Check which task types we don't have locally
             let localTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
@@ -1568,7 +1625,6 @@ class SyncManager {
             let unknownTaskTypeIds = remoteTaskTypeIds.subtracting(localTaskTypeIds)
             
             if !unknownTaskTypeIds.isEmpty {
-                print("🔄 Need to fetch \(unknownTaskTypeIds.count) missing task types")
                 try await syncSpecificTaskTypes(taskTypeIds: Array(unknownTaskTypeIds), companyId: companyId)
             }
         }
@@ -1625,10 +1681,9 @@ class SyncManager {
                     
                     // Link team members for new task
                     if let teamMemberIds = remoteTask.teamMembers {
-                        print("   🔵 API: Remote task (batch sync) has team member IDs: \(teamMemberIds)")
+                        // Remote task (batch sync) has team member IDs
                         newTask.setTeamMemberIds(teamMemberIds)
-                        print("   📊 DATA: Set teamMemberIdsString to: '\(newTask.teamMemberIdsString)'")
-                        
+                            
                         newTask.teamMembers = []
                         for memberId in teamMemberIds {
                             if let user = try? modelContext.fetch(
@@ -1637,15 +1692,12 @@ class SyncManager {
                                 )
                             ).first {
                                 newTask.teamMembers.append(user)
-                                print("   ✅ Linked team member \(user.fullName) (ID: \(user.id)) to new task")
-                            } else {
-                                print("   ❌ Team member with ID \(memberId) not found in local database")
+                                } else {
+                                // Team member not found in local database
                             }
                         }
-                        print("   📋 New task final team member count: \(newTask.teamMembers.count)")
-                        print("   📋 Team member IDs stored: \(newTask.getTeamMemberIds())")
-                    } else {
-                        print("   💡 Remote task (batch sync) has no team members")
+                            } else {
+                        // Remote task (batch sync) has no team members
                     }
                     
                     // ENHANCED CALENDAR EVENT LINKING FOR BATCH NEW TASK
@@ -1657,12 +1709,9 @@ class SyncManager {
                         ).first {
                             newTask.calendarEvent = calendarEvent
                             calendarEvent.task = newTask
-                            print("   ✅ Linked CalendarEvent \(calendarEventId) to batch new task")
                         } else {
-                            print("   ❌ CalendarEvent \(calendarEventId) not found for batch new task")
                         }
                     } else if let scheduledDateStr = remoteTask.scheduledDate, !scheduledDateStr.isEmpty {
-                        print("   ❌ Batch new task has scheduledDate \(scheduledDateStr) but no calendarEventId - CalendarEvent must be created in Bubble")
                     }
                 }
             }
@@ -1682,7 +1731,6 @@ class SyncManager {
         try modelContext.save()
         
         // POST-SYNC TASK ANALYSIS: Verify CalendarEvent linkage
-        print("\n📊 ============ POST-SYNC TASK ANALYSIS ============")
         
         let allTasksDescriptor = FetchDescriptor<ProjectTask>(
             predicate: #Predicate<ProjectTask> { $0.companyId == companyId }
@@ -1696,28 +1744,23 @@ class SyncManager {
             $0.scheduledDate != nil && ($0.calendarEvent == nil || $0.calendarEventId?.isEmpty == true)
         }
         
-        print("📊 Final Task State:")
-        print("   📋 Total tasks in database: \(finalTasks.count)")
-        print("   📅 Tasks linked to CalendarEvent: \(finalTasksWithCalendarEvent.count)")
-        print("   🆔 Tasks with calendarEventId: \(finalTasksWithCalendarEventId.count)")
-        print("   📅 Tasks with scheduledDate: \(finalTasksWithScheduledDate.count)")
-        print("   ⚠️ Tasks scheduled but not linked to CalendarEvent: \(finalTasksWithScheduledButNoEvent.count)")
+        // Total tasks in database summary
+        // Tasks linked to CalendarEvent summary
+        // Tasks with calendarEventId summary
+        // Tasks with scheduledDate summary
+        // Tasks scheduled but not linked to CalendarEvent summary
         
         if !finalTasksWithScheduledButNoEvent.isEmpty {
-            print("\n❌ UNLINKED SCHEDULED TASKS (Calendar won't display):")
+            // UNLINKED SCHEDULED TASKS (Calendar won't display):
             for (index, task) in finalTasksWithScheduledButNoEvent.prefix(5).enumerated() {
-                print("  ❌ Task \(index + 1): '\(task.taskType?.display ?? "Unknown")' (Project: \(task.project?.title ?? "nil"))")
-                print("     - Scheduled: \(task.scheduledDate?.description ?? "nil")")
-                print("     - CalendarEventId: \(task.calendarEventId ?? "nil")")
-                print("     - CalendarEvent linked: \(task.calendarEvent != nil)")
+                // Unlinked scheduled task
+                // CalendarEventId
+                // CalendarEvent linked status
             }
             if finalTasksWithScheduledButNoEvent.count > 5 {
-                print("  ... and \(finalTasksWithScheduledButNoEvent.count - 5) more unlinked tasks")
             }
         }
         
-        print("✅ ============ TASK SYNC COMPLETE ============\n")
-        print("✅ All tasks synced successfully for company \(companyId)")
     }
     
     /// Update a local task from a remote DTO
@@ -1753,12 +1796,9 @@ class SyncManager {
         
         // Update team members
         if let teamMemberIds = remoteTask.teamMembers {
-            print("   🔄 UPDATE: Task \(localTask.id) - Remote has team member IDs: \(teamMemberIds)")
-            print("   📊 DATA: Current teamMemberIdsString: '\(localTask.teamMemberIdsString)'")
-            print("   📊 DATA: Current teamMembers count: \(localTask.teamMembers.count)")
+            // UPDATE: Task has team member IDs
             
             localTask.setTeamMemberIds(teamMemberIds)
-            print("   📊 DATA: Updated teamMemberIdsString to: '\(localTask.teamMemberIdsString)'")
             
             // Clear and populate actual User objects
             localTask.teamMembers = []
@@ -1771,24 +1811,17 @@ class SyncManager {
                 ).first {
                     localTask.teamMembers.append(user)
                     linkedCount += 1
-                    print("   ✅ Linked team member \(user.fullName) (ID: \(user.id)) to task")
+                    // Linked team member to task
                 } else {
-                    print("   ❌ Team member with ID \(memberId) not found in local database")
+                    // Team member not found in local database
                 }
             }
-            print("   📋 Task now has \(localTask.teamMembers.count) team members (\(linkedCount)/\(teamMemberIds.count) linked)")
+            // Task team members updated
         } else {
-            print("   💡 Remote task update has no team members - clearing local team members")
             localTask.setTeamMemberIds([])
             localTask.teamMembers = []
         }
         
-        // ENHANCED CALENDAR EVENT LINKING WITH DETAILED DIAGNOSTICS
-        print("   🔍 CALENDAR EVENT LINKING ANALYSIS:")
-        print("      - Remote calendarEventId: \(remoteTask.calendarEventId ?? "nil")")
-        print("      - Remote scheduledDate: \(remoteTask.scheduledDate ?? "nil")")
-        print("      - Local task current calendarEventId: \(localTask.calendarEventId ?? "nil")")
-        print("      - Local task current calendarEvent linked: \(localTask.calendarEvent != nil)")
         
         if let calendarEventId = localTask.calendarEventId, !calendarEventId.isEmpty {
             if let calendarEvent = try? modelContext.fetch(
@@ -1798,22 +1831,9 @@ class SyncManager {
             ).first {
                 localTask.calendarEvent = calendarEvent
                 calendarEvent.task = localTask
-                print("   ✅ CALENDAR EVENT LINKED: Task now linked to CalendarEvent \(calendarEventId)")
-                print("      - Event dates: \(calendarEvent.startDate) - \(calendarEvent.endDate)")
-                print("      - Event type: \(calendarEvent.type.rawValue)")
-                print("      - Event shouldDisplay: \(calendarEvent.shouldDisplay)")
             } else {
-                print("   ❌ CALENDAR EVENT NOT FOUND: CalendarEvent \(calendarEventId) not found in local database")
-                print("      - This task will NOT appear on calendar")
-                print("      - Verify CalendarEvent exists in Bubble and was synced")
             }
         } else if let scheduledDateStr = remoteTask.scheduledDate, !scheduledDateStr.isEmpty {
-            print("   ❌ MISSING CALENDAR EVENT: Task has scheduledDate \(scheduledDateStr) but no calendarEventId")
-            print("      - This task will NOT appear on calendar")
-            print("      - CalendarEvent MUST be created in Bubble with matching taskId")
-            print("      - Cannot create CalendarEvents locally - they must come from Bubble API")
-        } else {
-            print("   💡 NO CALENDAR LINKAGE: Task has no scheduled date or CalendarEvent (this is normal for unscheduled tasks)")
         }
     }
     
@@ -1822,11 +1842,9 @@ class SyncManager {
     func syncSpecificTaskTypes(taskTypeIds: [String], companyId: String) async throws {
         guard !taskTypeIds.isEmpty else { return }
         
-        print("🔵 SyncManager: Fetching \(taskTypeIds.count) specific task types")
         
         // Fetch specific task types from API
         let remoteTaskTypes = try await apiService.fetchTaskTypesByIds(ids: taskTypeIds)
-        print("📥 Received \(remoteTaskTypes.count) task types from API")
         
         // Process each task type
         for remoteTaskType in remoteTaskTypes {
@@ -1857,22 +1875,17 @@ class SyncManager {
         TaskType.assignIconsToTaskTypes(allTaskTypes)
         
         try modelContext.save()
-        print("✅ Specific task types synced successfully")
     }
     
     /// Sync calendar events for a company
     func syncCompanyCalendarEvents(companyId: String) async throws {
-        print("\n🔵 ============ CALENDAR EVENT SYNC START ============")
-        print("🔵 Company ID: \(companyId)")
-        print("🔵 Timestamp: \(Date())")
         
         // Fetch calendar events from API
         let remoteEvents = try await apiService.fetchCompanyCalendarEvents(companyId: companyId)
-        print("📥 API RESPONSE: Received \(remoteEvents.count) calendar events from API")
+        // API RESPONSE: Received calendar events from API
         
         // CRITICAL DIAGNOSTIC: Analyze CalendarEvent data from Bubble
-        print("\n📊 ============ CALENDAR EVENT ANALYSIS ============")
-        print("📊 DATA: Total CalendarEvents from Bubble: \(remoteEvents.count)")
+        // DATA: Total CalendarEvents from Bubble
         
         // Analyze event types and task associations
         let projectTypeEvents = remoteEvents.filter { $0.type?.lowercased() == "project" }
@@ -1880,54 +1893,42 @@ class SyncManager {
         let eventsWithTasks = remoteEvents.filter { $0.taskId != nil && !($0.taskId?.isEmpty ?? true) }
         let eventsWithoutTasks = remoteEvents.filter { $0.taskId == nil || ($0.taskId?.isEmpty ?? false) }
         
-        print("📊 DATA: Project-type events: \(projectTypeEvents.count)")
-        print("📊 DATA: Task-type events: \(taskTypeEvents.count)")
-        print("📊 DATA: Events with taskId: \(eventsWithTasks.count)")
-        print("📊 DATA: Events without taskId: \(eventsWithoutTasks.count)")
+        // DATA: Project-type events
+        // DATA: Task-type events
+        // DATA: Events with taskId
+        // DATA: Events without taskId
         
         // Analyze by project
         let projectGroups = Dictionary(grouping: remoteEvents) { $0.projectId ?? "unknown" }
-        print("📊 DATA: Events for \(projectGroups.count) unique projects:")
+        // DATA: Events for unique projects
         for (projectId, events) in projectGroups.prefix(10) {
             let projectEvents = events.filter { $0.type?.lowercased() == "project" }
             let taskEvents = events.filter { $0.type?.lowercased() == "task" }
-            print("  📋 Project \(projectId): \(events.count) total (\(projectEvents.count) project-type, \(taskEvents.count) task-type)")
+            // Project events summary
         }
         if projectGroups.count > 10 {
-            print("  ... and \(projectGroups.count - 10) more projects")
         }
         
         // Search for any Railings events in the remote response
         let railingsRemoteEvents = remoteEvents.filter { ($0.title ?? "").lowercased().contains("railings") }
         if !railingsRemoteEvents.isEmpty {
-            print("🎯 RAILINGS EVENTS IN API RESPONSE: \(railingsRemoteEvents.count)")
+            // RAILINGS EVENTS IN API RESPONSE
             for (index, event) in railingsRemoteEvents.enumerated() {
-                print("  🎯 Railings Remote Event \(index + 1):")
-                print("     - ID: \(event.id)")
-                print("     - Title: \(event.title ?? "nil")")
-                print("     - Type: \(event.type ?? "nil")")
-                print("     - Start Date: \(event.startDate ?? "nil")")
-                print("     - End Date: \(event.endDate ?? "nil")")
-                print("     - Project ID: \(event.projectId ?? "nil")")
-                print("     - Task ID: \(event.taskId ?? "nil")")
-                print("     - Team Members: \(event.teamMembers ?? [])")
+                // Railings Remote Event
+                // Event Project ID
+                // Event Task ID
+                // Event team members
             }
         }
         
         // Log summary of remote events
-        print("📊 API DATA: First 10 remote events:")
+        // API DATA: First 10 remote events
         for (index, event) in remoteEvents.prefix(10).enumerated() {
-            print("  📅 Remote Event \(index + 1):")
-            print("     - ID: \(event.id)")
-            print("     - Title: \(event.title ?? "nil")")
-            print("     - Type: \(event.type ?? "nil")")
-            print("     - Start Date: \(event.startDate ?? "nil")")
-            print("     - End Date: \(event.endDate ?? "nil")")
-            print("     - Project ID: \(event.projectId ?? "nil")")
-            print("     - Task ID: \(event.taskId ?? "nil")")
+            // Remote Event
+            // Event Project ID
+            // Event Task ID
         }
         if remoteEvents.count > 10 {
-            print("  ... and \(remoteEvents.count - 10) more events")
         }
         
         // Get local events
@@ -1938,7 +1939,7 @@ class SyncManager {
         let localEventIds = Set(localEvents.map { $0.id })
         
         // Process remote events
-        print("\n🔄 PROCESSING REMOTE EVENTS:")
+        // Processing remote events
         for (index, remoteEvent) in remoteEvents.enumerated() {
             let isRailingsEvent = (remoteEvent.title ?? "").lowercased().contains("railings")
             let logPrefix = isRailingsEvent ? "🎯 RAILINGS" : "📅"
@@ -1946,34 +1947,30 @@ class SyncManager {
             if localEventIds.contains(remoteEvent.id) {
                 // Update existing event
                 if let localEvent = localEvents.first(where: { $0.id == remoteEvent.id }) {
-                    print("  🔄 \(logPrefix) Updating existing event [\(index + 1)/\(remoteEvents.count)]: \(remoteEvent.title ?? "nil")")
+                    // Updating existing event
                     if isRailingsEvent {
-                        print("    - Before update - Local event shouldDisplay: \(localEvent.shouldDisplay)")
-                        print("    - Before update - Local event projectEventType: \(localEvent.projectEventType?.rawValue ?? "nil")")
+                        // Local event shouldDisplay before update
+                        // Local event projectEventType before update
                     }
                     updateCalendarEvent(localEvent, from: remoteEvent)
                     if isRailingsEvent {
-                        print("    - After update - Local event shouldDisplay: \(localEvent.shouldDisplay)")
-                        print("    - After update - Local event projectEventType: \(localEvent.projectEventType?.rawValue ?? "nil")")
+                        // Local event shouldDisplay after update
+                        // Local event projectEventType after update
                     }
                 }
             } else {
                 // Insert new event
-                print("  ➕ \(logPrefix) Creating new event [\(index + 1)/\(remoteEvents.count)]: \(remoteEvent.title ?? "nil")")
+                // Creating new event
                 guard let newEvent = remoteEvent.toModel() else {
-                    print("⚠️ Failed to create CalendarEvent from DTO: \(remoteEvent.id)")
+                    // Failed to create CalendarEvent from DTO
                     continue
                 }
                 modelContext.insert(newEvent)
                 
                 if isRailingsEvent {
-                    print("    - New event created with:")
-                    print("      - ID: \(newEvent.id)")
-                    print("      - Type: \(newEvent.type.rawValue)")
-                    print("      - Task ID: \(newEvent.taskId ?? "nil")")
-                    print("      - Project ID: \(newEvent.projectId)")
-                    print("      - Start Date: \(newEvent.startDate)")
-                    print("      - End Date: \(newEvent.endDate)")
+                    // New event created
+                    // Event task ID
+                    // Event project ID
                 }
                 
                 // Populate team members from IDs if available
@@ -1984,7 +1981,7 @@ class SyncManager {
                 
                 // Link to project if available
                 if let projectId = remoteEvent.projectId {
-                    if isRailingsEvent { print("    - Linking to project ID: \(projectId)") }
+                    // Linking to project ID
                     let projectDescriptor = FetchDescriptor<Project>(
                         predicate: #Predicate<Project> { $0.id == projectId }
                     )
@@ -1995,10 +1992,10 @@ class SyncManager {
                         newEvent.projectEventType = project.effectiveEventType
                         
                         if isRailingsEvent {
-                            print("    - ✅ Project found and linked: \(project.title)")
-                            print("    - Project effective event type: \(project.effectiveEventType.rawValue)")
-                            print("    - Cached project event type on calendar event: \(newEvent.projectEventType?.rawValue ?? "nil")")
-                            print("    - New event shouldDisplay after project link: \(newEvent.shouldDisplay)")
+                            // Project found and linked
+                            // Project effective event type
+                            // Cached project event type on calendar event
+                            // New event shouldDisplay after project link
                         }
                         
                         // Copy team members from project if not already set from API
@@ -2006,13 +2003,13 @@ class SyncManager {
                             newEvent.teamMembers = project.teamMembers
                             newEvent.setTeamMemberIds(project.getTeamMemberIds())
                             if isRailingsEvent {
-                                print("    - Copied team members from project: \(project.teamMembers.map { $0.fullName })")
+                                // Copied team members from project
                             }
                         } else if !newEvent.getTeamMemberIds().isEmpty && newEvent.teamMembers.isEmpty {
                             // Populate team members from stored IDs if not already populated
                             populateCalendarEventTeamMembers(newEvent, teamMemberIds: newEvent.getTeamMemberIds())
                             if isRailingsEvent {
-                                print("    - Populated team members from stored IDs: \(newEvent.getTeamMemberIds())")
+                                // Populated team members from stored IDs
                             }
                         }
                         
@@ -2022,20 +2019,17 @@ class SyncManager {
                             // Sync dates from calendar event to project
                             project.syncDatesWithCalendarEvent()
                             if isRailingsEvent {
-                                print("    - Set as primary calendar event for project")
                             }
                         }
                     } else {
-                        print("⚠️ WARNING: Project \(projectId) not found for calendar event \(newEvent.id)")
                         if isRailingsEvent {
-                            print("    - ❌ Project linking failed - project not found in local database")
                         }
                     }
                 }
                 
                 // Link to task if available
                 if let taskId = remoteEvent.taskId {
-                    if isRailingsEvent { print("    - Linking to task ID: \(taskId)") }
+                    // Linking to task ID
                     let taskDescriptor = FetchDescriptor<ProjectTask>(
                         predicate: #Predicate<ProjectTask> { $0.id == taskId }
                     )
@@ -2044,9 +2038,9 @@ class SyncManager {
                         task.calendarEvent = newEvent
                         
                         if isRailingsEvent {
-                            print("    - ✅ Task found and linked: \(task.taskType?.display ?? "Unknown")")
-                            print("    - Task scheduled date: \(task.scheduledDate?.description ?? "nil")")
-                            print("    - New event shouldDisplay after task link: \(newEvent.shouldDisplay)")
+                            // Task found and linked
+                            // Task scheduled date
+                            // New event shouldDisplay after task link
                         }
                         
                         // Copy team members from task if not already set from API
@@ -2054,19 +2048,17 @@ class SyncManager {
                             newEvent.teamMembers = task.teamMembers
                             newEvent.setTeamMemberIds(task.getTeamMemberIds())
                             if isRailingsEvent {
-                                print("    - Copied team members from task: \(task.teamMembers.map { $0.fullName })")
+                                // Copied team members from task
                             }
                         } else if !newEvent.getTeamMemberIds().isEmpty && newEvent.teamMembers.isEmpty {
                             // Populate team members from stored IDs if not already populated
                             populateCalendarEventTeamMembers(newEvent, teamMemberIds: newEvent.getTeamMemberIds())
                             if isRailingsEvent {
-                                print("    - Populated team members from stored IDs: \(newEvent.getTeamMemberIds())")
+                                // Populated team members from stored IDs
                             }
                         }
                     } else {
-                        print("⚠️ WARNING: Task \(taskId) not found for calendar event \(newEvent.id)")
                         if isRailingsEvent {
-                            print("    - ❌ Task linking failed - task not found in local database")
                         }
                     }
                 }
@@ -2087,7 +2079,7 @@ class SyncManager {
         for localEvent in localEvents {
             if localEvent.projectEventType == nil, let project = localEvent.project {
                 localEvent.updateProjectEventTypeCache(from: project)
-                print("   📝 Cached projectEventType for event \(localEvent.id)")
+                // Cached projectEventType for event
             }
         }
         
@@ -2100,283 +2092,9 @@ class SyncManager {
         )
         let finalEvents = try modelContext.fetch(finalDescriptor)
         
-        print("\n📊 ============ CALENDAR EVENT SYNC SUMMARY ============")
-        print("📊 Total events in local database: \(finalEvents.count)")
-        
-        // POST-SYNC PROJECT ANALYSIS: Critical for understanding calendar display issues
-        try await analyzeProjectCalendarEventStatus(companyId: companyId)
-        print("📊 Events by type:")
-        let projectEvents = finalEvents.filter { $0.type == .project }
-        let taskEvents = finalEvents.filter { $0.type == .task }
-        print("   - Project events: \(projectEvents.count)")
-        print("   - Task events: \(taskEvents.count)")
-        
-        // Special focus on Railings events
-        let finalRailingsEvents = finalEvents.filter { $0.title.lowercased().contains("railings") }
-        if !finalRailingsEvents.isEmpty {
-            print("\n🎯 RAILINGS EVENTS FINAL STATUS: \(finalRailingsEvents.count)")
-            for (index, event) in finalRailingsEvents.enumerated() {
-                print("  🎯 Railings Event \(index + 1):")
-                print("     - ID: \(event.id)")
-                print("     - Title: \(event.title)")
-                print("     - Type: \(event.type.rawValue)")
-                print("     - Task ID: \(event.taskId ?? "nil")")
-                print("     - Start Date: \(event.startDate)")
-                print("     - End Date: \(event.endDate)")
-                print("     - Should Display: \(event.shouldDisplay)")
-                print("     - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
-                if let project = event.project {
-                    print("     - Project: \(project.title)")
-                    print("     - Project Effective Event Type: \(project.effectiveEventType.rawValue)")
-                }
-                if let task = event.task {
-                    print("     - Task: \(task.taskType?.display ?? "Unknown")")
-                    print("     - Task Scheduled Date: \(task.scheduledDate?.description ?? "nil")")
-                }
-            }
-        } else {
-            print("\n🎯 NO RAILINGS EVENTS FOUND IN FINAL DATABASE")
-        }
-        
-        // Log events that shouldDisplay
-        let shouldDisplayEvents = finalEvents.filter { $0.shouldDisplay }
-        print("\n📊 Events that shouldDisplay: \(shouldDisplayEvents.count)")
-        
-        // Log events that should NOT display
-        let shouldNotDisplayEvents = finalEvents.filter { !$0.shouldDisplay }
-        if !shouldNotDisplayEvents.isEmpty {
-            print("⚠️ Events that should NOT display: \(shouldNotDisplayEvents.count)")
-            for event in shouldNotDisplayEvents.prefix(5) {
-                print("   - \(event.title) (type: \(event.type.rawValue), taskId: \(event.taskId ?? "nil"))")
-            }
-        }
-        
-        // Log date distribution
-        let calendar = Calendar.current
-        var dateDistribution: [String: Int] = [:]
-        for event in finalEvents {
-            let dateKey = DateFormatter.localizedString(from: event.startDate, dateStyle: .short, timeStyle: .none)
-            dateDistribution[dateKey, default: 0] += 1
-        }
-        print("\n📊 Events by date:")
-        for (date, count) in dateDistribution.sorted(by: { $0.key < $1.key }).prefix(10) {
-            print("   - \(date): \(count) events")
-        }
-        
-        print("✅ ============ CALENDAR EVENT SYNC COMPLETE ============\n")
     }
     
-    /// Analyze project calendar event status for diagnostic purposes
-    /// This function provides critical insights for understanding why projects might not appear on the calendar
-    private func analyzeProjectCalendarEventStatus(companyId: String) async throws {
-        print("\n🔍 ============ PROJECT CALENDAR EVENT ANALYSIS ============")
-        
-        // Fetch all projects for the company
-        let projectDescriptor = FetchDescriptor<Project>(
-            predicate: #Predicate<Project> { $0.companyId == companyId }
-        )
-        let projects = try modelContext.fetch(projectDescriptor)
-        
-        // Fetch all calendar events for the company
-        let eventDescriptor = FetchDescriptor<CalendarEvent>(
-            predicate: #Predicate<CalendarEvent> { $0.companyId == companyId }
-        )
-        let calendarEvents = try modelContext.fetch(eventDescriptor)
-        
-        // Fetch all tasks for the company
-        let taskDescriptor = FetchDescriptor<ProjectTask>(
-            predicate: #Predicate<ProjectTask> { $0.companyId == companyId }
-        )
-        let tasks = try modelContext.fetch(taskDescriptor)
-        
-        print("🔍 DATA SUMMARY:")
-        print("   📋 Total Projects: \(projects.count)")
-        print("   📅 Total CalendarEvents: \(calendarEvents.count)")
-        print("   📝 Total Tasks: \(tasks.count)")
-        
-        // Analyze each project's calendar event status
-        print("\n🔍 PROJECT ANALYSIS:")
-        var projectsWithEvents = 0
-        var projectsWithoutEvents = 0
-        var taskBasedProjectsWithTaskEvents = 0
-        var taskBasedProjectsWithoutTaskEvents = 0
-        var tasksWithScheduledButNoCalendarEvent = 0
-        
-        for project in projects {
-            let projectEvents = calendarEvents.filter { $0.projectId == project.id }
-            let projectTasks = tasks.filter { $0.projectId == project.id }
-            
-            print("\n  📋 Project: \(project.title) [\(project.id)]")
-            print("     💡 Event Type: \(project.effectiveEventType.rawValue) (\(project.usesTaskBasedScheduling ? "task-based" : "traditional"))")
-            print("     📅 CalendarEvents: \(projectEvents.count)")
-            print("     📝 Tasks: \(projectTasks.count)")
-            
-            if project.usesTaskBasedScheduling {
-                // Task-based project - should have task-level CalendarEvents
-                let taskEvents = projectEvents.filter { $0.type == .task && $0.taskId != nil }
-                let projectLevelEvents = projectEvents.filter { $0.type == .project && $0.taskId == nil }
-                
-                print("     🎯 Task Events: \(taskEvents.count)")
-                print("     ⚠️ Project Events (should be 0): \(projectLevelEvents.count)")
-                
-                if taskEvents.count > 0 {
-                    taskBasedProjectsWithTaskEvents += 1
-                    print("     ✅ HAS TASK EVENTS - Will display on calendar")
-                } else {
-                    taskBasedProjectsWithoutTaskEvents += 1
-                    print("     ❌ NO TASK EVENTS - Will NOT display on calendar")
-                    print("     ⚠️ BUBBLE ISSUE: Tasks need CalendarEvents created in Bubble")
-                }
-                
-                // Analyze individual tasks
-                for task in projectTasks {
-                    let taskEvent = calendarEvents.first { $0.taskId == task.id }
-                    if let scheduledDate = task.scheduledDate {
-                        if taskEvent == nil {
-                            tasksWithScheduledButNoCalendarEvent += 1
-                            print("     ⚠️ Task '\(task.taskType?.display ?? "Unknown")' has scheduledDate \(scheduledDate) but NO CalendarEvent (ID: \(task.calendarEventId ?? "nil"))")
-                        } else {
-                            print("     ✅ Task '\(task.taskType?.display ?? "Unknown")' has CalendarEvent \(taskEvent!.id)")
-                        }
-                    } else if let calendarEventId = task.calendarEventId, !calendarEventId.isEmpty {
-                        if taskEvent == nil {
-                            print("     ⚠️ Task '\(task.taskType?.display ?? "Unknown")' references CalendarEvent \(calendarEventId) but event not found")
-                        }
-                    }
-                }
-                
-            } else {
-                // Traditional project - should have project-level CalendarEvents
-                let projectLevelEvents = projectEvents.filter { $0.type == .project && $0.taskId == nil }
-                let taskEvents = projectEvents.filter { $0.type == .task && $0.taskId != nil }
-                
-                print("     🎯 Project Events: \(projectLevelEvents.count)")
-                print("     ⚠️ Task Events (should be 0): \(taskEvents.count)")
-                
-                if projectLevelEvents.count > 0 {
-                    projectsWithEvents += 1
-                    print("     ✅ HAS PROJECT EVENTS - Will display on calendar")
-                } else {
-                    projectsWithoutEvents += 1
-                    print("     ❌ NO PROJECT EVENTS - Will NOT display on calendar")
-                    print("     ⚠️ BUBBLE ISSUE: Project needs CalendarEvent created in Bubble")
-                }
-            }
-        }
-        
-        // Summary statistics
-        print("\n🔍 ============ DIAGNOSTIC SUMMARY ============")
-        print("📊 TRADITIONAL PROJECTS:")
-        print("   ✅ With CalendarEvents: \(projectsWithEvents)")
-        print("   ❌ Without CalendarEvents: \(projectsWithoutEvents)")
-        
-        print("📊 TASK-BASED PROJECTS:")
-        print("   ✅ With Task CalendarEvents: \(taskBasedProjectsWithTaskEvents)")
-        print("   ❌ Without Task CalendarEvents: \(taskBasedProjectsWithoutTaskEvents)")
-        
-        print("📊 TASK ISSUES:")
-        print("   ⚠️ Tasks with scheduledDate but no CalendarEvent: \(tasksWithScheduledButNoCalendarEvent)")
-        
-        // Warning messages for common issues
-        if projectsWithoutEvents > 0 {
-            print("\n⚠️ WARNING: \(projectsWithoutEvents) traditional projects have no CalendarEvents from Bubble")
-            print("   🔧 SOLUTION: Create CalendarEvents for these projects in Bubble with type='project'")
-        }
-        
-        if taskBasedProjectsWithoutTaskEvents > 0 {
-            print("\n⚠️ WARNING: \(taskBasedProjectsWithoutTaskEvents) task-based projects have no task CalendarEvents from Bubble")
-            print("   🔧 SOLUTION: Create CalendarEvents for scheduled tasks in Bubble with type='task'")
-        }
-        
-        if tasksWithScheduledButNoCalendarEvent > 0 {
-            print("\n❌ CRITICAL: \(tasksWithScheduledButNoCalendarEvent) tasks have scheduled dates but no CalendarEvents")
-            print("   🔧 SOLUTION: Tasks with scheduledDate MUST have corresponding CalendarEvents in Bubble")
-            print("   📝 NOTE: CalendarEvents cannot be created locally - they must come from Bubble API")
-        }
-        
-        print("🔍 ============ PROJECT ANALYSIS COMPLETE ============\n")
-    }
     
-    /// Log final calendar display status for diagnostic purposes
-    /// This provides a complete picture of what will and won't show on the calendar
-    private func logFinalCalendarDisplayStatus(companyId: String) async throws {
-        // Fetch all relevant data
-        let projectDescriptor = FetchDescriptor<Project>(
-            predicate: #Predicate<Project> { $0.companyId == companyId }
-        )
-        let projects = try modelContext.fetch(projectDescriptor)
-        
-        let eventDescriptor = FetchDescriptor<CalendarEvent>(
-            predicate: #Predicate<CalendarEvent> { $0.companyId == companyId }
-        )
-        let calendarEvents = try modelContext.fetch(eventDescriptor)
-        
-        let taskDescriptor = FetchDescriptor<ProjectTask>(
-            predicate: #Predicate<ProjectTask> { $0.companyId == companyId }
-        )
-        let tasks = try modelContext.fetch(taskDescriptor)
-        
-        print("📊 FINAL CALENDAR DISPLAY STATUS:")
-        print("   📋 Total Projects: \(projects.count)")
-        print("   📅 Total CalendarEvents: \(calendarEvents.count)")
-        print("   📝 Total Tasks: \(tasks.count)")
-        
-        // Events that will display on calendar
-        let displayableEvents = calendarEvents.filter { $0.shouldDisplay }
-        let nonDisplayableEvents = calendarEvents.filter { !$0.shouldDisplay }
-        
-        print("\n📅 CALENDAR DISPLAY RESULTS:")
-        print("   ✅ Events that WILL display: \(displayableEvents.count)")
-        print("   ❌ Events that will NOT display: \(nonDisplayableEvents.count)")
-        
-        // Analyze projects that will show vs won't show
-        var projectsWithDisplayableEvents = 0
-        var projectsWithoutDisplayableEvents = 0
-        
-        for project in projects {
-            let projectDisplayableEvents = displayableEvents.filter { $0.projectId == project.id }
-            
-            if projectDisplayableEvents.count > 0 {
-                projectsWithDisplayableEvents += 1
-            } else {
-                projectsWithoutDisplayableEvents += 1
-                print("   ❌ Project WON'T appear: '\(project.title)' (\(project.effectiveEventType.rawValue) scheduling)")
-            }
-        }
-        
-        print("\n📋 PROJECT VISIBILITY:")
-        print("   ✅ Projects that WILL appear on calendar: \(projectsWithDisplayableEvents)")
-        print("   ❌ Projects that WON'T appear on calendar: \(projectsWithoutDisplayableEvents)")
-        
-        // Critical issues summary
-        let tasksWithScheduledButNoEvents = tasks.filter { 
-            $0.scheduledDate != nil && $0.calendarEvent == nil 
-        }
-        
-        if !tasksWithScheduledButNoEvents.isEmpty || projectsWithoutDisplayableEvents > 0 {
-            print("\n❌ CRITICAL ISSUES PREVENTING CALENDAR DISPLAY:")
-            
-            if projectsWithoutDisplayableEvents > 0 {
-                print("   ⚠️ \(projectsWithoutDisplayableEvents) projects have no displayable CalendarEvents")
-                print("       🔧 SOLUTION: Verify CalendarEvents exist in Bubble for these projects")
-            }
-            
-            if !tasksWithScheduledButNoEvents.isEmpty {
-                print("   ⚠️ \(tasksWithScheduledButNoEvents.count) scheduled tasks have no CalendarEvents")
-                print("       🔧 SOLUTION: Create CalendarEvents in Bubble for scheduled tasks")
-            }
-        } else {
-            print("\n✅ NO CRITICAL ISSUES: All projects with scheduling should display correctly")
-        }
-        
-        // Quick sample of what will display
-        if !displayableEvents.isEmpty {
-            print("\n📅 SAMPLE DISPLAYABLE EVENTS (first 5):")
-            for (index, event) in displayableEvents.prefix(5).enumerated() {
-                print("  \(index + 1). '\(event.title)' (\(event.type.rawValue), \(event.startDate))")
-            }
-        }
-    }
     
     /// Update a local calendar event from remote DTO
     private func updateCalendarEvent(_ localEvent: CalendarEvent, from remoteEvent: CalendarEventDTO) {
@@ -2396,15 +2114,11 @@ class SyncManager {
         if let startDateStr = remoteEvent.startDate {
             if let startDate = dateFormatter.date(from: startDateStr) {
                 localEvent.startDate = startDate
-                print("   ✅ Updated start date: \(startDate)")
             } else if let startDate = alternativeFormatter.date(from: startDateStr) {
                 localEvent.startDate = startDate
-                print("   ✅ Updated start date (alt): \(startDate)")
             } else if let startDate = bubbleFormatter.date(from: startDateStr) {
                 localEvent.startDate = startDate
-                print("   ✅ Updated start date (Bubble): \(startDate)")
             } else {
-                print("   ⚠️ Failed to parse start date: \(startDateStr)")
             }
         }
         
@@ -2412,15 +2126,11 @@ class SyncManager {
         if let endDateStr = remoteEvent.endDate {
             if let endDate = dateFormatter.date(from: endDateStr) {
                 localEvent.endDate = endDate
-                print("   ✅ Updated end date: \(endDate)")
             } else if let endDate = alternativeFormatter.date(from: endDateStr) {
                 localEvent.endDate = endDate
-                print("   ✅ Updated end date (alt): \(endDate)")
             } else if let endDate = bubbleFormatter.date(from: endDateStr) {
                 localEvent.endDate = endDate
-                print("   ✅ Updated end date (Bubble): \(endDate)")
             } else {
-                print("   ⚠️ Failed to parse end date: \(endDateStr)")
             }
         }
         
@@ -2473,7 +2183,6 @@ class SyncManager {
                     }
                 }
             } catch {
-                print("⚠️ Failed to link project \(projectId) to calendar event: \(error)")
             }
         }
         
@@ -2497,7 +2206,6 @@ class SyncManager {
                     }
                 }
             } catch {
-                print("⚠️ Failed to link task \(taskId) to calendar event: \(error)")
             }
         }
         
@@ -2505,11 +2213,9 @@ class SyncManager {
     }
     
     func syncCompanyTaskTypes(companyId: String) async throws {
-        print("🔵 SyncManager: Syncing task types for company \(companyId)")
         
         // Fetch task types from API
         let remoteTaskTypes = try await apiService.fetchCompanyTaskTypes(companyId: companyId)
-        print("📥 Received \(remoteTaskTypes.count) task types from API")
         
         // Get local task types
         let descriptor = FetchDescriptor<TaskType>(
@@ -2519,7 +2225,6 @@ class SyncManager {
         
         // If no remote task types exist, create defaults
         if remoteTaskTypes.isEmpty {
-            print("📝 No task types found, creating defaults...")
             let defaultTypes = TaskType.createDefaults(companyId: companyId)
             for taskType in defaultTypes {
                 modelContext.insert(taskType)
@@ -2569,7 +2274,6 @@ class SyncManager {
         TaskType.assignIconsToTaskTypes(allTaskTypes)
         
         try modelContext.save()
-        print("✅ Task types synced successfully for company \(companyId)")
     }
     
     /// Update tasks when project status changes
@@ -2583,7 +2287,6 @@ class SyncManager {
                 .first {
                 firstScheduledTask.status = .inProgress
                 firstScheduledTask.needsSync = true
-                print("🔵 Started task: \(firstScheduledTask.taskType?.display ?? "Task")")
             }
             
         case .completed:
@@ -2594,7 +2297,6 @@ class SyncManager {
                     task.needsSync = true
                 }
             }
-            print("✅ Marked \(project.tasks.filter { $0.status == .completed }.count) tasks as completed")
             
         default:
             // No automatic task updates for other project statuses
@@ -2604,7 +2306,6 @@ class SyncManager {
     
     /// Update task status on backend
     func updateTaskStatus(taskId: String, status: TaskStatus) async throws {
-        print("🔵 SyncManager: Updating task \(taskId) status to \(status.rawValue)")
         
         // Update locally first
         let descriptor = FetchDescriptor<ProjectTask>(
@@ -2626,7 +2327,6 @@ class SyncManager {
             try modelContext.save()
         }
         
-        print("✅ Task status updated successfully")
     }
     
     // MARK: - Client Management
@@ -2635,7 +2335,6 @@ class SyncManager {
     /// Update client contact information via API
     func updateClientContact(clientId: String, name: String, email: String?, phone: String?, address: String?) async throws -> Client? {
         do {
-            print("📝 SyncManager: Updating client contact info for \(clientId)")
             
             // Call the Bubble workflow API and get the updated client
             let updatedClientDTO = try await apiService.updateClientContact(
@@ -2646,12 +2345,6 @@ class SyncManager {
                 address: address
             )
             
-            print("✅ Client contact updated via API")
-            print("📥 Received updated client data from API:")
-            print("  - Name: \(updatedClientDTO.name ?? "nil")")
-            print("  - Email: \(updatedClientDTO.emailAddress ?? "nil")")
-            print("  - Phone: \(updatedClientDTO.phoneNumber ?? "nil")")
-            print("  - Address: \(updatedClientDTO.address?.formattedAddress ?? "nil")")
             
             // Update local client with the data returned from API
             let clientPredicate = #Predicate<Client> { $0.id == clientId }
@@ -2676,7 +2369,6 @@ class SyncManager {
                 existingClient.lastSyncedAt = Date()
                 
                 try modelContext.save()
-                print("✅ Local client updated with API response data")
                 
                 return existingClient
             } else {
@@ -2685,12 +2377,10 @@ class SyncManager {
                 modelContext.insert(newClient)
                 try modelContext.save()
                 
-                print("✅ Created new local client from API response")
                 return newClient
             }
             
         } catch {
-            print("❌ SyncManager: Failed to update client contact: \(error)")
             throw error
         }
     }
@@ -2699,7 +2389,6 @@ class SyncManager {
     
     func createSubClient(clientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws -> SubClientDTO {
         do {
-            print("📝 SyncManager: Creating sub-client for client \(clientId)")
             
             // Call the API to create sub-client
             let subClientDTO = try await apiService.createSubClient(
@@ -2711,17 +2400,14 @@ class SyncManager {
                 address: address
             )
             
-            print("✅ SyncManager: Sub-client created successfully")
             return subClientDTO
         } catch {
-            print("❌ SyncManager: Failed to create sub-client: \(error)")
             throw error
         }
     }
     
     func editSubClient(subClientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws -> SubClientDTO {
         do {
-            print("📝 SyncManager: Editing sub-client \(subClientId)")
             
             // Call the API to edit sub-client
             let subClientDTO = try await apiService.editSubClient(
@@ -2733,24 +2419,19 @@ class SyncManager {
                 address: address
             )
             
-            print("✅ SyncManager: Sub-client updated successfully")
             return subClientDTO
         } catch {
-            print("❌ SyncManager: Failed to edit sub-client: \(error)")
             throw error
         }
     }
     
     func deleteSubClient(subClientId: String) async throws {
         do {
-            print("🗑 SyncManager: Deleting sub-client \(subClientId)")
             
             // Call the API to delete sub-client
             try await apiService.deleteSubClient(subClientId: subClientId)
             
-            print("✅ SyncManager: Sub-client deleted successfully")
         } catch {
-            print("❌ SyncManager: Failed to delete sub-client: \(error)")
             throw error
         }
     }
@@ -2758,7 +2439,6 @@ class SyncManager {
     /// Refresh a single client's data when viewing project details
     func refreshSingleClient(clientId: String, for project: Project, forceRefresh: Bool = false) async {
         do {
-            print("🔄 SyncManager: Refreshing single client \(clientId) (force: \(forceRefresh))")
             
             // Fetch fresh data from API
             let clientDTO = try await apiService.fetchClient(id: clientId)
@@ -2769,7 +2449,6 @@ class SyncManager {
             
             if let existingClient = try modelContext.fetch(clientDescriptor).first {
                 // Update existing client with fresh data
-                print("📝 Updating existing client '\(existingClient.name)' with fresh data")
                 
                 existingClient.name = clientDTO.name ?? "Unknown Client"
                 existingClient.email = clientDTO.emailAddress
@@ -2785,11 +2464,10 @@ class SyncManager {
                 existingClient.lastSyncedAt = Date()
                 
                 // Fetch and update sub-clients based on IDs from client response
-                print("🔵 Fetching sub-clients for client '\(existingClient.name)'")
                 
                 // Check if we have sub-client IDs from the client response
                 if let subClientIds = clientDTO.subClientIds, !subClientIds.isEmpty {
-                    print("📋 Client has \(subClientIds.count) sub-client IDs to fetch: \(subClientIds)")
+                    // Client has sub-client IDs to fetch
                     
                     // Clear existing sub-clients
                     existingClient.subClients.removeAll()
@@ -2800,7 +2478,6 @@ class SyncManager {
                     // Fetch each sub-client by ID
                     for subClientId in subClientIds {
                         do {
-                            print("  🔵 Fetching sub-client with ID: \(subClientId)")
                             let subClientDTO: SubClientDTO = try await apiService.fetchBubbleObject(
                                 objectType: BubbleFields.Types.subClient,
                                 id: subClientId
@@ -2810,32 +2487,26 @@ class SyncManager {
                             modelContext.insert(subClient)  // Insert into SwiftData
                             existingClient.subClients.append(subClient)
                             successfulFetches += 1
-                            print("  ✅ Fetched sub-client: \(subClient.name)")
                         } catch {
-                            print("  ⚠️ Failed to fetch sub-client \(subClientId): \(error)")
                             // Continue with other sub-clients even if one fails
                         }
                     }
                     
                     // If all ID fetches failed, try constraint query as fallback
                     if successfulFetches == 0 && subClientIds.count > 0 {
-                        print("⚠️ All sub-client ID fetches failed, trying constraint query as fallback")
                         let subClientDTOs = try await apiService.fetchSubClientsForClient(clientId: clientId)
-                        print("  🔵 Found \(subClientDTOs.count) sub-clients via constraint query")
                         
                         for subClientDTO in subClientDTOs {
                             let subClient = subClientDTO.toSubClient()
                             subClient.client = existingClient
                             modelContext.insert(subClient)
                             existingClient.subClients.append(subClient)
-                            print("  ✅ Added sub-client via constraint: \(subClient.name)")
                         }
                     }
                 } else {
-                    print("📋 No sub-client IDs in response, trying constraint query")
+                    // No sub-client IDs in response, trying constraint query
                     // Fallback: Try fetching sub-clients by client ID constraint
                     let subClientDTOs = try await apiService.fetchSubClientsForClient(clientId: clientId)
-                    print("  🔵 Found \(subClientDTOs.count) sub-clients via constraint query")
                     
                     // Clear existing sub-clients and add fresh ones
                     existingClient.subClients.removeAll()
@@ -2844,14 +2515,11 @@ class SyncManager {
                         subClient.client = existingClient
                         modelContext.insert(subClient)  // Insert into SwiftData
                         existingClient.subClients.append(subClient)
-                        print("  ✅ Added sub-client via constraint: \(subClient.name)")
                     }
                 }
                 
-                print("✅ Client updated: Name='\(existingClient.name)', Email='\(existingClient.email ?? "nil")', Phone='\(existingClient.phoneNumber ?? "nil")', SubClients=\(existingClient.subClients.count)")
             } else {
                 // Create new client
-                print("🆕 Creating new client from fresh data")
                 let newClient = clientDTO.toModel()
                 newClient.companyId = project.companyId
                 modelContext.insert(newClient)
@@ -2862,16 +2530,14 @@ class SyncManager {
                 newClient.projects.append(project)
                 
                 // Fetch and add sub-clients for new client
-                print("🔵 Fetching sub-clients for new client '\(newClient.name)'")
                 
                 // Check if we have sub-client IDs from the client response
                 if let subClientIds = clientDTO.subClientIds, !subClientIds.isEmpty {
-                    print("📋 New client has \(subClientIds.count) sub-client IDs to fetch: \(subClientIds)")
+                    // New client has sub-client IDs to fetch
                     
                     // Fetch each sub-client by ID
                     for subClientId in subClientIds {
                         do {
-                            print("  🔵 Fetching sub-client with ID: \(subClientId)")
                             let subClientDTO: SubClientDTO = try await apiService.fetchBubbleObject(
                                 objectType: BubbleFields.Types.subClient,
                                 id: subClientId
@@ -2880,39 +2546,32 @@ class SyncManager {
                             subClient.client = newClient
                             modelContext.insert(subClient)  // Insert into SwiftData
                             newClient.subClients.append(subClient)
-                            print("  ✅ Fetched sub-client: \(subClient.name)")
                         } catch {
-                            print("  ⚠️ Failed to fetch sub-client \(subClientId): \(error)")
                             // Continue with other sub-clients even if one fails
                         }
                     }
                 } else {
-                    print("📋 No sub-client IDs in response, trying constraint query")
+                    // No sub-client IDs in response, trying constraint query
                     // Fallback: Try fetching sub-clients by client ID constraint
                     let subClientDTOs = try await apiService.fetchSubClientsForClient(clientId: clientId)
-                    print("  🔵 Found \(subClientDTOs.count) sub-clients via constraint query")
                     
                     for subClientDTO in subClientDTOs {
                         let subClient = subClientDTO.toSubClient()
                         subClient.client = newClient
                         modelContext.insert(subClient)  // Insert into SwiftData
                         newClient.subClients.append(subClient)
-                        print("  ✅ Added sub-client via constraint: \(subClient.name)")
                     }
                 }
                 
-                print("✅ New client created: Name='\(newClient.name)', Email='\(newClient.email ?? "nil")', Phone='\(newClient.phoneNumber ?? "nil")', SubClients=\(newClient.subClients.count)")
             }
             
             // Save changes
             try modelContext.save()
             
         } catch {
-            print("❌ SyncManager: Failed to refresh client \(clientId): \(error)")
             
             // Handle 404 gracefully
             if case APIError.httpError(let statusCode) = error, statusCode == 404 {
-                print("⚠️ Client \(clientId) not found (404)")
             }
         }
     }
@@ -2928,16 +2587,13 @@ class SyncManager {
             let missingClientIds = clientIds.filter { !existingClientIds.contains($0) }
             
             if missingClientIds.isEmpty {
-                print("✅ All \(clientIds.count) clients already exist locally")
                 return
             }
             
-            print("🔵 SyncManager: Fetching \(missingClientIds.count) missing clients from API")
             
             // Fetch missing clients in batch
             let clientDTOs = try await apiService.fetchClientsByIds(clientIds: missingClientIds)
             
-            print("🟢 SyncManager: Fetched \(clientDTOs.count) clients from API")
             
             // Convert and save
             for clientDTO in clientDTOs {
@@ -2950,7 +2606,6 @@ class SyncManager {
             let notFoundIds = Set(missingClientIds).subtracting(fetchedIds)
             
             if !notFoundIds.isEmpty {
-                print("⚠️ \(notFoundIds.count) clients not found in API response")
                 // Create placeholder clients for missing ones
                 for clientId in notFoundIds {
                     let placeholderClient = Client(
@@ -2967,14 +2622,11 @@ class SyncManager {
             try modelContext.save()
             
         } catch {
-            print("❌ SyncManager: Failed to prefetch clients: \(error)")
             
             // As a last resort, try to sync all company clients
-            print("🔄 SyncManager: Attempting fallback sync of all company clients...")
             if let companyId = try? getCompanyId() {
                 await syncCompanyClients(companyId: companyId)
             } else {
-                print("❌ SyncManager: Could not determine company ID for fallback sync")
             }
         }
     }
@@ -2987,7 +2639,7 @@ class SyncManager {
             
             if let existingClient = try modelContext.fetch(clientDescriptor).first {
                 // Client exists locally, just link it
-                print("✅ Found existing client '\(existingClient.name)' for project '\(project.title)'")
+                // Found existing client for project
                 
                 project.client = existingClient
                 project.clientId = clientId
@@ -2998,7 +2650,6 @@ class SyncManager {
                 }
             } else {
                 // Client doesn't exist locally - try to fetch it immediately
-                print("📝 Client \(clientId) not found locally for project '\(project.title)' - fetching from API")
                 
                 // Try to fetch the client data immediately
                 var clientName = "Unknown Client"
@@ -3014,23 +2665,19 @@ class SyncManager {
                     clientPhone = clientDTO.phoneNumber
                     clientAddress = clientDTO.address?.formattedAddress
                     clientThumbnail = clientDTO.thumbnail
-                    print("✅ Successfully fetched client '\(clientName)' from API")
                 } catch {
-                    print("⚠️ Failed to fetch client \(clientId) from API: \(error)")
-                    print("📝 Creating placeholder that will retry on next sync")
                     clientName = "Client (Syncing...)"
                     
                     // Try to sync all company clients as fallback
                     let companyId = project.companyId
                     if !companyId.isEmpty {
-                        print("🔄 Attempting to sync all company clients as fallback...")
                         await syncCompanyClients(companyId: companyId)
                         
                         // Check if client exists now after company sync
                         let checkPredicate = #Predicate<Client> { $0.id == clientId }
                         let checkDescriptor = FetchDescriptor<Client>(predicate: checkPredicate)
                         if let syncedClient = try? modelContext.fetch(checkDescriptor).first {
-                            print("✅ Client found after company sync!")
+                            // Client found after company sync
                             project.client = syncedClient
                             project.clientId = clientId
                             if !syncedClient.projects.contains(where: { $0.id == project.id }) {
@@ -3058,25 +2705,21 @@ class SyncManager {
                 project.clientId = clientId
                 placeholderClient.projects.append(project)
                 
-                print("📎 Linked placeholder client to project '\(project.title)'")
             }
             
             // Save the context
             try modelContext.save()
         } catch {
-            print("⚠️ SyncManager: Failed to link client \(clientId) to project: \(error)")
         }
     }
     
     /// Sync all clients for a company
     func syncCompanyClients(companyId: String) async {
         do {
-            print("🔵 SyncManager: Fetching clients for company \(companyId)")
             
             // Fetch all clients for the company from API
             let clientDTOs = try await apiService.fetchCompanyClients(companyId: companyId)
             
-            print("🔵 SyncManager: Fetched \(clientDTOs.count) clients from API")
             
             // Get existing clients for this company
             let existingDescriptor = FetchDescriptor<Client>(
@@ -3093,7 +2736,6 @@ class SyncManager {
             // Delete clients that are no longer in the API response
             for client in existingClients {
                 if !currentClientIds.contains(client.id) {
-                    print("🗑️ SyncManager: Removing client \(client.name) - no longer in company")
                     modelContext.delete(client)
                 }
             }
@@ -3124,9 +2766,7 @@ class SyncManager {
             // Save all changes
             try modelContext.save()
             
-            print("🟢 SyncManager: Client sync completed")
         } catch {
-            print("❌ SyncManager: Failed to sync clients: \(error)")
         }
     }
     
@@ -3148,13 +2788,8 @@ class SyncManager {
                 userDTOs = try await apiService.fetchCompanyUsers(companyId: company.id)
                 
                 if !userDTOs.isEmpty {
-                    print("📱 SyncManager: Fetched \(userDTOs.count) team members for company")
                     // Debug: Log first user's data
                     if let firstUser = userDTOs.first {
-                        print("📱 First user data sample:")
-                        print("  - Name: \(firstUser.nameFirst ?? "nil") \(firstUser.nameLast ?? "nil")")
-                        print("  - Email: \(firstUser.email ?? "nil")")
-                        print("  - Phone: \(firstUser.phone ?? "nil")")
                     }
                 }
             } else {
@@ -3183,7 +2818,6 @@ class SyncManager {
             // Delete users that are no longer in the company
             for user in existingUsers {
                 if !currentUserIds.contains(user.id) {
-                    print("🗑️ SyncManager: Removing user \(user.fullName) - no longer in company")
                     modelContext.delete(user)
                 }
             }
@@ -3207,8 +2841,8 @@ class SyncManager {
                     existingUser.email = userDTO.email
                     existingUser.phone = userDTO.phone
                     
-                    // Extract role from userType and employeeType
-                    if userDTO.userType == BubbleFields.UserType.admin {
+                    // Extract role using company admin status first, then employeeType
+                    if isAdmin {
                         existingUser.role = .admin
                     } else if let employeeTypeString = userDTO.employeeType {
                         existingUser.role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
@@ -3216,12 +2850,15 @@ class SyncManager {
                         existingUser.role = .fieldCrew
                     }
                     
+                    // Set isCompanyAdmin based on whether user is in company's admin list
+                    existingUser.isCompanyAdmin = isAdmin
+                    
                     existingUser.profileImageURL = userDTO.avatar
                     existingUser.isActive = true // Users from API are considered active
                 } else {
-                    // Extract role for new user
+                    // Extract role using company admin status first, then employeeType
                     let role: UserRole
-                    if userDTO.userType == BubbleFields.UserType.admin {
+                    if isAdmin {
                         role = .admin
                     } else if let employeeTypeString = userDTO.employeeType {
                         role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
@@ -3241,6 +2878,7 @@ class SyncManager {
                     newUser.phone = userDTO.phone
                     newUser.profileImageURL = userDTO.avatar
                     newUser.isActive = true // Users from API are considered active
+                    newUser.isCompanyAdmin = isAdmin // Set company admin status
                     modelContext.insert(newUser)
                 }
                 
@@ -3263,7 +2901,6 @@ class SyncManager {
             try modelContext.save()
             
         } catch {
-            print("❌ SyncManager: Failed to sync team members: \(error.localizedDescription)")
         }
     }
 }

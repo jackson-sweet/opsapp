@@ -32,6 +32,10 @@ final class User {
     var userColor: String?  // User's unique color in HEX
     var devPermission: Bool = false  // Dev permission for testing features
     var hasCompletedAppOnboarding: Bool = false  // Track if user has completed onboarding
+    var isCompanyAdmin: Bool = false  // Whether user is an admin for their company
+    
+    // Stripe integration
+    var stripeCustomerId: String?  // User's Stripe customer ID (for plan holders)
     
     // Fixed relationship with proper inverse that matches Project's declaration
     @Relationship(deleteRule: .noAction, inverse: \Project.teamMembers)
@@ -54,6 +58,15 @@ final class User {
     // Computed properties for convenience
     var fullName: String {
         "\(firstName) \(lastName)"
+    }
+    
+    // Check if user is the plan holder (their Stripe ID matches company's)
+    func isPlanHolder(for company: Company) -> Bool {
+        guard let userStripeId = stripeCustomerId,
+              let companyStripeId = company.stripeCustomerId else {
+            return false
+        }
+        return userStripeId == companyStripeId
     }
     
     // Computed property for location

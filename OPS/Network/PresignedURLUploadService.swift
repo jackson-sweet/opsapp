@@ -64,7 +64,6 @@ class PresignedURLUploadService {
             
             // Compress image
             guard let imageData = processedImage.jpegData(compressionQuality: compressionQuality) else {
-                print("❌ Failed to compress image at index \(index)")
                 continue
             }
             
@@ -109,7 +108,6 @@ class PresignedURLUploadService {
                 uploadedImages.append((url: presignedResponse.fileUrl, filename: filename))
                 
             } catch {
-                print("❌ Failed to upload image \(index + 1): \(error)")
                 throw error
             }
         }
@@ -156,7 +154,6 @@ class PresignedURLUploadService {
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
-            print("❌ Lambda request failed with status: \(httpResponse.statusCode)")
             throw UploadError.lambdaError(statusCode: httpResponse.statusCode)
         }
         
@@ -220,7 +217,6 @@ class PresignedURLUploadService {
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
-            print("❌ S3 upload failed with status: \(httpResponse.statusCode)")
             throw UploadError.s3Error(statusCode: httpResponse.statusCode)
         }
         

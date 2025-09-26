@@ -237,7 +237,6 @@ struct CompanyCodeDisplayView: View {
                     // Fallback to company ID if no code exists
                     viewModel.companyCode = companyId
                 } else {
-                    print("  - ERROR: No company code or ID found in UserDefaults")
                 }
             }
         }

@@ -65,7 +65,6 @@ struct ProjectDetailsView: View {
             let _ = try JSONSerialization.data(withJSONObject: projectDict, options: .prettyPrinted)
             // JSON debugging removed - no longer needed
         } catch {
-            print("Error converting project to JSON: \(error.localizedDescription)")
         }
     }
     
@@ -199,9 +198,9 @@ struct ProjectDetailsView: View {
         }
         .onAppear {
             DispatchQueue.main.async {
-                // Make sure appState has our current project set as active
-                if let appState = dataController.appState, appState.activeProject == nil {
-                    appState.activeProject = project
+                // Make sure appState has our current project ID set as active
+                if let appState = dataController.appState, appState.activeProjectID != project.id {
+                    appState.activeProjectID = project.id
                 }
             }
             
@@ -685,7 +684,8 @@ struct ProjectDetailsView: View {
             .cornerRadius(8)
             .shadow(color: Color.black, radius: 4, x: 0, y: 2)
             .contentShape(Rectangle())
-            .onTapGesture {
+            .onTapGesture { [index] in  // Explicitly capture index
+                print("DEBUG: Photo tapped at index \(index)")
                 selectedPhotoIndex = index
                 showingPhotoViewer = true
             }
@@ -797,7 +797,6 @@ struct ProjectDetailsView: View {
             if success {
                 showSaveNotification()
             } else {
-                print("⚠️ Failed to save project notes using SyncManager, trying fallback")
                 
                 // Fallback approach if SyncManager method fails
                 project.notes = noteText
@@ -808,7 +807,6 @@ struct ProjectDetailsView: View {
                         try modelContext.save()
                         showSaveNotification()
                     } catch {
-                        print("❌ Error saving notes locally: \(error.localizedDescription)")
                     }
                 }
             }
@@ -839,7 +837,6 @@ struct ProjectDetailsView: View {
                             }
                             
                         } catch {
-                            print("❌ Error syncing project notes to API: \(error.localizedDescription)")
                             // Leave needsSync = true so it will be tried again later
                         }
                     }
@@ -916,7 +913,6 @@ struct ProjectDetailsView: View {
                         
                         // Compress image
                         guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-                            print("⚠️ Failed to compress image \(index + 1)")
                             continue
                         }
                         
@@ -960,7 +956,6 @@ struct ProjectDetailsView: View {
                 }
             } catch {
                 // Handle error
-                print("❌ Error processing images: \(error.localizedDescription)")
                 await MainActor.run {
                     processingImages = false
                 }
@@ -976,18 +971,15 @@ struct ProjectDetailsView: View {
     private func refreshClientData(clientId: String, forceRefresh: Bool = false) {
         // Skip if already refreshing
         guard !isRefreshingClient else { 
-            print("📱 Already refreshing client, skipping duplicate request")
             return 
         }
         isRefreshingClient = true
         
-        print("🔄 ProjectDetailsView: Refreshing client \(clientId) for project '\(project.title)'")
         
         Task {
             do {
                 // Get the sync manager from data controller
                 guard let syncManager = dataController.syncManager else {
-                    print("❌ No sync manager available")
                     isRefreshingClient = false
                     return
                 }
@@ -995,14 +987,12 @@ struct ProjectDetailsView: View {
                 // Refresh just this one client
                 await syncManager.refreshSingleClient(clientId: clientId, for: project, forceRefresh: forceRefresh)
                 
-                print("✅ Client refresh completed for '\(project.client?.name ?? "Unknown")'")
                 
                 // Update UI on main thread
                 await MainActor.run {
                     isRefreshingClient = false
                 }
             } catch {
-                print("❌ Failed to refresh client: \(error)")
                 await MainActor.run {
                     isRefreshingClient = false
                 }
@@ -1278,13 +1268,11 @@ struct ZoomablePhotoView: View {
                 self.isLoading = false
                 
                 if let error = error {
-                    print("ZoomablePhotoView: Error loading image: \(error.localizedDescription)")
                     return
                 }
                 
                 if let httpResponse = response as? HTTPURLResponse, 
                    !(200...299).contains(httpResponse.statusCode) {
-                    print("ZoomablePhotoView: HTTP Error: \(httpResponse.statusCode)")
                     return
                 }
                 
@@ -1297,7 +1285,6 @@ struct ZoomablePhotoView: View {
                     // Also cache in memory
                     ImageCache.shared.set(loadedImage, forKey: normalizedURL)
                 } else {
-                    print("ZoomablePhotoView: Failed to create image from data")
                 }
             }
         }.resume()

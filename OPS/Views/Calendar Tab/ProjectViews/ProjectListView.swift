@@ -29,7 +29,18 @@ struct ProjectListView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .top) {
+            
+            // Only the content area should be in the ScrollView, not the header
+            if viewModel.calendarEventsForSelectedDate.isEmpty {
+                emptyStateView
+            } else {
+                // Project list content in ScrollView
+                ScrollView {
+                    projectListView
+                }
+            }
+            
             // Selected date header based on reference design
             // IMPORTANT: Header should NOT be in ScrollView
             HStack(alignment: .top) {
@@ -65,25 +76,17 @@ struct ProjectListView: View {
                     cornerRadius: 10
                 )
             }
-            .padding(.horizontal, 20)
             .padding(.vertical, 16)
+            .padding(.horizontal, 16)
+            .background(.ultraThinMaterial)
             
-            // Only the content area should be in the ScrollView, not the header
-            if viewModel.calendarEventsForSelectedDate.isEmpty {
-                emptyStateView
-            } else {
-                // Project list content in ScrollView
-                ScrollView {
-                    projectListView
-                }
-            }
+            
         }
         .overlay(
             // White border for first/selected project card
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(Color.white, lineWidth: 1)
         )
-        .padding(.horizontal, 16)
     }
     
     // Split the date into components for better styling
@@ -101,9 +104,12 @@ struct ProjectListView: View {
     
     private var emptyStateView: some View {
         VStack(spacing: 20) {
+            Spacer()
+            
             Text("[ No projects scheduled ]".uppercased())
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
+        Spacer()
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
@@ -111,6 +117,10 @@ struct ProjectListView: View {
     
     private var projectListView: some View {
         VStack(spacing: 16) {
+            
+            Spacer(minLength: 90)
+                .frame(maxWidth: .infinity, maxHeight: 90)
+            
             // New events section
             ForEach(Array(newEvents.enumerated()), id: \.element.id) { index, event in
                 CalendarEventCard(
@@ -141,8 +151,8 @@ struct ProjectListView: View {
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.horizontal, 20)
                 .padding(.vertical, 8)
+                .padding(.horizontal, 8)
                 
                 // Ongoing events
                 ForEach(Array(ongoingEvents.enumerated()), id: \.element.id) { index, event in
@@ -157,7 +167,7 @@ struct ProjectListView: View {
                 }
             }
         }
-        .padding(.bottom, 20)
+        .padding(.bottom, 16)
     }
     
     private func handleEventTap(_ event: CalendarEvent) {

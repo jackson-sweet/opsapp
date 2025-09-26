@@ -71,10 +71,6 @@ extension AppleSignInManager: ASAuthorizationControllerDelegate {
             return
         }
         
-        print("🔵 Apple Sign-In successful")
-        print("   User ID: \(appleIDCredential.user)")
-        print("   Email: \(appleIDCredential.email ?? "not provided")")
-        print("   Name: \(appleIDCredential.fullName?.givenName ?? "not provided") \(appleIDCredential.fullName?.familyName ?? "not provided")")
         
         let result = AppleSignInResult(
             userIdentifier: appleIDCredential.user,
@@ -95,29 +91,21 @@ extension AppleSignInManager: ASAuthorizationControllerDelegate {
             switch authError.code {
             case .canceled:
                 errorMessage = "Sign in was canceled"
-                print("🟡 Apple Sign-In canceled by user")
             case .failed:
                 errorMessage = "Sign in failed"
-                print("🔴 Apple Sign-In failed")
             case .invalidResponse:
                 errorMessage = "Invalid response received"
-                print("🔴 Apple Sign-In invalid response")
             case .notHandled:
                 errorMessage = "Sign in request not handled"
-                print("🔴 Apple Sign-In not handled")
             case .unknown:
                 errorMessage = "An unknown error occurred"
-                print("🔴 Apple Sign-In unknown error")
             case .notInteractive:
                 errorMessage = "Sign in not interactive"
-                print("🔴 Apple Sign-In not interactive")
             @unknown default:
                 errorMessage = "An unexpected error occurred"
-                print("🔴 Apple Sign-In unexpected error")
             }
         } else {
             errorMessage = error.localizedDescription
-            print("🔴 Apple Sign-In error: \(error)")
         }
         
         signInContinuation?.resume(throwing: error)

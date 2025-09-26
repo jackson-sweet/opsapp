@@ -314,7 +314,6 @@ struct DatabaseStatsCard: View {
             eventCount = try modelContext.fetchCount(FetchDescriptor<CalendarEvent>())
             userCount = try modelContext.fetchCount(FetchDescriptor<User>())
         } catch {
-            print("Error fetching counts: \(error)")
         }
     }
 }

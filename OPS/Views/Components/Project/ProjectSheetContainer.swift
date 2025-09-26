@@ -20,16 +20,15 @@ struct ProjectSheetContainer: View {
         }
         // Project details sheet - uses isPresented and item together for more reliable presentation
         .sheet(isPresented: $appState.showProjectDetails, onDismiss: {
-            // print("📋 ProjectSheetContainer: Project details sheet dismissed")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 appState.dismissProjectDetails()
             }
         }) {
-            if let project = appState.activeProject {
+            if let projectID = appState.activeProjectID,
+               let project = dataController.getProject(id: projectID) {
                 NavigationView {
                     ProjectDetailsView(project: project)
                         .onAppear {
-                            // print("📋 ProjectSheetContainer: Showing PROJECT details for: \(project.title)")
                         }
                 }
                 .interactiveDismissDisabled(false)
@@ -50,9 +49,11 @@ struct ProjectSheetContainer: View {
                     } else {
                         // Try to fetch project one more time
                         if let projectID = appState.activeProjectID,
-                           let project = dataController.getProject(id: projectID) {
+                           let _ = dataController.getProject(id: projectID) {
+                            // Project exists, just wait for refresh
                             DispatchQueue.main.async {
-                                appState.activeProject = project
+                                // Force a refresh of the sheet
+                                appState.objectWillChange.send()
                             }
                         } else {
                             // Only dismiss if we still can't find the project
@@ -66,15 +67,24 @@ struct ProjectSheetContainer: View {
         }
         // Task details sheet
         .sheet(item: $selectedTaskDetail) { taskDetail in
-            NavigationView {
-                TaskDetailsView(task: taskDetail.task, project: taskDetail.project)
-                    .environmentObject(dataController)
-                    .environmentObject(appState)
-                    .onAppear {
-                        // print("📋 ProjectSheetContainer: Showing TASK details for: \(taskDetail.task.displayTitle)")
-                    }
+            // Fetch fresh models using IDs
+            if let project = dataController.getProject(id: taskDetail.projectId),
+               let task = project.tasks.first(where: { $0.id == taskDetail.taskId }) {
+                NavigationView {
+                    TaskDetailsView(task: task, project: project)
+                        .environmentObject(dataController)
+                        .environmentObject(appState)
+                        .onAppear {
+                        }
+                }
+                .interactiveDismissDisabled(false)
+            } else {
+                VStack {
+                    Text("Task no longer available")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
             }
-            .interactiveDismissDisabled(false)
         }
         // Listen for task details from home
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowTaskDetailsFromHome"))) { notification in
@@ -82,17 +92,13 @@ struct ProjectSheetContainer: View {
                let taskID = userInfo["taskID"] as? String,
                let projectID = userInfo["projectID"] as? String {
                 
-                // Find the project and task
-                if let project = dataController.getProject(id: projectID),
-                   let task = project.tasks.first(where: { $0.id == taskID }) {
-                    // Show task details
-                    selectedTaskDetail = TaskDetailInfo(task: task, project: project)
-                }
+                // Show task details with just IDs
+                selectedTaskDetail = TaskDetailInfo(taskId: taskID, projectId: projectID)
             }
         }
-        // Debug output to track active project changes
-        .onChange(of: appState.activeProject) { _, newProject in
-            if let project = newProject {
+        // Debug output to track active project ID changes
+        .onChange(of: appState.activeProjectID) { _, newProjectID in
+            if let projectID = newProjectID {
             } else {
             }
         }

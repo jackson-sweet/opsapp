@@ -47,7 +47,7 @@ struct ComingSoonView: View {
                                 .font(OPSStyle.Typography.title)
                                 .foregroundColor(.white)
                             
-                            Text("This feature will be available in the next update")
+                            Text("This feature will be available in the future.")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .multilineTextAlignment(.center)

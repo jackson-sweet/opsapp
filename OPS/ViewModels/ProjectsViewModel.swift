@@ -71,7 +71,6 @@ class ProjectsViewModel: ObservableObject {
             self.projects = try context.fetch(descriptor)
         } catch {
             self.error = "Unable to load projects"
-            print("Local fetch error: \(error.localizedDescription)")
         }
     }
     

@@ -186,7 +186,6 @@ class NotificationManager: NSObject, ObservableObject {
         notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             DispatchQueue.main.async {
                 if let error = error {
-                    print("NotificationManager: Error requesting permission: \(error.localizedDescription)")
                     completion(false)
                     return
                 }
@@ -264,7 +263,6 @@ class NotificationManager: NSObject, ObservableObject {
         // Add request to notification center
         notificationCenter.add(request) { error in
             if let error = error {
-                print("NotificationManager: Error scheduling notification: \(error.localizedDescription)")
             } else {
             }
         }
@@ -308,7 +306,6 @@ class NotificationManager: NSObject, ObservableObject {
         // Add request to notification center
         notificationCenter.add(request) { error in
             if let error = error {
-                print("NotificationManager: Error scheduling team notification: \(error.localizedDescription)")
             } else {
             }
         }
@@ -367,7 +364,6 @@ class NotificationManager: NSObject, ObservableObject {
         // Add request to notification center
         notificationCenter.add(request) { error in
             if let error = error {
-                print("NotificationManager: Error scheduling reminder: \(error.localizedDescription)")
             } else {
             }
         }
@@ -588,7 +584,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     ) -> String {
         // Calculate the notification date based on days in advance
         guard let notificationDate = Calendar.current.date(byAdding: .day, value: -daysInAdvance, to: startDate) else {
-            print("NotificationManager: Error calculating advance notice date")
             return ""
         }
         
@@ -631,7 +626,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // Add request to notification center
         notificationCenter.add(request) { error in
             if let error = error {
-                print("NotificationManager: Error scheduling advance notice: \(error.localizedDescription)")
             } else {
             }
         }
@@ -673,7 +667,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // Add request to notification center
         notificationCenter.add(request) { error in
             if let error = error {
-                print("NotificationManager: Error scheduling assignment notification: \(error.localizedDescription)")
             } else {
             }
         }
@@ -725,7 +718,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // Add request to notification center
         notificationCenter.add(request) { error in
             if let error = error {
-                print("NotificationManager: Error scheduling update notification: \(error.localizedDescription)")
             } else {
             }
         }
@@ -760,7 +752,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // Add request to notification center
         notificationCenter.add(request) { error in
             if let error = error {
-                print("NotificationManager: Error scheduling completion notification: \(error.localizedDescription)")
             } else {
             }
         }
@@ -798,7 +789,6 @@ extension NotificationManager {
         // Add request to notification center
         notificationCenter.add(request) { error in
             if let error = error {
-                print("NotificationManager: Error scheduling location-based notification: \(error.localizedDescription)")
             } else {
             }
         }
@@ -840,7 +830,6 @@ extension NotificationManager {
         
         // Check if user wants advance notifications
         guard UserDefaults.standard.bool(forKey: "notifyProjectAdvance") else {
-            print("📵 Project advance notifications are disabled")
             return
         }
         
@@ -859,7 +848,6 @@ extension NotificationManager {
                 return startDate > now
             }
             
-            print("📅 Found \(futureProjects.count) future projects to schedule notifications for")
             
             // Get user's advance notice preferences
             let advanceDays = getAdvanceNoticeDays()
@@ -874,10 +862,8 @@ extension NotificationManager {
                 }
             }
             
-            print("✅ Scheduled \(futureProjects.count * advanceDays.count) notifications")
             
         } catch {
-            print("❌ Failed to schedule project notifications: \(error)")
         }
     }
     
@@ -905,7 +891,6 @@ extension NotificationManager {
         
         if !projectNotificationIds.isEmpty {
             center.removePendingNotificationRequests(withIdentifiers: projectNotificationIds)
-            print("🗑️ Cancelled \(projectNotificationIds.count) project notifications")
         }
     }
     
@@ -919,7 +904,6 @@ extension NotificationManager {
             if !idsToRemove.isEmpty {
                 UNUserNotificationCenter.current()
                     .removePendingNotificationRequests(withIdentifiers: idsToRemove)
-                print("🗑️ Cancelled \(idsToRemove.count) notifications for project \(projectId)")
             }
         }
     }

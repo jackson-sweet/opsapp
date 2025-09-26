@@ -135,14 +135,12 @@ struct ProjectImageView: View {
                 self.isLoading = false
                 
                 if let error = error {
-                    print("ProjectImageView: Error loading image: \(error.localizedDescription)")
                     self.loadFailed = true
                     return
                 }
                 
                 if let httpResponse = response as? HTTPURLResponse, 
                    !(200...299).contains(httpResponse.statusCode) {
-                    print("ProjectImageView: HTTP Error: \(httpResponse.statusCode)")
                     self.loadFailed = true
                     return
                 }
@@ -156,7 +154,6 @@ struct ProjectImageView: View {
                     // Also cache in memory
                     ImageCache.shared.set(loadedImage, forKey: normalizedURLString)
                 } else {
-                    print("ProjectImageView: Failed to create image from data")
                     self.loadFailed = true
                 }
             }

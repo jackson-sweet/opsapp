@@ -21,10 +21,14 @@ struct AppHeader: View {
     }
     
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @State private var selectedTab: SettingsTab = .settings
     var headerType: HeaderType
     var onSearchTapped: (() -> Void)? = nil
     var onRefreshTapped: (() -> Void)? = nil
+    var onFilterTapped: (() -> Void)? = nil
+    var hasActiveFilters: Bool = false
+    var filterCount: Int = 0
     
     private var title: String {
         switch headerType {
@@ -48,10 +52,30 @@ struct AppHeader: View {
                         .font(OPSStyle.Typography.subtitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     
-                    if let company = dataController.getCurrentUserCompany() {
-                        Text(company.name.uppercased())
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    HStack(spacing: 8) {
+                        if let company = dataController.getCurrentUserCompany() {
+                            Text(company.name.uppercased())
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            // Show subscription badge if relevant
+                            if let status = company.subscriptionStatus,
+                               let statusEnum = SubscriptionStatus(rawValue: status) {
+                                Text("•")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(statusColor(for: statusEnum))
+                                        .frame(width: 6, height: 6)
+                                    
+                                    Text(statusText(for: statusEnum))
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(statusColor(for: statusEnum))
+                                }
+                            }
+                        }
                     }
                 }
                 
@@ -80,29 +104,71 @@ struct AppHeader: View {
                     .shadow(radius: 2)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             .padding(.vertical, 12)
             
         } else {
             
             HStack {
-                VStack(alignment: .leading) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(title)
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryText)
+                    
+                    // Show date subtitle for schedule view
+                    if headerType == .schedule {
+                        HStack(spacing: 8) {
+                            Text("TODAY")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            Text("|")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            Text(todayDateString)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                    }
                 }
                 
                 Spacer()
                 
-                // Search and refresh buttons for schedule view
+                // Search, filter and refresh buttons for schedule view
                 if headerType == .schedule {
                     HStack(spacing: 8) {
+                        // Filter button
+                        if let onFilterTapped = onFilterTapped {
+                            Button(action: onFilterTapped) {
+                                ZStack {
+                                    Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                                        .frame(width: 44, height: 44)
+                                        .background(OPSStyle.Colors.cardBackground)
+                                        .clipShape(Circle())
+                                    
+                                    // Show filter count badge if filters are active
+                                    if hasActiveFilters && filterCount > 0 {
+                                        Text("\(filterCount)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(4)
+                                            .background(OPSStyle.Colors.primaryAccent)
+                                            .clipShape(Circle())
+                                            .offset(x: 14, y: -14)
+                                    }
+                                }
+                            }
+                        }
+                        
                         // Refresh button
                         if let onRefreshTapped = onRefreshTapped {
                             Button(action: onRefreshTapped) {
                                 Image(systemName: "arrow.clockwise")
                                     .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(width: 44, height: 44)
                                     .background(OPSStyle.Colors.cardBackground)
                                     .clipShape(Circle())
@@ -114,7 +180,7 @@ struct AppHeader: View {
                             Button(action: onSearchTapped) {
                                 Image(systemName: "magnifyingglass")
                                     .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(width: 44, height: 44)
                                     .background(OPSStyle.Colors.cardBackground)
                                     .clipShape(Circle())
@@ -153,10 +219,16 @@ struct AppHeader: View {
                 
 
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             .padding(.vertical, 12)
             
         }
+    }
+    
+    private var todayDateString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM d"
+        return formatter.string(from: Date())
     }
     
     private func getGreeting() -> String {
@@ -169,6 +241,56 @@ struct AppHeader: View {
             return "Good Afternoon"
         default:
             return "Good Evening"
+        }
+    }
+    
+    private func statusColor(for status: SubscriptionStatus) -> Color {
+        switch status {
+        case .trial:
+            return OPSStyle.Colors.primaryAccent
+        case .active:
+            return OPSStyle.Colors.successStatus
+        case .grace:
+            return OPSStyle.Colors.warningStatus
+        case .expired, .cancelled:
+            return OPSStyle.Colors.errorStatus
+        }
+    }
+    
+    private func statusText(for status: SubscriptionStatus) -> String {
+        switch status {
+        case .trial:
+            if let company = dataController.getCurrentUserCompany(),
+               let trialEnd = company.trialEndDate {
+                let days = Calendar.current.dateComponents([.day], from: Date(), to: trialEnd).day ?? 0
+                if days > 0 {
+                    return "TRIAL • \(days) DAYS LEFT"
+                } else {
+                    return "TRIAL ENDING"
+                }
+            }
+            return "TRIAL"
+        case .active:
+            if let company = dataController.getCurrentUserCompany(),
+               let plan = company.subscriptionPlan,
+               let planEnum = SubscriptionPlan(rawValue: plan) {
+                return planEnum.displayName.uppercased()
+            }
+            return "ACTIVE"
+        case .grace:
+            if let company = dataController.getCurrentUserCompany(),
+               let days = company.daysRemainingInGracePeriod {
+                if days > 0 {
+                    return "GRACE • \(days) DAYS"
+                } else {
+                    return "GRACE ENDING"
+                }
+            }
+            return "GRACE PERIOD"
+        case .expired:
+            return "EXPIRED"
+        case .cancelled:
+            return "CANCELLED"
         }
     }
     

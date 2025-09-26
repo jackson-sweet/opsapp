@@ -200,32 +200,19 @@ struct TaskRow: View {
     // MARK: - Debug Logging
     
     private func logTaskRowTeamMemberData() {
-        print("\n---------- TASK ROW: Team Member Debug ----------")
-        print("📱 UI: TaskRow displayed for task")
-        print("📊 DATA: Task ID: \(task.id)")
-        print("📊 DATA: Task Type: \(task.taskType?.display ?? "Unknown")")
-        print("📊 DATA: Task Color: \(task.taskColor)")
         
         // Log team member data for this row
-        print("📊 DATA: teamMemberIdsString: '\(task.teamMemberIdsString)'")
         let teamMemberIds = task.getTeamMemberIds()
-        print("📊 DATA: Team member IDs: \(teamMemberIds)")
-        print("📊 DATA: task.teamMembers count: \(task.teamMembers.count)")
         
         // Log what's being displayed in the UI
         if !task.teamMembers.isEmpty {
-            print("📱 UI: Displaying \(min(task.teamMembers.count, 3)) team member avatars")
             for (index, member) in task.teamMembers.prefix(3).enumerated() {
-                print("📱 UI: Avatar \(index + 1): \(member.fullName) (ID: \(member.id))")
             }
             if task.teamMembers.count > 3 {
-                print("📱 UI: Plus indicator showing +\(task.teamMembers.count - 3) more")
             }
         } else {
-            print("📱 UI: No team member avatars displayed (empty array)")
         }
         
-        print("------------------------------------------------")
     }
     
     private func statusColor(for status: TaskStatus) -> Color {

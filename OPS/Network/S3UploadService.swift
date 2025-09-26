@@ -54,7 +54,6 @@ class S3UploadService {
             
             // Compress image
             guard let imageData = processedImage.jpegData(compressionQuality: compressionQuality) else {
-                print("❌ Failed to compress image at index \(index)")
                 continue
             }
             
@@ -93,14 +92,10 @@ class S3UploadService {
                 
                 uploadedImages.append((url: s3URL, filename: filename))
             } catch {
-                print("❌ Failed to upload image \(index + 1): \(error)")
-                print("  - Error type: \(type(of: error))")
-                print("  - Error description: \(error.localizedDescription)")
                 throw error
             }
         }
         
-        print("  - Failed: \(images.count - uploadedImages.count)")
         
         return uploadedImages
     }
@@ -159,7 +154,6 @@ class S3UploadService {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ S3 Upload Error: Invalid response type")
                 throw S3Error.uploadFailed
             }
             
@@ -168,9 +162,7 @@ class S3UploadService {
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {
-                print("❌ S3 Upload Failed with status: \(httpResponse.statusCode)")
                 if let errorBody = String(data: data, encoding: .utf8) {
-                    print("❌ Error Response: \(errorBody)")
                 }
                 throw S3Error.uploadFailed
             }
@@ -178,7 +170,6 @@ class S3UploadService {
             return endpoint
             
         } catch {
-            print("❌ S3 Upload Error: \(error.localizedDescription)")
             throw error
         }
     }

@@ -30,10 +30,8 @@ struct ProjectHeader: View {
                     
                     // Close button
                     Button(action: {
-                        print("🔴 ProjectHeader: X button tapped")
                         // If we're in navigation mode, stop routing first
                         if inProgressManager.isRouting {
-                            print("🔴 ProjectHeader: Stopping routing")
                             inProgressManager.stopRouting()
                         }
                         
@@ -43,7 +41,6 @@ struct ProjectHeader: View {
                             object: nil
                         )
                         
-                        print("🔴 ProjectHeader: Exiting project mode")
                         appState.exitProjectMode()
                     }) {
                         HStack(alignment: .center, spacing: 4) {

@@ -30,14 +30,10 @@ struct ProjectDTO: Codable {
         self.address = try container.decodeIfPresent(BubbleAddress.self, forKey: .address)
         self.allDay = try container.decodeIfPresent(Bool.self, forKey: .allDay)
         
-        // Debug client field decoding
+        // Decode client field (debug logging removed to reduce console clutter)
         if container.contains(.client) {
             self.client = try container.decodeIfPresent(String.self, forKey: .client)
-            if let clientId = self.client {
-                print("🔍 Decoded client ID for '\(projectName)': \(clientId)")
-            }
         } else {
-            print("⚠️ No Client field in JSON for project '\(projectName)'")
             self.client = nil
         }
         
@@ -61,9 +57,7 @@ struct ProjectDTO: Codable {
         
         // Log eventType for debugging
         if let eventTypeValue = self.eventType {
-            print("📅 Project '\(projectName)' eventType: \(eventTypeValue)")
         } else {
-            print("📅 Project '\(projectName)' eventType: nil (will default to 'Project')")
         }
     }
     let company: BubbleReference?
@@ -134,12 +128,9 @@ struct ProjectDTO: Codable {
         // Store client reference if available
         if let clientId = client {
             project.clientId = clientId
-            print("📎 Project '\(projectName)' has client reference: \(clientId)")
         } else {
-            print("⚠️ Project '\(projectName)' has NO client reference in API response")
             // Debug: Check if we at least have the deprecated text fields
             if let cName = clientName {
-                print("   - But has clientName: \(cName)")
             }
         }
         

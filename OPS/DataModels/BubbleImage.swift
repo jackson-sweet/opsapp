@@ -39,13 +39,11 @@ struct BubbleImage: Codable {
             } catch {
                 // Try to handle a null value
                 if container.decodeNil() {
-                    print("BubbleImage: Decoded nil value")
                     self.url = nil
                     self.width = nil
                     self.height = nil
                 } else {
                     // If it's neither a string nor null, log the error but don't fail
-                    print("BubbleImage: Could not decode as string or null: \(error)")
                     self.url = nil
                     self.width = nil
                     self.height = nil

@@ -1,8 +1,8 @@
 # OPS App - Project Overview
 
 **Last Updated**: August 2025  
-**Version**: 1.2.0 (In Development)  
-**Status**: Production (v1.1.0) with Active Development (v1.2.0)
+**Version**: 1.2.0  
+**Status**: Production
 
 ## App Purpose
 OPS (Operational Project System) is a specialized project management app built specifically for trade workers. It focuses on providing reliable, field-first functionality that works in challenging job site conditions with minimal complexity. The app has been designed "by trades, for trades" with every feature optimized for real-world field operations.
@@ -23,7 +23,7 @@ OPS (Operational Project System) is a specialized project management app built s
 - **Main UI**: `MainTabView.swift` - Tab-based navigation when authenticated
 
 ### Data Layer
-- **Models**: SwiftData models for `User`, `Project`, `Company`, `TeamMember`
+- **Models**: SwiftData models for `User`, `Project`, `Company`, `TeamMember`, `CalendarEvent`
 - **Controller**: `DataController.swift` orchestrates all data operations and services
 - **Sync**: Sophisticated offline-first architecture with prioritized background synchronization
   - `SyncManager.swift` handles bidirectional data sync with conflict resolution
@@ -119,6 +119,7 @@ OPS (Operational Project System) is a specialized project management app built s
      - Single source of truth pattern
 
 6. **Calendar & Scheduling**
+   - **CalendarEvent-Centric Design**: All calendar functionality built around CalendarEvent entities as single source of truth
    - **Apple Calendar-like Experience**: Continuous vertical scrolling through months with seamless transitions
    - **Three view modes**: Month grid with lazy loading, Week list, Day detail
    - **Smart Month Detection**: Visible month automatically updates as user scrolls
@@ -127,6 +128,7 @@ OPS (Operational Project System) is a specialized project management app built s
    - **Event Caching**: Efficient caching system for calendar event counts
    - **Today Card**: Always displays today's date with event count
    - **Dynamic Month Picker**: Shows currently visible month, updates while scrolling
+   - **Scheduling Mode Support**: Respects project vs task-level event display based on project.eventType
    - Project count indicators on calendar days with subtle dots
    - Today highlighting with blue accent
    - Smart date picker with popover presentation
@@ -157,7 +159,69 @@ OPS (Operational Project System) is a specialized project management app built s
 - **Configuration**: 5+ files - App settings and constants
 - **Core App**: 3 files - App lifecycle management
 
-## Technical Details
+## CalendarEvent-Centric Architecture
+
+### Single Source of Truth for Calendar Display
+Version 1.2.0 introduces a CalendarEvent-centric architecture that fundamentally changes how calendar information is managed and displayed:
+
+- **CalendarEvents as Primary Display Entity**: All calendar display logic now flows through `CalendarEvent` entities rather than deriving information from projects or tasks directly
+- **Unified Data Flow**: Calendar views query CalendarEvents exclusively, ensuring consistent behavior across all calendar interfaces
+- **Centralized Filtering Logic**: The `shouldDisplay` property on CalendarEvent handles all complex filtering rules in one location
+
+### Event Type System & Scheduling Modes
+The architecture supports two distinct scheduling approaches through the project's `eventType` property:
+
+- **Project-Level Events** (`project.eventType == .project`):
+  - Only project-level CalendarEvents are displayed
+  - Tasks inherit project scheduling but don't show individually
+  - Simplified view for projects managed as single units
+
+- **Task-Level Events** (`project.eventType == .task`):
+  - Only task-level CalendarEvents are displayed
+  - Each task can have independent scheduling
+  - Granular control for complex project workflows
+
+### shouldDisplay Property Logic
+The `CalendarEvent.shouldDisplay` computed property encapsulates complex filtering logic:
+- Respects project scheduling mode (project vs task events)
+- Applies user role permissions
+- Handles project status filtering
+- Manages visibility rules consistently across all calendar views
+
+## Technical Architecture
+
+### SwiftData Defensive Patterns
+To ensure data integrity and prevent crashes in the multi-threaded environment, OPS implements strict defensive patterns:
+
+#### Model Passing Rules
+- **Never pass SwiftData models to background tasks**: Always pass primitive IDs (String, UUID) instead
+- **Always fetch fresh models from context**: Each operation should fetch the latest model state from the appropriate ModelContext
+- **Use autoreleasepool for batch operations**: Wrap large data processing in autoreleasepool blocks to manage memory efficiently
+
+#### Example Pattern:
+```swift
+// Correct: Pass ID to background task
+Task.detached {
+    await processProject(projectId: project.id)
+}
+
+// Incorrect: Never pass model directly
+Task.detached {
+    await processProject(project: project) // ❌ Can cause crashes
+}
+
+// Correct: Fetch fresh model in background context
+func processProject(projectId: String) async {
+    let context = ModelContext(sharedModelContainer)
+    guard let project = await context.fetch(Project.self, projectId) else { return }
+    // Work with fresh model
+}
+```
+
+#### Memory Management
+- Use `autoreleasepool` for operations processing multiple models
+- Always work with the appropriate ModelContext for the current thread
+- Implement proper error handling for model fetch operations
 
 ### Style System
 - Dark theme optimized for outdoor visibility
@@ -229,7 +293,37 @@ The codebase reflects the OPS brand values:
 - Advanced caching strategies
 - Widget support preparation
 
-## Recent Major Updates (v1.0.2)
+## Data Models
+
+### Core Model Properties
+
+#### User Model
+- **isCompanyAdmin**: Boolean property indicating company administration privileges
+  - Controls access to company-wide settings and management features
+  - Used throughout the app for permission-based UI rendering
+  - Synced from Bubble backend during user authentication
+
+#### CalendarEvent Model  
+- **shouldDisplay**: Computed property that handles complex visibility logic
+  - Respects project scheduling mode (project vs task events)
+  - Applies user role permissions and project status filtering
+  - Central point for all calendar display decisions
+
+#### Project Model
+- **eventType**: Enum property defining scheduling approach
+  - `.project`: Project-level scheduling (tasks inherit project dates)
+  - `.task`: Task-level scheduling (individual task scheduling)
+  - Determines which CalendarEvents are displayed in calendar views
+
+## Recent Major Updates (v1.2.0)
+
+### CalendarEvent-Centric Architecture (August 2025)
+- Migrated all calendar logic to use CalendarEvent entities as single source of truth
+- Implemented shouldDisplay property for centralized filtering logic
+- Added support for dual scheduling modes (project vs task events)
+- Enhanced calendar performance through unified data flow
+
+### Previous Updates (v1.0.2)
 
 ### Onboarding Bug Fixes (July 3)
 - Fixed user type persistence before signup completion

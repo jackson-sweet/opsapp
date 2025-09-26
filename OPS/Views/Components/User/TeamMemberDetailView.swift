@@ -994,7 +994,6 @@ struct TeamMemberDetailView: View {
         do {
             // Call the API to update client
             guard let syncManager = dataController.syncManager else {
-                print("❌ No sync manager available")
                 return
             }
             
@@ -1025,20 +1024,16 @@ struct TeamMemberDetailView: View {
                     client.phoneNumber = updatedClient.phoneNumber
                     client.address = updatedClient.address
                         
-                    print("✅ Client updated with API response: name='\(updatedClient.name)', email='\(updatedClient.email ?? "nil")', phone='\(updatedClient.phoneNumber ?? "nil")'")
                 }
             }
             
-            print("✅ Client contact info updated successfully")
         } catch {
-            print("❌ Failed to update client: \(error)")
         }
     }
     
     private func saveSubClient(name: String, title: String?, email: String?, phone: String?, address: String?) async {
         guard let client = client else { return }
         guard let syncManager = dataController.syncManager else { 
-            print("❌ No sync manager available")
             return 
         }
         
@@ -1071,7 +1066,6 @@ struct TeamMemberDetailView: View {
                     subClientToEdit = nil
                 }
                 
-                print("✅ Sub-client updated successfully: \(subClientDTO.name ?? "Unknown")")
             } else {
                 // Create new sub-client
                 let subClientDTO = try await syncManager.createSubClient(
@@ -1105,8 +1099,6 @@ struct TeamMemberDetailView: View {
                 modelContext.insert(newSubClient)
                 try modelContext.save()
                 
-                print("✅ Sub-client created and added to client: \(newSubClient.name)")
-                print("📊 Client now has \(client.subClients.count) sub-clients")
                 
                 // Force refresh the client to ensure everything is in sync (including newly created sub-clients)
                 if let project = project {
@@ -1118,9 +1110,7 @@ struct TeamMemberDetailView: View {
                 }
             }
             
-            print("✅ Sub-client saved successfully")
         } catch {
-            print("❌ Failed to save sub-client: \(error)")
         }
     }
     
@@ -1145,9 +1135,7 @@ struct TeamMemberDetailView: View {
                 modelContext.delete(subClient)
                 try modelContext.save()
                 
-                print("✅ Sub-client deleted: \(subClient.name)")
             } catch {
-                print("❌ Failed to delete sub-client: \(error)")
             }
         }
     }

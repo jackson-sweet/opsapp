@@ -122,7 +122,6 @@ struct CompanyAvatar: View {
         }
         
         guard let url = URL(string: fixedURLString) else {
-            print("Invalid URL: \(fixedURLString)")
             return
         }
         
@@ -147,7 +146,6 @@ struct CompanyAvatar: View {
                     }
                 }
             } catch {
-                print("Failed to load company logo from \(fixedURLString): \(error)")
                 await MainActor.run {
                     self.isLoading = false
                 }

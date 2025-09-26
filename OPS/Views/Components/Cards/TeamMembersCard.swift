@@ -95,23 +95,12 @@ struct TeamMembersCard: View {
     // MARK: - Debug Logging
     
     private func logTeamMembersCardData() {
-        print("\n---------- TEAM MEMBERS CARD: Debug ----------")
-        print("📱 UI: TeamMembersCard displayed")
-        print("📊 DATA: Title: '\(title)'")
-        print("📊 DATA: Team members array count: \(teamMembers.count)")
         
         if teamMembers.isEmpty {
-            print("📱 UI: Showing 'No team members assigned' message")
         } else {
-            print("📱 UI: Displaying \(teamMembers.count) team members:")
             for (index, member) in teamMembers.enumerated() {
-                print("📱 UI: Member \(index + 1): \(member.fullName) (ID: \(member.id))")
-                print("📱 UI:   - Role: \(member.role.displayName)")
-                print("📱 UI:   - Email: \(member.email ?? "No email")")
-                print("📱 UI:   - Phone: \(member.phone ?? "No phone")")
             }
         }
         
-        print("----------------------------------------------")
     }
 }

@@ -71,18 +71,14 @@ struct HomeContentView: View {
                     (todaysCalendarEvents.indices.contains(selectedEventIndex) ? 
                         todaysProjects.firstIndex(where: { $0.id == todaysCalendarEvents[selectedEventIndex].projectId }) ?? 0 : 0),
                 onProjectSelected: { project in
-                    print("🟢 HomeContentView: onProjectSelected called for: \(project.title)")
                     // Find event index for this project
                     if let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == project.id }) {
-                        print("🟢 HomeContentView: Found event at index \(index)")
                         selectedEventIndex = index
                         // Reset confirmation when selecting via map
                         showStartConfirmation = false
-                        print("🟢 HomeContentView: showStartConfirmation = \(showStartConfirmation)")
                     }
                 },
                 onNavigationStarted: { project in
-                    print("🟢 HomeContentView: onNavigationStarted called for project: \(project.title)")
                     
                     // Don't immediately enter project mode - let navigation start first
                     // Just update the project status and prepare for navigation
@@ -107,7 +103,6 @@ struct HomeContentView: View {
                                     }
                                 }
                             } catch {
-                                print("⚠️ API call failed: \(error.localizedDescription)")
                                 dataController.syncManager.updateProjectStatus(
                                     projectId: project.id,
                                     status: .inProgress,
@@ -119,14 +114,12 @@ struct HomeContentView: View {
                     
                     // Delay entering project mode to allow navigation to start
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        print("🟢 HomeContentView: Now entering project mode")
                         // Now enter project mode after navigation has started
                         appState.enterProjectMode(projectID: project.id)
                         
                         // For the old system, we also need to start routing
                         if let coordinate = project.coordinate,
                            let userLocation = locationManager.userLocation {
-                            print("🟢 HomeContentView: Starting routing...")
                             inProgressManager.startRouting(to: coordinate, from: userLocation)
                         }
                     }

@@ -64,23 +64,11 @@ struct ClientDTO: Codable {
     /// Convert DTO to SwiftData model
     func toModel() -> Client {
         // Enhanced debug logging to understand what we're receiving
-        print("🔍 ClientDTO.toModel() - Converting client:")
-        print("  - ID: \(id)")
-        print("  - Name (raw): \(name ?? "nil")")
-        print("  - Email Address (raw): \(emailAddress ?? "nil")")
-        print("  - Phone Number (raw): \(phoneNumber ?? "nil")")
-        print("  - Address: \(address?.formattedAddress ?? "nil")")
         
         // Also check alternative fields that might contain data
-        print("  - Client ID No: \(clientIdNo ?? "nil")")
-        print("  - Is Company: \(isCompany ?? false)")
-        print("  - Status: \(status ?? "nil")")
-        print("  - Balance: \(balance ?? "nil")")
-        print("  - Thumbnail: \(thumbnail ?? "nil")")
         
         // Check if we're getting any data at all
         let hasAnyData = name != nil || emailAddress != nil || phoneNumber != nil || address != nil
-        print("  - Has any data fields: \(hasAnyData)")
         
         let client = Client(
             id: id,
@@ -109,7 +97,6 @@ struct ClientDTO: Codable {
         // Note: Sub-clients IDs are stored but need to be fetched separately
         // The actual sub-clients will be fetched during the refresh process
         if let ids = subClientIds {
-            print("  - Sub-client IDs: \(ids)")
         }
         
         client.lastSyncedAt = Date()

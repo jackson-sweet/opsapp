@@ -10,11 +10,11 @@
 import SwiftUI
 import SwiftData
 
-// Helper struct to hold task and project together
+// Helper struct to hold task and project IDs together (not the models themselves)
 struct TaskDetailInfo: Identifiable {
     let id = UUID()
-    let task: ProjectTask
-    let project: Project
+    let taskId: String
+    let projectId: String
 }
 
 struct ScheduleView: View {
@@ -34,113 +34,64 @@ struct ScheduleView: View {
     @State private var selectedTaskDetail: TaskDetailInfo? = nil
     @State private var showSearchSheet = false
     @State private var showingRefreshAlert = false
-    
-    // Get the display text for team member filter
-    private var teamMemberFilterText: String {
-        if let memberId = viewModel.selectedTeamMemberId,
-           let member = viewModel.availableTeamMembers.first(where: { $0.id == memberId }) {
-            return member.fullName
-        }
-        return "All Team Members"
-    }
+    @State private var showFilterSheet = false
     
     var body: some View {
-        ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
-            
-            VStack(spacing: 16) {
-                // Header without gradient
-                AppHeader(
-                    headerType: .schedule,
-                    onSearchTapped: {
-                        showSearchSheet = true
-                    },
-                    onRefreshTapped: {
-                        // print("🔘 Refresh button tapped!")
-                        // Show indicator immediately
-                        showingRefreshAlert = true
-                        
-                        // Refresh projects in background
-                        Task {
-                            // print("🚀 Starting refresh task...")
-                            await viewModel.refreshProjects()
-                            // print("🏁 Refresh task completed")
-                            // Indicator will auto-dismiss after showing success
-                        }
-                    }
-                )
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient
+                    .ignoresSafeArea()
                 
-                // Calendar header
-                CalendarHeaderView(viewModel: viewModel)
-                
-                // Team member filter (only for admin/office crew)
-                if viewModel.shouldShowTeamMemberFilter {
-                    HStack {
-                        Text("Filter by Team Member:")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        Spacer()
-                        
-                        Menu {
-                            Button(action: {
-                                viewModel.updateTeamMemberFilter(nil)
-                            }) {
-                                Text("All Team Members")
-                            }
+                VStack(spacing: 0) {
+                    // Header with its own internal padding of 20
+                    AppHeader(
+                        headerType: .schedule,
+                        onSearchTapped: {
+                            showSearchSheet = true
+                        },
+                        onRefreshTapped: {
+                            // Show indicator immediately
+                            showingRefreshAlert = true
                             
-                            Divider()
-                            
-                            ForEach(viewModel.availableTeamMembers, id: \.id) { member in
-                                Button(action: {
-                                    viewModel.updateTeamMemberFilter(member.id)
-                                }) {
-                                    Text(member.fullName)
-                                }
+                            // Refresh projects in background
+                            Task {
+                                await viewModel.refreshProjects()
+                                // Indicator will auto-dismiss after showing success
                             }
-                        } label: {
-                            HStack {
-                                Text(teamMemberFilterText)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .lineLimit(1)
-                                
-                                Image(systemName: "chevron.down")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .background(OPSStyle.Colors.cardBackground)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-            
+                        },
+                        onFilterTapped: {
+                            showFilterSheet = true
+                        },
+                        hasActiveFilters: viewModel.hasActiveFilters,
+                        filterCount: viewModel.activeFilterCount
+                    )
+                    .padding(.bottom, 8)
+                
+                VStack(spacing: 16) {
+                    // View toggle
+                    CalendarToggleView(viewModel: viewModel)
+                    
+                    // Day selector
+                    CalendarDaySelector(viewModel: viewModel)
+                    
+                    // Project list - only shown in week view
+                    if viewModel.viewMode == .week {
+                        ProjectListView(viewModel: viewModel)
+                    } else {
+                        // Spacer for month view to push content up
+                        //Spacer()
                     }
-                    .padding(.horizontal)
+                    
                 }
-                
-                // View toggle
-                CalendarToggleView(viewModel: viewModel)
-                
-                // Day selector
-                CalendarDaySelector(viewModel: viewModel)
-                
-                // Project list - only shown in week view
-                if viewModel.viewMode == .week {
-                    ProjectListView(viewModel: viewModel)
-                } else {
-                    // Spacer for month view to push content up
-                    Spacer()
-                }
-                
-                Spacer()
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 90) // Add padding for tab bar
+                //.frame(maxWidth: 50)
             }
-            .padding(.top)
-            .padding(.bottom, 90) // Add padding for tab bar
-            
-            // No more NavigationLink - we'll use the global sheet instead
+            }
         }
-        .ignoresSafeArea(.keyboard)
+        
+       // .ignoresSafeArea(.keyboard)
         // Monitor viewMode changes to handle view transitions
         .onChange(of: viewModel.viewMode) { _, newMode in
             // Reset any project selection when switching view modes
@@ -233,25 +184,20 @@ struct ScheduleView: View {
         // We're using navigation instead of a sheet
         // Handle direct project selection from the project list
         .onReceive(projectSelectionObserver) { notification in
-            // print("📅 ScheduleView: Received ShowCalendarProjectDetails notification")
             if let projectID = notification.userInfo?["projectID"] as? String {
-                // print("📅 ScheduleView: Project ID = \(projectID)")
                 
                 // Set the project ID
                 self.selectedProjectID = projectID
                 
                 // Get the project and present it via the sheet
                 if let project = dataController.getProject(id: projectID) {
-                    // print("📅 ScheduleView: Found project: \(project.title), calling viewProjectDetails")
                     // Just use viewProjectDetails which handles all the necessary state updates
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         appState.viewProjectDetails(project)
                     }
                 } else {
-                    // print("📅 ScheduleView: ⚠️ Could not find project with ID: \(projectID)")
                 }
             } else {
-                print("ScheduleView: ⚠️ ERROR - Notification did not contain a projectID")
             }
         }
         // Handle direct task selection from the calendar
@@ -259,32 +205,39 @@ struct ScheduleView: View {
             if let taskID = notification.userInfo?["taskID"] as? String,
                let projectID = notification.userInfo?["projectID"] as? String {
                 
-                // print("ScheduleView: Received task selection - TaskID: \(taskID), ProjectID: \(projectID)")
                 
-                // Get the task and project
-                if let project = dataController.getProject(id: projectID),
-                   let task = project.tasks.first(where: { $0.id == taskID }) {
-                    // Create the task detail info
-                    let taskDetail = TaskDetailInfo(task: task, project: project)
-                    // Set it to trigger the sheet
-                    self.selectedTaskDetail = taskDetail
-                    print("ScheduleView: ✅ Task and project found, showing task details")
-                } else {
-                    print("ScheduleView: ⚠️ ERROR - Could not find task or project")
-                }
+                // Create the task detail info with just IDs
+                let taskDetail = TaskDetailInfo(taskId: taskID, projectId: projectID)
+                // Set it to trigger the sheet
+                self.selectedTaskDetail = taskDetail
             } else {
-                print("ScheduleView: ⚠️ ERROR - Notification did not contain required taskID/projectID")
             }
         }
         // Add task details sheet using item binding
         .sheet(item: $selectedTaskDetail) { taskDetail in
-            TaskDetailsView(task: taskDetail.task, project: taskDetail.project)
-                .environmentObject(dataController)
-                .environmentObject(appState)
-                .environment(\.modelContext, dataController.modelContext!)
+            // Fetch fresh models using IDs
+            if let project = dataController.getProject(id: taskDetail.projectId),
+               let task = project.tasks.first(where: { $0.id == taskDetail.taskId }) {
+                TaskDetailsView(task: task, project: project)
+                    .environmentObject(dataController)
+                    .environmentObject(appState)
+                    .environment(\.modelContext, dataController.modelContext!)
+            } else {
+                Text("Task no longer available")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
         }
         // Add refresh indicator
         .refreshIndicator(isPresented: $showingRefreshAlert)
+        
+        // Filter sheet
+        .sheet(isPresented: $showFilterSheet) {
+            CalendarFilterView(viewModel: viewModel)
+                .environmentObject(dataController)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 

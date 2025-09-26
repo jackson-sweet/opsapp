@@ -102,9 +102,10 @@ struct SettingsView: View {
                     
                     // App version and actions at bottom
                     versionAndActions
-                        .padding(.bottom, 90) // Add padding for tab bar
+                        
                 }
-                .padding(.top)
+                .padding(.top, 16)
+                .padding(.bottom, 90) // Add padding for tab bar
             }
         }
         .alert("Log Out", isPresented: $showLogoutConfirmation) {
@@ -249,7 +250,7 @@ struct SettingsView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 20)
-            .padding(.bottom, 16)
+            
         }
     }
     

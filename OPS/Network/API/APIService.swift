@@ -95,7 +95,6 @@ class APIService {
     ///   - address: Updated address (optional)
     /// - Returns: Updated ClientDTO from the API response
     func updateClientContact(clientId: String, name: String, email: String?, phone: String?, address: String?) async throws -> ClientDTO {
-        print("🔵 APIService: Updating client contact for \(clientId)")
         
         // Create request body with client info
         var requestBody: [String: Any] = [
@@ -116,7 +115,6 @@ class APIService {
         
         let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
         
-        print("📤 Sending client update: name='\(name)', email='\(email ?? "nil")', phone='\(phone ?? "nil")', address='\(address ?? "nil")'")
         
         // Execute the request to the update_client_contact endpoint
         // The response will contain the updated client object
@@ -127,16 +125,67 @@ class APIService {
             requiresAuth: false  // Bubble workflow endpoints typically don't require auth headers
         )
         
-        print("✅ Client contact updated successfully")
-        print("📥 Received updated client: \(response.client.name ?? "Unknown")")
         
         return response.client
+    }
+    
+    // MARK: - Company Management
+    
+    /// Update company seated employees on Bubble
+    /// - Parameters:
+    ///   - companyId: The company's unique ID
+    ///   - seatedEmployeeIds: Array of user IDs who should have seats
+    /// - Returns: Updated CompanyDTO from the API response
+    func updateCompanySeatedEmployees(companyId: String, seatedEmployeeIds: [String]) async throws -> CompanyDTO {
+        print("🔵 API REQUEST: Updating seated employees for company \(companyId)")
+        print("📤 New seated employee IDs: \(seatedEmployeeIds)")
+        
+        // Create request body with seatedEmployees array
+        // Bubble expects an array of strings for the seatedEmployees field
+        let requestBody: [String: Any] = [
+            "seatedEmployees": seatedEmployeeIds
+        ]
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("📤 Request payload: \(jsonString)")
+        }
+        
+        // Use PATCH to update the company object
+        let endpoint = "api/1.1/obj/company/\(companyId)"
+        
+        print("🔵 Executing PATCH request to: \(endpoint)")
+        
+        // Execute the request to update the company
+        do {
+            let wrapper: BubbleObjectResponse<CompanyDTO> = try await executeRequest(
+                endpoint: endpoint,
+                method: "PATCH",
+                body: jsonData,
+                requiresAuth: true
+            )
+            
+            print("✅ Successfully updated seated employees for company")
+            print("📥 Updated company has \(wrapper.response.seatedEmployees?.count ?? 0) seated employees")
+            
+            return wrapper.response
+        } catch {
+            // For PATCH requests, Bubble might return just a success response without the full object
+            // In that case, we need to fetch the updated company
+            print("⚠️ PATCH response couldn't be decoded as full company, fetching updated company...")
+            
+            // Wait a moment for Bubble to process the update
+            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            
+            // Fetch the updated company
+            return try await fetchCompany(id: companyId)
+        }
     }
     
     // MARK: - Sub-Client Methods
     
     func createSubClient(clientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws -> SubClientDTO {
-        print("🔵 APIService: Creating sub-client for client \(clientId)")
         
         // Create request body
         var requestBody: [String: Any] = [
@@ -160,7 +209,6 @@ class APIService {
         
         let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
         
-        print("📤 Creating sub-client: name='\(name)', title='\(title ?? "nil")', email='\(email ?? "nil")', phone='\(phone ?? "nil")'")
         
         let response: SubClientResponse = try await executeRequest(
             endpoint: "api/1.1/wf/create_sub_client",
@@ -169,12 +217,10 @@ class APIService {
             requiresAuth: false
         )
         
-        print("✅ Sub-client created successfully")
         return response.response.subClient
     }
     
     func editSubClient(subClientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws -> SubClientDTO {
-        print("🔵 APIService: Editing sub-client \(subClientId)")
         
         // Create request body
         var requestBody: [String: Any] = [
@@ -198,7 +244,6 @@ class APIService {
         
         let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
         
-        print("📤 Updating sub-client: name='\(name)', title='\(title ?? "nil")', email='\(email ?? "nil")', phone='\(phone ?? "nil")'")
         
         let response: SubClientResponse = try await executeRequest(
             endpoint: "api/1.1/wf/edit_sub_client",
@@ -207,12 +252,10 @@ class APIService {
             requiresAuth: false
         )
         
-        print("✅ Sub-client updated successfully")
         return response.response.subClient
     }
     
     func deleteSubClient(subClientId: String) async throws {
-        print("🔵 APIService: Deleting sub-client \(subClientId)")
         
         // Create request body
         let requestBody: [String: Any] = [
@@ -236,7 +279,6 @@ class APIService {
             requiresAuth: false
         )
         
-        print("✅ Sub-client deleted successfully")
     }
     
     // MARK: - Core Request Method
@@ -303,125 +345,14 @@ class APIService {
                 throw APIError.invalidResponse
             }
             
-            print("🔶 API RESPONSE: Status \(httpResponse.statusCode) (\((200...299).contains(httpResponse.statusCode) ? "Success" : "Error"))")
             
-            // Special logging for CalendarEvent endpoint responses
-            if endpoint.contains("calendarevent") && httpResponse.statusCode == 200 {
-                print("\n🔍 DEBUG - Raw API Response Data for CalendarEvent endpoint:")
-                if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
-                   let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
-                   let prettyString = String(data: prettyData, encoding: .utf8) {
-                    // Print first 3000 characters
-                    let trimmed = String(prettyString.prefix(3000))
-                    print(trimmed)
-                    if prettyString.count > 3000 {
-                        print("... (truncated, total length: \(prettyString.count) characters)")
-                    }
-                } else if let rawString = String(data: data, encoding: .utf8) {
-                    // Fallback to raw string if pretty printing fails
-                    print("Raw response (first 3000 chars): \(String(rawString.prefix(3000)))")
-                }
-                print("\n")
-            }
             
-            // Special logging for User endpoint responses
-            if endpoint.contains("/User") && httpResponse.statusCode == 200 {
-                print("\n🔍 DEBUG - Raw API Response Data for User endpoint:")
-                if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
-                   let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
-                   let prettyString = String(data: prettyData, encoding: .utf8) {
-                    // Print first 3000 characters
-                    let trimmed = String(prettyString.prefix(3000))
-                    print(trimmed)
-                    if prettyString.count > 3000 {
-                        print("... (truncated, total length: \(prettyString.count) characters)")
-                    }
-                } else if let rawString = String(data: data, encoding: .utf8) {
-                    // Fallback to raw string if pretty printing fails
-                    print("Raw string (first 1000 chars):")
-                    print(String(rawString.prefix(1000)))
-                }
-                print("")
-            }
             
-            // Special logging for Project endpoint responses  
-            if endpoint.contains("/Project") && httpResponse.statusCode == 200 {
-                print("\n🔍 DEBUG - Raw API Response Data for Project endpoint:")
-                if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-                   let response = jsonObject["response"] as? [String: Any],
-                   let results = response["results"] as? [[String: Any]],
-                   let firstProject = results.first {
-                    print("First project sample:")
-                    // Check for Client field specifically
-                    if let client = firstProject["Client"] {
-                        print("  ✅ Client field exists: \(client)")
-                    } else {
-                        print("  ❌ Client field is missing!")
-                    }
-                    // Check other client-related fields
-                    print("  - Project Name: \(firstProject["Project Name"] ?? "nil")")
-                    print("  - Client Name: \(firstProject["Client Name"] ?? "nil")")
-                    print("  - Client Email: \(firstProject["Client Email"] ?? "nil")")
-                    print("  - Client Phone: \(firstProject["Client Phone"] ?? "nil")")
-                }
-            }
             
-            // Special logging for Client endpoint responses
-            if endpoint.contains("/Client") && httpResponse.statusCode == 200 {
-                print("\n🔍 DEBUG - Raw API Response Data for Client endpoint:")
-                if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []) {
-                    // Check if it's a single client response
-                    if let responseDict = jsonObject as? [String: Any],
-                       let clientData = responseDict["response"] as? [String: Any] {
-                        print("Single Client Response:")
-                        print("  - ID: \(clientData["_id"] ?? "nil")")
-                        print("  - Name: \(clientData["Name"] ?? "nil")")
-                        print("  - Email Address: \(clientData["Email Address"] ?? "nil")")
-                        print("  - Phone Number: \(clientData["Phone Number"] ?? "nil")")
-                        print("  - Address: \(clientData["Address"] ?? "nil")")
-                        
-                        // Check all fields to see what's available
-                        print("\n  All available fields in response:")
-                        for (key, value) in clientData {
-                            if let stringValue = value as? String, !stringValue.isEmpty {
-                                print("    - \(key): \(stringValue)")
-                            } else if value is Bool || value is Int || value is Double {
-                                print("    - \(key): \(value)")
-                            }
-                        }
-                    }
-                    
-                    // Pretty print for full inspection
-                    if let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
-                       let prettyString = String(data: prettyData, encoding: .utf8) {
-                        // Print first 2000 characters for Client data
-                        let trimmed = String(prettyString.prefix(2000))
-                        print("\nFull response (first 2000 chars):")
-                        print(trimmed)
-                        if prettyString.count > 2000 {
-                            print("... (truncated, total length: \(prettyString.count) characters)")
-                        }
-                    }
-                } else if let rawString = String(data: data, encoding: .utf8) {
-                    // Fallback to raw string if pretty printing fails
-                    print("Raw string (first 1000 chars):")
-                    print(String(rawString.prefix(1000)))
-                }
-                print("")
-            }
             
             // Check for success status codes
             guard (200...299).contains(httpResponse.statusCode) else {
-                print("🔴 HTTP Error: \(httpResponse.statusCode)")
                 
-                // Log raw response for debugging 404s
-                if httpResponse.statusCode == 404 {
-                    print("🔴 404 Error Details:")
-                    print("  - Endpoint: \(endpoint)")
-                    if let rawString = String(data: data, encoding: .utf8) {
-                        print("  - Response: \(rawString)")
-                    }
-                }
                 
                 throw APIError.httpError(statusCode: httpResponse.statusCode)
             }
@@ -449,29 +380,64 @@ class APIService {
             // Print debug info for non-empty responses
             printResponseDebugInfo(data, from: request.url!)
             
+            // Special logging for company fetches
+            if request.url?.absoluteString.contains("/company/") == true {
+                print("[SUBSCRIPTION] Raw API Response for Company:")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    // Try to parse and pretty print to see date fields
+                    if let jsonData = jsonString.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                       let response = json["response"] as? [String: Any] {
+                        // Look for date fields
+                        let dateFields = ["Created Date", "Modified Date", "billingPeriodEnd", "subscriptionEnd", 
+                                        "trialStartDate", "trialEndDate", "seatGraceStartDate", "seatGraceEndDate",
+                                        "dataSetupScheduledDate", "prioritySupportPurchDate"]
+                        print("[SUBSCRIPTION] Date fields in response:")
+                        for field in dateFields {
+                            if let value = response[field] {
+                                print("[SUBSCRIPTION]   \(field): \(value)")
+                            }
+                        }
+                        // Also check seated employees
+                        if let seatedEmployees = response["Seated Employees"] {
+                            print("[SUBSCRIPTION] Seated Employees field: \(seatedEmployees)")
+                        }
+                        if let seatedEmployees = response["seatedEmployees"] {
+                            print("[SUBSCRIPTION] seatedEmployees field: \(seatedEmployees)")
+                        }
+                    }
+                    // Still print truncated full response
+                    let maxLength = 3000
+                    if jsonString.count > maxLength {
+                        let truncated = String(jsonString.prefix(maxLength))
+                        print("[SUBSCRIPTION] Response JSON (truncated): \(truncated)...")
+                    } else {
+                        print("[SUBSCRIPTION] Response JSON: \(jsonString)")
+                    }
+                }
+            }
+            
             // Try to decode the response for other success status codes
             do {
                 let result: T = try decodeResponse(data: data)
                 return result
-            } catch {
-                print("🔴 Decoding failed: \(error)")
-                
-                // For DecodingError, print more detailed debugging info
-                if let decodingError = error as? DecodingError {
+            } catch let decodingError {
+                print("[SUBSCRIPTION] Decoding failed for \(T.self)")
+                if let decodingError = decodingError as? DecodingError {
                     switch decodingError {
-                    case .keyNotFound(let key, _):
-                        break
-                    case .typeMismatch(let type, _):
-                        break
+                    case .keyNotFound(let key, let context):
+                        print("[SUBSCRIPTION] Missing key: \(key.stringValue)")
+                        print("[SUBSCRIPTION] Path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+                    case .typeMismatch(let type, let context):
+                        print("[SUBSCRIPTION] Type mismatch: expected \(type)")
+                        print("[SUBSCRIPTION] Path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+                    case .valueNotFound(let type, let context):
+                        print("[SUBSCRIPTION] Value not found: \(type)")
+                        print("[SUBSCRIPTION] Path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
                     case .dataCorrupted(let context):
-                        // Also check if this is due to an empty response that should be handled
-                        if context.debugDescription.contains("Unexpected end of file") {
-                            if T.self == EmptyResponse.self {
-                                return EmptyResponse() as! T
-                            }
-                        }
-                    default:
-                        print("Other decoding error: \(decodingError)")
+                        print("[SUBSCRIPTION] Data corrupted: \(context.debugDescription)")
+                    @unknown default:
+                        print("[SUBSCRIPTION] Unknown decoding error")
                     }
                 }
                 
@@ -480,7 +446,6 @@ class APIService {
         } catch let apiError as APIError {
             throw apiError
         } catch {
-            print("🔴 API request failed: \(error)")
             throw APIError.networkError
         }
     }
@@ -557,7 +522,6 @@ class APIService {
                     }
                 }
             } catch {
-                print("❌ Error serializing constraints: \(error)")
                 throw APIError.invalidURL
             }
         }
@@ -566,8 +530,6 @@ class APIService {
         let apiObjectType = objectType.lowercased().replacingOccurrences(of: " ", with: "")
         let endpoint = "api/1.1/obj/\(apiObjectType)"
         
-        print("🔵 Fetching \(objectType) objects")
-        print("  📍 API endpoint: \(endpoint)")
         
         // Execute the request
         let wrapper: BubbleListResponse<T> = try await executeRequest(
@@ -576,47 +538,8 @@ class APIService {
             requiresAuth: true  // Changed to true to ensure proper authentication
         )
         
-        // Log results
-        print("📡 API Response for \(objectType):")
-        print("  - Count: \(wrapper.response.results.count)")
-        print("  - Remaining: \(wrapper.response.remaining ?? 0)")
         
-        // Special logging for Sub Client objects
-        if objectType == BubbleFields.Types.subClient && !wrapper.response.results.isEmpty {
-            print("🔍 DEBUG - Sub-Client Objects Found:")
-            for (index, result) in wrapper.response.results.prefix(5).enumerated() {
-                if let subClientDTO = result as? SubClientDTO {
-                    print("  Sub-Client \(index + 1):")
-                    print("    - ID: \(subClientDTO.id)")
-                    print("    - Name: \(subClientDTO.name ?? "nil")")
-                    print("    - Title: \(subClientDTO.title ?? "nil")")
-                    print("    - Email: \(subClientDTO.emailAddress ?? "nil")")
-                    print("    - Phone: \(subClientDTO.phoneNumber?.stringValue ?? "nil")")
-                }
-            }
-        }
         
-        // Special logging for User objects to debug phone/email issue
-        if objectType == "User" && !wrapper.response.results.isEmpty {
-            print("\n🔍 DEBUG - Decoded User Objects:")
-            // Since we can't encode back to JSON, let's just print the first few users
-            for (index, user) in wrapper.response.results.prefix(2).enumerated() {
-                if let userDTO = user as? UserDTO {
-                    print("  User \(index + 1):")
-                    print("    - id: \(userDTO.id)")
-                    print("    - nameFirst: \(userDTO.nameFirst ?? "nil")")
-                    print("    - nameLast: \(userDTO.nameLast ?? "nil")")
-                    print("    - phone: \(userDTO.phone ?? "nil")")
-                    print("    - email: \(userDTO.email ?? "nil")")
-                    print("    - employeeType: \(userDTO.employeeType ?? "nil")")
-                    print("    - userType: \(userDTO.userType ?? "nil")")
-                    print("    - avatar: \(userDTO.avatar ?? "nil")")
-                }
-            }
-            if wrapper.response.results.count > 2 {
-                print("  ... and \(wrapper.response.results.count - 2) more users")
-            }
-        }
         
         return wrapper.response.results
     }
@@ -654,7 +577,6 @@ class APIService {
                     queryItems.append(URLQueryItem(name: "constraints", value: jsonString))
                 }
             } catch {
-                print("Failed to serialize constraints: \(error)")
             }
         }
         
@@ -684,8 +606,8 @@ class APIService {
         let apiObjectType = objectType.lowercased().replacingOccurrences(of: " ", with: "")
         let endpoint = "api/1.1/obj/\(apiObjectType)/\(id)"
         
-        print("🔵 Fetching \(objectType) with ID: \(id)")
-        print("  📍 Endpoint: \(endpoint)")
+        print("[SUBSCRIPTION] Fetching \(apiObjectType) with ID: \(id)")
+        print("[SUBSCRIPTION] Full URL: \(baseURL)/\(endpoint)")
         
         // Execute the request
         let wrapper: BubbleObjectResponse<T> = try await executeRequest(
@@ -693,30 +615,6 @@ class APIService {
             requiresAuth: true  // Changed to true to ensure proper authentication
         )
         
-        // Log the response for debugging
-        if objectType == BubbleFields.Types.user {
-            print("🟢 User fetch successful")
-            // Try to print company info if it's a user object
-            if let userData = wrapper.response as? UserDTO {
-                print("   User company ID: \(userData.company ?? "none")")
-                print("   User email: \(userData.email ?? "none")")
-                print("   User type: \(userData.userType ?? "none")")
-            }
-        } else if objectType == BubbleFields.Types.client {
-            print("🟢 Client fetch successful")
-            // Debug: Print raw JSON if possible
-            if let clientData = wrapper.response as? ClientDTO {
-                print("🔍 Raw Client data received from API")
-                // This will trigger the debug logging in ClientDTO.toModel()
-            }
-        } else if objectType == BubbleFields.Types.subClient {
-            print("🟢 Sub-Client fetch successful for ID: \(id)")
-            if let subClientData = wrapper.response as? SubClientDTO {
-                print("   Sub-client name: \(subClientData.name ?? "none")")
-                print("   Sub-client title: \(subClientData.title ?? "none")")
-                print("   Sub-client email: \(subClientData.emailAddress ?? "none")")
-            }
-        }
         
         return wrapper.response
     }
@@ -799,7 +697,6 @@ class APIService {
                     // Explicitly specify the generic type to help Swift with type inference
                     return try decodeResponse(data: data) as T
                 } catch {
-                    print("Decoding failed: \(error)")
                     throw APIError.decodingFailed
                 }
                 

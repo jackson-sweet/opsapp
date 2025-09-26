@@ -11,12 +11,21 @@ import SwiftUI
 
 struct OrganizationSettingsView: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @Environment(\.dismiss) private var dismiss
     
     @State private var organization: Company?
     @State private var teamMembers: [User] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
+    @State private var showSeatManagement = false
+    @State private var showPlanSelection = false
+    
+    // Computed property to check if current user is a company admin
+    private var isCompanyAdmin: Bool {
+        // Check using the new isCompanyAdmin property OR platform admin role
+        return dataController.currentUser?.isCompanyAdmin == true || dataController.currentUser?.role == .admin
+    }
     
     var body: some View {
         ZStack {
@@ -94,6 +103,13 @@ struct OrganizationSettingsView: View {
                                 .padding(.horizontal, 20)
                             }
                             
+                            // Subscription section
+                            VStack(spacing: 16) {
+                                SettingsSectionHeader(title: "SUBSCRIPTION")
+                                
+                                subscriptionCard
+                            }
+                            
                             // Organization details section
                             VStack(spacing: 24) {
                                 SettingsSectionHeader(title: "CONTACT INFORMATION")
@@ -168,6 +184,180 @@ struct OrganizationSettingsView: View {
         .navigationBarBackButtonHidden(true)
         .onAppear {
             loadOrganizationData()
+        }
+        .sheet(isPresented: $showSeatManagement) {
+            SeatManagementView()
+                .environmentObject(dataController)
+                .environmentObject(subscriptionManager)
+        }
+        .sheet(isPresented: $showPlanSelection) {
+            PlanSelectionView()
+                .environmentObject(dataController)
+                .environmentObject(subscriptionManager)
+        }
+    }
+    
+    // MARK: - Subscription Card
+    
+    @ViewBuilder
+    private var subscriptionCard: some View {
+        if let company = organization {
+            VStack(spacing: 0) {
+                // Current plan info - make tappable for company admins
+                Button(action: {
+                    if isCompanyAdmin {
+                        showPlanSelection = true
+                    }
+                }) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Status and plan
+                        HStack(spacing: 8) {
+                            if let status = company.subscriptionStatus,
+                               let statusEnum = SubscriptionStatus(rawValue: status) {
+                                Circle()
+                                    .fill(statusColor(for: statusEnum))
+                                    .frame(width: 8, height: 8)
+                                
+                                Text(statusEnum.displayName.uppercased())
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(statusColor(for: statusEnum))
+                            }
+                            
+                            if let plan = company.subscriptionPlan,
+                               let planEnum = SubscriptionPlan(rawValue: plan) {
+                                Text("•")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                
+                                Text(planEnum.displayName.uppercased())
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            }
+                        }
+                        
+                        // Seat usage
+                        let seatedCount = company.seatedEmployeeIds
+                            .split(separator: ",")
+                            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                            .count
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            
+                            Text("\(seatedCount) of \(company.maxSeats) seats used")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        
+                        // Trial or grace period warning
+                        if let status = company.subscriptionStatus,
+                           let statusEnum = SubscriptionStatus(rawValue: status) {
+                            if statusEnum == .trial, let trialEnd = company.trialEndDate {
+                                let days = Calendar.current.dateComponents([.day], from: Date(), to: trialEnd).day ?? 0
+                                HStack(spacing: 4) {
+                                    Image(systemName: "info.circle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    
+                                    Text("Trial ends in \(days) days")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                }
+                            } else if statusEnum == .grace, let days = company.daysRemainingInGracePeriod {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                                    
+                                    Text("Grace period ends in \(days) days")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                                }
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Action chevron (only for company admins)
+                    if isCompanyAdmin {
+                        Image(systemName: "chevron.right")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+                }
+                .contentShape(Rectangle()) // Ensure entire area is tappable
+                .buttonStyle(PlainButtonStyle()) // Make button work properly
+                .disabled(!isCompanyAdmin) // Disable for non-company-admins
+                .padding()
+                
+                // Only show divider and action buttons for company admins
+                if isCompanyAdmin {
+                    Divider()
+                        .background(Color.white.opacity(0.1))
+                    
+                    // Action buttons
+                    HStack(spacing: 0) {
+                        // Manage seats button
+                        Button(action: {
+                            showSeatManagement = true
+                        }) {
+                            HStack {
+                                Image(systemName: "person.2")
+                                    .font(OPSStyle.Typography.caption)
+                                
+                                Text("Manage Seats")
+                                    .font(OPSStyle.Typography.captionBold)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                        }
+                        .buttonStyle(PlainButtonStyle()) // Add plain button style to ensure tappability
+                        
+                        Divider()
+                            .frame(width: 1)
+                            .background(Color.white.opacity(0.1))
+                        
+                        // Change plan button
+                        Button(action: {
+                            showPlanSelection = true
+                        }) {
+                            HStack {
+                                Image(systemName: "arrow.up.circle")
+                                    .font(OPSStyle.Typography.caption)
+                                
+                                Text("Change Plan")
+                                    .font(OPSStyle.Typography.captionBold)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                        }
+                        .buttonStyle(PlainButtonStyle()) // Add plain button style to ensure tappability
+                    }
+                }
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .padding(.horizontal, 20)
+        }
+    }
+    
+    private func statusColor(for status: SubscriptionStatus) -> Color {
+        switch status {
+        case .trial:
+            return OPSStyle.Colors.primaryAccent
+        case .active:
+            return OPSStyle.Colors.successStatus
+        case .grace:
+            return OPSStyle.Colors.warningStatus
+        case .expired, .cancelled:
+            return OPSStyle.Colors.errorStatus
         }
     }
     
@@ -314,7 +504,6 @@ struct OrganizationSettingsView: View {
                         // This ensures projects are loaded if they weren't during login
                         await dataController.syncManager?.forceSyncProjects()
                     } catch {
-                        print("Failed to refresh company data from API: \(error.localizedDescription)")
                         // Continue with local data even if API refresh fails
                         await MainActor.run {
                             isRefreshing = false
@@ -339,7 +528,6 @@ struct OrganizationSettingsView: View {
                         if await loadImage(from: logoURL) != nil {
                             // Image is now cached by the loadImage function
                         } else {
-                            print("OrganizationSettingsView: Failed to load company logo")
                         }
                     } else {
                     }
@@ -395,7 +583,6 @@ struct OrganizationSettingsView: View {
                 return image
             }
         } catch {
-            print("Failed to load image: \(error.localizedDescription)")
         }
         
         return nil

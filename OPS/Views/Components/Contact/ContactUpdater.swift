@@ -118,7 +118,6 @@ struct ContactUpdater: UIViewControllerRepresentable {
                     self?.parent.onDismiss?()
                 }
             } catch {
-                print("Failed to update contact: \(error)")
                 picker.dismiss(animated: true) { [weak self] in
                     self?.parent.onDismiss?()
                 }

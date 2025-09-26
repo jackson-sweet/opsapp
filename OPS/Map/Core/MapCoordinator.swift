@@ -169,7 +169,6 @@ final class MapCoordinator: ObservableObject {
                 // Update heading when in course mode and we have a valid course
                 if self.mapOrientationMode == "course" && course >= 0 {
                     // Debug: Log course updates
-                    // print("📍 Course update: \(course) degrees, current heading: \(self.currentHeading)")
                     
                     // Only update if course has changed significantly (more than 3 degrees)
                     let courseDiff = abs(self.currentHeading - course)
@@ -221,7 +220,6 @@ final class MapCoordinator: ObservableObject {
                 
                 // Update InProgressManager with new route (for rerouting)
                 if self?.isNavigating == true, let route = route {
-                    print("🔄 Updating InProgressManager with new route")
                     InProgressManager.shared.activeRoute = route
                     InProgressManager.shared.processRouteDetails(route)
                 }
@@ -253,34 +251,27 @@ final class MapCoordinator: ObservableObject {
     
     /// Select a project (from carousel or pin tap)
     func selectProject(_ project: Project) {
-        // print("🟣 MapCoordinator: selectProject called for: \(project.title)")
         selectedProjectId = project.id
         
         // Only show project details if the project is not already in progress
         if project.status != .inProgress {
             showingProjectDetails = true
-            // print("🟣 MapCoordinator: showingProjectDetails = \(showingProjectDetails)")
         } else {
-            // print("🟣 MapCoordinator: Project is already in progress, not showing details card")
             showingProjectDetails = false
         }
     }
     
     /// Start navigation to the selected project
     func startNavigation() async throws {
-        // print("🟣 MapCoordinator: startNavigation called")
         guard let project = selectedProject,
               let destination = project.coordinate else {
-            // print("❌ MapCoordinator: No selected project or coordinate")
             throw NavigationError.noDestination
         }
         
         guard let userLocation = userLocation else {
-            // print("❌ MapCoordinator: No user location available")
             throw NavigationError.locationUnavailable
         }
         
-        // print("🟣 MapCoordinator: Starting route calculation...")
         
         // Calculate route first before hiding the card
         try await navigationEngine.calculateRoute(
@@ -288,14 +279,12 @@ final class MapCoordinator: ObservableObject {
             to: destination
         )
         
-        // print("🟣 MapCoordinator: Route calculated, starting navigation")
         
         // Only now set isNavigating to true and hide the project card
         isNavigating = true
         
         // Sync with InProgressManager for UI consistency
         if !InProgressManager.shared.isRouting {
-            // print("🟣 MapCoordinator: Syncing InProgressManager routing state")
             InProgressManager.shared.startRouting(to: destination, from: userLocation.coordinate)
         }
         
@@ -313,7 +302,6 @@ final class MapCoordinator: ObservableObject {
     
     /// Stop current navigation
     func stopNavigation() {
-        // print("🟣 MapCoordinator: stopNavigation called")
         isNavigating = false
         navigationEngine.stopNavigation()
         stopRouteRefreshTimer()
@@ -323,7 +311,6 @@ final class MapCoordinator: ObservableObject {
         
         // Reset to north orientation when stopping navigation
         if mapOrientationMode != "north" {
-            // print("🟣 MapCoordinator: Resetting map orientation to north")
             mapOrientationMode = "north"
             
             // Update map camera to north orientation
@@ -342,7 +329,6 @@ final class MapCoordinator: ObservableObject {
         
         // Sync with InProgressManager for UI consistency
         if InProgressManager.shared.isRouting {
-            // print("🟣 MapCoordinator: Syncing InProgressManager - stopping routing")
             InProgressManager.shared.stopRouting()
         }
         
@@ -437,11 +423,9 @@ final class MapCoordinator: ObservableObject {
     func restoreNavigationState() {
         guard InProgressManager.shared.isRouting,
               let activeRoute = InProgressManager.shared.activeRoute else {
-            // print("🔄 MapCoordinator: No active route to restore")
             return
         }
         
-        // print("🔄 MapCoordinator: Restoring navigation state")
         
         // Restore navigation state
         isNavigating = true
@@ -463,7 +447,6 @@ final class MapCoordinator: ObservableObject {
     /// Toggle map orientation mode between north-up and course-up
     func toggleOrientationMode() {
         mapOrientationMode = mapOrientationMode == "north" ? "course" : "north"
-        // print("🧭 MapCoordinator: Toggled orientation mode to: \(mapOrientationMode)")
         
         // Update map immediately based on new mode
         withAnimation(.easeInOut(duration: 0.6)) {
@@ -526,7 +509,6 @@ final class MapCoordinator: ObservableObject {
             // Use GPS course when moving faster than 1.25 m/s (4.5 km/h, walking speed)
             // This prevents jittery updates at very low speeds
             // Debug: Log speed and course
-            // print("🚗 Location update - Speed: \(location.speed) m/s, Course: \(location.course)°")
             
             // Only update if course has changed significantly
             let courseDiff = abs(currentHeading - location.course)
@@ -566,7 +548,6 @@ final class MapCoordinator: ObservableObject {
         // Update UI based on navigation state changes
         switch state {
         case .arrived:
-            // print("🎯 MapCoordinator: User arrived at destination")
             // Auto-stop navigation after a short delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 self.stopNavigation()

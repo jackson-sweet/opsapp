@@ -121,7 +121,6 @@ final class NavigationEngine: ObservableObject {
             throw NavigationError.noDestination
         }
         
-        print("🗺️ Calculating route...")
         navigationState = .calculating
         
         let request = MKDirections.Request()
@@ -142,7 +141,6 @@ final class NavigationEngine: ObservableObject {
         } catch {
             DispatchQueue.main.async {
                 self.navigationState = .error(error)
-                // print("🔴 NavigationEngine: Route calculation failed - \(error.localizedDescription)")
             }
             throw error
         }
@@ -165,11 +163,9 @@ final class NavigationEngine: ObservableObject {
             isRerouting = false
             
             // Notify that rerouting completed
-            print("✅ Rerouting completed successfully")
             navigationState = .navigating
         } catch {
             isRerouting = false
-            print("❌ Rerouting failed: \(error.localizedDescription)")
             throw error
         }
     }
@@ -214,7 +210,6 @@ final class NavigationEngine: ObservableObject {
         
         // If within 30 meters of destination, mark as arrived
         if distanceToDestination < 30 {
-            // print("🎯 NavigationEngine: User has arrived at destination!")
             navigationState = .arrived
             
             // Post notification that user has arrived
@@ -230,14 +225,12 @@ final class NavigationEngine: ObservableObject {
             // Debug: Log distance from route
             // Only log when approaching threshold
             if distanceFromRoute > 15 { // Only log when getting far from route
-                print("🛣️ Distance from route: \(Int(distanceFromRoute))m (threshold: \(Int(rerouteThreshold))m)")
             }
             
             if distanceFromRoute > rerouteThreshold && !isRerouting {
                 // Check if enough time has passed since last reroute
                 let timeSinceLastReroute = Date().timeIntervalSince(lastRerouteTime)
                 if timeSinceLastReroute >= minRerouteInterval {
-                    print("🔄 Off route! Triggering reroute (distance: \(Int(distanceFromRoute))m)")
                     // User is off route, trigger rerouting
                     Task {
                         try? await recalculateRoute(from: location.coordinate, to: lastPoint.coordinate)
@@ -265,7 +258,6 @@ final class NavigationEngine: ObservableObject {
     
     /// Restore navigation state from an existing route
     func restoreRoute(_ route: MKRoute) {
-        // print("🔄 NavigationEngine: Restoring route")
         currentRoute = route
         navigationState = .navigating
         currentStepIndex = 0
@@ -338,7 +330,6 @@ final class NavigationEngine: ObservableObject {
         guard let route = currentRoute,
               currentStepIndex < route.steps.count else { return }
         
-        // print("🧭 NavigationEngine: Updating step \(currentStepIndex) of \(route.steps.count)")
         
         // Calculate distance to next step
         let currentStep = route.steps[currentStepIndex]

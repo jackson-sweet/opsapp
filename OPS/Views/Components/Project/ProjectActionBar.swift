@@ -156,7 +156,6 @@ struct ProjectActionBar: View {
         case .navigate:
             // Toggle navigation
             if InProgressManager.shared.isRouting {
-                print("🔴 ProjectActionBar: Stopping navigation")
                 // Stop routing
                 InProgressManager.shared.stopRouting()
                 
@@ -172,7 +171,6 @@ struct ProjectActionBar: View {
                     object: nil
                 )
             } else {
-                print("🟢 ProjectActionBar: Starting navigation")
                 // Start routing to project
                 if project.coordinate != nil {
                     // Post notification to start navigation in the new map
@@ -197,7 +195,8 @@ struct ProjectActionBar: View {
         //    showReceiptScanner = true
         case .details:
             // Check if we have an active task
-            if let activeTask = appState.activeTask {
+            if let activeTaskID = appState.activeTaskID,
+               let activeTask = project.tasks.first(where: { $0.id == activeTaskID }) {
                 // Show task details
                 let userInfo: [String: Any] = [
                     "taskID": activeTask.id,
@@ -275,7 +274,6 @@ struct ProjectActionBar: View {
                                 do {
                                     try modelContext.save()
                                 } catch {
-                                    print("ProjectActionBar: ⚠️ Error saving to model context: \(error.localizedDescription)")
                                 }
                             }
                             
@@ -299,7 +297,6 @@ struct ProjectActionBar: View {
                         
                         // Compress image
                         guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-                            print("ProjectActionBar: ⚠️ Failed to compress image \(index + 1)")
                             continue
                         }
                         
@@ -340,7 +337,6 @@ struct ProjectActionBar: View {
                             do {
                                 try modelContext.save()
                             } catch {
-                                print("ProjectActionBar: ⚠️ Error saving to model context: \(error.localizedDescription)")
                             }
                         }
                         
@@ -350,7 +346,6 @@ struct ProjectActionBar: View {
                     }
                 }
             } catch {
-                print("ProjectActionBar: ❌ Error processing images: \(error.localizedDescription)")
                 await MainActor.run {
                     processingImage = false
                     isAddingPhotos = false

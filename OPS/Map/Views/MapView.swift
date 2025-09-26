@@ -39,7 +39,6 @@ struct MapView: View {
                                 isNavigating: coordinator.isNavigating && project.id == coordinator.selectedProjectId
                             )
                             .onTapGesture {
-                                // print("🗺️ MapView: Project marker tapped for: \(project.title)")
                                 handleMarkerTap(for: project)
                             }
                             
@@ -49,7 +48,6 @@ struct MapView: View {
                                     project: project,
                                     isActiveProject: appState.activeProjectID == project.id,
                                     onNavigate: {
-                                        print("🗺️ MapView: Navigate to project from popup")
                                         showingMarkerPopup = nil
                                         
                                         // Exit current project mode
@@ -62,7 +60,7 @@ struct MapView: View {
                                         NotificationCenter.default.post(
                                             name: Notification.Name("StartProjectFromMap"),
                                             object: nil,
-                                            userInfo: ["project": project]
+                                            userInfo: ["projectId": project.id]
                                         )
                                     },
                                     onDismiss: {
@@ -92,7 +90,6 @@ struct MapView: View {
             // This ensures the tap doesn't interfere with annotation taps
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 if showingMarkerPopup != nil {
-                    print("🗺️ MapView: Dismissing popup on map tap")
                     withAnimation(.easeOut(duration: 0.2)) {
                         showingMarkerPopup = nil
                     }
@@ -146,13 +143,11 @@ struct MapView: View {
     private func handleMarkerTap(for project: Project) {
         // If in project mode, always show popup instead of project details
         if appState.isInProjectMode {
-            // print("🗺️ MapView: Showing popup during active project session")
             withAnimation(.easeInOut(duration: 0.2)) {
                 showingMarkerPopup = project.id
             }
         } else {
             // Normal selection behavior when no project is active
-            // print("🗺️ MapView: Selecting project: \(project.title)")
             coordinator.selectProject(project)
         }
     }

@@ -320,7 +320,6 @@ struct SecuritySettingsView: View {
                 if success {
                     passwordResetSuccess = true
                 } else {
-                    print("SecuritySettingsView: Password reset request failed: \(errorMessage ?? "Unknown error")")
                     passwordResetError = errorMessage ?? "Failed to send reset link. Please try again."
                 }
             }
@@ -338,7 +337,6 @@ struct SecuritySettingsView: View {
     
     // Activate developer mode
     private func activateDeveloperMode() {
-        print("🔧 Activating developer mode...")
         
         // Activate developer mode
         UserDefaults.standard.set(true, forKey: "developerModeEnabled")
@@ -347,14 +345,12 @@ struct SecuritySettingsView: View {
         developerModeActivated = true
         passwordResetSuccess = true
         
-        print("🔧 Developer mode activated successfully")
         
         // Auto-dismiss after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             showResetPasswordSheet = false
             
             // Show an alert or notification that developer mode is active
-            print("✅ Developer mode is now active. Check App Settings for developer options.")
         }
     }
 }

@@ -329,7 +329,6 @@ struct EventCardView: View {
                 do {
                     try await dataController.syncManager?.updateTaskStatus(id: task.id, status: "in_progress")
                 } catch {
-                    print("❌ Failed to sync task status: \(error)")
                 }
             }
         }
@@ -339,13 +338,13 @@ struct EventCardView: View {
             name: Notification.Name("StartTaskNavigation"),
             object: nil,
             userInfo: [
-                "task": task,
-                "project": project
+                "taskId": task.id,
+                "projectId": project.id
             ]
         )
         
-        // Enter project mode for the task's project and set active task
-        appState.activeTask = task
+        // Enter project mode for the task's project and set active task ID
+        appState.activeTaskID = task.id
         appState.enterProjectMode(projectID: project.id)
     }
     
@@ -353,8 +352,8 @@ struct EventCardView: View {
         // Check if we have the project
         guard let project = project else { return }
         
-        // Create task detail info
-        let taskDetail = TaskDetailInfo(task: task, project: project)
+        // Create task detail info with just IDs
+        let taskDetail = TaskDetailInfo(taskId: task.id, projectId: project.id)
         
         // Post notification to show task details
         let userInfo: [String: Any] = [

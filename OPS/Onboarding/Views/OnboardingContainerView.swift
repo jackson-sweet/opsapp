@@ -183,7 +183,6 @@ struct OnboardingView: View {
                             
                             // Don't set authentication yet - wait for welcome guide
                         } catch {
-                            print("Error saving user to database: \(error.localizedDescription)")
                         }
                     }
                 }

@@ -161,7 +161,6 @@ class KeychainManager {
         let status = SecItemAdd(query as CFDictionary, nil)
         
         if status != errSecSuccess {
-            print("Failed to save to keychain: \(status)")
         }
     }
     
@@ -206,7 +205,6 @@ class KeychainManager {
         let status = SecItemDelete(query as CFDictionary)
         
         if status != errSecSuccess && status != errSecItemNotFound {
-            print("Failed to delete from keychain: \(status)")
         }
     }
 }

@@ -75,7 +75,6 @@ struct MapViewAlternative: View {
             // Handle selection change
             if let projectId = newValue,
                let project = coordinator.projects.first(where: { $0.id == projectId }) {
-                // print("🗺️ MapViewAlternative: Project selected via map selection: \(project.title)")
                 handleProjectSelection(project)
             }
         }
@@ -153,7 +152,7 @@ struct MapViewAlternative: View {
         NotificationCenter.default.post(
             name: Notification.Name("StartProjectFromMap"),
             object: nil,
-            userInfo: ["project": project]
+            userInfo: ["projectId": project.id]
         )
     }
 }

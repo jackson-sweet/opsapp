@@ -113,7 +113,6 @@ class DataController: ObservableObject {
         // Create user ID provider closure that returns the current user's ID
         let userIdProvider = { [weak self] in
             let userId = self?.currentUser?.id
-            print("🔵 DataController: userIdProvider called, returning userId: \(userId ?? "nil")")
             return userId
         }
         
@@ -149,18 +148,35 @@ class DataController: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+        
+        // Listen for force logout notification
+        NotificationCenter.default.publisher(for: .forceLogout)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] notification in
+                if let reason = notification.userInfo?["reason"] as? String {
+                    print("[SUBSCRIPTION] Force logout triggered: \(reason)")
+                }
+                self?.logout()
+            }
+            .store(in: &cancellables)
     }
     
     // Method to perform sync on app launch
     func performAppLaunchSync() {
+        print("[SUBSCRIPTION] performAppLaunchSync: Starting initial sync")
         
-        // Always check for pending images, regardless of sync settings
         Task {
-            // First, sync pending images if we're online
+            // First, ensure we have company data
             if isConnected && isAuthenticated {
+                // Sync company data first - critical for subscription checks
+                if let syncManager = syncManager {
+                    print("[SUBSCRIPTION] performAppLaunchSync: Triggering full sync including company")
+                    await syncManager.triggerBackgroundSync(forceProjectSync: true)
+                }
+                
+                // Then sync pending images
                 if let imageSyncManager = imageSyncManager {
                     await imageSyncManager.syncPendingImages()
-                } else {
                 }
             }
             
@@ -200,6 +216,7 @@ class DataController: ObservableObject {
     // MARK: - Authentication
     @MainActor
     private func checkExistingAuth() async {
+        
         // First check if we have a direct authentication flag from onboarding
         let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
         let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
@@ -226,6 +243,7 @@ class DataController: ObservableObject {
             // Get the company ID if available
             let companyId = UserDefaults.standard.string(forKey: "company_id") ?? 
                            UserDefaults.standard.string(forKey: "currentUserCompanyId")
+            
             
             if let companyId = companyId {
                 UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
@@ -258,7 +276,6 @@ class DataController: ObservableObject {
                         return
                     }
                 } catch {
-                    print("DataController: Error checking for user in SwiftData: \(error.localizedDescription)")
                 }
             }
             
@@ -343,7 +360,6 @@ class DataController: ObservableObject {
                                             
                                             try context.save()
                                         } catch {
-                                            print("Error fetching/saving company on auth: \(error)")
                                         }
                                     }
                                 }
@@ -376,7 +392,6 @@ class DataController: ObservableObject {
                         }
                     }
                 } catch {
-                    print("Auth check error: \(error.localizedDescription)")
                     clearAuthentication()
                 }
             } else {
@@ -385,6 +400,7 @@ class DataController: ObservableObject {
         } else {
             clearAuthentication()
         }
+        
     }
     
     @discardableResult
@@ -417,9 +433,7 @@ class DataController: ObservableObject {
                     
                     // Log what will happen next
                     if !user.hasCompletedAppOnboarding {
-                        print("🟡 User needs to complete onboarding")
                     } else {
-                        print("🟢 User has completed onboarding")
                         // Projects sync already triggered in fetchUserFromAPI after company fetch
                     }
                 }
@@ -431,7 +445,6 @@ class DataController: ObservableObject {
                 return false
             }
         } catch {
-            print("Login failed: \(error.localizedDescription)")
             return false
         }
     }
@@ -451,12 +464,6 @@ class DataController: ObservableObject {
             
             let userDTO = loginResult.user
             
-            print("🔵 Apple Login - Processing user data")
-            print("   User ID: \(userDTO.id)")
-            print("   User email: \(userDTO.email ?? "none")")
-            print("   User type: \(userDTO.userType ?? "none")")
-            print("   Has company: \(!(userDTO.company ?? "").isEmpty)")
-            print("   Has completed onboarding: \(userDTO.hasCompletedAppOnboarding)")
             
             // Store Apple user identifier for future logins
             UserDefaults.standard.set(appleResult.userIdentifier, forKey: "apple_user_identifier")
@@ -468,7 +475,6 @@ class DataController: ObservableObject {
             
             // Store user type if available
             if let userTypeString = userDTO.userType {
-                print("🔵 Setting user type from Apple login: \(userTypeString)")
                 if userTypeString.lowercased() == "company" {
                     UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
                 } else if userTypeString.lowercased() == "employee" {
@@ -486,10 +492,6 @@ class DataController: ObservableObject {
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
                 let hasUserType = user.userType != nil
                 
-                print("🔵 Apple Login - Onboarding check:")
-                print("   Has company: \(hasCompany)")
-                print("   Has user type: \(hasUserType)")
-                print("   Has completed app onboarding: \(hasCompletedAppOnboarding)")
                 
                 // Determine if onboarding is needed
                 let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding || !hasUserType
@@ -499,7 +501,6 @@ class DataController: ObservableObject {
                     self.isAuthenticated = true
                     // Projects will sync after company fetch in fetchUserFromAPI
                 } else {
-                    print("🟡 User needs onboarding - will start from user type selection")
                     // Don't set isAuthenticated - let LoginView handle onboarding
                 }
                 
@@ -508,16 +509,14 @@ class DataController: ObservableObject {
             
             return false
         } catch {
-            print("🔴 Apple login failed: \(error.localizedDescription)")
             
             // Check for specific errors
             if let authError = error as? AuthError {
                 switch authError {
                 case .invalidCredentials:
                     // User doesn't exist yet - this is expected for new users
-                    print("🟡 No existing account found - user will need to complete signup")
-                default:
-                    print("🔴 Auth error: \(authError)")
+                    print("Invalid Credentials")
+                default: break
                 }
             }
             
@@ -547,15 +546,9 @@ class DataController: ObservableObject {
             let userDTO = loginResult.user
             let companyDTO = loginResult.company
             
-            print("🔵 Google Login - Processing user data")
-            print("   User ID: \(userDTO.id)")
-            print("   Company from login response: \(companyDTO?.id ?? "none")")
-            print("   User's company ID: \(userDTO.company ?? "none")")
-            print("   User type: \(userDTO.userType ?? "none")")
             
             // Immediately set user type if available
             if let userTypeString = userDTO.userType {
-                print("🔵 Setting user type from Google login: \(userTypeString)")
                 // Map Bubble's user type strings to our UserType enum
                 if userTypeString.lowercased() == "company" {
                     UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
@@ -579,17 +572,12 @@ class DataController: ObservableObject {
             
             // If company data was returned, save it in the local database
             if let companyDTO = companyDTO {
-                print("🟢 Google Login - Company data received in login response")
-                print("   Company ID: \(companyDTO.id)")
-                print("   Company Name: \(companyDTO.companyName ?? "unknown")")
                 
                 // Check if user is admin from the login response
                 if let adminRefs = companyDTO.admin {
                     let adminIds = adminRefs.compactMap { $0.stringValue }
-                    print("🔵 Google Login - Company admin list: \(adminIds)")
                     
                     if adminIds.contains(userDTO.id), let user = currentUser {
-                        print("🔵 Google Login - User is admin, updating role immediately")
                         user.role = .admin
                         try? modelContext?.save()
                     }
@@ -597,7 +585,6 @@ class DataController: ObservableObject {
                 // We already fetched company data in fetchUserFromAPI, so we don't need to save it again
                 // The fetchCompanyData method was already called and handled the company save
             } else {
-                print("🟡 Google Login - No company data in login response")
             }
             
             // Now check if user has completed onboarding based on their data
@@ -605,9 +592,6 @@ class DataController: ObservableObject {
                 let hasCompany = !(user.companyId ?? "").isEmpty
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
                 
-                print("🔵 Google Login - Onboarding check:")
-                print("   Has company: \(hasCompany)")
-                print("   Has completed app onboarding: \(hasCompletedAppOnboarding)")
                 
                 // Set onboarding completed only if they have both
                 let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding
@@ -620,7 +604,6 @@ class DataController: ObservableObject {
                     // Projects sync already triggered in fetchUserFromAPI after company fetch
                 } else {
                     // Onboarding is needed - sync will happen in fetchUserFromAPI
-                    print("🟡 User needs onboarding - sync already triggered in fetchUserFromAPI")
                 }
                 
                 // Return true to indicate login was successful (even if onboarding is needed)
@@ -629,14 +612,12 @@ class DataController: ObservableObject {
             
             return false
         } catch let error as AuthError {
-            print("Google login auth error: \(error.localizedDescription)")
             
             // If it's invalid credentials, it means no account exists
             if case .invalidCredentials = error {
             }
             return false
         } catch {
-            print("Google login failed: \(error.localizedDescription)")
             return false
         }
     }
@@ -693,16 +674,13 @@ class DataController: ObservableObject {
                     // If no employee type is set, default to field crew
                     // This will be corrected when company data is fetched
                     user.role = .fieldCrew
-                    print("🟡 No employee type in user data, defaulting to field crew")
                 }
                 
                 // Handle company ID
                 if let companyId = userDTO.company, !companyId.isEmpty {
                     user.companyId = companyId
-                    print("🔵 User has company ID: \(companyId)")
                     // Company will be fetched below after sync manager is initialized
                 } else {
-                    print("🟡 User has no company ID in their profile")
                 }
                 
                 // Handle user type
@@ -742,7 +720,6 @@ class DataController: ObservableObject {
             
             try context.save()
         } catch {
-            print("Error saving user: \(error.localizedDescription)")
             throw error
         }
         
@@ -751,7 +728,6 @@ class DataController: ObservableObject {
         
         // Store user type in UserDefaults for onboarding flow
         if let userTypeString = userDTO.userType {
-            print("🔵 Setting user type from API: \(userTypeString)")
             // Map Bubble's user type strings to our UserType enum
             if userTypeString.lowercased() == "company" {
                 UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
@@ -787,63 +763,169 @@ class DataController: ObservableObject {
         // Fetch company data if needed
         if isConnected, let companyId = user.companyId, !companyId.isEmpty {
             do {
-                print("🔵 Fetching company data for companyId: \(companyId)")
                 try await fetchCompanyData(companyId: companyId)
-                print("🟢 Company data fetched successfully")
                 
                 // After fetching company data, the user's role may have been updated to admin
                 // Log the updated role
-                print("🔵 User role after company fetch: \(user.role.displayName)")
+                
+                // Fetch OPS Contacts option set (only on initial login, not every sync)
+                await fetchOpsContacts()
                 
                 // Now that we have company data, trigger a full sync to get projects
                 // Force project sync on login to ensure user gets their projects
-                print("🔵 Triggering background sync to fetch projects (forced)...")
                 await syncManager?.triggerBackgroundSync(forceProjectSync: true)
-                print("🟢 Background sync triggered")
             } catch {
-                print("🔴 Non-critical error fetching company data: \(error.localizedDescription)")
                 // Continue even if company data fetch fails - don't block authentication
                 // But still try to sync what we can, forcing project sync
                 await syncManager?.triggerBackgroundSync(forceProjectSync: true)
             }
         } else if !isConnected {
-            print("🟡 Offline - skipping company fetch")
         } else {
-            print("🟡 No company ID - skipping company fetch")
         }
     }
     
     @MainActor
     func logout() {
+        print("[LOGOUT] Starting logout process...")
+        
+        // First, clear the current user reference to prevent views from accessing it
+        self.currentUser = nil
+        
+        // Post notification to reset app state and dismiss views
+        NotificationCenter.default.post(name: NSNotification.Name("LogoutInitiated"), object: nil)
+        
+        // IMPORTANT: Clear auth state to trigger view dismissal
+        clearAuthentication()
+        
         // Sign out from auth manager
         authManager.signOut()
         
-        // Clear PIN settings first
+        // Clear PIN settings
         simplePINManager.removePIN()
         
-        // Delete the current user from the database if needed
-        if let userId = currentUser?.id, let context = modelContext {
-            do {
-                let descriptor = FetchDescriptor<User>(
-                    predicate: #Predicate<User> { $0.id == userId }
-                )
-                
-                let users = try context.fetch(descriptor)
-                
-                // Delete the user records
+        // Give views MORE time to fully dismiss and release references
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self = self else { return }
+            
+            print("[LOGOUT] Performing complete data wipe...")
+            
+            // Perform complete data wipe on main thread
+            Task { @MainActor in
+                self.performCompleteDataWipe()
+                print("[LOGOUT] Data wipe complete")
+            }
+        }
+    }
+    
+    /// Completely wipes all data from the SwiftData store
+    @MainActor
+    private func performCompleteDataWipe() {
+        guard let context = modelContext else {
+            print("[LOGOUT] No model context available for data wipe")
+            return
+        }
+        
+        print("[LOGOUT] Deleting all SwiftData models...")
+        
+        // Wrap in autoreleasepool to manage memory properly
+        autoreleasepool {
+            // Delete in correct order to avoid relationship issues
+            // Start with leaf entities that don't have critical relationships
+            
+            // 1. Delete CalendarEvents first (they reference tasks and projects)
+            if let calendarEvents = try? context.fetch(FetchDescriptor<CalendarEvent>()) {
+                print("[LOGOUT] Deleting \(calendarEvents.count) calendar events...")
+                for event in calendarEvents {
+                    context.delete(event)
+                }
+            }
+            
+            // 2. Delete ProjectTasks (they reference projects)
+            if let tasks = try? context.fetch(FetchDescriptor<ProjectTask>()) {
+                print("[LOGOUT] Deleting \(tasks.count) tasks...")
+                for task in tasks {
+                    context.delete(task)
+                }
+            }
+            
+            // 3. Delete TaskTypes
+            if let taskTypes = try? context.fetch(FetchDescriptor<TaskType>()) {
+                print("[LOGOUT] Deleting \(taskTypes.count) task types...")
+                for taskType in taskTypes {
+                    context.delete(taskType)
+                }
+            }
+            
+            // 4. Delete Projects (they have relationships to companies and users)
+            if let projects = try? context.fetch(FetchDescriptor<Project>()) {
+                print("[LOGOUT] Deleting \(projects.count) projects...")
+                for project in projects {
+                    // Clear relationships first to avoid crashes
+                    project.teamMembers.removeAll()
+                    context.delete(project)
+                }
+            }
+            
+            // 5. Delete Clients
+            if let clients = try? context.fetch(FetchDescriptor<Client>()) {
+                print("[LOGOUT] Deleting \(clients.count) clients...")
+                for client in clients {
+                    context.delete(client)
+                }
+            }
+            
+            // 6. Delete TeamMembers (they reference companies)
+            if let teamMembers = try? context.fetch(FetchDescriptor<TeamMember>()) {
+                print("[LOGOUT] Deleting \(teamMembers.count) team members...")
+                for member in teamMembers {
+                    // Clear company relationship first
+                    member.company = nil
+                    context.delete(member)
+                }
+            }
+            
+            // 7. Delete Users
+            if let users = try? context.fetch(FetchDescriptor<User>()) {
+                print("[LOGOUT] Deleting \(users.count) users...")
                 for user in users {
+                    // Clear relationships first
+                    user.assignedProjects.removeAll()
                     context.delete(user)
                 }
-                
-                try context.save()
-            } catch {
-                print("DataController: Error cleaning up user database: \(error.localizedDescription)")
+            }
+            
+            // 8. Delete Companies last (they have relationships to many entities)
+            if let companies = try? context.fetch(FetchDescriptor<Company>()) {
+                print("[LOGOUT] Deleting \(companies.count) companies...")
+                for company in companies {
+                    // Clear relationships first
+                    company.teamMembers.removeAll()
+                    context.delete(company)
+                }
             }
         }
         
+        // Save all deletions outside autoreleasepool
+        do {
+            try context.save()
+            print("[LOGOUT] All data deleted and saved")
+        } catch {
+            print("[LOGOUT] Error saving after data wipe: \(error)")
+        }
         
-        // Clear all auth state and user defaults
-        clearAuthentication()
+        // Clear any cached data
+        clearAllCaches()
+    }
+    
+    /// Clears all cached data
+    private func clearAllCaches() {
+        // Clear image cache
+        ImageCache.shared.clear()
+        
+        // Clear any other app-specific caches
+        UserDefaults.standard.synchronize()
+        
+        print("[LOGOUT] All caches cleared")
     }
     
     private func clearAuthentication() {
@@ -934,7 +1016,6 @@ class DataController: ObservableObject {
             try context.save()
             
         } catch {
-            print("Error removing sample projects: \(error.localizedDescription)")
         }
     }
     
@@ -1017,12 +1098,10 @@ class DataController: ObservableObject {
             do {
                 try context.save()
             } catch {
-                print("Error saving after cleanup: \(error.localizedDescription)")
                 // We should consider a way to recover from this error in a production app
             }
             
         } catch {
-            print("Error cleaning up duplicate users: \(error.localizedDescription)")
         }
     }
     
@@ -1031,7 +1110,9 @@ class DataController: ObservableObject {
     /// Fetch company data from API - optimized for reliability
     @MainActor
     private func fetchCompanyData(companyId: String) async throws {
-        guard let context = modelContext else { return }
+        guard let context = modelContext else { 
+            return 
+        }
         
         do {
             let descriptor = FetchDescriptor<Company>(
@@ -1058,6 +1139,8 @@ class DataController: ObservableObject {
                         company = newCompany
                     }
                     
+                    // Log final subscription state after update
+                    
                     try? context.save()
                     
                     // If team members haven't been synced, or it's been more than a day, sync team members
@@ -1069,17 +1152,19 @@ class DataController: ObservableObject {
                         Task {
                             await syncManager?.syncCompanyTeamMembers(company)
                         }
+                    } else {
                     }
                 }
+            } else {
             }
         } catch {
-            print("Company fetch error: \(error.localizedDescription)")
             throw error
         }
     }
     
     // Helper to update company from DTO
     private func updateCompany(_ company: Company, from dto: CompanyDTO) {
+        
         company.name = dto.companyName ?? "Unknown Company"
         company.externalId = dto.companyID
         company.companyDescription = dto.companyDescription
@@ -1105,27 +1190,104 @@ class DataController: ObservableObject {
         company.openHour = dto.openHour
         company.closeHour = dto.closeHour
         
+        // Log subscription data from DTO if available
+        if let subscriptionStatus = dto.subscriptionStatus {
+            // CRITICAL FIX: Normalize status to lowercase to match enum values
+            let normalizedStatus = subscriptionStatus.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            let oldStatus = company.subscriptionStatus
+            company.subscriptionStatus = normalizedStatus
+            print("[SUBSCRIPTION] Status changed: \(oldStatus ?? "nil") -> \(normalizedStatus)")
+        } else {
+            print("[SUBSCRIPTION] Status update: nil (no change)")
+        }
+        
+        if let subscriptionPlan = dto.subscriptionPlan {
+            // CRITICAL FIX: Normalize plan to lowercase to match enum values
+            let normalizedPlan = subscriptionPlan.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            let oldPlan = company.subscriptionPlan
+            company.subscriptionPlan = normalizedPlan
+            print("[SUBSCRIPTION] Plan changed: \(oldPlan ?? "nil") -> \(normalizedPlan)")
+        } else {
+            print("[SUBSCRIPTION] Plan update: nil (no change)")
+        }
+        
+        if let subscriptionEnd = dto.subscriptionEnd {
+            company.subscriptionEnd = subscriptionEnd
+        } else {
+        }
+        
+        if let subscriptionPeriod = dto.subscriptionPeriod {
+            company.subscriptionPeriod = subscriptionPeriod
+        } else {
+        }
+        
+        if let maxSeats = dto.maxSeats {
+            company.maxSeats = maxSeats
+        } else {
+        }
+        
+        if let seatedEmployees = dto.seatedEmployees {
+            let seatedIds = seatedEmployees.compactMap { $0.stringValue }
+            company.seatedEmployeeIds = seatedIds.joined(separator: ",")
+        } else {
+        }
+        
+        if let seatGraceStartDate = dto.seatGraceStartDate {
+            company.seatGraceStartDate = seatGraceStartDate
+        } else {
+        }
+        
+        // Note: subscriptionIdsJson not available in current DTO
+        
+        if let trialStartDate = dto.trialStartDate {
+            company.trialStartDate = trialStartDate
+        } else {
+        }
+        
+        if let trialEndDate = dto.trialEndDate {
+            company.trialEndDate = trialEndDate
+        } else {
+        }
+        
+        if let hasPrioritySupport = dto.hasPrioritySupport {
+            company.hasPrioritySupport = hasPrioritySupport
+        } else {
+        }
+        
+        if let dataSetupPurchased = dto.dataSetupPurchased {
+            company.dataSetupPurchased = dataSetupPurchased
+        } else {
+        }
+        
+        if let dataSetupCompleted = dto.dataSetupCompleted {
+            company.dataSetupCompleted = dataSetupCompleted
+        } else {
+        }
+        
+        if let dataSetupScheduledDate = dto.dataSetupScheduledDate {
+            company.dataSetupScheduledDate = dataSetupScheduledDate
+        } else {
+        }
+        
+        if let stripeCustomerId = dto.stripeCustomerId {
+            company.stripeCustomerId = stripeCustomerId
+        } else {
+        }
+        
         // Handle admin role update
         if let currentUser = currentUser,
            let adminRefs = dto.admin {
             // Check if current user's ID is in the admin list
             let adminIds = adminRefs.compactMap { $0.stringValue }
-            print("🔵 Company admin list: \(adminIds)")
-            print("🔵 Current user ID: \(currentUser.id)")
             
             if adminIds.contains(currentUser.id) {
-                print("🔵 User is in company admin list, updating role to admin")
                 // Update current user's role to admin
                 currentUser.role = .admin
                 // Save the context immediately to ensure role update is persisted
                 try? modelContext?.save()
             } else {
-                print("🔵 User is not in company admin list, keeping role as \(currentUser.role.displayName)")
             }
         } else {
-            print("🟡 Cannot check admin status - missing data")
-            print("   Current user: \(currentUser?.id ?? "nil")")
-            print("   Admin refs: \(dto.admin?.count ?? 0)")
         }
         
         // Handle admin list
@@ -1141,6 +1303,7 @@ class DataController: ObservableObject {
         
         company.lastSyncedAt = Date()
         company.needsSync = false
+        
     }
     
     /// Ensures project team members are properly synchronized between IDs and User objects
@@ -1185,7 +1348,6 @@ class DataController: ObservableObject {
                             // Check if user is still part of the company
                             if userDTO.company == nil || (userDTO.company != nil && userDTO.company != existingUser.companyId) {
                                 // User is no longer part of the company - remove them
-                                print("🗑️ User \(existingUser.fullName) (ID: \(memberId)) no longer belongs to company. Removing from local database.")
                                 
                                 // Remove from all projects
                                 for assignedProject in existingUser.assignedProjects {
@@ -1204,7 +1366,6 @@ class DataController: ObservableObject {
                             // Update phone number
                             if let phoneNumber = userDTO.phone {
                                 existingUser.phone = phoneNumber
-                                print("📱 Updated phone number for \(existingUser.fullName): \(phoneNumber)")
                             }
                             
                             // Update email
@@ -1225,7 +1386,6 @@ class DataController: ObservableObject {
                             // Save the context
                             try context.save()
                         } catch {
-                            print("Failed to refresh user data for \(existingUser.fullName): \(error)")
                         }
                     }
                     
@@ -1245,7 +1405,6 @@ class DataController: ObservableObject {
                         
                         // Check if user belongs to a company
                         if userDTO.company == nil {
-                            print("⚠️ User ID \(memberId) has no company - not adding to local database")
                             continue // Skip this user
                         }
                         
@@ -1261,14 +1420,12 @@ class DataController: ObservableObject {
                     } catch {
                         // Check if this is a 404 error (user deleted from system)
                         if let apiError = error as? APIError, case .httpError(let statusCode) = apiError, statusCode == 404 {
-                            print("DataController: User \(memberId) not found (404), deleting from local database")
                             
                             // Delete any existing local user with this ID
                             let existingUserPredicate = #Predicate<User> { $0.id == memberId }
                             let existingUserDescriptor = FetchDescriptor<User>(predicate: existingUserPredicate)
                             if let existingUsers = try? context.fetch(existingUserDescriptor) {
                                 for userToDelete in existingUsers {
-                                    print("🗑️ Deleting non-existent user \(userToDelete.fullName) from local database")
                                     context.delete(userToDelete)
                                 }
                             }
@@ -1281,7 +1438,6 @@ class DataController: ObservableObject {
                             continue
                         }
                         
-                        print("DataController: Failed to fetch user \(memberId) from API: \(error.localizedDescription)")
                         
                         // Only create placeholder for non-404 errors (network issues, etc)
                         let placeholderUser = User(
@@ -1319,7 +1475,6 @@ class DataController: ObservableObject {
                     context.insert(placeholderUser)
                 }
             } catch {
-                print("DataController: Error syncing team member \(memberId): \(error.localizedDescription)")
             }
         }
         
@@ -1327,7 +1482,6 @@ class DataController: ObservableObject {
         do {
             try context.save()
         } catch {
-            print("DataController: Error saving team member relationships: \(error.localizedDescription)")
         }
     }
     
@@ -1380,7 +1534,6 @@ class DataController: ObservableObject {
             
             return filteredProjects
         } catch {
-            print("Failed to fetch projects: \(error.localizedDescription)")
             return []
         }
     }
@@ -1403,21 +1556,17 @@ class DataController: ObservableObject {
     /// Force refresh projects from Bubble backend
     func refreshProjectsFromBackend() async {
         guard isConnected, isAuthenticated else {
-            print("❌ Cannot refresh projects: Not connected or not authenticated")
             return
         }
         
         guard let syncManager = syncManager else {
-            print("❌ Cannot refresh projects: SyncManager not initialized")
             return
         }
         
-        print("🔄 Starting project refresh from backend...")
         
         // Force sync projects from Bubble
         await syncManager.forceSyncProjects()
         
-        print("✅ Project refresh from backend completed")
     }
     
     // MARK: - CalendarEvent Methods
@@ -1425,41 +1574,24 @@ class DataController: ObservableObject {
     /// Get calendar events for a specific date for the current user
     func getCalendarEventsForCurrentUser(for date: Date) -> [CalendarEvent] {
         guard let user = currentUser else { 
-            print("❌ No current user for calendar events")
             return [] 
         }
         guard let context = modelContext else { 
-            print("❌ No model context for calendar events")
             return [] 
         }
         
-        // print("\n📅 === FETCHING CALENDAR EVENTS FOR DATE: \(date) ===")
-        // print("👤 Current user: \(user.fullName) (Role: \(user.role))")
         
         let descriptor = FetchDescriptor<CalendarEvent>()
         
         do {
             let allEvents = try context.fetch(descriptor)
-            // print("📊 DATA: Total calendar events in database: \(allEvents.count)")
             
             /*
             // Search for any Railings events specifically
             let railingsEvents = allEvents.filter { $0.title.lowercased().contains("railings") }
             if !railingsEvents.isEmpty {
-                print("🔍 RAILINGS EVENTS FOUND: \(railingsEvents.count)")
                 for (index, event) in railingsEvents.enumerated() {
-                    print("  🎯 Railings Event \(index + 1): \(event.title)")
-                    print("    - ID: \(event.id)")
-                    print("    - Start: \(event.startDate)")
-                    print("    - End: \(event.endDate)")
-                    print("    - Type: \(event.type.rawValue)")
-                    print("    - Project ID: \(event.projectId)")
-                    print("    - Task ID: \(event.taskId ?? "nil")")
-                    print("    - Should Display: \(event.shouldDisplay)")
-                    print("    - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
                     if let project = event.project {
-                        print("    - Project Title: \(project.title)")
-                        print("    - Project Effective Event Type: \(project.effectiveEventType.rawValue)")
                     }
                 }
             }
@@ -1467,132 +1599,74 @@ class DataController: ObservableObject {
             
             /*
             // Debug first few events for general context
-            print("📊 DATA: First 5 events in database:")
             for (index, event) in allEvents.prefix(5).enumerated() {
-                print("  Event \(index + 1): \(event.title)")
-                print("    - Start: \(event.startDate)")
-                print("    - End: \(event.endDate)")
-                print("    - Type: \(event.type.rawValue)")
-                print("    - Project ID: \(event.projectId)")
-                print("    - Should Display: \(event.shouldDisplay)")
-                print("    - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
             }
             */
             
             // Filter by date and user access
-            // print("\n🔍 FILTERING EVENTS FOR DATE: \(date)")
             var passedDateFilter = 0
             var passedShouldDisplayFilter = 0
             var passedUserAccessFilter = 0
             
             let filteredEvents = allEvents.filter { event in
-                let isRailingsEvent = event.title.lowercased().contains("railings")
-                let logPrefix = isRailingsEvent ? "🎯 RAILINGS" : "📅"
-                
                 // Check if event is active on this date
                 let spannedDates = event.spannedDates
                 let isActiveOnDate = spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
                 
                 if !isActiveOnDate {
-                    // Commented out verbose logging to prevent console spam
-                    // print("  ❌ \(logPrefix) Event '\(event.title)' not active on \(date)")
-                    // let formatter = DateFormatter()
-                    // formatter.dateStyle = .short
-                    // print("    - Event spans \(spannedDates.count) days: \(spannedDates.map { formatter.string(from: $0) }.joined(separator: ", "))")
                     return false
                 }
                 passedDateFilter += 1
-                if isRailingsEvent { print("  ✅ \(logPrefix) Event '\(event.title)' PASSED date filter") }
                 
                 // Check if event should be displayed based on project scheduling mode
                 let shouldDisplay = event.shouldDisplay
                 if !shouldDisplay {
-                    // Commented out verbose logging to prevent console spam
-                    // print("  ❌ \(logPrefix) Event '\(event.title)' shouldDisplay = false")
-                    // print("    - Event type: \(event.type.rawValue), Task ID: \(event.taskId ?? "nil")")
-                    // print("    - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
-                    // print("    - Has Project: \(event.project != nil)")
-                    // if let project = event.project {
-                    //     print("    - Project '\(project.title)' effective event type: \(project.effectiveEventType.rawValue)")
-                    //     print("    - Analysis: Project scheduling mode requires \(project.effectiveEventType.rawValue) events")
-                    //     if project.effectiveEventType == .task {
-                    //         print("    - Analysis: This event type=\(event.type.rawValue) taskId=\(event.taskId ?? "nil") - task events need taskId != nil")
-                    //     } else {
-                    //         print("    - Analysis: This event type=\(event.type.rawValue) taskId=\(event.taskId ?? "nil") - project events need taskId == nil")
-                    //     }
-                    // }
                     return false
                 }
                 passedShouldDisplayFilter += 1
-                if isRailingsEvent { print("  ✅ \(logPrefix) Event '\(event.title)' PASSED shouldDisplay filter") }
                 
                 // For Admin and Office Crew, show all company events
                 if user.role == .admin || user.role == .officeCrew {
                     let matchesCompany = event.companyId == user.companyId
                     if !matchesCompany {
-                        // print("  ❌ \(logPrefix) Event '\(event.title)' wrong company (event: \(event.companyId), user: \(user.companyId))")
                         return false
                     } else {
                         passedUserAccessFilter += 1
-                        if isRailingsEvent { print("  ✅ \(logPrefix) Event '\(event.title)' PASSED company filter for admin/office user") }
                         return true
                     }
                 } else {
                     // For Field Crew, only show events they're assigned to
                     let eventTeamMemberIds = event.getTeamMemberIds()
-                    let eventTeamMemberObjectIds = event.teamMembers.map { $0.id }
                     let isAssignedViaIds = eventTeamMemberIds.contains(user.id)
                     let isAssignedViaObjects = event.teamMembers.contains(where: { $0.id == user.id })
                     let isAssigned = isAssignedViaIds || isAssignedViaObjects
                     
                     if !isAssigned {
-                        // Commented out verbose logging
-                        // print("  ❌ \(logPrefix) Event '\(event.title)' user \(user.fullName) (ID: \(user.id)) not assigned")
-                        // print("    - Event team member IDs: \(eventTeamMemberIds)")
-                        // print("    - Event team member objects: \(eventTeamMemberObjectIds)")
-                        // print("    - User ID in string list: \(isAssignedViaIds)")
-                        // print("    - User ID in object list: \(isAssignedViaObjects)")
-                        
                         // Also check task assignment if this is a task event
                         if let task = event.task {
                             let taskTeamMemberIds = task.getTeamMemberIds()
-                            let taskTeamMemberObjectIds = task.teamMembers.map { $0.id }
                             let isAssignedToTask = taskTeamMemberIds.contains(user.id) || task.teamMembers.contains(where: { $0.id == user.id })
-                            // print("    - Task team member IDs: \(taskTeamMemberIds)")
-                            // print("    - Task team member objects: \(taskTeamMemberObjectIds)")
-                            // print("    - User assigned to task: \(isAssignedToTask)")
                             
                             if isAssignedToTask {
                                 passedUserAccessFilter += 1
-                                // print("  ✅ \(logPrefix) Event '\(event.title)' user assigned via task")
                                 return true
                             }
                         }
                         return false
                     } else {
                         passedUserAccessFilter += 1
-                        if isRailingsEvent { print("  ✅ \(logPrefix) Event '\(event.title)' PASSED assignment filter for field crew user") }
                         return true
                     }
                 }
             }
             
             // Commented out verbose logging to prevent console spam during calendar rendering
-            // print("\n📊 FILTER RESULTS:")
-            // print("   - Started with: \(allEvents.count) events")
-            // print("   - Passed date filter: \(passedDateFilter) events")
-            // print("   - Passed shouldDisplay filter: \(passedShouldDisplayFilter) events")
-            // print("   - Passed user access filter: \(passedUserAccessFilter) events")
-            // print("   - Final result: \(filteredEvents.count) events")
             
-            // print("📊 Filtered events for date: \(filteredEvents.count)")
             // for event in filteredEvents {
-            //     print("  ✅ Showing: \(event.title)")
             // }
             
             return filteredEvents.sorted { $0.startDate < $1.startDate }
         } catch {
-            print("❌ Error fetching calendar events: \(error)")
             return []
         }
     }
@@ -1714,7 +1788,6 @@ class DataController: ObservableObject {
             return localProjects
         } catch {
             // On error, fall back to local data
-            print("Error fetching remote projects: \(error)")
             
             // Still ensure team member relationships are synchronized for projects
             for project in localProjects {
@@ -1751,7 +1824,6 @@ class DataController: ObservableObject {
             
             return try context.fetch(descriptor)
         } catch {
-            print("Error fetching all projects: \(error.localizedDescription)")
             return []
         }
     }
@@ -1769,7 +1841,6 @@ class DataController: ObservableObject {
             )
             return try context.fetch(descriptor).first
         } catch {
-            print("Error fetching client: \(error.localizedDescription)")
             return nil
         }
     }
@@ -1781,14 +1852,56 @@ class DataController: ObservableObject {
         do {
             try context.save()
         } catch {
-            print("Error saving client: \(error.localizedDescription)")
+        }
+    }
+    
+    func getAllClients(for companyId: String) -> [Client] {
+        guard let context = modelContext else { return [] }
+        
+        do {
+            let descriptor = FetchDescriptor<Client>(
+                predicate: #Predicate<Client> { client in
+                    client.companyId == companyId
+                }
+            )
+            return try context.fetch(descriptor)
+        } catch {
+            print("[DataController] Error fetching clients: \(error)")
+            return []
+        }
+    }
+    
+    // MARK: - TaskType Management
+    
+    func getAllTaskTypes(for companyId: String) -> [TaskType] {
+        guard let context = modelContext else { return [] }
+        
+        do {
+            let descriptor = FetchDescriptor<TaskType>(
+                predicate: #Predicate<TaskType> { taskType in
+                    taskType.companyId == companyId
+                }
+            )
+            return try context.fetch(descriptor)
+        } catch {
+            print("[DataController] Error fetching task types: \(error)")
+            return []
         }
     }
     
     func getCurrentUserCompany() -> Company? {
-        guard let user = currentUser,
-              let companyId = user.companyId,
-              let context = modelContext else {
+        guard let user = currentUser else {
+            print("[SUBSCRIPTION] getCurrentUserCompany: No current user")
+            return nil
+        }
+        
+        guard let companyId = user.companyId else {
+            print("[SUBSCRIPTION] getCurrentUserCompany: User has no companyId")
+            return nil
+        }
+        
+        guard let context = modelContext else {
+            print("[SUBSCRIPTION] getCurrentUserCompany: No model context")
             return nil
         }
         
@@ -1797,9 +1910,12 @@ class DataController: ObservableObject {
                 predicate: #Predicate<Company> { $0.id == companyId }
             )
             let companies = try context.fetch(descriptor)
+            if companies.isEmpty {
+                print("[SUBSCRIPTION] getCurrentUserCompany: No company found with ID: \(companyId)")
+            }
             return companies.first
         } catch {
-            print("Error fetching company: \(error.localizedDescription)")
+            print("[SUBSCRIPTION] getCurrentUserCompany: Error fetching company: \(error)")
             return nil
         }
     }
@@ -1885,7 +2001,6 @@ class DataController: ObservableObject {
                 return dummyCompany
             }
         } catch {
-            print("Error fetching company: \(error.localizedDescription)")
             return nil
         }
     }
@@ -1914,7 +2029,6 @@ class DataController: ObservableObject {
                 return []
             }
         } catch {
-            print("Error fetching team members: \(error.localizedDescription)")
             return []
         }
     }
@@ -1947,7 +2061,6 @@ class DataController: ObservableObject {
             // If we got here, either company doesn't exist or has no team members yet
             return []
         } catch {
-            print("Error fetching company team members: \(error.localizedDescription)")
             return []
         }
     }
@@ -2030,7 +2143,6 @@ class DataController: ObservableObject {
                 return []
             }
         } catch {
-            print("Error fetching project history: \(error.localizedDescription)")
             return []
         }
     }
@@ -2079,7 +2191,6 @@ class DataController: ObservableObject {
             
             return true
         } catch {
-            print("Error updating user profile: \(error.localizedDescription)")
             return false
         }
     }
@@ -2114,7 +2225,6 @@ class DataController: ObservableObject {
             
             return true
         } catch {
-            print("DataController: Error deleting user account: \(error.localizedDescription)")
             return false
         }
     }
@@ -2122,8 +2232,8 @@ class DataController: ObservableObject {
     // We're removing the ability to update profile images for now
     // Instead we'll rely on the API to provide profile images
     
-    /// Gets a project by ID
-    func getProject(id: String) -> Project? {
+    /// Gets a project by ID without triggering sync (internal use)
+    private func getProjectWithoutSync(id: String) -> Project? {
         guard let context = modelContext else { return nil }
         
         do {
@@ -2131,17 +2241,65 @@ class DataController: ObservableObject {
                 predicate: #Predicate<Project> { $0.id == id }
             )
             let projects = try context.fetch(descriptor)
+            return projects.first
+        } catch {
+            print("[DataController] Error fetching project \(id): \(error)")
+            return nil
+        }
+    }
+    
+    /// Gets a project by ID
+    func getProject(id: String) -> Project? {
+        guard let context = modelContext else { 
+            DebugLogger.shared.logProjectAccess(project: nil, location: "DataController.getProject - no context", projectId: id)
+            return nil 
+        }
+        
+        // Always fetch fresh from context to avoid invalidated models
+        do {
+            let descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.id == id }
+            )
+            let projects = try context.fetch(descriptor)
             
             if let project = projects.first {
-                // Trigger team member sync in background
-                Task {
-                    await syncProjectTeamMembers(project)
+                DebugLogger.shared.logProjectAccess(project: project, location: "DataController.getProject - fetched", projectId: id)
+                
+                // Don't pass the model to a background task - use the ID instead
+                let projectId = project.id
+                Task { @MainActor in
+                    // Fetch fresh project in the task to avoid invalidation
+                    if let freshProject = self.getProjectWithoutSync(id: projectId) {
+                        await self.syncProjectTeamMembers(freshProject)
+                    }
                 }
                 return project
             }
+            DebugLogger.shared.logProjectAccess(project: nil, location: "DataController.getProject - not found", projectId: id)
             return nil
         } catch {
-            print("Error fetching project: \(error.localizedDescription)")
+            print("[DataController] Error fetching project \(id): \(error)")
+            DebugLogger.shared.logCritical("Failed to fetch project: \(error)", location: "DataController.getProject")
+            return nil
+        }
+    }
+    
+    func getCalendarEvent(id: String) -> CalendarEvent? {
+        guard let context = modelContext else { return nil }
+        
+        // Always fetch fresh from context to avoid invalidated models
+        do {
+            let descriptor = FetchDescriptor<CalendarEvent>(
+                predicate: #Predicate<CalendarEvent> { $0.id == id }
+            )
+            let events = try context.fetch(descriptor)
+            
+            if let event = events.first {
+                return event
+            }
+            return nil
+        } catch {
+            print("[DataController] Error fetching calendar event \(id): \(error)")
             return nil
         }
     }
@@ -2150,11 +2308,8 @@ class DataController: ObservableObject {
     
     /// Diagnostic function to search for specific project and analyze calendar event issues
     func diagnoseRailingsVinylProject() {
-        print("\n🧪 ========== DIAGNOSTIC: Railings and Vinyl Project ==========")
-        print("🧪 Timestamp: \(Date())")
         
         guard let context = modelContext else {
-            print("❌ No model context available")
             return
         }
         
@@ -2163,38 +2318,14 @@ class DataController: ObservableObject {
             let allProjects = try context.fetch(FetchDescriptor<Project>())
             let railingsProjects = allProjects.filter { $0.title.lowercased().contains("railings") }
             
-            print("🔍 SEARCH: Found \(railingsProjects.count) projects containing 'railings'")
             
             for (index, project) in railingsProjects.enumerated() {
-                print("\n📋 PROJECT \(index + 1):")
-                print("   - ID: \(project.id)")
-                print("   - Title: \(project.title)")
-                print("   - Client: \(project.clientName)")
-                print("   - Company ID: \(project.companyId)")
-                print("   - Start Date: \(project.startDate?.description ?? "nil")")
-                print("   - End Date: \(project.endDate?.description ?? "nil")")
-                print("   - Event Type: \(project.eventType?.rawValue ?? "nil")")
-                print("   - Effective Event Type: \(project.effectiveEventType.rawValue)")
-                print("   - Status: \(project.status.displayName)")
-                print("   - Team Members: \(project.teamMembers.count)")
-                print("   - Team Member IDs: \(project.getTeamMemberIds())")
                 
                 // Check for tasks
                 let tasks = project.tasks
-                print("   - Total Tasks: \(tasks.count)")
                 
                 for (taskIndex, task) in tasks.enumerated() {
-                    print("     📋 TASK \(taskIndex + 1):")
-                    print("        - ID: \(task.id)")
-                    print("        - Type: \(task.taskType?.display ?? "Unknown")")
-                    print("        - Scheduled Date: \(task.scheduledDate?.description ?? "nil")")
-                    print("        - Status: \(task.status.displayName)")
-                    print("        - Has Calendar Event: \(task.calendarEvent != nil)")
                     if let calendarEvent = task.calendarEvent {
-                        print("        - Calendar Event ID: \(calendarEvent.id)")
-                        print("        - Calendar Event Start: \(calendarEvent.startDate)")
-                        print("        - Calendar Event End: \(calendarEvent.endDate)")
-                        print("        - Calendar Event Should Display: \(calendarEvent.shouldDisplay)")
                     }
                 }
                 
@@ -2205,19 +2336,7 @@ class DataController: ObservableObject {
                 )
                 let projectCalendarEvents = try context.fetch(calendarEventDescriptor)
                 
-                print("   - Associated Calendar Events: \(projectCalendarEvents.count)")
                 for (eventIndex, event) in projectCalendarEvents.enumerated() {
-                    print("     📅 CALENDAR EVENT \(eventIndex + 1):")
-                    print("        - ID: \(event.id)")
-                    print("        - Title: \(event.title)")
-                    print("        - Type: \(event.type.rawValue)")
-                    print("        - Start Date: \(event.startDate)")
-                    print("        - End Date: \(event.endDate)")
-                    print("        - Task ID: \(event.taskId ?? "nil")")
-                    print("        - Project Event Type: \(event.projectEventType?.rawValue ?? "nil")")
-                    print("        - Should Display: \(event.shouldDisplay)")
-                    print("        - Team Members: \(event.teamMembers.count)")
-                    print("        - Team Member IDs: \(event.getTeamMemberIds())")
                     
                     // Check spanned dates for Aug 17 and Aug 19
                     let spannedDates = event.spannedDates
@@ -2229,14 +2348,10 @@ class DataController: ObservableObject {
                     let coversAug17 = spannedDates.contains { calendar.isDate($0, inSameDayAs: aug17_2025) }
                     let coversAug19 = spannedDates.contains { calendar.isDate($0, inSameDayAs: aug19_2025) }
                     
-                    print("        - Spans Aug 17, 2025: \(coversAug17)")
-                    print("        - Spans Aug 19, 2025: \(coversAug19)")
-                    print("        - Total Spanned Days: \(spannedDates.count)")
                 }
             }
             
             // Also search for tasks with "Railings" in project title
-            print("\n📋 SEARCHING FOR TASKS:")
             let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
             let railingsTasks = allTasks.filter { task in
                 if let project = task.project {
@@ -2245,45 +2360,29 @@ class DataController: ObservableObject {
                 return false
             }
             
-            print("🔍 Found \(railingsTasks.count) tasks for projects containing 'railings'")
             
             for (index, task) in railingsTasks.enumerated() {
-                print("\n   📋 TASK \(index + 1):")
-                print("      - Task ID: \(task.id)")
-                print("      - Task Type: \(task.taskType?.display ?? "Unknown")")
-                print("      - Project Title: \(task.project?.title ?? "nil")")
-                print("      - Scheduled Date: \(task.scheduledDate?.description ?? "nil")")
-                print("      - Status: \(task.status.displayName)")
-                print("      - Has Calendar Event: \(task.calendarEvent != nil)")
                 if let calendarEvent = task.calendarEvent {
-                    print("      - Calendar Event ID: \(calendarEvent.id)")
-                    print("      - Calendar Event Should Display: \(calendarEvent.shouldDisplay)")
                 }
             }
             
             // Check for calendar events on specific dates
-            print("\n📅 CHECKING CALENDAR EVENTS FOR SPECIFIC DATES:")
             let calendar = Calendar.current
             let aug17_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 17))!
             let aug19_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 19))!
             
             for date in [aug17_2025, aug19_2025] {
-                print("\n📅 Events for \(date):")
                 let eventsForDate = getCalendarEventsForCurrentUser(for: date)
-                print("   - Total events returned: \(eventsForDate.count)")
                 
                 for event in eventsForDate {
                     if event.title.lowercased().contains("railings") {
-                        print("   ✅ FOUND RAILINGS EVENT: \(event.title)")
                     }
                 }
             }
             
         } catch {
-            print("❌ Error during diagnostic: \(error)")
         }
         
-        print("🧪 ========== END DIAGNOSTIC ==========\n")
     }
     
     
@@ -2298,8 +2397,95 @@ class DataController: ObservableObject {
             let users = try context.fetch(descriptor)
             return users.first
         } catch {
-            print("Error fetching user: \(error.localizedDescription)")
             return nil
         }
+    }
+    
+    /// Gets all employees for a company
+    func getAllCompanyEmployees(companyId: String) -> [User]? {
+        guard let context = modelContext else { return nil }
+        
+        do {
+            let descriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { $0.companyId == companyId },
+                sortBy: [SortDescriptor(\.firstName), SortDescriptor(\.lastName)]
+            )
+            let users = try context.fetch(descriptor)
+            return users
+        } catch {
+            print("[DataController] Failed to fetch company employees: \(error)")
+            return nil
+        }
+    }
+    
+    // MARK: - OPS Contacts Management
+    
+    /// Fetch OPS Contacts option set from Bubble
+    @MainActor
+    private func fetchOpsContacts() async {
+        do {
+            
+            // Fetch from Bubble API
+            let endpoint = "obj/opscontacts"  // Option sets are usually at obj/[option_set_name]
+            let response: OpsContactsResponse = try await apiService.executeRequest(
+                endpoint: endpoint,
+                method: "GET"
+            )
+            
+            guard let context = modelContext else {
+                return
+            }
+            
+            // Clear existing OPS Contacts
+            let descriptor = FetchDescriptor<OpsContact>()
+            let existingContacts = try context.fetch(descriptor)
+            for contact in existingContacts {
+                context.delete(contact)
+            }
+            
+            // Save new contacts
+            for dto in response.response.results {
+                let contact = dto.toOpsContact()
+                context.insert(contact)
+            }
+            
+            try context.save()
+            
+        } catch {
+            // Non-critical error - don't block login
+        }
+    }
+    
+    /// Get an OPS Contact by role
+    func getOpsContact(for role: OpsContactRole) -> OpsContact? {
+        guard let context = modelContext else { return nil }
+        
+        let roleString = role.rawValue
+        
+        do {
+            let descriptor = FetchDescriptor<OpsContact>(
+                predicate: #Predicate<OpsContact> { contact in
+                    contact.role == roleString || contact.display == roleString
+                }
+            )
+            let contacts = try context.fetch(descriptor)
+            return contacts.first
+        } catch {
+            return nil
+        }
+    }
+    
+    /// Get the priority support contact if user has priority support
+    func getPrioritySupportContact() -> OpsContact? {
+        guard let company = getCurrentUserCompany(),
+              company.hasPrioritySupport else {
+            return nil
+        }
+        return getOpsContact(for: .prioritySupport)
+    }
+    
+    /// Get general support contact
+    func getGeneralSupportContact() -> OpsContact? {
+        return getOpsContact(for: .generalSupport)
     }
 }

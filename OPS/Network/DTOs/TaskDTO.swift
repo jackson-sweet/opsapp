@@ -49,20 +49,12 @@ struct TaskDTO: Codable {
     /// - Parameter defaultColor: Default color to use if taskColor is nil (usually company.defaultProjectColor)
     func toModel(defaultColor: String = "#59779F") -> ProjectTask {
         // Log Task details for debugging
-        print("📋 Task ID: \(id)")
-        print("   - ProjectId: \(projectId ?? "nil")")
-        print("   - Type: \(type ?? "nil")")
-        print("   - Status: \(status ?? "nil")")
-        print("   - TaskColor: \(taskColor ?? "nil -> using default")")
-        print("   - CalendarEventId: \(calendarEventId ?? "nil")")
-        print("   - TaskIndex: \(taskIndex?.description ?? "nil")")
         
         // Validate required fields
         let projectIdValue: String
         if let pid = projectId, !pid.isEmpty {
             projectIdValue = pid
         } else {
-            print("   ❌ Missing projectId for task \(id), using empty string")
             projectIdValue = ""
         }
         
@@ -70,7 +62,6 @@ struct TaskDTO: Codable {
         if let cid = companyId, !cid.isEmpty {
             companyIdValue = cid
         } else {
-            print("   ❌ Missing companyId for task \(id), using empty string")
             companyIdValue = ""
         }
         
@@ -80,7 +71,6 @@ struct TaskDTO: Codable {
             // Ensure color starts with #
             validColor = colorValue.hasPrefix("#") ? colorValue : "#\(colorValue)"
         } else {
-            print("   ⚠️ No task color, using default: \(defaultColor)")
             validColor = defaultColor
         }
         

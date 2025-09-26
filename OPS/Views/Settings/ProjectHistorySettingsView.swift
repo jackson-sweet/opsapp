@@ -269,7 +269,6 @@ struct ProjectHistorySettingsView: View {
             // Also trigger a sync if we're connected
             if dataController.isConnected, let syncManager = dataController.syncManager {
                 Task {
-                    print("📱 ProjectHistorySettingsView: Triggering background sync on appear...")
                     await syncManager.triggerBackgroundSync()
                 }
             }
@@ -646,17 +645,14 @@ struct ProjectHistorySettingsView: View {
             let userRole = dataController.currentUser?.role.displayName ?? "unknown"
             let companyId = dataController.currentUser?.companyId ?? "none"
             
-            print("📱 ProjectHistorySettingsView: Loading projects for user: \(userId), role: \(userRole), company: \(companyId)")
             
             let allProjects = dataController.getProjectHistory(for: userId)
             
-            print("📱 ProjectHistorySettingsView: Found \(allProjects.count) projects")
             
             // Load team members if user is admin/office crew
             if shouldShowTeamMemberFilter {
                 if let company = dataController.getCompany(id: companyId) {
                     availableTeamMembers = company.teamMembers.sorted { $0.fullName < $1.fullName }
-                    print("📱 ProjectHistorySettingsView: Loaded \(availableTeamMembers.count) team members for filtering")
                 }
             }
             
@@ -915,7 +911,6 @@ struct ProjectHistorySettingsView: View {
         
         Task {
             // Force sync projects from the server
-            print("📱 ProjectHistorySettingsView: Manually refreshing projects...")
             
             if let syncManager = dataController.syncManager {
                 // Force project sync

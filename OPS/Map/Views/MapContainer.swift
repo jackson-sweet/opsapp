@@ -104,11 +104,6 @@ struct MapContainer: View {
                let project = coordinator.selectedProject,
                project.status != .inProgress,
                !appState.isInProjectMode {
-                // let _ = print("🔶 MapContainer: Showing project details card for: \(project.title)")
-                // let _ = print("  - isNavigating: \(coordinator.isNavigating)")
-                // let _ = print("  - showingProjectDetails: \(coordinator.showingProjectDetails)")
-                // let _ = print("  - project.status: \(project.status)")
-                // let _ = print("  - appState.isInProjectMode: \(appState.isInProjectMode)")
                 VStack {
                     Spacer()
                     
@@ -116,7 +111,6 @@ struct MapContainer: View {
                         project: project,
                         coordinator: coordinator,
                         onStartProject: { project in
-                            // print("🔶 MapContainer: onStartProject callback triggered")
                             onNavigationStarted(project)
                         }
                     )
@@ -164,7 +158,6 @@ struct MapContainer: View {
             
             // Sync navigation state with InProgressManager
             if InProgressManager.shared.isRouting && appState.isInProjectMode {
-                // print("🔄 MapContainer: Restoring navigation state from InProgressManager")
                 // Restore navigation state
                 coordinator.restoreNavigationState()
             }
@@ -176,7 +169,6 @@ struct MapContainer: View {
             // Update selected project when carousel changes
             if newIndex < projects.count {
                 let project = projects[newIndex]
-                // print("🔶 MapContainer: Carousel changed to index \(newIndex), project: \(project.title)")
                 
                 // Only update if actually different
                 if coordinator.selectedProjectId != project.id {
@@ -196,21 +188,17 @@ struct MapContainer: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StopNavigation"))) { _ in
-            // print("🔶 MapContainer: Received StopNavigation notification")
             coordinator.stopNavigation()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartNavigation"))) { notification in
-            // print("🔶 MapContainer: Received StartNavigation notification")
             
             // Check if we have the right project selected
             if let projectId = notification.userInfo?["projectId"] as? String,
                coordinator.selectedProjectId == projectId {
                 Task {
                     do {
-                        // print("🔶 MapContainer: Starting navigation for project")
                         try await coordinator.startNavigation()
                     } catch {
-                        // print("❌ MapContainer: Failed to start navigation: \(error)")
                     }
                 }
             }

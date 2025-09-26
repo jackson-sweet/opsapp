@@ -135,7 +135,6 @@ struct SimplePINEntryView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             }
         } else {
-            print("SimplePINEntryView: PIN validation failed")
             
             // Error feedback
             pinState = .error

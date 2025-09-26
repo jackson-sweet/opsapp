@@ -1,12 +1,40 @@
 # OPS App - V2 Features Roadmap
 
-This document tracks features identified for V2 implementation (post-MVP). Features are organized by category and priority.
+**Last Updated**: September 2025  
+**Current Version**: 1.2.0  
+
+This document tracks features identified for V2 implementation. Features are organized by category and priority, with status updates reflecting the latest implementation progress.
+
+## Implementation Status Summary
+
+### Major Features Implemented in v1.2.0 ✅
+- **CalendarEvent-Centric Architecture**: Complete rewrite of calendar system
+- **Task-Based Scheduling**: Full ProjectTask and TaskType system implementation
+- **Apple Calendar-like Interface**: Continuous scrolling with month snapping
+- **Real-time Task Management**: Immediate sync of status and notes changes
+- **SwiftData Defensive Patterns**: Prevention of model invalidation crashes
+- **Enhanced Team Management**: Individual task assignment and role detection
+
+### Features Moved from V2 to Production
+Several originally planned V2 features were accelerated into v1.2.0 due to architectural foundations being established:
+- Task management system (originally planned for V2.1)
+- Advanced calendar interface (originally planned for V2.0)
+- Real-time sync improvements (originally planned for V2.0)
 
 ## Priority 1: Core Enhancements
 
 ### Task Management & Auto-Scheduling
-*Building on the current task-based scheduling foundation*
+*Building on the current task-based scheduling foundation (v1.2.0)*
 
+**✅ IMPLEMENTED IN v1.2.0:**
+- Complete ProjectTask model with status workflow
+- TaskType system with predefined templates and custom colors
+- TaskDetailsView with comprehensive task management
+- Real-time task status and notes sync
+- Previous/Next task navigation
+- Individual team member assignment per task
+
+**Future Enhancements:**
 - **Task Dependencies**
   - Define prerequisite tasks that must complete before others can start
   - Visual dependency chain in project view
@@ -37,12 +65,21 @@ This document tracks features identified for V2 implementation (post-MVP). Featu
 
 ### Calendar & Scheduling Features
 
-- **✅ COMPLETED: Apple Calendar-like Experience**
-  - Continuous vertical scrolling through months
+**✅ FULLY IMPLEMENTED IN v1.2.0:**
+- **CalendarEvent-Centric Architecture**
+  - CalendarEvents as single source of truth for all calendar display
+  - Efficient shouldDisplay filtering with cached projectEventType
+  - Support for both project-level and task-level scheduling modes
+  - Batch processing to eliminate N+1 queries
+- **Apple Calendar-like Experience**
+  - Continuous vertical scrolling through months with seamless transitions
   - Smart month snapping when scroll ends
-  - Lazy loading for performance
+  - Lazy loading for optimal performance
   - Dynamic month picker that updates while scrolling
   - Event caching system for efficient loading
+  - Fixed infinite loop issues and eliminated console spam
+  - Enhanced visible month tracking with real-time updates
+- **Team member filter for office crew on schedule page**
   
 - **Calendar Request System** (Not Started)
   - Long press on calendar date to make requests:

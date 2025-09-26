@@ -41,11 +41,26 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
-    private let tabs = [
-        TabItem(iconName: "house.fill"),
-        TabItem(iconName: "calendar"),
-        TabItem(iconName: "gearshape.fill")
-    ]
+    // Dynamic tabs based on user role
+    private var tabs: [TabItem] {
+        var baseTabs: [TabItem] = [
+            TabItem(iconName: "house.fill")
+        ]
+        
+        // Add Job Board tab for admin and office crew only
+        if let currentUser = dataController.currentUser,
+           (currentUser.role == .admin || currentUser.role == .officeCrew) {
+            baseTabs.append(TabItem(iconName: "briefcase.fill"))
+        }
+        
+        // Add Schedule and Settings for all users
+        baseTabs.append(contentsOf: [
+            TabItem(iconName: "calendar"),
+            TabItem(iconName: "gearshape.fill")
+        ])
+        
+        return baseTabs
+    }
     
     var body: some View {
         ZStack {
@@ -73,13 +88,28 @@ struct MainTabView: View {
                 ZStack {
                     // Main content views - full screen
                     Group {
-                        switch selectedTab {
-                        case 1:
-                            ScheduleView()
-                        case 2:
-                            SettingsView()
-                        default:
-                            HomeView()
+                        // Dynamic content based on tabs array
+                        let tabCount = tabs.count
+                        if tabCount == 4 { // Admin/Office Crew with Job Board
+                            switch selectedTab {
+                            case 1:
+                                JobBoardView()
+                            case 2:
+                                ScheduleView()
+                            case 3:
+                                SettingsView()
+                            default:
+                                HomeView()
+                            }
+                        } else { // Field Crew without Job Board
+                            switch selectedTab {
+                            case 1:
+                                ScheduleView()
+                            case 2:
+                                SettingsView()
+                            default:
+                                HomeView()
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

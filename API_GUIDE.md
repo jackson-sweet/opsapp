@@ -1,6 +1,6 @@
 # OPS App - API Integration Guide
 
-**Last Updated**: August 2025  
+**Last Updated**: September 2025  
 **Version**: 1.2.0
 
 ## Bubble.io API Integration
@@ -49,9 +49,9 @@ Bubble.io uses specific response formats:
 
 ## Data Models
 
-### Core Models with Field Mappings
+### Core Models with Field Mappings ✅ UPDATED
 
-#### Project
+#### Project ✅ ENHANCED
 - `id`: Bubble unique identifier (_id)
 - `title` → Bubble: `Project Name`
 - `clientName` → Bubble: `Client Name`
@@ -65,6 +65,43 @@ Bubble.io uses specific response formats:
 - `teamMemberIds` → Bubble: `Team Members` (array of BubbleReference)
 - `projectImages` → Bubble: `Project Images` (array of strings)
 - `companyId` → Bubble: `Company` (BubbleReference)
+- `eventType` → Bubble: `eventType` (.project or .task scheduling mode) ✅ NEW
+- `primaryCalendarEvent` → SwiftData relationship for project-level scheduling ✅ NEW
+
+#### CalendarEvent ✅ NEW MODEL
+- `id`: Bubble unique identifier (_id)
+- `color` → Bubble: `Color` (hex color code)
+- `companyId` → Bubble: `companyId` (lowercase 'c')
+- `projectId` → Bubble: `projectId` (lowercase 'p')
+- `taskId` → Bubble: `taskId` (lowercase 't', optional)
+- `duration` → Bubble: `Duration` (days)
+- `endDate` → Bubble: `End Date`
+- `startDate` → Bubble: `Start Date`
+- `title` → Bubble: `Title`
+- `type` → Bubble: `Type` (.project or .task)
+- `teamMembers` → Bubble: `Team Members` (array of BubbleReference)
+- `projectEventType` → Cached project scheduling mode for performance ✅ NEW
+- `shouldDisplay` → Computed property for filtering logic ✅ NEW
+
+#### ProjectTask ✅ NEW MODEL
+- `id`: Bubble unique identifier (_id)
+- `projectId` → Bubble: `projectID` (capital ID)
+- `companyId` → Bubble: `companyId` (lowercase 'c')
+- `scheduledDate` → Bubble: `scheduledDate`
+- `completionDate` → Bubble: `completionDate`
+- `status` → Bubble: `status` (Scheduled/In Progress/Completed/Cancelled)
+- `taskNotes` → Bubble: `taskNotes`
+- `taskTypeId` → Bubble: `type` (references TaskType)
+- `teamMembers` → Bubble: `Team Members` (array of BubbleReference)
+- `displayOrder` → Bubble: `taskIndex` (display order)
+- `calendarEvent` → SwiftData relationship to CalendarEvent ✅ NEW
+
+#### TaskType ✅ NEW MODEL
+- `id`: Bubble unique identifier (_id)
+- `color` → Bubble: `Color` (hex color)
+- `display` → Bubble: `Display` (Quote, Work, Service Call, Inspection, Follow Up)
+- `icon` → SF Symbol name for visual distinction ✅ NEW
+- `isDefault` → Bubble: `isDefault` (boolean)
 
 #### User
 - `id`: Bubble unique identifier 
@@ -237,26 +274,64 @@ func fetchUserTasks(userId: String) async throws -> [TaskDTO]
 ```
 Fetch tasks by project, company, or user assignment.
 
-#### Update Task Status
+#### Update Task Status ✅ IMPLEMENTED
 ```swift
 func updateTaskStatus(id: String, status: String) async throws
 ```
-Updates a task's status. Changes sync immediately to Bubble.
+Updates a task's status with immediate API synchronization to Bubble.
+**Features:**
+- Real-time sync with optimistic UI updates
+- Haptic feedback for user interaction
+- Offline queue support with needsSync flag
+- Status validation based on user permissions (no cancel for field crew)
 
-#### Update Task Notes
+#### Update Task Notes ✅ IMPLEMENTED
 ```swift
 func updateTaskNotes(id: String, notes: String) async throws
 ```
-Updates a task's notes. Changes sync immediately to Bubble.
+Updates a task's notes with immediate API synchronization to Bubble.
+**Features:**
+- Auto-save functionality with visual feedback
+- Real-time sync with optimistic UI updates
+- Offline queue support with needsSync flag
+- Save notification overlay for user confirmation
 
 ### Task Type Endpoints
 
-#### Fetch Task Types
+#### Fetch Task Types ✅ OPTIMIZED
 ```swift
 func fetchCompanyTaskTypes(companyId: String) async throws -> [TaskTypeDTO]
 func fetchTaskTypesByIds(ids: [String]) async throws -> [TaskTypeDTO]
 ```
-Fetch task types for a company or by specific IDs.
+Fetch task types with performance optimizations.
+**Features:**
+- Selective fetching by specific IDs to reduce API calls
+- Only unknown task types are fetched during sync operations
+- Full integration with Bubble Option Set (Quote, Work, Service Call, Inspection, Follow Up)
+- Color and icon support for visual distinction
+
+### CalendarEvent Endpoints ✅ IMPLEMENTED
+
+#### Fetch Calendar Events
+```swift
+func fetchCompanyCalendarEvents(companyId: String) async throws -> [CalendarEventDTO]
+func fetchProjectCalendarEvents(projectId: String) async throws -> [CalendarEventDTO]
+func fetchUserCalendarEvents(userId: String) async throws -> [CalendarEventDTO]
+```
+Fetch calendar events as single source of truth for calendar display.
+**Features:**
+- Company-wide calendar event fetching for comprehensive view
+- Project-specific events for detailed project planning
+- User-assigned events for personal scheduling
+- Efficient batch processing with project lookup dictionaries
+
+#### CalendarEvent Data Flow
+CalendarEvents serve as the central data entity for all calendar operations:
+1. **Creation**: CalendarEvents are created by Bubble when projects/tasks are scheduled
+2. **Sync**: Events sync during project operations to ensure calendar consistency
+3. **Display**: Calendar views query CalendarEvents exclusively using shouldDisplay logic
+4. **Filtering**: Events are filtered based on project scheduling mode and user permissions
+5. **Updates**: Date changes in CalendarEvents propagate to Projects/Tasks automatically
 
 ## Admin Role Management
 
@@ -280,43 +355,56 @@ When syncing company data, the app automatically checks if the current user is l
 
 ### Updated Sync Flow (Latest)
 1. **Project Sync**: Fetch projects based on user role
-2. **Calendar Event Sync**: Fetch all calendar events for company (ensures calendar is populated)
-3. **Task Sync**: Fetch all tasks for company
-4. **Task Type Sync**: Fetch only specific task types that are referenced by tasks
+2. **Calendar Event Sync**: Fetch all calendar events for company (ensures calendar is populated with single source of truth)
+3. **Task Sync**: Fetch all tasks for company with real-time status tracking
+4. **Task Type Sync**: Fetch only specific task types that are referenced by tasks for efficiency
+5. **Team Member Sync**: Enhanced with isCompanyAdmin property detection
 
-### Key Changes
-- **Calendar Events**: Now synced with projects to ensure calendar is always populated
-- **Task Types**: Fetched by specific IDs rather than fetching all
-- **No Feature Flags**: All companies have task features enabled
-- **Never Create Events Locally**: Calendar events are only synced from Bubble
-- **CalendarEvent-Centric Architecture**: CalendarEvents are the single source of truth for dates
-- **Real-time Task Updates**: Task status and notes changes sync immediately to API
+### Key Changes (v1.2.0)
+- **CalendarEvent-Centric Architecture**: CalendarEvents serve as single source of truth for all calendar display logic
+- **Calendar Events**: Now synced with projects to ensure calendar is always populated with proper filtering
+- **Task Types**: Fetched by specific IDs rather than fetching all for performance optimization
+- **No Feature Flags**: All companies have task features enabled without conditional checks
+- **Never Create Events Locally**: Calendar events are only synced from Bubble for data consistency
+- **Real-time Task Updates**: Task status and notes changes sync immediately to API with optimistic UI updates
+- **Batch Processing**: Optimized calendar loading with project lookup dictionaries to avoid N+1 queries
+- **Performance Caching**: projectEventType cached on CalendarEvent for efficient shouldDisplay filtering
 
-### Calendar Implementation Details
+### CalendarEvent-Centric Calendar Implementation ✅ COMPLETED
 
-#### Continuous Scrolling Calendar
-The calendar uses an Apple Calendar-like continuous scrolling implementation:
-- **MonthGridView**: Implements vertical scrolling through multiple months (±12 months from today)
-- **Lazy Loading**: Calendar events are loaded only for visible months to optimize performance
+#### Apple Calendar-Style Continuous Scrolling ✅ IMPLEMENTED
+The calendar delivers an Apple Calendar-like experience with advanced features:
+- **MonthGridView**: Implements smooth vertical scrolling through multiple months (±12 months from today)
+- **Lazy Loading**: Calendar events are loaded only for visible months with intelligent caching
 - **Month Snapping**: Calendar automatically snaps to the nearest month when scrolling ends
-- **Preference Keys**: Uses `ScrollOffsetPreferenceKey` and `MonthPositionPreferenceKey` to track scroll state
+- **Visible Month Tracking**: Dynamic month picker updates as user scrolls, showing currently visible month
+- **Performance Optimized**: Fixed infinite loop issues, eliminated console spam from verbose debug logging
+- **Today Card**: Always displays today's date with event count regardless of selected month
+- **Preference Keys**: Uses `ScrollOffsetPreferenceKey` and `MonthPositionPreferenceKey` for scroll state management
 
-#### Visible Month Tracking
-- **visibleMonth**: Property in CalendarViewModel tracks currently visible month
-- **Dynamic Updates**: Month picker displays visible month and updates as user scrolls
-- **Synchronization**: Selected date and visible month are synchronized in month view mode
-- **Today Card**: Always displays today's date regardless of selected/visible month
+#### Visible Month Tracking ✅ ENHANCED
+- **visibleMonth**: Property in CalendarViewModel tracks currently visible month in real-time
+- **Dynamic Updates**: Month picker displays visible month and updates seamlessly as user scrolls
+- **Synchronization**: Selected date and visible month are properly synchronized in month view mode
+- **Today Card**: Enhanced to always display today's date with event count regardless of selected/visible month
+- **Scroll State Management**: Intelligent handling prevents circular updates between UI and data
+- **Month Navigation**: Seamless transitions between months with proper synchronization
 
-#### Performance Optimizations
-- **Event Caching**: `eventCache` dictionary stores event counts by date key
-- **Batch Loading**: Events loaded in batches for visible and adjacent months
-- **Debug Logging**: Verbose logging removed from `DataController.getCalendarEventsForCurrentUser()`
-- **Scroll State Management**: `isScrolling` flag prevents circular updates between UI and data
+#### Performance Optimizations ✅ IMPLEMENTED
+- **Event Caching**: Enhanced `eventCache` dictionary stores event counts by date key with intelligent invalidation
+- **Batch Loading**: Events loaded efficiently in batches for visible and adjacent months
+- **Debug Logging**: Verbose logging completely removed from `DataController.getCalendarEventsForCurrentUser()` eliminating console spam
+- **Scroll State Management**: `isScrolling` flag prevents circular updates between UI and data layers
+- **Fixed Infinite Loops**: Resolved circular dependency issues in MonthGridView for smooth performance
+- **CalendarEvent Filtering**: Optimized shouldDisplay logic with cached projectEventType for instant filtering
 
-### Offline Support
-- Local edits are tracked and synced when connectivity is restored
-- `ConnectivityMonitor` tracks network availability
-- Background sync tasks maintain data freshness
+### Enhanced Offline Support ✅ IMPROVED
+- Local edits are tracked with needsSync flags and synced when connectivity is restored
+- `ConnectivityMonitor` provides real-time network availability tracking
+- Background sync tasks maintain data freshness with priority queuing
+- Task status and notes changes queue for offline sync with automatic retry
+- SwiftData model invalidation prevention with proper background task handling
+- Complete data wipe on logout prevents cross-user data contamination
 
 ### Image Handling
 - Images are managed through `ImageSyncManager`

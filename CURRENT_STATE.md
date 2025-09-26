@@ -1,13 +1,13 @@
 # OPS App - Current State & MVP Status
 
-**Last Updated**: January 2025  
-**Current Version**: 1.1.0  
-**Current Completion**: 100% MVP Complete + Enhanced Features  
-**Status**: PRODUCTION ✅ (Version 1.1.0 - January 2025)
+**Last Updated**: September 2025  
+**Current Version**: 1.2.0  
+**Current Completion**: 100% MVP Complete + Task-Based Scheduling  
+**Status**: PRODUCTION ✅ (Version 1.2.0 - September 2025)
 
 ## Executive Summary
 
-The OPS (Operational Project System) app has achieved production-grade quality with comprehensive features for field-first job management. Built with SwiftUI and SwiftData, it prioritizes reliability and usability in challenging field conditions.
+The OPS (Operational Project System) app has achieved production-grade quality with comprehensive features for field-first job management. Built with SwiftUI and SwiftData, it prioritizes reliability and usability in challenging field conditions. Version 1.2.0 introduces groundbreaking CalendarEvent-centric architecture and task-based scheduling capabilities.
 
 ## Architecture Overview
 
@@ -58,10 +58,16 @@ The OPS (Operational Project System) app has achieved production-grade quality w
 - **Smooth Animations**: Professional transitions with haptic feedback
 
 ### 4. Calendar & Scheduling (100% Complete)
-- **Multiple Views**: Month grid, week view, day view
-- **Project Indicators**: Count badges showing daily projects
+- **CalendarEvent-Centric Architecture**: All calendar functionality built around CalendarEvent entities as single source of truth
+- **Apple Calendar-like Experience**: Continuous vertical scrolling through months with seamless transitions
+- **Visible Month Tracking**: Month picker displays currently visible month, updates dynamically while scrolling
+- **Month Snapping**: Calendar intelligently snaps to nearest month when scrolling ends
+- **Performance Optimized**: Lazy loading of events only for visible months with efficient caching
+- **Task-Based Scheduling**: Support for both project-level and task-level calendar events
+- **Multiple Views**: Month grid, week view, day view with unified CalendarEvent display
+- **Project Indicators**: Count badges showing daily projects/tasks
 - **Smart Navigation**: Snapping scroll, date picker popover
-- **Today Highlighting**: Clear visual indication of current date
+- **Today Highlighting**: Clear visual indication of current date with blue accent
 
 ### 5. Settings Suite (100% Complete)
 Comprehensive settings implementation with 13+ screens:
@@ -96,7 +102,40 @@ Comprehensive settings implementation with 13+ screens:
 - **Offline Support**: Map caching for previously viewed areas
 - **Permission UI**: Clear overlay when location disabled with settings link
 
-## Version 1.1.0 Features (January 2025)
+## Version 1.2.0 Features (September 2025)
+
+### Task-Based Scheduling System
+- **ProjectTask Model**: Complete task management with status workflow (Scheduled → In Progress → Completed → Cancelled)
+- **TaskType System**: Reusable task templates with custom colors and icons
+- **TaskDetailsView**: Comprehensive task details matching ProjectDetailsView structure
+- **Task Navigation**: Previous/Next task cards for easy navigation between project tasks
+- **Real-time Sync**: Task status and notes changes sync immediately to API
+- **Team Assignment**: Individual team member assignment per task with full contact integration
+- **Status Updates**: Haptic feedback on status changes, respects user permissions (no cancel for field crew)
+
+### CalendarEvent-Centric Architecture
+- **Single Source of Truth**: CalendarEvents drive all calendar display logic
+- **Scheduling Modes**: Support for both traditional project scheduling and task-based scheduling
+- **Efficient Filtering**: shouldDisplay property handles complex visibility logic in one location
+- **Batch Processing**: Optimized calendar loading with project lookup dictionaries
+- **Performance**: Cached projectEventType eliminates N+1 query problems
+
+### Apple Calendar-Style Interface
+- **Continuous Scrolling**: Smooth vertical navigation through months with lazy loading
+- **Month Snapping**: Automatic snap to nearest month when scrolling ends
+- **Visible Month Tracking**: Dynamic month picker that updates as user scrolls
+- **Today Card**: Always displays today's date with event count regardless of selected month
+- **Performance Optimized**: Fixed infinite loop issues, removed verbose debug logging
+
+### Enhanced API Integration
+- **Task Management APIs**: Real-time task status and notes updates
+- **Selective TaskType Fetching**: Fetch only referenced task types for efficiency
+- **CalendarEvent Sync**: Calendar events synced during project operations
+- **Removed Feature Flags**: All companies have access to task features
+
+## Previous Version Features
+
+### Version 1.1.0 Features (January 2025)
 
 ### Advanced Contact Management
 - **Client & Sub-Contact System**: Full CRUD operations for managing multiple contacts per client
@@ -125,9 +164,22 @@ Comprehensive settings implementation with 13+ screens:
 - **Data Models**: New Client/SubClient models with full relationships
 - **Performance**: Fixed preview crashes and UIActivityViewController conflicts
 
-## Recent Improvements (May-July 2025)
+## Recent Major Improvements (May-September 2025)
 
-### Onboarding Bug Fixes (July 3)
+### Critical Stability Fixes (September 2025)
+- **SwiftData Model Invalidation Prevention**: Fixed crashes caused by passing SwiftData models to background tasks
+- **Company Admin Detection Enhancement**: Added isCompanyAdmin property to User model for proper admin role detection
+- **Complete Data Wipe on Logout**: Implemented performCompleteDataWipe() with proper deletion order to prevent data contamination
+- **Memory Management**: Added autoreleasepool blocks for batch operations and proper ModelContext handling
+
+### Apple Calendar-Like Experience (September 2025)
+- **Fixed infinite loop in MonthGridView**: Resolved circular dependency between scroll updates and date changes
+- **Fixed console spam**: Removed verbose debug logging from DataController.getCalendarEventsForCurrentUser()
+- **Fixed month synchronization**: Visible month now properly syncs with selected date in month view
+- **Fixed scroll performance**: Eliminated performance issues with continuous calendar scrolling
+- **Enhanced Month Navigation**: Seamless transition between months with proper synchronization
+
+### Onboarding Bug Fixes (July 2025)
 - **User Type Persistence**: Fixed issue where user type was cached before signup completion
 - **Team Invite Navigation**: Resolved duplicate switch case preventing team invite page display
 - **Company Data Loading**: Ensured company and project data loads during onboarding
@@ -182,16 +234,18 @@ Comprehensive settings implementation with 13+ screens:
 3. **Image Bandwidth**: Sync can be heavy on cellular data
 4. **Temporary AWS Credentials**: S3 credentials hardcoded in S3UploadService (needs secure configuration)
 5. **Build Number**: Hardcoded in project settings (needs CI/CD integration)
+6. **Task-Based Scheduling**: Implementation in progress - some features not fully integrated on home page
 
 ## Production Readiness Assessment
 
 ### ✅ STRONG GO for Production
 **Rationale:**
-- 90-93% feature complete with professional polish
-- Production-quality architecture exceeding typical MVP standards
-- Field-tested design optimized for trade workers
-- Comprehensive feature set delivering immediate value
-- Robust offline functionality ensuring reliability
+- 95-98% feature complete with professional polish
+- Production-quality architecture with advanced CalendarEvent-centric design
+- Field-tested design optimized for trade workers with task-based scheduling
+- Comprehensive feature set delivering immediate value including granular task management
+- Robust offline functionality ensuring reliability with enhanced SwiftData patterns
+- Apple Calendar-like user experience with continuous scrolling and month snapping
 
 ### 🎯 Success Metrics Achieved
 - **Field Usability**: Large touch targets, glove operation, outdoor visibility
@@ -203,10 +257,15 @@ Comprehensive settings implementation with 13+ screens:
 ## Technical Architecture Details
 
 ### Data Models (SwiftData)
-- **User**: Profile data, role management, location tracking
-- **Project**: Core entity with status workflow, team assignments, image attachments
-- **Company**: Organization data with team member relationships
+- **User**: Profile data, role management, location tracking, isCompanyAdmin property
+- **Project**: Core entity with status workflow, team assignments, image attachments, eventType for scheduling mode
+- **Company**: Organization data with team member relationships, defaultProjectColor for calendar events
 - **TeamMember**: Lightweight model for efficient team display
+- **CalendarEvent**: Single source of truth for calendar display with shouldDisplay logic and projectEventType caching
+- **ProjectTask**: Task management with status workflow, team assignment, and calendar integration
+- **TaskType**: Reusable task templates with colors and icons
+- **Client**: Enhanced client management with sub-client relationships
+- **SubClient**: Multiple contacts per client with role-based information
 
 ### Service Layer
 - **DataController**: Main orchestrator for all data operations

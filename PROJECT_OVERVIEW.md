@@ -293,35 +293,68 @@ The codebase reflects the OPS brand values:
 - Advanced caching strategies
 - Widget support preparation
 
-## Data Models
+## Data Models ✅ ENHANCED
 
 ### Core Model Properties
 
-#### User Model
-- **isCompanyAdmin**: Boolean property indicating company administration privileges
+#### User Model ✅ UPDATED
+- **isCompanyAdmin**: ✅ Boolean property indicating company administration privileges
   - Controls access to company-wide settings and management features
   - Used throughout the app for permission-based UI rendering
-  - Synced from Bubble backend during user authentication
+  - Automatically synced from Bubble backend during user authentication
+  - Fixed admin role detection issues
 
-#### CalendarEvent Model  
-- **shouldDisplay**: Computed property that handles complex visibility logic
+#### CalendarEvent Model ✅ FULLY IMPLEMENTED
+- **shouldDisplay**: ✅ Computed property that handles complex visibility logic
   - Respects project scheduling mode (project vs task events)
   - Applies user role permissions and project status filtering
   - Central point for all calendar display decisions
+  - Performance optimized with cached projectEventType
+- **projectEventType**: ✅ Cached project scheduling mode for efficient filtering
+- **spannedDates**: ✅ Computed property for multi-day event handling
+- **swiftUIColor**: ✅ Color conversion for UI display
+- **displayIcon**: ✅ Task type icon integration
 
-#### Project Model
-- **eventType**: Enum property defining scheduling approach
+#### Project Model ✅ ENHANCED
+- **eventType**: ✅ Enum property defining scheduling approach
   - `.project`: Project-level scheduling (tasks inherit project dates)
   - `.task`: Task-level scheduling (individual task scheduling)
   - Determines which CalendarEvents are displayed in calendar views
+- **primaryCalendarEvent**: ✅ Relationship for project-level scheduling
+- **tasks**: ✅ Relationship array for task-based scheduling
+- **effectiveEventType**: ✅ Computed property with backward compatibility
+
+#### ProjectTask Model ✅ NEW
+- **Complete SwiftData model** with status workflow and team assignment
+- **CalendarEvent relationship** for individual task scheduling
+- **TaskType relationship** for visual consistency and categorization
+- **Real-time sync** support with needsSync flags
+
+#### TaskType Model ✅ NEW
+- **Predefined task templates** (Quote, Work, Service Call, Inspection, Follow Up)
+- **Custom colors and SF Symbol icons** for visual distinction
+- **Company-specific customization** support
 
 ## Recent Major Updates (v1.2.0)
 
-### CalendarEvent-Centric Architecture (August 2025)
-- Migrated all calendar logic to use CalendarEvent entities as single source of truth
-- Implemented shouldDisplay property for centralized filtering logic
-- Added support for dual scheduling modes (project vs task events)
-- Enhanced calendar performance through unified data flow
+### CalendarEvent-Centric Architecture (September 2025) ✅ COMPLETED
+- ✅ Successfully migrated all calendar logic to use CalendarEvent entities as single source of truth
+- ✅ Implemented shouldDisplay property for centralized filtering logic with performance caching
+- ✅ Added complete support for dual scheduling modes (project vs task events)
+- ✅ Enhanced calendar performance through unified data flow and batch processing
+- ✅ Fixed infinite loop issues in MonthGridView with proper scroll state management
+- ✅ Eliminated verbose debug logging that caused console spam
+- ✅ Implemented Apple Calendar-like continuous scrolling with month snapping
+- ✅ Enhanced visible month tracking with dynamic month picker updates
+
+### Task-Based Scheduling System (September 2025) ✅ IMPLEMENTED
+- ✅ Complete ProjectTask model with status workflow and team assignment
+- ✅ TaskType system with predefined templates and custom colors/icons
+- ✅ TaskDetailsView with comprehensive task management matching ProjectDetailsView structure
+- ✅ Real-time task status and notes sync with immediate API updates
+- ✅ Previous/Next task navigation cards for seamless workflow
+- ✅ Haptic feedback on status changes with user permission respect
+- ✅ Individual team member assignment per task with full contact integration
 
 ### Previous Updates (v1.0.2)
 

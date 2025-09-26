@@ -70,7 +70,7 @@ struct CalendarFilterView: View {
                     .padding(.vertical, 16)
                 }
             }
-            .navigationTitle("Filter Calendar")
+            .navigationTitle("FILTER CALENDAR")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {

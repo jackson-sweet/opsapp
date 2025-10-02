@@ -8,10 +8,12 @@
 import SwiftUI
 import UIKit
 import MapKit
+import CoreLocation
 // Import team member components
 
 struct ProjectDetailsView: View {
     let project: Project
+    var isEditMode: Bool = false
     @Environment(\.dismiss) var dismiss
     @State private var noteText: String
     @State private var originalNoteText: String
@@ -29,10 +31,15 @@ struct ProjectDetailsView: View {
     @State private var showingUnsavedChangesAlert = false
     @State private var showingClientContact = false
     @State private var isRefreshingClient = false
-    
+    @State private var showingScheduler = false
+    @State private var showingAddressEditor = false
+    @State private var editedAddress: String = ""
+    @State private var showingTaskBasedSchedulingAlert = false
+
     // Initialize with project's existing notes
-    init(project: Project) {
+    init(project: Project, isEditMode: Bool = false) {
         self.project = project
+        self.isEditMode = isEditMode
         let notes = project.notes ?? ""
         self._noteText = State(initialValue: notes)
         self._originalNoteText = State(initialValue: notes)
@@ -51,7 +58,7 @@ struct ProjectDetailsView: View {
                 "id": project.id,
                 "title": project.title,
                 "clientName": project.clientName,
-                "address": project.address,
+                "address": project.address ?? "",
                 "status": project.status.rawValue,
                 "teamMemberIdsString": project.teamMemberIdsString,
                 "teamMemberIds": project.getTeamMemberIds(),
@@ -69,186 +76,327 @@ struct ProjectDetailsView: View {
     }
     
     var body: some View {
+        mainView
+            .navigationBarHidden(true)
+            .overlay(saveNotificationOverlay)
+            .fullScreenCover(isPresented: $showingPhotoViewer) {
+                photoViewerContent
+            }
+            .sheet(isPresented: $showingImagePicker) {
+                imagePickerContent
+            }
+            .confirmationDialog(
+                "Unsaved Changes",
+                isPresented: $showingUnsavedChangesAlert,
+                titleVisibility: .visible
+            ) {
+                unsavedChangesButtons
+            } message: {
+                Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
+            }
+            .onAppear(perform: handleOnAppear)
+            .onDisappear(perform: handleOnDisappear)
+            .alert("Network Error", isPresented: $showingNetworkError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(networkErrorMessage)
+            }
+            .sheet(isPresented: $showingClientContact) {
+                clientContactSheet
+            }
+            .sheet(isPresented: $showingScheduler) {
+                CalendarSchedulerSheet(
+                    isPresented: $showingScheduler,
+                    itemType: .project(project),
+                    currentStartDate: project.startDate,
+                    currentEndDate: project.endDate,
+                    onScheduleUpdate: { startDate, endDate in
+                        handleScheduleUpdate(startDate: startDate, endDate: endDate)
+                    }
+                )
+                .environmentObject(dataController)
+            }
+            .alert("Task-Based Scheduling", isPresented: $showingTaskBasedSchedulingAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("This project uses task-based scheduling. Project dates are determined by the individual task schedules. To change dates, schedule the tasks instead.")
+            }
+            .sheet(isPresented: $showingAddressEditor) {
+                AddressEditorSheet(
+                    address: $editedAddress,
+                    onSave: {
+                        saveAddress()
+                    },
+                    onCancel: {
+                        showingAddressEditor = false
+                    }
+                )
+            }
+    }
+
+    // MARK: - Main View Components
+
+    private var mainView: some View {
         ZStack {
-            // Background gradient
             Color.black
                 .edgesIgnoringSafeArea(.all)
-            
-            // Main content
+
             VStack(spacing: 0) {
-                // Modern header with frosted glass effect
-                ZStack {
-                    // Blurred background
-                    BlurView(style: .dark)
-                        .edgesIgnoringSafeArea(.top)
-                    
-                    // Header content
-                    VStack(spacing: 8) {
-                        // Top row with status and buttons
-                        HStack {
-                            // Status badge
-                            StatusBadge.forJobStatus(project.status)
-                            
-                            Spacer()
-                            
-                            // Done button
-                            Button("Done") {
-                                checkForUnsavedChanges()
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.white)
-                            .foregroundColor(Color.black)
-                            .cornerRadius(OPSStyle.Layout.buttonRadius)
-                            .font(OPSStyle.Typography.bodyBold)
-                        }
-                        
-                        // Title row
-                        HStack {
-                            // Title with subtle separator line below
-                            Text(project.title.uppercased())
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.white)
-                            
-                            Spacer()
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-                .frame(height: 90)
-                .background(Color.black)
-                
-                // Main scrollable content
-                ScrollView {
-                    VStack(spacing: 24) {
-                        
-                        // Location map - more visual prominence
-                        locationSection
-                        
-                        // Project info with notes - streamlined cards
-                        infoSection
-                        
-                        // Tasks section (show when project is task-based or could be)
-                        if project.eventType == .task {
-                            tasksSection
-                        }
-                        
-                        // Photos - improved grid layout
-                        photosSection
-                        
-                        // Team members - moved to bottom
-                        teamSection
-                        
-                        // Bottom padding
-                        Spacer()
-                            .frame(height: 80)
-                    }
-                    .padding(.top, 16)
-                }
-            }
-        }
-        .navigationBarHidden(true)
-        // Save notification overlay 
-        .overlay(saveNotificationOverlay)
-        // Full-screen photo viewer
-        .fullScreenCover(isPresented: $showingPhotoViewer) {
-            FullScreenPhotoViewer(
-                photos: project.getProjectImages(),
-                initialIndex: selectedPhotoIndex,
-                onDismiss: { showingPhotoViewer = false }
-            )
-        }
-        // Image picker for adding multiple photos
-        .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(
-                images: $selectedImages, 
-                allowsEditing: false,
-                selectionLimit: 10,
-                onSelectionComplete: {
-                    // Close the picker immediately
-                    showingImagePicker = false
-                    
-                    // Process images when selection is complete
-                    if !selectedImages.isEmpty {
-                        // Use slight delay to ensure UI dismissal completes first
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            addPhotosToProject()
-                        }
-                    }
-                }
-            )
-        }
-        .confirmationDialog(
-            "Unsaved Changes",
-            isPresented: $showingUnsavedChangesAlert,
-            titleVisibility: .visible
-        ) {
-            Button("Save Changes", role: .none) {
-                saveNotes()
-                dismiss()
-            }
-            
-            Button("Discard Changes", role: .destructive) {
-                dismiss()
-            }
-            
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
-        }
-        .onAppear {
-            DispatchQueue.main.async {
-                // Make sure appState has our current project ID set as active
-                if let appState = dataController.appState, appState.activeProjectID != project.id {
-                    appState.activeProjectID = project.id
-                }
-            }
-            
-            // Request location permission when project details are viewed
-            locationManager.requestPermissionIfNeeded()
-            
-            // Always refresh client data when opening project details
-            // This ensures we have the latest client information
-            if let clientId = project.clientId, !clientId.isEmpty {
-                refreshClientData(clientId: clientId, forceRefresh: true)
-            }
-        }
-        .onDisappear {
-            // Make sure to clean up the timer when view disappears
-            notificationTimer?.invalidate()
-            notificationTimer = nil
-        }
-        .alert("Network Error", isPresented: $showingNetworkError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(networkErrorMessage)
-        }
-        // Client contact sheet
-        .sheet(isPresented: $showingClientContact) {
-            // Pass the actual Client object if available, otherwise create a temporary one
-            if let client = project.client {
-                TeamMemberDetailView(client: client, project: project)
-                    .presentationDragIndicator(.visible)
-                    .environmentObject(dataController)
-            } else {
-                // Fallback: Create a temporary TeamMember for client contact
-                let clientTeamMember = TeamMember(
-                    id: "client-\(project.id)",
-                    firstName: project.effectiveClientName.components(separatedBy: " ").first ?? project.effectiveClientName,
-                    lastName: project.effectiveClientName.components(separatedBy: " ").dropFirst().joined(separator: " "),
-                    role: "Client",
-                    avatarURL: nil,
-                    email: project.effectiveClientEmail,
-                    phone: project.effectiveClientPhone
-                )
-                
-                TeamMemberDetailView(teamMember: clientTeamMember)
-                    .presentationDragIndicator(.visible)
-                    .environmentObject(dataController)
+                headerView
+                scrollableContent
             }
         }
     }
-    
+
+    private var headerView: some View {
+        ZStack {
+            BlurView(style: .dark)
+                .edgesIgnoringSafeArea(.top)
+
+            VStack(spacing: 8) {
+                headerTopRow
+                headerTitleRow
+            }
+            .padding(.horizontal, 16)
+        }
+        .frame(height: 90)
+        .background(Color.black)
+    }
+
+    private var headerTopRow: some View {
+        HStack {
+            StatusBadge.forJobStatus(project.status)
+
+            Spacer()
+
+            doneButton
+        }
+    }
+
+    private var doneButton: some View {
+        Button("Done") {
+            checkForUnsavedChanges()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.white)
+        .foregroundColor(Color.black)
+        .cornerRadius(OPSStyle.Layout.buttonRadius)
+        .font(OPSStyle.Typography.bodyBold)
+    }
+
+    private var headerTitleRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(project.title.uppercased())
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(.white)
+
+                Spacer()
+            }
+
+            if canEditProjectSettings() {
+                Text("tap on any field to edit")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+    }
+
+    private var scrollableContent: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                locationSection
+                infoSection
+
+                if project.eventType == .task {
+                    tasksSection
+                }
+
+                photosSection
+                teamSection
+
+                Spacer()
+                    .frame(height: 80)
+            }
+            .padding(.top, 16)
+        }
+    }
+
+    // MARK: - Sheet Contents
+
+    private var photoViewerContent: some View {
+        FullScreenPhotoViewer(
+            photos: project.getProjectImages(),
+            initialIndex: selectedPhotoIndex,
+            onDismiss: { showingPhotoViewer = false }
+        )
+    }
+
+    private var imagePickerContent: some View {
+        ImagePicker(
+            images: $selectedImages,
+            allowsEditing: false,
+            selectionLimit: 10,
+            onSelectionComplete: {
+                showingImagePicker = false
+
+                if !selectedImages.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        addPhotosToProject()
+                    }
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var unsavedChangesButtons: some View {
+        Button("Save Changes", role: .none) {
+            saveNotes()
+            dismiss()
+        }
+
+        Button("Discard Changes", role: .destructive) {
+            dismiss()
+        }
+
+        Button("Cancel", role: .cancel) { }
+    }
+
+    @ViewBuilder
+    private var clientContactSheet: some View {
+        if let client = project.client {
+            TeamMemberDetailView(client: client, project: project)
+                .presentationDragIndicator(.visible)
+                .environmentObject(dataController)
+        } else {
+            let clientTeamMember = TeamMember(
+                id: "client-\(project.id)",
+                firstName: project.effectiveClientName.components(separatedBy: " ").first ?? project.effectiveClientName,
+                lastName: project.effectiveClientName.components(separatedBy: " ").dropFirst().joined(separator: " "),
+                role: "Client",
+                avatarURL: nil,
+                email: project.effectiveClientEmail,
+                phone: project.effectiveClientPhone
+            )
+
+            TeamMemberDetailView(teamMember: clientTeamMember)
+                .presentationDragIndicator(.visible)
+                .environmentObject(dataController)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func handleOnAppear() {
+        DispatchQueue.main.async {
+            if let appState = dataController.appState {
+                if InProgressManager.shared.isRouting && appState.activeProjectID != project.id {
+                    appState.activeProjectID = project.id
+                }
+            }
+        }
+
+        locationManager.requestPermissionIfNeeded()
+
+        if let clientId = project.clientId, !clientId.isEmpty {
+            refreshClientData(clientId: clientId, forceRefresh: true)
+        }
+    }
+
+    private func handleOnDisappear() {
+        notificationTimer?.invalidate()
+        notificationTimer = nil
+    }
+
+    private func handleScheduleUpdate(startDate: Date, endDate: Date) {
+        print("🔄 handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
+        print("🔄 Project before update - startDate: \(project.startDate), endDate: \(project.endDate)")
+
+        // Update the project dates
+        project.startDate = startDate
+        project.endDate = endDate
+        project.needsSync = true
+
+        print("🔄 Project after update - startDate: \(project.startDate), endDate: \(project.endDate)")
+
+        // Update associated calendar events
+        updateCalendarEventsForProject(startDate: startDate, endDate: endDate)
+
+        // Save to database
+        do {
+            try dataController.modelContext?.save()
+            print("✅ Successfully saved schedule update to modelContext")
+
+            // Immediately sync calendar event to server to prevent reversion
+            if let projectEvent = project.primaryCalendarEvent {
+                Task {
+                    await syncCalendarEventToServer(projectEvent)
+                }
+            }
+        } catch {
+            print("❌ Failed to save schedule update: \(error)")
+        }
+
+        // Don't show notification - haptic feedback is enough
+    }
+
+    private func updateCalendarEventsForProject(startDate: Date, endDate: Date) {
+        // Update project-level calendar events
+        if project.eventType == .project {
+            // Update the primary calendar event for project-based scheduling
+            if let projectEvent = project.primaryCalendarEvent {
+                projectEvent.startDate = startDate
+                projectEvent.endDate = endDate
+                let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+                projectEvent.duration = daysDiff + 1  // Include both start and end dates
+                projectEvent.needsSync = true
+
+                print("📅 Updated calendar event: \(projectEvent.title) - \(startDate) to \(endDate) (\(projectEvent.duration) days)")
+            } else {
+                print("⚠️ No primary calendar event found for project")
+            }
+        } else if project.eventType == .task {
+            // For task-based projects, update the individual task calendar events if needed
+            // This would typically be done through TaskDetailsView for individual tasks
+            // Project dates are derived from the earliest/latest task dates
+        }
+    }
+
+    private func syncCalendarEventToServer(_ calendarEvent: CalendarEvent) async {
+        print("🔄 Syncing calendar event to server: \(calendarEvent.id)")
+
+        do {
+            let formatter = ISO8601DateFormatter()
+            // Use standard ISO format without fractional seconds (matches createCalendarEvent)
+            formatter.formatOptions = [.withInternetDateTime]
+
+            let startDateString = formatter.string(from: calendarEvent.startDate)
+            let endDateString = formatter.string(from: calendarEvent.endDate)
+
+            print("📅 Formatted dates - Start: \(startDateString), End: \(endDateString)")
+
+            let updates: [String: Any] = [
+                "Start Date": startDateString,
+                "End Date": endDateString,
+                "Duration": calendarEvent.duration
+            ]
+
+            try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
+
+            await MainActor.run {
+                calendarEvent.needsSync = false
+                calendarEvent.lastSyncedAt = Date()
+                try? dataController.modelContext?.save()
+            }
+
+            print("✅ Calendar event synced successfully to server")
+        } catch {
+            print("⚠️ Failed to sync calendar event to server: \(error)")
+        }
+    }
+
     // Project header section with title and date  
     private var projectHeaderSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -295,15 +443,15 @@ struct ProjectDetailsView: View {
             HStack {
                 Image(systemName: "location.fill")
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
+
                 Text("LOCATION")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                
+
                 Spacer()
-                
+
                 Button(action: {
-                    openInMaps(coordinate: project.coordinate, address: project.address)
+                    openInMaps(coordinate: project.coordinate, address: project.address ?? "")
                 }) {
                     Text("Get Directions")
                         .font(OPSStyle.Typography.smallCaption)
@@ -315,21 +463,40 @@ struct ProjectDetailsView: View {
                 }
             }
             .padding(.horizontal)
-            
-            // Address text
-            Text(project.address)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(.white)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+
+            // Address text - tappable for editing
+            Button(action: {
+                if canEditProjectSettings() {
+                    editedAddress = project.address ?? ""
+                    showingAddressEditor = true
+                }
+            }) {
+                HStack {
+                    Text(project.address ?? "No address")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(.white)
+
+                    Spacer()
+
+                    if canEditProjectSettings() {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(!canEditProjectSettings())
+            .padding(.horizontal)
+            .padding(.bottom, 8)
             
             // Map view - larger and more prominent
             ZStack(alignment: .bottomTrailing) {
                 MiniMapView(
-                    coordinate: project.coordinate, 
-                    address: project.address
+                    coordinate: project.coordinate,
+                    address: project.address ?? ""
                 ) {
-                    openInMaps(coordinate: project.coordinate, address: project.address)
+                    openInMaps(coordinate: project.coordinate, address: project.address ?? "")
                 }
                 .frame(height: 180)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -337,7 +504,7 @@ struct ProjectDetailsView: View {
                 
                 // Directions button on map
                 Button(action: {
-                    openInMaps(coordinate: project.coordinate, address: project.address)
+                    openInMaps(coordinate: project.coordinate, address: project.address ?? "")
                 }) {
                     HStack {
                         Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
@@ -395,56 +562,76 @@ struct ProjectDetailsView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 
-                // Dates row - show start date or "Unscheduled", show end date if valid
-                HStack(spacing: 0) {
-                    // Start date (show actual date or "Unscheduled")
-                    HStack(spacing: 12) {
-                        Image(systemName: "calendar")
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("START DATE")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            if let startDate = project.startDate {
-                                Text(formatDate(startDate))
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            } else {
-                                Text("Unscheduled")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
+                // Dates row - make dates tappable for admin/office crew
+                Button(action: {
+                    if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                        if project.eventType == .task {
+                            showingTaskBasedSchedulingAlert = true
+                        } else {
+                            showingScheduler = true
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    // End date (only show if valid - exists and on or after start date)
-                    if let endDate = project.endDate,
-                       let startDate = project.startDate,
-                       endDate >= startDate {
+                }) {
+                    HStack(spacing: 0) {
+                        // Start date (show actual date or "Unscheduled")
                         HStack(spacing: 12) {
-                            Image(systemName: "calendar.badge.checkmark")
+                            Image(systemName: "calendar")
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 24)
-                            
+
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("COMPLETION DATE")
+                                Text("START DATE")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                Text(formatDate(endDate))
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                if let startDate = project.startDate {
+                                    Text(formatDate(startDate))
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                } else {
+                                    Text("Tap to Schedule")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // End date (only show if valid - exists and on or after start date)
+                        if let endDate = project.endDate,
+                           let startDate = project.startDate,
+                           endDate >= startDate {
+                            HStack(spacing: 12) {
+                                Image(systemName: "calendar.badge.checkmark")
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .frame(width: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("COMPLETION DATE")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    Text(formatDate(endDate))
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        // Chevron indicator for admin/office crew to show it's tappable
+                        if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .padding(.trailing, 12)
+                        }
                     }
+                    .padding()
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                 }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .buttonStyle(PlainButtonStyle())
+                .disabled(!(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew))
                 
                 // Description card
                 if let description = project.projectDescription, !description.isEmpty {
@@ -908,7 +1095,7 @@ struct ProjectDetailsView: View {
                     // Fallback to direct processing if ImageSyncManager is not available
                     
                     // Process each image
-                    for (index, image) in selectedImages.enumerated() {
+                    for (_, image) in selectedImages.enumerated() {
                         // Debug log
                         
                         // Compress image
@@ -999,20 +1186,264 @@ struct ProjectDetailsView: View {
             }
         }
     }
+
+    // MARK: - Helper Functions
+
+    private func openInMaps(coordinate: CLLocationCoordinate2D?, address: String) {
+        if let coordinate = coordinate {
+            let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+            mapItem.name = address
+            mapItem.openInMaps(launchOptions: [
+                MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
+            ])
+        } else {
+            // Fallback to address-based search
+            let searchQuery = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            if let url = URL(string: "maps://?q=\(searchQuery)") {
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    private func saveAddress() {
+        project.address = editedAddress
+        project.needsSync = true
+
+        if let modelContext = dataController.modelContext {
+            try? modelContext.save()
+        }
+
+        showingAddressEditor = false
+
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+    }
+}
+
+struct AddressEditorSheet: View {
+    @Binding var address: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
+
+    @State private var region = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+    )
+    @State private var isGeocodingAddress = false
+    @State private var isReverseGeocoding = false
+    @State private var lastUserTypedAddress: String = ""
+    @State private var lastCoordinate = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                MapViewWithCallback(
+                    region: $region,
+                    onRegionChange: { newRegion in
+                        let newCoord = newRegion.center
+                        if abs(newCoord.latitude - lastCoordinate.latitude) > 0.0001 ||
+                           abs(newCoord.longitude - lastCoordinate.longitude) > 0.0001 {
+                            lastCoordinate = newCoord
+                            reverseGeocodeCoordinate(newCoord)
+                        }
+                    }
+                )
+                .ignoresSafeArea()
+
+                VStack {
+                    Spacer()
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("ADDRESS")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        TextField("Enter address or drag map", text: $address)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .padding()
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .onChange(of: address) { newValue in
+                                if newValue != lastUserTypedAddress {
+                                    lastUserTypedAddress = newValue
+                                    geocodeAddress(newValue)
+                                }
+                            }
+
+                        if isGeocodingAddress || isReverseGeocoding {
+                            HStack {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                    .scaleEffect(0.8)
+                                Text(isGeocodingAddress ? "Updating map..." : "Finding address...")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                        }
+                    }
+                    .padding(20)
+                    .background(.ultraThinMaterial.opacity(0.95))
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 32)
+                }
+
+                VStack(spacing: 4) {
+                    Image(systemName: "scope")
+                        .font(.system(size: 32))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                    Circle()
+                        .fill(OPSStyle.Colors.primaryAccent)
+                        .frame(width: 6, height: 6)
+                }
+                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+            }
+            .navigationTitle("EDIT ADDRESS")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        onCancel()
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        onSave()
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .disabled(address.isEmpty)
+                }
+            }
+            .toolbarBackground(OPSStyle.Colors.cardBackgroundDark, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+        }
+        .onAppear {
+            lastUserTypedAddress = address
+            geocodeAddress(address)
+        }
+    }
+
+    private func geocodeAddress(_ addressString: String) {
+        guard !addressString.isEmpty else { return }
+
+        isGeocodingAddress = true
+
+        let geocoder = CLGeocoder()
+        geocoder.geocodeAddressString(addressString) { placemarks, error in
+            DispatchQueue.main.async {
+                isGeocodingAddress = false
+
+                if let placemark = placemarks?.first,
+                   let location = placemark.location {
+                    withAnimation {
+                        region.center = location.coordinate
+                    }
+                }
+            }
+        }
+    }
+
+    private func reverseGeocodeCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        guard !isGeocodingAddress else { return }
+
+        isReverseGeocoding = true
+
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let geocoder = CLGeocoder()
+
+        geocoder.reverseGeocodeLocation(location) { placemarks, error in
+            DispatchQueue.main.async {
+                isReverseGeocoding = false
+
+                if let placemark = placemarks?.first {
+                    var addressComponents: [String] = []
+
+                    if let subThoroughfare = placemark.subThoroughfare {
+                        addressComponents.append(subThoroughfare)
+                    }
+                    if let thoroughfare = placemark.thoroughfare {
+                        addressComponents.append(thoroughfare)
+                    }
+                    if let locality = placemark.locality {
+                        addressComponents.append(locality)
+                    }
+                    if let administrativeArea = placemark.administrativeArea {
+                        addressComponents.append(administrativeArea)
+                    }
+                    if let postalCode = placemark.postalCode {
+                        addressComponents.append(postalCode)
+                    }
+
+                    let newAddress = addressComponents.joined(separator: ", ")
+                    if !newAddress.isEmpty {
+                        address = newAddress
+                        lastUserTypedAddress = newAddress
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct MapPin: Identifiable {
+    let id = UUID()
+    let coordinate: CLLocationCoordinate2D
+}
+
+struct MapViewWithCallback: UIViewRepresentable {
+    @Binding var region: MKCoordinateRegion
+    let onRegionChange: (MKCoordinateRegion) -> Void
+
+    func makeUIView(context: Context) -> MKMapView {
+        let mapView = MKMapView()
+        mapView.delegate = context.coordinator
+        mapView.setRegion(region, animated: false)
+        return mapView
+    }
+
+    func updateUIView(_ mapView: MKMapView, context: Context) {
+        if abs(mapView.region.center.latitude - region.center.latitude) > 0.001 ||
+           abs(mapView.region.center.longitude - region.center.longitude) > 0.001 {
+            mapView.setRegion(region, animated: true)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, MKMapViewDelegate {
+        var parent: MapViewWithCallback
+
+        init(_ parent: MapViewWithCallback) {
+            self.parent = parent
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            DispatchQueue.main.async {
+                self.parent.region = mapView.region
+                self.parent.onRegionChange(mapView.region)
+            }
+        }
+    }
 }
 
 struct ProjectDetailsView_Previews: PreviewProvider {
     static var previews: some View {
         // Create a sample project for preview
         let sampleProject = Project(id: "preview-123", title: "Sample Construction Project", status: .inProgress)
-        
+
         // Set additional properties
         sampleProject.clientName = "ABC Construction"
         sampleProject.address = "123 Main Street, Springfield, IL"
         sampleProject.startDate = Date()
         sampleProject.endDate = Date().addingTimeInterval(60*60*24*30) // 30 days later
         sampleProject.notes = "This is a sample project for preview purposes."
-        
+
         return ProjectDetailsView(project: sampleProject)
             .environmentObject(DataController())
             .preferredColorScheme(.dark)

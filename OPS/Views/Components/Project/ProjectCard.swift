@@ -31,7 +31,7 @@ struct ProjectCard: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
                 // Address
-                Text(project.address)
+                Text(project.address ?? "No address")
                 .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineLimit(1)

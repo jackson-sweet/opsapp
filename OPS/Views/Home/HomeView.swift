@@ -206,9 +206,6 @@ struct HomeView: View {
                 }
             }
         }
-        .onAppear {
-            loadTodaysProjects()
-        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             // Reload projects when app returns to foreground
             loadTodaysProjects()

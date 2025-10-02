@@ -78,7 +78,7 @@ struct ProjectDetailsCard: View {
                         .font(.system(size: 16))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     
-                    Text(project.address)
+                    Text(project.address ?? "No address")
                         .font(OPSStyle.Typography.smallBody)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(2)

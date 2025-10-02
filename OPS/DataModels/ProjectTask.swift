@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
 
 /// Status enum for tasks
 enum TaskStatus: String, Codable, CaseIterable {
@@ -14,9 +15,57 @@ enum TaskStatus: String, Codable, CaseIterable {
     case inProgress = "In Progress"
     case completed = "Completed"
     case cancelled = "Cancelled"
-    
+
     var displayName: String {
         return self.rawValue
+    }
+
+    var color: Color {
+        switch self {
+        case .scheduled:
+            return Color("StatusAccepted")
+        case .inProgress:
+            return Color("StatusInProgress")
+        case .completed:
+            return Color("StatusCompleted")
+        case .cancelled:
+            return Color("StatusInactive")
+        }
+    }
+
+    func nextStatus() -> TaskStatus? {
+        switch self {
+        case .scheduled: return .inProgress
+        case .inProgress: return .completed
+        case .completed: return nil
+        case .cancelled: return .scheduled
+        }
+    }
+
+    func previousStatus() -> TaskStatus? {
+        switch self {
+        case .scheduled: return nil
+        case .inProgress: return .scheduled
+        case .completed: return .inProgress
+        case .cancelled: return nil
+        }
+    }
+
+    var canSwipeForward: Bool {
+        return nextStatus() != nil
+    }
+
+    var canSwipeBackward: Bool {
+        return previousStatus() != nil
+    }
+
+    var sortOrder: Int {
+        switch self {
+        case .scheduled: return 0
+        case .inProgress: return 1
+        case .completed: return 2
+        case .cancelled: return 3
+        }
     }
 }
 

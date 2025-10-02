@@ -12,6 +12,7 @@ struct AppHeader: View {
         case home
         case settings
         case schedule
+        case jobBoard
     }
     
     // Tab selection for settings screen
@@ -39,6 +40,8 @@ struct AppHeader: View {
             return "SETTINGS"
         case .schedule:
             return "SCHEDULE"
+        case .jobBoard:
+            return "JOB BOARD"
         }
     }
     
@@ -190,7 +193,7 @@ struct AppHeader: View {
                 }
                 
                 // User information if available
-                if headerType == .settings {
+                if headerType == .settings || headerType == .jobBoard {
                     if let user = dataController.currentUser {
                         VStack(alignment: .trailing, spacing: 2) {
                             // Name and role

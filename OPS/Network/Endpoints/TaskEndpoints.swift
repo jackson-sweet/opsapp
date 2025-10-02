@@ -214,13 +214,35 @@ extension APIService {
     /// Delete a task
     /// - Parameter id: The task ID to delete
     func deleteTask(id: String) async throws {
-        
+
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.task)/\(id)",
             method: "DELETE",
             body: nil,
             requiresAuth: false
         )
-        
+
+    }
+
+    // MARK: - Task Status Options
+
+    /// Fetch all task status options for a company
+    /// - Parameter companyId: The company ID
+    /// - Returns: Array of task status option DTOs
+    func fetchTaskStatusOptions(companyId: String) async throws -> [TaskStatusOptionDTO] {
+
+        let constraints: [[String: Any]] = [
+            [
+                "key": "Company",
+                "constraint_type": "equals",
+                "value": companyId
+            ]
+        ]
+
+        return try await fetchBubbleObjectsWithArrayConstraints(
+            objectType: "task_status",
+            constraints: constraints,
+            sortField: "Index"
+        )
     }
 }

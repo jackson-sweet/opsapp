@@ -32,7 +32,9 @@ struct TeamMemberDetailView: View {
     @State private var showingAddToExistingContact = false  // For adding to existing contact
     @State private var showingImportConflictDialog = false  // For resolving import conflicts
     @State private var pendingImportData: (name: String, email: String?, phone: String?, address: String?) = ("", nil, nil, nil)
-    
+    @State private var selectedProject: Project? = nil  // For showing project details
+    @State private var showingCreateProject = false  // For creating a new project
+
     // Constants for styling
     private let avatarSize: CGFloat = 80
     private let contactIconSize: CGFloat = 36
@@ -102,7 +104,7 @@ struct TeamMemberDetailView: View {
                                     .buttonStyle(PlainButtonStyle())
                                     
                                     Spacer()
-                                    
+
                                     // Edit button only when expanded
                                     if isParentContactExpanded && canEditClient {
                                         Button(action: {
@@ -176,7 +178,29 @@ struct TeamMemberDetailView: View {
                                     .buttonStyle(PlainButtonStyle())
                                     
                                     Spacer()
-                                    
+
+                                    // Add Project button - only for clients with admin/office permissions
+                                    if isParentContactExpanded && isClient && canEditClient {
+                                        Button(action: {
+                                            showingCreateProject = true
+                                        }) {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "plus")
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                Text("Add")
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                            }
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                            )
+                                        }
+                                        .transition(.scale.combined(with: .opacity))
+                                    }
+
                                     // Edit button only when expanded
                                     if isParentContactExpanded && isClient && canEditClient {
                                         Button(action: {
@@ -236,7 +260,12 @@ struct TeamMemberDetailView: View {
                                 .padding(.horizontal)
                                 .padding(.top, 16)
                         }
-                        
+
+                        // Projects section
+                        projectsSection
+                            .padding(.horizontal)
+                            .padding(.top, 16)
+
                         // Sub-clients section (for clients only)
                         if isClient, let client = client {
                             VStack(spacing: 0) {
@@ -355,6 +384,19 @@ struct TeamMemberDetailView: View {
             }
         } message: {
             Text("Some fields already have data. How would you like to handle the imported information?")
+        }
+        .sheet(item: $selectedProject) { project in
+            NavigationView {
+                ProjectDetailsView(project: project)
+            }
+        }
+        .sheet(isPresented: $showingCreateProject) {
+            if let client = client {
+                ProjectFormSheet(mode: .create, preselectedClient: client) { newProject in
+                    // Project created successfully - the list will refresh automatically
+                }
+                .environmentObject(dataController)
+            }
         }
     }
     
@@ -787,7 +829,7 @@ struct TeamMemberDetailView: View {
                             HStack {
                                 Image(systemName: "person.crop.circle.badge.plus")
                                     .font(OPSStyle.Typography.body)
-                                Text("Save \(client.name)")
+                                Text("Save to Contacts")
                                     .font(OPSStyle.Typography.button)
                             }
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -846,8 +888,166 @@ struct TeamMemberDetailView: View {
         }
     }
     
+    // MARK: - Projects Section
+
+    private var projectsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Get relevant projects
+            let projects = relevantProjects
+
+            // Section title with count and add button
+            HStack {
+                Text("PROJECTS (\(projects.count))")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Spacer()
+
+                // Add Project button - only for clients with admin/office permissions
+                if isClient && canEditClient {
+                    Button(action: {
+                        showingCreateProject = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(OPSStyle.Typography.smallCaption)
+                            Text("Add")
+                                .font(OPSStyle.Typography.smallCaption)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        )
+                    }
+                }
+            }
+            .padding(.bottom, 4)
+
+            if !projects.isEmpty {
+
+                // Projects list card
+                VStack(spacing: 0) {
+                    ForEach(Array(projects.prefix(5).enumerated()), id: \.element.id) { index, project in
+                        Button(action: {
+                            // Set selected project to show details
+                            selectedProject = project
+                        }) {
+                            HStack {
+                                // Status indicator
+                                Circle()
+                                    .fill(project.status.color)
+                                    .frame(width: 8, height: 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(project.title)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .lineLimit(1)
+
+                                    if let startDate = project.startDate {
+                                        Text(DateFormatter.localizedString(from: startDate, dateStyle: .short, timeStyle: .none))
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    }
+                                }
+
+                                Spacer()
+
+                                // Status badge
+                                Text(project.status.displayName.uppercased())
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(project.status.color)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(project.status.color.opacity(0.1))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .stroke(project.status.color.opacity(0.3), lineWidth: 1)
+                                    )
+
+                                // Chevron
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        if index < min(4, projects.count - 1) {
+                            Divider()
+                                .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                        }
+                    }
+
+                    // Show more indicator if there are more than 5 projects
+                    if projects.count > 5 {
+                        HStack {
+                            Spacer()
+                            Text("+ \(projects.count - 5) MORE")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            Spacer()
+                        }
+                        .padding(.vertical, 12)
+                    }
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+                .opacity(showFullContact ? 1 : 0)
+                .offset(y: showFullContact ? 0 : 20)
+                .animation(.easeInOut(duration: 0.5).delay(0.3), value: showFullContact)
+            } else if isClient && canEditClient {
+                // Empty state for clients with no projects (admin/office only)
+                Button(action: {
+                    showingCreateProject = true
+                }) {
+                    VStack(spacing: 12) {
+                        Image(systemName: "folder.badge.plus")
+                            .font(.system(size: 40))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        VStack(spacing: 4) {
+                            Text("No projects yet")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+
+                            Text("Create one?")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+                .opacity(showFullContact ? 1 : 0)
+                .offset(y: showFullContact ? 0 : 20)
+                .animation(.easeInOut(duration: 0.5).delay(0.3), value: showFullContact)
+            }
+        }
+    }
+
     // MARK: - Role Section
-    
+
     private var roleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Section title
@@ -985,6 +1185,31 @@ struct TeamMemberDetailView: View {
             return nil
         }
     }
+
+    private var relevantProjects: [Project] {
+        if let client = client {
+            // For clients, show their projects
+            return Array(client.projects).sorted {
+                ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast)
+            }
+        } else if let user = user {
+            // For team members, show projects they're assigned to
+            return dataController.getAllProjects().filter { project in
+                project.teamMembers.contains(where: { $0.id == user.id })
+            }.sorted {
+                ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast)
+            }
+        } else if let teamMember = teamMember {
+            // For legacy team members (without User object), check by ID
+            return dataController.getAllProjects().filter { project in
+                project.getTeamMemberIds().contains(teamMember.id)
+            }.sorted {
+                ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast)
+            }
+        } else {
+            return []
+        }
+    }
     
     // MARK: - Helper Methods
     
@@ -1067,42 +1292,63 @@ struct TeamMemberDetailView: View {
                 }
                 
             } else {
-                // Create new sub-client
-                let subClientDTO = try await syncManager.createSubClient(
-                    clientId: client.id,
-                    name: name,
-                    title: title,
-                    email: email,
-                    phone: phone,
-                    address: address
-                )
-                
-                // Convert DTO to SubClient model
-                let newSubClient = subClientDTO.toSubClient()
-                newSubClient.client = client  // Set the parent relationship
-                
+                // Create new sub-client - try API first, fall back to local if offline/error
+                let newSubClient: SubClient
+                var syncSucceeded = false
+
+                do {
+                    let subClientDTO = try await syncManager.createSubClient(
+                        clientId: client.id,
+                        name: name,
+                        title: title,
+                        email: email,
+                        phone: phone,
+                        address: address
+                    )
+
+                    // Convert DTO to SubClient model
+                    newSubClient = subClientDTO.toSubClient()
+                    syncSucceeded = true
+                    print("✅ Sub-client created on server successfully")
+                } catch {
+                    print("⚠️ Failed to create sub-client on server: \(error)")
+                    print("📱 Creating sub-client locally and queuing for sync")
+
+                    // Create locally with temporary ID
+                    newSubClient = SubClient(
+                        id: UUID().uuidString,
+                        name: name
+                    )
+                    newSubClient.title = title
+                    newSubClient.email = email
+                    newSubClient.phoneNumber = phone
+                    newSubClient.address = address
+                    newSubClient.needsSync = true  // Mark for sync
+                }
+
+                // Set the parent relationship
+                newSubClient.client = client
+
                 // Add the new sub-client to the client's array
                 await MainActor.run {
                     client.subClients.append(newSubClient)
-                    
+
                     // Force the client to update by modifying a property
                     client.lastSyncedAt = Date()
-                    
+
                     // Force refresh of the sub-clients view
                     subClientsRefreshKey = UUID()
                     // Clear the editing state
                     subClientToEdit = nil
                 }
-                
+
                 // Save to SwiftData context
                 let modelContext = syncManager.modelContext
                 modelContext.insert(newSubClient)
                 try modelContext.save()
-                
-                
-                // Force refresh the client to ensure everything is in sync (including newly created sub-clients)
-                if let project = project {
-                    // Clear the lastSyncedAt to force a refresh next time
+
+                // If sync succeeded and we have a project, refresh client
+                if syncSucceeded, let project = project {
                     await MainActor.run {
                         client.lastSyncedAt = nil
                     }

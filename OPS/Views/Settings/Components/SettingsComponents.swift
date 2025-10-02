@@ -77,7 +77,6 @@ struct SettingsTabSelector: View {
     var body: some View {
         SegmentedControl(selection: $selectedTab)
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
     }
 }
 

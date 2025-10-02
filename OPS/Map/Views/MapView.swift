@@ -238,7 +238,7 @@ struct ProjectMarker: View {
     
     private func iconForStatus(_ status: Status) -> String {
         switch status {
-        case .rfq, .estimated, .pending:
+        case .rfq, .estimated:
             return "clock.fill"
         case .accepted, .inProgress:
             return "hammer.fill"

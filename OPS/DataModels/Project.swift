@@ -16,7 +16,7 @@ final class Project: Identifiable {
     var clientName: String // Keep for backward compatibility and quick access
     var clientEmail: String? // Keep for backward compatibility
     var clientPhone: String? // Keep for backward compatibility
-    var address: String
+    var address: String?
     var latitude: Double?
     var longitude: Double?
     var startDate: Date?
@@ -68,7 +68,7 @@ final class Project: Identifiable {
         self.id = id
         self.title = title
         self.status = status
-        self.address = ""
+        self.address = nil
         self.clientName = ""
         self.clientEmail = nil
         self.clientPhone = nil
@@ -452,3 +452,4 @@ final class Project: Identifiable {
         return effectiveEndDate
     }
 }
+

@@ -66,10 +66,24 @@ struct StatusBadge: View {
 
 // Helper extension to create status badges from Status enum
 extension StatusBadge {
-    static func forJobStatus(_ status: Status) -> StatusBadge {
-        // Use the centralized statusColor method to get the appropriate color
+    static func forJobStatus(_ status: Status, size: StatusBadgeSize = .medium) -> StatusBadge {
         let color = OPSStyle.Colors.statusColor(for: status)
-        return StatusBadge(status: status.rawValue, color: color)
+        return StatusBadge(status: status.rawValue, color: color, size: size)
+    }
+
+    static func forTaskStatus(_ status: TaskStatus, size: StatusBadgeSize = .small) -> StatusBadge {
+        let color: Color
+        switch status {
+        case .scheduled:
+            color = OPSStyle.Colors.primaryAccent
+        case .inProgress:
+            color = Color.blue
+        case .completed:
+            color = Color.green
+        case .cancelled:
+            color = Color.gray
+        }
+        return StatusBadge(status: status.rawValue, color: color, size: size)
     }
 }
 
@@ -124,7 +138,6 @@ struct StatusBadge_Previews: PreviewProvider {
                 StatusBadge.forJobStatus(.completed)
                 StatusBadge.forJobStatus(.closed)
                 StatusBadge.forJobStatus(.archived)
-                StatusBadge.forJobStatus(.pending)
             }
         }
         .padding()

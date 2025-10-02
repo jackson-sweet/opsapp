@@ -174,11 +174,18 @@ Text("Button").font(OPSStyle.Typography.button)              // ALWAYS
 - **Always use solid backgrounds** without opacity modifiers
 - Corner radius should be consistent: `OPSStyle.Layout.cornerRadius`
 - Shadow (if used) should be solid black without opacity: `.shadow(color: Color.black, radius: 4, x: 0, y: 2)`
+- **Border Colors**:
+  - Standard cards: `OPSStyle.Colors.cardBorder` (white 0.1 opacity)
+  - Subtle borders: `OPSStyle.Colors.cardBorderSubtle` (white 0.05 opacity)
+  - **NEVER hardcode**: `.stroke(Color.white.opacity(0.1), lineWidth: 1)` - always use the constants
 
 ### Icons
 - **Clickable Icons**: Use `OPSStyle.Colors.primaryAccent`
 - **Non-clickable/Informational Icons**: Use `OPSStyle.Colors.primaryText`
 - **Status Icons**: Use appropriate status color
+- **CRITICAL**: Always use `OPSStyle.Icons` constants instead of hardcoded SF Symbol strings
+- **NEVER use**: `"calendar"`, `"person.fill"`, `"checkmark.square"` etc. directly
+- **ALWAYS use**: `OPSStyle.Icons.calendar`, `OPSStyle.Icons.personFill`, `OPSStyle.Icons.checkmarkSquare`
 
 ### Text Fields
 - Background: Slightly lighter than card background
@@ -288,10 +295,78 @@ Text("Button").font(OPSStyle.Typography.button)              // ALWAYS
    - Primary accent color for interactive state
    - Secondary text color when voted
 
+### Collapsible Section Pattern
+1. **Section Header Format**: `[ CLOSED ] ------------------ [ 5 ]`
+   - Title in uppercase, bracketed
+   - Horizontal line separator
+   - Count badge in brackets
+   - Chevron icon indicating expand/collapse state
+
+2. **Usage**:
+   - Use `CollapsibleSection` generic component
+   - Bind to @State isExpanded variable
+   - Provide title, count, and content ViewBuilder
+   - Spring animation (response: 0.3, dampingFraction: 0.7)
+
+3. **When to Use**:
+   - Closed/archived projects to prevent list flooding
+   - Cancelled tasks
+   - Any grouping that grows over time and should be hidden by default
+
+### Alphabet Index Pattern
+1. **Layout**:
+   - Positioned on trailing edge of screen
+   - Vertical list of A-Z letters
+   - Small, compact font (10-12pt)
+   - Secondary text color for visibility
+
+2. **Interactions**:
+   - Tap letter to jump to that section
+   - Drag gesture for scrollable navigation through alphabet
+   - Haptic feedback (light impact) when changing letters during drag
+   - Proper frame and contentShape for touch responsiveness
+
+3. **When to Use**:
+   - Long alphabetically-sorted lists (clients, contacts)
+   - Lists with 20+ items where quick navigation is beneficial
+   - When search alone isn't sufficient for finding items
+
+### Client Status Badges Pattern
+1. **Visual Design**:
+   - Small rounded rectangles with status color background
+   - White text showing count
+   - Format: `[2]` `[1]` `[3]` `[5]`
+   - Displayed horizontally after client name
+
+2. **Data Display**:
+   - Only show statuses with active projects (excludes closed/archived)
+   - Display in status progression order (RFQ → Estimated → Accepted → In Progress → Completed)
+   - Use status.color for background color
+   - Font: OPSStyle.Typography.smallCaption or smaller
+
+3. **Performance**:
+   - Calculate counts using Dictionary grouping (single O(n) pass)
+   - Never use multiple filter operations (avoid O(6n) patterns)
+   - Cache calculations when possible
+
+## Gesture Patterns
+
+### Swipe-to-Change-Status
+- **40% threshold**: Status change triggers when user swipes 40% of card width
+- **Revealed status card**: Shows target status behind swiping card with fade-in based on progress
+- **Haptic feedback**: Medium impact feedback at 40% threshold to confirm trigger
+- **Directional detection**: Horizontal vs vertical detection prevents scroll interference
+- **Minimum distance**: 20pt minimum drag distance prevents accidental triggers
+- **Status progression**:
+  - Projects: RFQ → Estimated → Accepted → In Progress → Completed → Closed
+  - Tasks: Scheduled → In Progress → Completed
+  - Archived → Accepted (reactivation), Cancelled → Scheduled (reactivation)
+- **Animation sequence**: Card fades out, status changes, card fades back in with new status
+
 ## Common Anti-Patterns to Avoid
 
 1. **Never use opacity modifiers on backgrounds** - Use the appropriate solid color
-2. **Never use `secondaryAccent` color except for active items** 
+2. **Never use `secondaryAccent` color except for active items**
 3. **Avoid gradients** except for the main background gradient
 4. **Avoid complex shadows or blur effects** that may impact performance
 5. **Don't center large blocks of text** - Use left alignment for readability
@@ -300,6 +375,9 @@ Text("Button").font(OPSStyle.Typography.button)              // ALWAYS
 8. **Avoid tiny touch targets** - Remember users wear gloves
 9. **Don't use low contrast** - Must be readable in direct sunlight
 10. **Avoid complex gestures** - Simple taps and swipes only
+11. **Never hardcode SF Symbol strings** - Always use OPSStyle.Icons constants
+12. **Avoid `.id()` modifiers on TabView or NavigationStack** - Causes view recreation and performance issues
+13. **Never hardcode border colors** - Always use `OPSStyle.Colors.cardBorder` or `cardBorderSubtle`
 
 ## Measuring Success
 

@@ -156,58 +156,73 @@ struct ProjectCardView: View {
                     }
                 }
                 
-                // Content with fixed width 
-                ZStack(alignment: .topTrailing) {
-                    // Main content
-                    VStack(alignment: .leading, spacing: 2) {
-                        // Project title
-                        Text(project.title)
-                            .font(OPSStyle.Typography.cardTitle)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .lineLimit(1)
-                        
-                        // Client name
-                        Text(project.clientName)
-                            .font(OPSStyle.Typography.cardBody)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .lineLimit(1)
-                        
-                        // Address with components
-                        Text(extractAddressComponents(project.address))
-                            .font(OPSStyle.Typography.cardBody)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .lineLimit(1)
-                    }
-                    .padding(12)
-                    .frame(width: 362, alignment: .leading)
-                    
-                    // Page indicators in top right corner
-                    HStack(spacing: 12) {
-                        ForEach(0..<totalCount, id: \.self) { index in
-                            Circle()
-                                .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.5))
-                                .frame(width: 13, height: 13)
+                // Content with fixed width
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            // Project title
+                            Text(project.title)
+                                .font(OPSStyle.Typography.cardTitle)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .lineLimit(1)
+
+                            // Client name
+                            Text(project.clientName)
+                                .font(OPSStyle.Typography.cardBody)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .lineLimit(1)
+
+                            // Address with components
+                            Text(extractAddressComponents(project.address ?? ""))
+                                .font(OPSStyle.Typography.cardBody)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        // Page indicators
+                        HStack(spacing: 12) {
+                            ForEach(0..<totalCount, id: \.self) { index in
+                                Circle()
+                                    .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.5))
+                                    .frame(width: 13, height: 13)
+                            }
                         }
                     }
-                    .padding(6)
-                    .cornerRadius(10)
-                    .padding(.top, 6)
-                    .padding(.trailing, 10)
-                    
-                    // Completed status badge in bottom right
-                    if project.status.isCompleted {
-                        Text("COMPLETED")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(OPSStyle.Colors.statusColor(for: .completed))
-                            .cornerRadius(3)
-                            .padding([.bottom, .trailing], 8)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+
+                    Spacer(minLength: 0)
+
+                    // Footer
+                    if !isActiveProject {
+                        HStack {
+                            Spacer()
+                            Text("TAP TO START PROJECT")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Spacer()
+                        }
                     }
                 }
+                .padding(12)
+                .frame(width: 362, height: 85, alignment: .topLeading)
+                .overlay(
+                    Group {
+                        if project.status.isCompleted {
+                            Text("COMPLETED")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(OPSStyle.Colors.statusColor(for: .completed))
+                                .cornerRadius(3)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                                .padding([.bottom, .trailing], 8)
+                        }
+                    },
+                    alignment: .bottomTrailing
+                )
             }
             .frame(width: 362, height: 85)
             .cornerRadius(OPSStyle.Layout.cornerRadius)

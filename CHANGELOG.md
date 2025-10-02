@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2025-10-01
+
+### Job Board Enhancements
+
+#### UI/UX Improvements
+- **Smooth Transitions**: Fixed section switching in Job Board (dashboard, clients, projects, tasks) with optimized opacity animations
+- **Interactive Feedback**: Enhanced project cards with proper long press haptic feedback and scale-down effect (0.95)
+- **Drag-and-Drop Polish**: Updated dashboard project cards with refined timing for drag interactions
+- **Swipe Gesture Fixes**: Fixed status card text alignment during swipe-to-change-status confirmation
+- **Alphabet Index**: Made alphabet index in ClientListView touch-responsive with scrollable drag gesture and haptic feedback
+
+#### Client Management
+- **Visual Status Summary**: Redesigned client cards to show project status counts as colored badges
+- **Format**: `CLIENT NAME  [2] [1] [3] [5]` where each number represents active project count by status
+- **Performance**: Optimized client project counts using Dictionary grouping (single pass instead of 6 filters)
+- **Empty States**: Added "No projects yet. Create one?" message when client has no projects
+- **Quick Actions**: Added "ADD +" button in client detail view for admin/office users to create projects
+
+#### Project Management
+- **Project Creation Fix**: Fixed project creation to properly add project to client's projects array
+- **Predictive Address**: Added predictive address fields using LocationManager for proximity-based suggestions
+- **Context Pre-population**: Pre-populate client and address when creating project from client view
+- **Sort by Status**: Added status-based sorting with "Status (RFQ to Closed)" and "Status (Closed to RFQ)" filter options
+
+#### Architecture & Performance
+- **Tab View Optimization**: Removed `.id(selectedSection)` from MainTabView to prevent HomeView recreation causing hangs
+- **Transition System**: Optimized JobBoardView with switch statement using opacity animations
+- **OPSStyle Centralization**: Added `OPSStyle.Colors.cardBorder` and `cardBorderSubtle` constants
+- **Border Consistency**: Updated all card borders to reference centralized color constants (no more hardcoded values)
+- **Performance Investigation**: Identified subscription check causing 0.8s hangs on tab switches
+
+#### Technical Improvements
+- **Removed Duplicates**: Removed duplicate AddressLocationProvider class
+- **Computed Properties**: Added `sortOrder` to Status and TaskStatus enums for consistent sorting
+- **Swipe Direction Storage**: Fixed status card confirmation by storing swipe direction before animation
+
+### Known Performance Issues
+- Subscription check on tab switch takes ~0.8s and causes UI hangs (needs optimization)
+
 ## [1.2.0] - 2025-09-26
 
 ### Major Features Added
@@ -15,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Apple Calendar-like Interface**: Continuous vertical scrolling through months with seamless transitions and month snapping
 - **Real-time Task Updates**: Immediate API synchronization for task status and notes changes
 - **Enhanced Team Management**: Individual team member assignment per task with full contact integration
+- **Swipe-to-Change-Status**: Horizontal swipe gestures on project and task cards with 40% threshold and haptic feedback
+- **Collapsible Sections**: Organized sections for closed/archived projects and cancelled tasks to prevent list flooding
+- **Icon Centralization**: All SF Symbol icons centralized in OPSStyle.Icons enum for consistency
 
 ### Performance & Stability Improvements
 - **Fixed infinite loop issues** in MonthGridView that caused performance problems
@@ -32,6 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **shouldDisplay logic**: Centralized filtering based on project scheduling mode with cached projectEventType
 - **Task navigation cards**: Previous/Next task navigation for seamless workflow
 - **Haptic feedback**: Status change confirmations with user permission respect
+- **Swipe gesture system**: 40% threshold triggers status change with revealed status card behind swiping card
+- **Status progression**: Projects (RFQ → Estimated → Accepted → In Progress → Completed → Closed), Tasks (Scheduled → In Progress → Completed)
+- **Reactivation support**: Archived projects swipe to Accepted, cancelled tasks swipe to Scheduled
+- **Collapsible sections**: Closed/archived projects and cancelled tasks organized in expandable sections with count badges
 
 ### API & Sync Improvements
 - **Task status sync**: Real-time updates with `updateTaskStatus(id: String, status: String)` endpoint
@@ -47,11 +93,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TaskDetailsView components**: LocationCard, ClientInfoCard, NotesCard, TeamMembersCard reusability
 - **Memory management**: autoreleasepool blocks for batch operations
 - **Background task safety**: Never pass SwiftData models to background contexts
+- **Status progression logic**: nextStatus() and previousStatus() methods with canSwipeForward/canSwipeBackward properties
+- **Interactive gesture handling**: Directional detection (horizontal vs vertical) to prevent scroll interference
+- **Animation coordination**: Multi-phase animations with DispatchQueue timing for smooth status changes
+- **OPSStyle.Icons enum**: Centralized 40+ SF Symbol references for consistency across app
 
 ### Developer Experience
 - **Centralized debug dashboard**: Enhanced developer tools with better organization
 - **Comprehensive task debugging**: Detailed logging for task team member relationships
 - **Fixed exit functionality**: Developer mode exit button now works correctly
+- **Icon system**: Centralized icon references eliminate hardcoded SF Symbol strings
+- **Reusable components**: CollapsibleSection generic component for expandable list sections
+
+### Bug Fixes
+- **Vertical scrolling**: Fixed DragGesture capturing vertical scrolls by adding directional detection
+- **Animation timing**: Eliminated "Invalid sample AnimatablePair" warnings with .interactiveSpring() animation
+- **Status confirmation**: Fixed incorrect status display on confirmation by storing target status before animation
+- **Gesture thresholds**: Added minimum distance (20pt) to DragGesture for better scroll vs swipe detection
 
 ### Known Issues
 - Task-based scheduling not fully integrated on home page (planned for v1.2.1)

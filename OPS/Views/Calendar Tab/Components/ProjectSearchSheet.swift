@@ -108,7 +108,7 @@ struct ProjectSearchSheet: View {
                 }
                 
                 // Search in address
-                if project.address.localizedCaseInsensitiveContains(searchText) {
+                if project.address?.localizedCaseInsensitiveContains(searchText) ?? false {
                     return true
                 }
                 
@@ -807,13 +807,13 @@ struct ProjectSearchRow: View {
                                 }
                             }
                             
-                            if !project.address.isEmpty {
+                            if let address = project.address, !address.isEmpty {
                                 HStack(spacing: 4) {
                                     Image(systemName: "location")
                                         .font(.system(size: 10))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    
-                                    Text(project.address)
+
+                                    Text(address)
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         .lineLimit(1)

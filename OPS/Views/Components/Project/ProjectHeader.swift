@@ -77,7 +77,7 @@ struct ProjectHeader: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(1)
                     // Address
-                    Text(project.address.formatAsSimpleAddress())
+                    Text((project.address ?? "No address").formatAsSimpleAddress())
                         .font(OPSStyle.Typography.cardSubtitle)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(1)

@@ -35,6 +35,10 @@ struct HomeContentView: View {
     let startProject: (Project) -> Void
     let stopProject: (Project) -> Void
     let getActiveProject: () -> Project?
+
+    // State for project editing
+    @State private var showingEditProject = false
+    @State private var projectToEdit: Project?
     
     var body: some View {
         ZStack {
@@ -53,6 +57,15 @@ struct HomeContentView: View {
             // 4. Loading overlay
             if isLoading {
                 loadingOverlay
+            }
+        }
+        // Sheet for editing projects (admin/office crew only)
+        .sheet(isPresented: $showingEditProject) {
+            if let projectToEdit = projectToEdit {
+                ProjectFormSheet(mode: .edit(projectToEdit)) { _ in
+                    showingEditProject = false
+                    self.projectToEdit = nil
+                }
             }
         }
     }
@@ -208,12 +221,18 @@ struct HomeContentView: View {
                         onStart: startProject,
                         onStop: stopProject,
                         onLongPress: { project in
-                            
+
                             // EXPLICITLY ensure we don't start the project by turning off confirmation
                             showStartConfirmation = false
-                            
-                            // Show project details (sheet)
-                            showProjectDetails(project)
+
+                            // Check user role - if admin or office crew, open edit mode, otherwise show details
+                            if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                                projectToEdit = project
+                                showingEditProject = true
+                            } else {
+                                // Show project details (sheet) for field crew
+                                showProjectDetails(project)
+                            }
                         }
                     )
                 } else if !isLoading {

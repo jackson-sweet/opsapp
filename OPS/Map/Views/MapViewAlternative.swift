@@ -205,7 +205,7 @@ struct ProjectMarkerAlternative: View {
     
     private func iconForStatus(_ status: Status) -> String {
         switch status {
-        case .rfq, .estimated, .pending:
+        case .rfq, .estimated:
             return "clock.fill"
         case .accepted, .inProgress:
             return "hammer.fill"
@@ -254,7 +254,7 @@ struct ProjectSelectionSheet: View {
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     
-                    Text(project.address)
+                    Text(project.address ?? "No address")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(2)

@@ -75,7 +75,9 @@ struct ClientDTO: Codable {
             name: name ?? "Unknown Client",
             email: emailAddress,
             phoneNumber: phoneNumber,
-            address: address?.formattedAddress
+            address: address?.formattedAddress,
+            companyId: nil,
+            notes: nil
         )
         
         // Set profile image URL if available

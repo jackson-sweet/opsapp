@@ -25,7 +25,14 @@ struct OPSApp: App {
             User.self,
             Project.self,
             Company.self,
-            TeamMember.self
+            TeamMember.self,
+            Client.self,
+            SubClient.self,
+            ProjectTask.self,
+            TaskType.self,
+            TaskStatusOption.self,
+            CalendarEvent.self,
+            OpsContact.self
         ])
         
         let modelConfiguration = ModelConfiguration(

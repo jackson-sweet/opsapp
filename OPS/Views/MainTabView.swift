@@ -17,6 +17,7 @@ struct MainTabView: View {
     @EnvironmentObject private var locationManager: LocationManager
     
     @State private var selectedTab = 0
+    @State private var previousTab = 0
     @State private var keyboardIsShowing = false
     @State private var sheetIsPresented = false
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
@@ -46,84 +47,74 @@ struct MainTabView: View {
         var baseTabs: [TabItem] = [
             TabItem(iconName: "house.fill")
         ]
-        
+
         // Add Job Board tab for admin and office crew only
         if let currentUser = dataController.currentUser,
            (currentUser.role == .admin || currentUser.role == .officeCrew) {
             baseTabs.append(TabItem(iconName: "briefcase.fill"))
         }
-        
+
         // Add Schedule and Settings for all users
         baseTabs.append(contentsOf: [
             TabItem(iconName: "calendar"),
             TabItem(iconName: "gearshape.fill")
         ])
-        
+
         return baseTabs
     }
-    
+
+    private var slideTransition: AnyTransition {
+        if selectedTab > previousTab {
+            return .asymmetric(
+                insertion: .move(edge: .trailing),
+                removal: .move(edge: .leading)
+            )
+        } else {
+            return .asymmetric(
+                insertion: .move(edge: .leading),
+                removal: .move(edge: .trailing)
+            )
+        }
+    }
+
     var body: some View {
         ZStack {
-            // Main content structure
-            if selectedTab == 0 {
-                // Home tab - header overlays content
-                ZStack {
-                    // Main content views - full screen
-                    HomeView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .ignoresSafeArea(.all, edges: .bottom)
-                       
-                    
-                    // Persistent navigation header overlay
-                    VStack {
-                        PersistentNavigationHeader(selectedTab: selectedTab)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                            .animation(.easeInOut(duration: 0.3), value: inProgressManager.isRouting)
-                            .zIndex(100) // Keep on top
-                        Spacer()
+            // Main content structure with sliding transitions
+            // Dynamic content based on tabs array
+            let tabCount = tabs.count
+
+            // Content views with transition - each complete view slides as a unit
+            ZStack {
+                if tabCount == 4 { // Admin/Office Crew with Job Board
+                    switch selectedTab {
+                    case 0:
+                        HomeView()
+                    case 1:
+                        JobBoardView()
+                    case 2:
+                        ScheduleView()
+                    case 3:
+                        SettingsView()
+                    default:
+                        HomeView()
                     }
-                }
-            } else {
-                // Other tabs - header overlays content
-                ZStack {
-                    // Main content views - full screen
-                    Group {
-                        // Dynamic content based on tabs array
-                        let tabCount = tabs.count
-                        if tabCount == 4 { // Admin/Office Crew with Job Board
-                            switch selectedTab {
-                            case 1:
-                                JobBoardView()
-                            case 2:
-                                ScheduleView()
-                            case 3:
-                                SettingsView()
-                            default:
-                                HomeView()
-                            }
-                        } else { // Field Crew without Job Board
-                            switch selectedTab {
-                            case 1:
-                                ScheduleView()
-                            case 2:
-                                SettingsView()
-                            default:
-                                HomeView()
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea(.all, edges: .bottom)
-                    
-                    // Persistent navigation header overlay
-                    VStack {
-                        PersistentNavigationHeader(selectedTab: selectedTab)
-                            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: inProgressManager.isRouting)
-                            .zIndex(100) // Keep on top
-                        Spacer()
+                } else { // Field Crew without Job Board
+                    switch selectedTab {
+                    case 0:
+                        HomeView()
+                    case 1:
+                        ScheduleView()
+                    case 2:
+                        SettingsView()
+                    default:
+                        HomeView()
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea(.all, edges: .bottom)
+            .transition(slideTransition)
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
             
             // Image sync progress bar at top
             VStack {
@@ -187,7 +178,12 @@ struct MainTabView: View {
                 selectedTab = 0 // Switch to home/map tab
             }
         }
-        
+
+        // Track tab changes for slide transitions
+        .onChange(of: selectedTab) { oldValue, newValue in
+            previousTab = oldValue
+        }
+
         // Handle keyboard appearance - but ignore if from a sheet
         .onReceive(keyboardWillShow) { notification in
             // Check if keyboard is from current window context

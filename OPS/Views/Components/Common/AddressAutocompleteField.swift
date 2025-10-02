@@ -13,15 +13,16 @@ struct AddressAutocompleteField: View {
     @Binding var address: String
     let placeholder: String
     let onAddressSelected: ((String, CLLocationCoordinate2D?) -> Void)?
-    
+
     @State private var searchText = ""
     @State private var searchResults: [MKLocalSearchCompletion] = []
     @State private var showingResults = false
     @State private var completer = MKLocalSearchCompleter()
     @StateObject private var searchCompleterDelegate = SearchCompleterDelegate()
     @State private var searchDebouncer = PassthroughSubject<String, Never>()
-    
-    init(address: Binding<String>, 
+    @EnvironmentObject private var locationManager: LocationManager
+
+    init(address: Binding<String>,
          placeholder: String = "Enter Address",
          onAddressSelected: ((String, CLLocationCoordinate2D?) -> Void)? = nil) {
         self._address = address
@@ -129,11 +130,21 @@ struct AddressAutocompleteField: View {
     private func setupCompleter() {
         completer.delegate = searchCompleterDelegate
         completer.resultTypes = .address
-        completer.region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194), // Default to SF
-            span: MKCoordinateSpan(latitudeDelta: 50, longitudeDelta: 50) // Wide search area
-        )
-        
+
+        // Use user's current location if available, otherwise default region
+        if let userLocation = locationManager.userLocation {
+            completer.region = MKCoordinateRegion(
+                center: userLocation,
+                span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5) // ~50km radius for local results
+            )
+        } else {
+            // Fallback to wide search if no location available
+            completer.region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                span: MKCoordinateSpan(latitudeDelta: 50, longitudeDelta: 50)
+            )
+        }
+
         searchCompleterDelegate.onResultsUpdated = { results in
             searchResults = results
         }

@@ -1570,7 +1570,31 @@ class DataController: ObservableObject {
     }
     
     // MARK: - CalendarEvent Methods
-    
+
+    /// Get calendar events for a specific date (simplified version for scheduler)
+    func getCalendarEvents(for date: Date) -> [CalendarEvent] {
+        guard let context = modelContext else {
+            return []
+        }
+
+        let descriptor = FetchDescriptor<CalendarEvent>()
+
+        do {
+            let allEvents = try context.fetch(descriptor)
+
+            // Filter by date
+            let filteredEvents = allEvents.filter { event in
+                // Check if event is active on this date
+                let spannedDates = event.spannedDates
+                return spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
+            }
+
+            return filteredEvents.sorted { $0.startDate < $1.startDate }
+        } catch {
+            return []
+        }
+    }
+
     /// Get calendar events for a specific date for the current user
     func getCalendarEventsForCurrentUser(for date: Date) -> [CalendarEvent] {
         guard let user = currentUser else { 
@@ -1872,10 +1896,10 @@ class DataController: ObservableObject {
     }
     
     // MARK: - TaskType Management
-    
+
     func getAllTaskTypes(for companyId: String) -> [TaskType] {
         guard let context = modelContext else { return [] }
-        
+
         do {
             let descriptor = FetchDescriptor<TaskType>(
                 predicate: #Predicate<TaskType> { taskType in
@@ -1886,6 +1910,62 @@ class DataController: ObservableObject {
         } catch {
             print("[DataController] Error fetching task types: \(error)")
             return []
+        }
+    }
+
+    // MARK: - Task Status Options Management
+
+    func getAllTaskStatusOptions(for companyId: String) -> [TaskStatusOption] {
+        guard let context = modelContext else { return [] }
+
+        do {
+            let descriptor = FetchDescriptor<TaskStatusOption>(
+                predicate: #Predicate<TaskStatusOption> { option in
+                    option.companyId == companyId
+                },
+                sortBy: [SortDescriptor(\.index)]
+            )
+            return try context.fetch(descriptor)
+        } catch {
+            print("[DataController] Error fetching task status options: \(error)")
+            return []
+        }
+    }
+
+    @MainActor
+    func syncTaskStatusOptions(for companyId: String) async {
+        guard let context = modelContext else { return }
+
+        do {
+            let dtos = try await apiService.fetchTaskStatusOptions(companyId: companyId)
+
+            for dto in dtos {
+                let descriptor = FetchDescriptor<TaskStatusOption>(
+                    predicate: #Predicate<TaskStatusOption> { $0.id == dto._id }
+                )
+                let existing = try context.fetch(descriptor)
+
+                if let option = existing.first {
+                    option.display = dto.Display
+                    option.color = dto.Color
+                    option.index = Int(dto.Index)
+                    option.lastSyncedAt = Date()
+                } else {
+                    let newOption = TaskStatusOption(
+                        id: dto._id,
+                        display: dto.Display,
+                        color: dto.Color,
+                        index: Int(dto.Index),
+                        companyId: companyId
+                    )
+                    context.insert(newOption)
+                }
+            }
+
+            try context.save()
+            print("[DataController] ✅ Synced \(dtos.count) task status options")
+        } catch {
+            print("[DataController] ❌ Error syncing task status options: \(error)")
         }
     }
     

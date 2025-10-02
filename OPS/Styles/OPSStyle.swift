@@ -39,6 +39,10 @@ enum OPSStyle {
         static let cardBackground = Color("CardBackground") // Card background (dark gray)
         static let cardBackgroundDark = Color("CardBackgroundDark") // Darker card background (#1F293D)
         static let statusBackground = Color("StatusBackground") // Status badge background
+
+        // Border colors
+        static let cardBorder = Color.white.opacity(0.1) // Standard card border
+        static let cardBorderSubtle = Color.white.opacity(0.05) // Subtle card border for less prominent cards
         
         // Text colors
         static let primaryText = Color("TextPrimary") // White
@@ -97,10 +101,8 @@ enum OPSStyle {
                 return Color("StatusCompleted")
             case .closed:
                 return Color("StatusClosed")
-            case .pending:
-                return Color("StatusWarning") // Using warning color for pending
             case .archived:
-                return Color("StatusInactive") // Using inactive color for archived
+                return Color("StatusArchived")
             }
         }
     }
@@ -168,6 +170,74 @@ enum OPSStyle {
     enum Animation {
         static let standard = SwiftUI.Animation.easeInOut(duration: 0.3)
         static let quick = SwiftUI.Animation.easeOut(duration: 0.15)
+    }
+
+    // MARK: - Icons
+    enum Icons {
+        static let calendar = "calendar"
+        static let calendarFill = "calendar.fill"
+        static let person = "person"
+        static let personFill = "person.fill"
+        static let personTwo = "person.2"
+        static let personTwoFill = "person.2.fill"
+        static let personCircle = "person.circle"
+        static let personCircleFill = "person.circle.fill"
+        static let location = "location"
+        static let locationFill = "location.fill"
+        static let phone = "phone"
+        static let phoneFill = "phone.fill"
+        static let envelope = "envelope"
+        static let envelopeFill = "envelope.fill"
+        static let folder = "folder"
+        static let folderFill = "folder.fill"
+        static let checklist = "checklist"
+        static let checkmark = "checkmark"
+        static let checkmarkSquare = "checkmark.square"
+        static let checkmarkSquareFill = "checkmark.square.fill"
+        static let checkmarkCircle = "checkmark.circle"
+        static let checkmarkCircleFill = "checkmark.circle.fill"
+        static let square = "square"
+        static let squareFill = "square.fill"
+        static let xmark = "xmark"
+        static let xmarkCircle = "xmark.circle"
+        static let xmarkCircleFill = "xmark.circle.fill"
+        static let chevronRight = "chevron.right"
+        static let chevronLeft = "chevron.left"
+        static let chevronUp = "chevron.up"
+        static let chevronDown = "chevron.down"
+        static let plus = "plus"
+        static let plusCircle = "plus.circle"
+        static let plusCircleFill = "plus.circle.fill"
+        static let minus = "minus"
+        static let minusCircle = "minus.circle"
+        static let minusCircleFill = "minus.circle.fill"
+        static let exclamationmarkTriangle = "exclamationmark.triangle"
+        static let exclamationmarkTriangleFill = "exclamationmark.triangle.fill"
+        static let gearshape = "gearshape"
+        static let gearshapeFill = "gearshape.fill"
+        static let house = "house"
+        static let houseFill = "house.fill"
+        static let map = "map"
+        static let mapFill = "map.fill"
+        static let ellipsis = "ellipsis"
+        static let ellipsisCircle = "ellipsis.circle"
+        static let ellipsisCircleFill = "ellipsis.circle.fill"
+        static let trash = "trash"
+        static let trashFill = "trash.fill"
+        static let pencil = "pencil"
+        static let pencilCircle = "pencil.circle"
+        static let pencilCircleFill = "pencil.circle.fill"
+        static let arrowClockwise = "arrow.clockwise"
+        static let arrowCounterclockwise = "arrow.counterclockwise"
+        static let magnifyingglass = "magnifyingglass"
+        static let magnifyingglassCircle = "magnifyingglass.circle"
+        static let magnifyingglassCircleFill = "magnifyingglass.circle.fill"
+        static let bellFill = "bell.fill"
+        static let listBullet = "list.bullet"
+        static let photo = "photo"
+        static let photoFill = "photo.fill"
+        static let camera = "camera"
+        static let cameraFill = "camera.fill"
     }
 }
 

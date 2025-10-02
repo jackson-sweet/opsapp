@@ -88,7 +88,6 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // App Header - only use it for the title/user info section
                     AppHeader(headerType: .settings)
-                        .padding(.bottom, 8)
                     
                     // Tab selector
                     SettingsTabSelector(selectedTab: $selectedTab)
@@ -104,7 +103,6 @@ struct SettingsView: View {
                     versionAndActions
                         
                 }
-                .padding(.top, 16)
                 .padding(.bottom, 90) // Add padding for tab bar
             }
         }

@@ -7,46 +7,38 @@ Comprehensive guide to reusable components and architectural patterns for the Jo
 
 ```
 JobBoardTab
-├── JobBoardDashboard
-│   ├── QuickActionsCard
-│   │   └── QuickActionButton (×3)
-│   ├── AttentionRequiredCard
-│   │   └── AttentionRow (×n)
-│   ├── TodayScheduleCard
-│   │   ├── StatItem (×3)
-│   │   └── NextItemRow
-│   ├── ManagementGrid
-│   │   └── NavigationCard (×4)
-│   └── RecentActivityCard
-│       └── ActivityRow (×n)
-├── ClientManagement
-│   ├── ClientListView
-│   │   ├── SearchBar (reused)
-│   │   └── ClientRow (×n)
-│   ├── ClientDetailsView
-│   │   ├── ClientInfoCard (reused)
-│   │   ├── ProjectsCard
-│   │   ├── SubClientsCard
-│   │   └── NotesCard (reused)
-│   └── ClientFormSheet
-│       ├── DuplicateWarning
-│       └── AddressSearchField (reused)
-├── ProjectManagement
-│   ├── JobBoardProjectListView
-│   │   ├── ProjectFilterBar
-│   │   ├── SearchBar (reused)
-│   │   └── ProjectManagementRow (×n)
-│   └── ProjectFormSheet
-│       ├── ClientSelectionSection
-│       ├── SchedulingModeSelector
-│       └── TeamSelectionGrid (reused)
-└── TaskManagement
-    ├── QuickTaskSheet
-    │   ├── ProjectSelectionView
-    │   └── TaskDetailsForm
-    └── TaskTypeManagementView
-        ├── TaskTypeSection (×2)
-        └── TaskTypeFormSheet
+├── JobBoardView (✅ Implemented)
+│   ├── JobBoardProjectListView (✅ Implemented)
+│   │   ├── SearchBar (✅ Implemented)
+│   │   ├── ProjectFilterBar (✅ Implemented)
+│   │   ├── FilterBadges (✅ Implemented)
+│   │   ├── ProjectListFilterSheet (✅ Implemented)
+│   │   ├── UniversalJobBoardCard (project) (✅ Implemented)
+│   │   └── CollapsibleSection (closed/archived) (✅ Implemented)
+│   └── JobBoardTasksView (✅ Implemented)
+│       ├── SearchBar (✅ Implemented)
+│       ├── UniversalJobBoardCard (task) (✅ Implemented)
+│       └── CollapsibleSection (cancelled) (✅ Implemented)
+├── UniversalJobBoardCard (✅ Implemented)
+│   ├── Swipe-to-Change-Status System (✅ Implemented)
+│   │   ├── DragGesture with directional detection (✅ Implemented)
+│   │   ├── RevealedStatusCard component (✅ Implemented)
+│   │   ├── 40% threshold with haptic feedback (✅ Implemented)
+│   │   └── Multi-phase animation sequence (✅ Implemented)
+│   ├── Quick Action Menu (✅ Implemented)
+│   │   ├── TaskManagementSheets (✅ Implemented)
+│   │   └── ProjectManagementSheets (✅ Implemented)
+│   └── Status badge with OPSStyle.Icons (✅ Implemented)
+├── ClientManagement (✅ Implemented)
+│   ├── ClientListView (✅ Implemented with status badges & alphabet index)
+│   ├── ClientDetailsView (✅ Implemented with project creation)
+│   └── ClientFormSheet (✅ Created, needs integration)
+├── ProjectManagement (Partial)
+│   └── ProjectFormSheet (✅ Exists, needs Job Board integration)
+└── TaskManagement (Implemented)
+    ├── TaskDetailsView (✅ Implemented)
+    ├── TaskFormSheet (✅ Implemented)
+    └── TaskTypeManagementView (✅ Implemented)
 ```
 
 ## Existing Components to Reuse
@@ -90,11 +82,11 @@ extension View {
                     .fill(OPSStyle.Colors.cardBackgroundDark)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
             )
     }
-    
+
     func sectionHeaderStyle() -> some View {
         self
             .font(OPSStyle.Typography.captionBold)
@@ -102,9 +94,78 @@ extension View {
             .textCase(.uppercase)
     }
 }
+
+// Border Color Constants (Added 2025-10-01)
+// OPSStyle.Colors.cardBorder = Color.white.opacity(0.1)        // Standard card border
+// OPSStyle.Colors.cardBorderSubtle = Color.white.opacity(0.05) // Subtle border for less prominent cards
+// ALWAYS use these constants instead of hardcoding Color.white.opacity() values
 ```
 
 ## New Reusable Components
+
+### Implemented Components (v1.2.0)
+
+#### CollapsibleSection
+```swift
+struct CollapsibleSection<Content: View>: View {
+    let title: String
+    let count: Int
+    @Binding var isExpanded: Bool
+    @ViewBuilder let content: () -> Content
+
+    // Format: [ CLOSED ] ------------------ [ 5 ]
+    // Spring animation with 0.3s response time
+    // Used for closed/archived projects and cancelled tasks
+}
+```
+
+#### RevealedStatusCard
+```swift
+struct RevealedStatusCard: View {
+    let status: Any // Status or TaskStatus
+    let direction: SwipeDirection
+
+    // Displays behind swiping card during swipe-to-change-status
+    // Fades in based on swipe progress: min(abs(swipeOffset) / threshold, 1.0)
+    // Shows target status with appropriate color and opacity
+}
+```
+
+#### FilterBadge
+```swift
+struct FilterBadge: View {
+    let text: String
+    let color: Color
+    let onRemove: () -> Void
+
+    // Displays active filters with color dot, text, and X button
+    // Used in horizontal scrolling filter badge list
+    // Capsule shape with cardBackgroundDark background
+}
+```
+
+#### ClientProjectBadges
+```swift
+struct ClientProjectBadges: View {
+    let client: Client
+
+    // Displays project status counts as colored badges
+    // Format: [2] [1] [3] [5] (one badge per status with projects)
+    // Only shows statuses with active projects (excludes closed/archived)
+    // Performance optimized with Dictionary grouping (O(n) instead of O(6n))
+}
+```
+
+#### AlphabetIndex
+```swift
+// Touch-responsive alphabet index for ClientListView
+// Features:
+// - Tap letter to jump to section
+// - Drag gesture for scrollable navigation
+// - Haptic feedback when changing letters during drag
+// - Visual feedback with frame and contentShape
+// - Positioned on trailing edge of screen
+```
 
 ### Dashboard Card Base
 ```swift
@@ -150,16 +211,19 @@ struct DashboardCard<Content: View>: View {
 ```
 
 ### Info Row Component
+
+**Note**: Use `OPSStyle.Icons` constants instead of hardcoded SF Symbol strings.
+
 ```swift
 struct InfoRow: View {
-    let icon: String
+    let icon: String // Use OPSStyle.Icons.iconName
     let title: String
     let value: String?
     let action: (() -> Void)?
-    
+
     var body: some View {
         HStack {
-            Image(systemName: icon)
+            Image(systemName: icon) // Pass OPSStyle.Icons constant
                 .font(.system(size: 16))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .frame(width: 24)

@@ -20,6 +20,7 @@ final class Client: Identifiable {
     var latitude: Double?
     var longitude: Double?
     var profileImageURL: String? // Thumbnail/profile picture URL
+    var notes: String? // Client notes
     
     // Company relationship
     var companyId: String?
@@ -42,7 +43,8 @@ final class Client: Identifiable {
         email: String? = nil,
         phoneNumber: String? = nil,
         address: String? = nil,
-        companyId: String? = nil
+        companyId: String? = nil,
+        notes: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -50,6 +52,7 @@ final class Client: Identifiable {
         self.phoneNumber = phoneNumber
         self.address = address
         self.companyId = companyId
+        self.notes = notes
         self.projects = []
         self.subClients = []
         self.lastSyncedAt = Date()

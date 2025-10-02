@@ -41,7 +41,7 @@ struct ProjectMarkerPopup: View {
                         .font(.system(size: 12))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     
-                    Text(project.address)
+                    Text(project.address ?? "No address")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(2)

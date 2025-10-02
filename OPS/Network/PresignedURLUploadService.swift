@@ -70,7 +70,7 @@ class PresignedURLUploadService {
             let sizeInMB = Double(imageData.count) / (1024 * 1024)
             
             // Generate filename with duplicate checking
-            let streetPrefix = extractStreetAddress(from: project.address)
+            let streetPrefix = extractStreetAddress(from: project.address ?? "")
             let timestamp = Date().timeIntervalSince1970
             var attemptCount = 0
             var filename = ""

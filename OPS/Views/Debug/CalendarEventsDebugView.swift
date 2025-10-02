@@ -419,7 +419,7 @@ struct CalendarEventDetailSheet: View {
                                     FieldRow(label: "Title", value: project.title)
                                     FieldRow(label: "Status", value: project.status.displayName)
                                     FieldRow(label: "Client", value: project.effectiveClientName)
-                                    FieldRow(label: "Address", value: project.address)
+                                    FieldRow(label: "Address", value: project.address ?? "No address")
                                     
                                     if let notes = project.notes, !notes.isEmpty {
                                         Text("Notes:")

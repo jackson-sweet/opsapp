@@ -21,7 +21,8 @@ struct CalendarEventDTO: Codable {
     let teamMembers: [String]?  // Array of User IDs
     let title: String?
     let type: String?  // "project" or "task"
-    
+    let active: Bool?  // Whether this event is active (based on project scheduling mode)
+
     // Metadata
     let createdDate: String?
     let modifiedDate: String?
@@ -39,6 +40,7 @@ struct CalendarEventDTO: Codable {
         case teamMembers = "Team Members"
         case title = "Title"
         case type = "Type"
+        case active = "Active"
         case createdDate = "Created Date"
         case modifiedDate = "Modified Date"
     }
@@ -145,7 +147,8 @@ struct CalendarEventDTO: Codable {
             startDate: startDateObj,
             endDate: endDateObj,
             color: validColor,
-            type: eventType
+            type: eventType,
+            active: active ?? true  // Default to active if not specified
         )
         
         event.taskId = taskId
@@ -174,6 +177,7 @@ struct CalendarEventDTO: Codable {
             teamMembers: event.getTeamMemberIds(),
             title: event.title,
             type: event.type.rawValue,
+            active: event.active,
             createdDate: nil,
             modifiedDate: nil
         )

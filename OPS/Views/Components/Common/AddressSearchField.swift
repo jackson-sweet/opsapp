@@ -14,11 +14,11 @@ struct AddressSearchField: View {
     @State private var searchResults: [MKMapItem] = []
     @State private var isSearching = false
     @State private var showingSuggestions = false
-    @StateObject private var locationProvider = AddressLocationProvider()
+    @EnvironmentObject private var locationManager: LocationManager
     @FocusState private var isFocused: Bool
-    
+
     let placeholder: String
-    
+
     init(address: Binding<String>, placeholder: String = "Enter address") {
         self._address = address
         self.placeholder = placeholder
@@ -102,26 +102,26 @@ struct AddressSearchField: View {
         
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
-        
+
         // Prioritize nearby addresses if location is available
-        if let location = locationProvider.lastLocation {
-            let span = MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5)
-            request.region = MKCoordinateRegion(center: location.coordinate, span: span)
+        if let userCoordinate = locationManager.userLocation {
+            let span = MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5) // ~50km radius
+            request.region = MKCoordinateRegion(center: userCoordinate, span: span)
             request.resultTypes = [.address, .pointOfInterest]
         }
-        
+
         let search = MKLocalSearch(request: request)
-        
+
         search.start { response, error in
             Task { @MainActor in
                 self.isSearching = false
-                
+
                 if let response = response {
                     // Sort results by distance if we have location
-                    if let userLocation = locationProvider.lastLocation {
+                    if let currentLocation = locationManager.currentLocation {
                         self.searchResults = response.mapItems.sorted { item1, item2 in
-                            let distance1 = item1.placemark.location?.distance(from: userLocation) ?? Double.infinity
-                            let distance2 = item2.placemark.location?.distance(from: userLocation) ?? Double.infinity
+                            let distance1 = item1.placemark.location?.distance(from: currentLocation) ?? Double.infinity
+                            let distance2 = item2.placemark.location?.distance(from: currentLocation) ?? Double.infinity
                             return distance1 < distance2
                         }
                     } else {
@@ -169,48 +169,5 @@ struct AddressSearchField: View {
         }
         
         return components.joined(separator: ", ")
-    }
-}
-
-// MARK: - Location Provider
-
-class AddressLocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let locationManager = CLLocationManager()
-    @Published var lastLocation: CLLocation?
-    
-    override init() {
-        super.init()
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        requestLocationPermission()
-    }
-    
-    func requestLocationPermission() {
-        let status = locationManager.authorizationStatus
-        
-        switch status {
-        case .notDetermined:
-            locationManager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse, .authorizedAlways:
-            locationManager.requestLocation()
-        default:
-            break
-        }
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        lastLocation = locations.last
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-    }
-    
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        switch manager.authorizationStatus {
-        case .authorizedWhenInUse, .authorizedAlways:
-            manager.requestLocation()
-        default:
-            break
-        }
     }
 }

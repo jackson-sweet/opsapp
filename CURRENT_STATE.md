@@ -49,6 +49,8 @@ The OPS (Operational Project System) app has achieved production-grade quality w
 - **Comprehensive Details**: Client info, location, team, images, notes
 - **Offline-First Sync**: Background synchronization with conflict resolution
 - **Team Assignment**: Role-based permissions and visibility
+- **Swipe-to-Change-Status**: Horizontal swipe gestures with 40% threshold and haptic feedback
+- **Collapsible Sections**: Closed and archived projects organized in expandable sections to prevent list flooding
 
 ### 3. UI/UX Excellence (98% Complete)
 - **Custom Design System**: OPSStyle with consistent components
@@ -56,6 +58,8 @@ The OPS (Operational Project System) app has achieved production-grade quality w
 - **Professional Typography**: Mohave/Kosugi fonts throughout
 - **Field-Optimized**: Large touch targets for glove operation
 - **Smooth Animations**: Professional transitions with haptic feedback
+- **Icon System**: Centralized SF Symbol references in OPSStyle.Icons enum
+- **Gesture Controls**: Swipe-to-change-status with directional detection and scroll interference prevention
 
 ### 4. Calendar & Scheduling (100% Complete)
 - **CalendarEvent-Centric Architecture**: All calendar functionality built around CalendarEvent entities as single source of truth
@@ -112,6 +116,8 @@ Comprehensive settings implementation with 13+ screens:
 - **Real-time Sync**: Task status and notes changes sync immediately to API
 - **Team Assignment**: Individual team member assignment per task with full contact integration
 - **Status Updates**: Haptic feedback on status changes, respects user permissions (no cancel for field crew)
+- **Swipe-to-Change-Status**: Horizontal swipe gestures with 40% threshold and revealed status card behind swiping card
+- **Status Progression**: Scheduled → In Progress → Completed (with reactivation from Cancelled to Scheduled)
 
 ### CalendarEvent-Centric Architecture
 - **Single Source of Truth**: CalendarEvents drive all calendar display logic
@@ -266,6 +272,7 @@ Comprehensive settings implementation with 13+ screens:
 - **TaskType**: Reusable task templates with colors and icons
 - **Client**: Enhanced client management with sub-client relationships
 - **SubClient**: Multiple contacts per client with role-based information
+- **Status & TaskStatus**: Enums with nextStatus/previousStatus progression methods and swipe capability properties
 
 ### Service Layer
 - **DataController**: Main orchestrator for all data operations
@@ -281,7 +288,9 @@ Comprehensive settings implementation with 13+ screens:
 - **74 View files**: Complete UI implementation
 - **20 Onboarding screens**: Comprehensive user setup flow
 - **14 Style components**: Consistent design system
-- **Reusable components**: SegmentedControl, AddressAutocompleteField, ContactDetailSheet
+- **Reusable components**: SegmentedControl, AddressAutocompleteField, ContactDetailSheet, CollapsibleSection
+- **Universal Job Board Card**: Swipe gesture system with revealed status cards and multi-phase animations
+- **Icon System**: OPSStyle.Icons with 40+ centralized SF Symbol references
 
 ## Post-Launch Roadmap (V2 Features)
 

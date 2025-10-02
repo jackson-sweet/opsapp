@@ -57,11 +57,11 @@ struct CalendarEventCard: View {
     // Format the address to show only: street number, street name, municipality
     private var formattedAddress: String {
         guard let project = associatedProject else { return "" }
-        
-        let address = project.address
+
+        guard let address = project.address else { return "No address" }
         // Split address by comma to get components
         let components = address.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        
+
         if components.count >= 2 {
             // Typically: "123 Main St, City, State ZIP"
             // We want: "123 Main St, City"
@@ -70,7 +70,7 @@ struct CalendarEventCard: View {
             // If no comma, just return the first part
             return components[0]
         }
-        
+
         return address
     }
     
@@ -79,9 +79,26 @@ struct CalendarEventCard: View {
         if event.type == .task, let task = event.task, let taskType = task.taskType {
             return taskType.display.uppercased()
         } else if event.type == .project {
+            // Check if this is a task-based project
+            if let project = associatedProject, project.usesTaskBasedScheduling {
+                let taskCount = project.tasks.count
+                return taskCount == 1 ? "1 TASK" : "\(taskCount) TASKS"
+            }
             return "PROJECT"
         }
         return ""
+    }
+
+    // Get the badge color based on project type
+    private var badgeColor: Color {
+        if event.type == .project,
+           let project = associatedProject,
+           project.usesTaskBasedScheduling {
+            // Use secondary accent for task-based projects
+            return OPSStyle.Colors.secondaryAccent
+        }
+        // Use display color for regular projects and tasks
+        return displayColor
     }
     
     var body: some View {
@@ -141,16 +158,16 @@ struct CalendarEventCard: View {
                         if !typeDisplay.isEmpty {
                             Text(typeDisplay)
                                 .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(displayColor)
+                                .foregroundColor(badgeColor)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(
                                     RoundedRectangle(cornerRadius: 4)
-                                        .fill(displayColor.opacity(0.1))
+                                        .fill(badgeColor.opacity(0.1))
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 4)
-                                        .stroke(displayColor.opacity(0.3), lineWidth: 1)
+                                        .stroke(badgeColor.opacity(0.3), lineWidth: 1)
                                 )
                         }
                     }

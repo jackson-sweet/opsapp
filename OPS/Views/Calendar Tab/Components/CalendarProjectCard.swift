@@ -37,7 +37,7 @@ struct CalendarProjectCard: View {
                         .lineLimit(1)
                     
                     // Address
-                    Text(project.address)
+                    Text(project.address ?? "No address")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .lineLimit(1)

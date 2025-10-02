@@ -30,7 +30,8 @@ struct TaskDetailsView: View {
     @State private var selectedTeamMember: User? = nil
     @State private var showingTeamMemberDetails = false
     @State private var showingProjectCompletionAlert = false
-    
+    @State private var showingScheduler = false
+
     init(task: ProjectTask, project: Project) {
         self._task = State(initialValue: task)
         self.project = project
@@ -58,18 +59,19 @@ struct TaskDetailsView: View {
                         // Top row with status and buttons
                         HStack {
                             // Status badge
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(statusColor(for: task.status))
-                                    .frame(width: 8, height: 8)
-                                Text(task.status.displayName.uppercased())
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(20)
+                            Text(task.status.displayName.uppercased())
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(task.status.color)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(task.status.color.opacity(0.1))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(task.status.color, lineWidth: 1)
+                                )
                             
                             Spacer()
                             
@@ -200,11 +202,23 @@ struct TaskDetailsView: View {
                     email: project.effectiveClientEmail,
                     phone: project.effectiveClientPhone
                 )
-                
+
                 TeamMemberDetailView(teamMember: clientTeamMember)
                     .presentationDragIndicator(.visible)
                     .environmentObject(dataController)
             }
+        }
+        .sheet(isPresented: $showingScheduler) {
+            CalendarSchedulerSheet(
+                isPresented: $showingScheduler,
+                itemType: .task(task),
+                currentStartDate: task.scheduledDate,
+                currentEndDate: task.completionDate,
+                onScheduleUpdate: { startDate, endDate in
+                    handleScheduleUpdate(startDate: startDate, endDate: endDate)
+                }
+            )
+            .environmentObject(dataController)
         }
         .onAppear {
             logTaskTeamMemberData()
@@ -253,7 +267,7 @@ struct TaskDetailsView: View {
             .padding(.horizontal)
             
             // Address text
-            Text(project.address)
+            Text(project.address ?? "No address")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(.white)
                 .padding(.horizontal)
@@ -263,7 +277,7 @@ struct TaskDetailsView: View {
             ZStack(alignment: .bottomTrailing) {
                 MiniMapView(
                     coordinate: project.coordinate,
-                    address: project.address
+                    address: project.address ?? ""
                 ) {
                     openInMaps()
                 }
@@ -329,59 +343,75 @@ struct TaskDetailsView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 
-                // Task dates
-                HStack(spacing: 0) {
-                    // Scheduled date
-                    HStack(spacing: 12) {
-                        Image(systemName: "calendar")
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("SCHEDULED")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            if let date = task.scheduledDate {
-                                Text(formatDate(date))
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            } else if let calendarEvent = task.calendarEvent {
-                                Text(formatDateRange(calendarEvent.startDate, calendarEvent.endDate))
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            } else {
-                                Text("Unscheduled")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                        }
+                // Task dates - make tappable for admin/office crew
+                Button(action: {
+                    if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                        showingScheduler = true
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    // Completion date if completed
-                    if task.status == .completed,
-                       let completionDate = task.completionDate {
+                }) {
+                    HStack(spacing: 0) {
+                        // Scheduled date
                         HStack(spacing: 12) {
-                            Image(systemName: "calendar.badge.checkmark")
+                            Image(systemName: "calendar")
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 24)
-                            
+
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("COMPLETED")
+                                Text("SCHEDULED")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                Text(formatDate(completionDate))
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                if let date = task.scheduledDate {
+                                    Text(formatDate(date))
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                } else if let calendarEvent = task.calendarEvent {
+                                    Text(formatDateRange(calendarEvent.startDate, calendarEvent.endDate))
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                } else {
+                                    Text("Tap to Schedule")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // Completion date if completed
+                        if task.status == .completed,
+                           let completionDate = task.completionDate {
+                            HStack(spacing: 12) {
+                                Image(systemName: "calendar.badge.checkmark")
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .frame(width: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("COMPLETED")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    Text(formatDate(completionDate))
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        // Chevron indicator for admin/office crew to show it's tappable
+                        if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .padding(.trailing, 12)
+                        }
                     }
+                    .padding()
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                 }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .buttonStyle(PlainButtonStyle())
+                .disabled(!(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew))
                 
                 // Task notes section
                 VStack(alignment: .leading, spacing: 8) {
@@ -733,8 +763,99 @@ struct TaskDetailsView: View {
         }
     }
     
+    // MARK: - Schedule Update
+
+    private func handleScheduleUpdate(startDate: Date, endDate: Date) {
+        print("🔄 Task handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
+
+        // Update or create the calendar event for the task
+        if let calendarEvent = task.calendarEvent {
+            // Update existing calendar event
+            print("🔄 Updating existing calendar event")
+            calendarEvent.startDate = startDate
+            calendarEvent.endDate = endDate
+            let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+            calendarEvent.duration = daysDiff + 1
+            calendarEvent.needsSync = true
+        } else {
+            // Create new calendar event for the task
+            print("🔄 Creating new calendar event for task")
+            let newEvent = CalendarEvent.fromTask(task, startDate: startDate, endDate: endDate)
+            task.calendarEvent = newEvent
+            modelContext.insert(newEvent)
+        }
+
+        task.needsSync = true
+
+        // Update parent project dates if necessary
+        if let project = task.project {
+            let allTaskEvents = project.tasks.compactMap { $0.calendarEvent }
+            if !allTaskEvents.isEmpty {
+                let earliestStart = allTaskEvents.map { $0.startDate }.min() ?? startDate
+                let latestEnd = allTaskEvents.map { $0.endDate }.max() ?? endDate
+
+                if project.startDate != earliestStart || project.endDate != latestEnd {
+                    print("🔄 Updating project dates to match task range")
+                    project.startDate = earliestStart
+                    project.endDate = latestEnd
+                    project.needsSync = true
+                }
+            }
+        }
+
+        // Save to database
+        do {
+            try modelContext.save()
+            print("✅ Successfully saved task schedule update")
+
+            // Immediately sync calendar event to server to prevent reversion
+            if let calendarEvent = task.calendarEvent {
+                Task {
+                    await syncCalendarEventToServer(calendarEvent)
+                }
+            }
+        } catch {
+            print("❌ Failed to save task schedule update: \(error)")
+        }
+
+        // Don't show notification - haptic feedback is enough
+    }
+
+    private func syncCalendarEventToServer(_ calendarEvent: CalendarEvent) async {
+        print("🔄 Syncing task calendar event to server: \(calendarEvent.id)")
+
+        do {
+            let formatter = ISO8601DateFormatter()
+            // Use standard ISO format without fractional seconds (matches createCalendarEvent)
+            formatter.formatOptions = [.withInternetDateTime]
+
+            let startDateString = formatter.string(from: calendarEvent.startDate)
+            let endDateString = formatter.string(from: calendarEvent.endDate)
+
+            print("📅 Formatted dates - Start: \(startDateString), End: \(endDateString)")
+
+            let updates: [String: Any] = [
+                "Start Date": startDateString,
+                "End Date": endDateString,
+                "Duration": calendarEvent.duration
+            ]
+
+            try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
+
+            await MainActor.run {
+                calendarEvent.needsSync = false
+                calendarEvent.lastSyncedAt = Date()
+                try? modelContext.save()
+            }
+
+            print("✅ Task calendar event synced successfully to server")
+        } catch {
+            print("⚠️ Failed to sync task calendar event to server: \(error)")
+        }
+    }
+
     // MARK: - Debug Logging
-    
+
     private func logTaskTeamMemberData() {
         print("\n========== TASK DETAILS VIEW: Team Member Debug ==========")
         print("📱 SCREEN: TaskDetailsView loaded for task")
@@ -912,16 +1033,7 @@ struct TaskDetailsView: View {
     }
     
     private func statusColor(for status: TaskStatus) -> Color {
-        switch status {
-        case .scheduled:
-            return Color(hex: "#FFB84D") ?? .orange
-        case .inProgress:
-            return Color(hex: "#4A90E2") ?? .blue
-        case .completed:
-            return Color(hex: "#A5B368") ?? .green
-        case .cancelled:
-            return Color(hex: "#931A32") ?? .red
-        }
+        return status.color
     }
     
     private func statusIcon(for status: TaskStatus) -> String {

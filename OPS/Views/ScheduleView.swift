@@ -84,7 +84,6 @@ struct ScheduleView: View {
                     
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 16)
                 .padding(.bottom, 90) // Add padding for tab bar
                 //.frame(maxWidth: 50)
             }

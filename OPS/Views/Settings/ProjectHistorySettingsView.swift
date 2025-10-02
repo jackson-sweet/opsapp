@@ -489,7 +489,7 @@ struct ProjectHistorySettingsView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
-                Text(project.address)
+                Text(project.address ?? "No address")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
@@ -709,7 +709,7 @@ struct ProjectHistorySettingsView: View {
         // Search in multiple fields
         return project.title.lowercased().contains(searchLower) ||
                project.clientName.lowercased().contains(searchLower) ||
-               project.address.lowercased().contains(searchLower) ||
+               (project.address?.lowercased().contains(searchLower) ?? false) ||
                project.status.rawValue.lowercased().contains(searchLower)
     }
     

@@ -1442,8 +1442,8 @@ class SyncManager {
                 // Project eventType updated
                 localProject.eventType = newEventType
                 
-                // Clear the cached eventType on all related CalendarEvents since the project's scheduling mode changed
-                // This forces them to re-evaluate their shouldDisplay logic
+                // Update the cached eventType and active status on all related CalendarEvents
+                // since the project's scheduling mode changed
                 let projectId = localProject.id
                 let eventDescriptor = FetchDescriptor<CalendarEvent>(
                     predicate: #Predicate<CalendarEvent> { $0.projectId == projectId }
@@ -1451,7 +1451,15 @@ class SyncManager {
                 if let events = try? modelContext.fetch(eventDescriptor) {
                     for event in events {
                         event.projectEventType = newEventType
-                        // Updated cached eventType on CalendarEvent
+                        // Update active status based on new scheduling mode
+                        if newEventType == .project {
+                            // Project uses traditional scheduling - activate project events, deactivate task events
+                            event.active = (event.type == .project && event.taskId == nil)
+                        } else {
+                            // Project uses task-based scheduling - activate task events, deactivate project events
+                            event.active = (event.type == .task && event.taskId != nil)
+                        }
+                        // Updated cached eventType and active status on CalendarEvent
                     }
                 }
             }
@@ -2613,7 +2621,9 @@ class SyncManager {
                         name: "Client #\(clientId.prefix(4))",
                         email: nil,
                         phoneNumber: nil,
-                        address: nil
+                        address: nil,
+                        companyId: nil,
+                        notes: nil
                     )
                     modelContext.insert(placeholderClient)
                 }
@@ -2694,9 +2704,10 @@ class SyncManager {
                     name: clientName,
                     email: clientEmail,
                     phoneNumber: clientPhone,
-                    address: clientAddress
+                    address: clientAddress,
+                    companyId: project.companyId,
+                    notes: nil
                 )
-                placeholderClient.companyId = project.companyId
                 placeholderClient.profileImageURL = clientThumbnail
                 modelContext.insert(placeholderClient)
                 

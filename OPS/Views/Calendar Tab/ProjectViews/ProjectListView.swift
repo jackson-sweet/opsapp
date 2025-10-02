@@ -62,14 +62,14 @@ struct ProjectListView: View {
                     // Project count card with softer edges
                     RoundedRectangle(cornerRadius: 10)
                         .fill(OPSStyle.Colors.cardBackgroundDark)
-                        .frame(width: 60, height: 60)
+                        .frame(width: 40, height: 40)
                     
                     // Total event count number (new + ongoing)
                     Text("\(viewModel.calendarEventsForSelectedDate.count)")
-                        .font(OPSStyle.Typography.largeTitle)
+                        .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(.white)
                 }
-                .frame(width: 60, height: 60)
+                .frame(width: 40, height: 40)
                 .segmentedEventBorder(
                     events: viewModel.calendarEventsForSelectedDate,  // Show border for all events
                     isSelected: false,
@@ -85,7 +85,7 @@ struct ProjectListView: View {
         .overlay(
             // White border for first/selected project card
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
     

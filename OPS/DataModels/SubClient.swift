@@ -25,6 +25,7 @@ final class SubClient: Identifiable {
     var createdAt: Date
     var updatedAt: Date
     var lastSyncedAt: Date?
+    var needsSync: Bool = false
     
     // MARK: - Initialization
     init(

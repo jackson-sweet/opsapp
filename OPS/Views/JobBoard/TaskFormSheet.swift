@@ -466,6 +466,15 @@ struct TaskFormSheet: View {
                         companyId: dataController.currentUser?.companyId ?? "",
                         status: .scheduled
                     )
+
+                    if let project = selectedProject {
+                        task.project = project
+                    }
+
+                    if let taskType = selectedTaskType {
+                        task.taskType = taskType
+                    }
+
                     modelContext.insert(task)
                 }
 

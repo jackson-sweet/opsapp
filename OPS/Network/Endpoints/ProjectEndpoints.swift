@@ -226,7 +226,7 @@ extension APIService {
     func updateProjectNotes(id: String, notes: String) async throws {
         let updateData = [BubbleFields.Project.teamNotes: notes]
         let bodyData = try JSONSerialization.data(withJSONObject: updateData)
-        
+
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(id)",
             method: "PATCH",
@@ -234,5 +234,128 @@ extension APIService {
             requiresAuth: false
         )
     }
-    
+
+    /// Create a new project on Bubble
+    /// - Parameter project: The local project to create
+    /// - Returns: The Bubble-assigned project ID
+    func createProject(_ project: Project) async throws -> String {
+        print("[CREATE_PROJECT] Building project data for: \(project.title)")
+
+        var projectData: [String: Any] = [
+            BubbleFields.Project.projectName: project.title,
+            BubbleFields.Project.status: project.status.rawValue,
+            BubbleFields.Project.company: project.companyId,
+            BubbleFields.Project.allDay: project.allDay
+        ]
+
+        print("[CREATE_PROJECT] Required fields - name: \(project.title), status: \(project.status.rawValue), company: \(project.companyId), allDay: \(project.allDay)")
+
+        if let clientId = project.clientId {
+            projectData[BubbleFields.Project.client] = clientId
+            print("[CREATE_PROJECT] Client ID: \(clientId)")
+        } else {
+            print("[CREATE_PROJECT] ⚠️ No client ID - project will be created without client reference")
+        }
+
+        if let address = project.address, !address.isEmpty {
+            // Bubble expects Address as a structured object, not a string
+            var addressObject: [String: Any] = ["address": address]
+
+            if let lat = project.latitude {
+                addressObject["lat"] = lat
+            }
+
+            if let lng = project.longitude {
+                addressObject["lng"] = lng
+            }
+
+            projectData[BubbleFields.Project.address] = addressObject
+            print("[CREATE_PROJECT] Address object: \(addressObject)")
+        }
+
+        if let description = project.projectDescription, !description.isEmpty {
+            projectData[BubbleFields.Project.description] = description
+            print("[CREATE_PROJECT] Description: \(description)")
+        }
+
+        if let notes = project.notes, !notes.isEmpty {
+            projectData[BubbleFields.Project.teamNotes] = notes
+            print("[CREATE_PROJECT] Notes: \(notes)")
+        }
+
+        // Only send dates if explicitly set
+        if let startDate = project.startDate {
+            let startDateString = DateFormatter.bubbleFormatter.string(from: startDate)
+            projectData[BubbleFields.Project.startDate] = startDateString
+            print("[CREATE_PROJECT] Start date: \(startDateString)")
+        } else {
+            print("[CREATE_PROJECT] No start date - project is unscheduled")
+        }
+
+        if let endDate = project.endDate {
+            let dateString = DateFormatter.bubbleFormatter.string(from: endDate)
+            projectData[BubbleFields.Project.completion] = dateString
+            print("[CREATE_PROJECT] End date: \(dateString)")
+        } else {
+            print("[CREATE_PROJECT] No end date")
+        }
+
+        if !project.teamMembers.isEmpty {
+            let memberIds = project.teamMembers.map { $0.id }
+            projectData[BubbleFields.Project.teamMembers] = memberIds
+            print("[CREATE_PROJECT] Team members: \(memberIds)")
+        } else {
+            print("[CREATE_PROJECT] No team members")
+        }
+
+        if let eventType = project.eventType {
+            // Bubble expects capitalized values: "Task" or "Project"
+            let bubbleEventType = eventType.rawValue.capitalized
+            projectData["eventType"] = bubbleEventType
+            print("[CREATE_PROJECT] Event type: \(bubbleEventType)")
+        }
+
+        let bodyData = try JSONSerialization.data(withJSONObject: projectData)
+
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[CREATE_PROJECT] Request body JSON: \(jsonString)")
+        }
+
+        print("[CREATE_PROJECT] Sending POST to: api/1.1/obj/\(BubbleFields.Types.project)")
+
+        struct CreateResponse: Codable {
+            let id: String
+        }
+
+        do {
+            let response: CreateResponse = try await executeRequest(
+                endpoint: "api/1.1/obj/\(BubbleFields.Types.project)",
+                method: "POST",
+                body: bodyData,
+                requiresAuth: false
+            )
+
+            print("[CREATE_PROJECT] ✅ Success! Bubble ID: \(response.id)")
+            return response.id
+        } catch {
+            print("[CREATE_PROJECT] ❌ Error creating project: \(error)")
+            throw error
+        }
+    }
+
+    /// Delete a project from Bubble
+    /// - Parameter id: The project ID to delete
+    func deleteProject(id: String) async throws {
+        print("[DELETE_PROJECT] Deleting project: \(id)")
+
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(id)",
+            method: "DELETE",
+            body: nil,
+            requiresAuth: false
+        )
+
+        print("[DELETE_PROJECT] ✅ Project deleted successfully")
+    }
+
 }

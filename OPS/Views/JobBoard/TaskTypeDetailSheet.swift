@@ -10,7 +10,9 @@ import SwiftUI
 struct TaskTypeDetailSheet: View {
     let taskType: TaskType
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var dataController: DataController
     @State private var showingEditForm = false
+    @State private var showingDeletionSheet = false
 
     var body: some View {
         NavigationView {
@@ -146,7 +148,7 @@ struct TaskTypeDetailSheet: View {
                                 }
 
                                 Button(action: {
-                                    // TODO: Implement delete
+                                    showingDeletionSheet = true
                                 }) {
                                     HStack {
                                         Image(systemName: "trash")
@@ -184,8 +186,14 @@ struct TaskTypeDetailSheet: View {
             }
         }
         .sheet(isPresented: $showingEditForm) {
-            // TODO: Implement TaskTypeEditForm
-            Text("Edit Task Type - Coming Soon")
+            TaskTypeEditSheet(taskType: taskType) {
+                showingEditForm = false
+            }
+            .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingDeletionSheet) {
+            TaskTypeDeletionSheet(taskType: taskType)
+                .environmentObject(dataController)
         }
     }
 }

@@ -27,18 +27,54 @@ struct SubClientListView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Section header - only show if there are sub-clients
-            if !client.subClients.isEmpty {
-                HStack {
-                    Text("SUB CONTACTS")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
-                    Spacer()
+            // Section header with count and add button
+            HStack {
+                Text("SUB CONTACTS (\(client.subClients.count))")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Spacer()
+
+                if canAddSubContacts {
+                    Button(action: onCreateSubClient) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(OPSStyle.Typography.smallCaption)
+                            Text("Add")
+                                .font(OPSStyle.Typography.smallCaption)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        )
+                    }
                 }
             }
-            
-            if !client.subClients.isEmpty {
+
+            // Sub-client list or empty state
+            if client.subClients.isEmpty {
+                // Empty state
+                VStack(spacing: 12) {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 32))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    Text("No sub-contacts yet")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 32)
+                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+            } else {
                 // Sub-client list
                 VStack(spacing: 8) {
                     ForEach(client.subClients, id: \.id) { subClient in
@@ -87,27 +123,6 @@ struct SubClientListView: View {
                         )
                     }
                 }
-            }
-            
-            // Add button - only visible for admin/office crew when NOT editing
-            if !isEditing && canAddSubContacts {
-                Button(action: onCreateSubClient) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus.circle")
-                        Text("Add Sub Contact")
-                    }
-                    .font(OPSStyle.Typography.smallButton)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                    )
-                }
-                .transition(.opacity)
-                .padding(.top, client.subClients.isEmpty ? 0 : 8)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: isEditing)

@@ -23,6 +23,10 @@ struct JobBoardView: View {
     @State private var showingProjectFilterSheet = false
     @State private var showingTaskFilterSheet = false
 
+    // Preloading state
+    @State private var isPreloadingClients = false
+    @State private var hasPreloadedClients = false
+
     // Permission check
     private var hasAccess: Bool {
         guard let currentUser = dataController.currentUser else { return false }
@@ -88,7 +92,7 @@ struct JobBoardView: View {
                         .padding(.top, 12)
                     }
 
-                    // Main content
+                    // Main content with slide transitions
                     Group {
                         switch selectedSection {
                         case .dashboard:
@@ -112,11 +116,19 @@ struct JobBoardView: View {
                             .padding(.horizontal, 4)
                         }
                     }
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.15), value: selectedSection)
-                    
+                    .id(selectedSection)
+                    .transition(slideTransition)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.85), value: selectedSection)
+                    .onChange(of: selectedSection) { oldValue, newValue in
+                        previousSection = oldValue
+                    }
+                    .task {
+                        // Preload clients in background when Job Board first appears
+                        await preloadClientsData()
+                    }
+
                 }
-            
+
                 // Floating action button and menu
                 ZStack {
                     // Dimmed background when menu is shown
@@ -218,7 +230,29 @@ struct JobBoardView: View {
                 TaskFormSheet(mode: .create) { _ in }
             }
         }
-    
+
+    // MARK: - Background Data Preloading
+
+    @MainActor
+    private func preloadClientsData() async {
+        guard !hasPreloadedClients && !isPreloadingClients else { return }
+        guard let companyId = dataController.currentUser?.companyId else { return }
+
+        isPreloadingClients = true
+
+        try? await Task.sleep(nanoseconds: 500_000_000)
+
+        print("[PRELOAD] Starting background client data preload")
+
+        let clients = dataController.getAllClients(for: companyId)
+        for client in clients {
+            _ = client.projects.count
+        }
+
+        hasPreloadedClients = true
+        isPreloadingClients = false
+        print("[PRELOAD] Preloaded \(clients.count) clients with project data")
+    }
 }
 
 // MARK: - Floating Action Item
@@ -524,7 +558,10 @@ struct JobBoardTasksView: View {
 
     private var allTasks: [ProjectTask] {
         let projects = dataController.getAllProjects()
-        return projects.flatMap { $0.tasks }
+        return projects.flatMap { project -> [ProjectTask] in
+            guard project.usesTaskBasedScheduling else { return [] }
+            return project.tasks
+        }
     }
 
     private var availableTaskTypes: [TaskType] {

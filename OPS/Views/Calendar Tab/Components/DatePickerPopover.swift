@@ -125,7 +125,6 @@ struct DatePickerPopover: View {
             Button {
                 // Select today's date directly, not the start of the week
                 onSelectDate(Date())
-                dismiss()
             } label: {
                 Text("Today")
                     .font(OPSStyle.Typography.bodyBold)
@@ -208,7 +207,6 @@ struct DatePickerPopover: View {
             Button {
                 let today = Date()
                 onSelectDate(today)
-                dismiss()
             } label: {
                 Text("RETURN TO CURRENT DATE")
                     .font(OPSStyle.Typography.bodyBold)
@@ -336,19 +334,17 @@ struct DatePickerPopover: View {
         
         // Select the Monday of the week
         onSelectDate(weekInterval.start)
-        dismiss()
     }
     
     private func selectMonth(_ month: Int) {
         let calendar = Calendar.current
         var components = DateComponents()
         components.year = calendar.component(.year, from: displayDate)
-        components.month = month + 1 // Month is 0-based in array, 1-based in DateComponents
+        components.month = month + 1
         components.day = 1
-        
+
         if let date = calendar.date(from: components) {
             onSelectDate(date)
-            dismiss()
         }
     }
     

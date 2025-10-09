@@ -278,9 +278,9 @@ class APIService {
             body: bodyData,
             requiresAuth: false
         )
-        
+
     }
-    
+
     // MARK: - Core Request Method
 
     func executeRequest<T: Decodable>(
@@ -352,8 +352,13 @@ class APIService {
             
             // Check for success status codes
             guard (200...299).contains(httpResponse.statusCode) else {
-                
-                
+                // Log error response body for debugging
+                if let errorBody = String(data: data, encoding: .utf8) {
+                    print("[API_ERROR] HTTP \(httpResponse.statusCode) - Response body: \(errorBody)")
+                } else {
+                    print("[API_ERROR] HTTP \(httpResponse.statusCode) - Unable to decode error body")
+                }
+
                 throw APIError.httpError(statusCode: httpResponse.statusCode)
             }
             
@@ -754,14 +759,11 @@ class APIService {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         decoder.dateDecodingStrategy = .iso8601
-        
-        // Bubble API wraps responses in a "response" field
-        // First try to decode as a wrapper
+
         do {
             let wrapper = try decoder.decode(BubbleResponseWrapper<T>.self, from: data)
             return wrapper.response
         } catch {
-            // If that fails, try to decode directly
             return try decoder.decode(T.self, from: data)
         }
     }

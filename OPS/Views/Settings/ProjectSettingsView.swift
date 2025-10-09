@@ -80,7 +80,19 @@ struct ProjectSettingsView: View {
                 .buttonStyle(PlainButtonStyle())
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
-                
+
+                NavigationLink(destination: SchedulingTypeExplanationView()) {
+                    SettingsRow(
+                        icon: "calendar.badge.clock",
+                        title: "Scheduling Type",
+                        subtitle: "Project Based vs Task Based",
+                        showChevron: true
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
                 Spacer()
             }
         }

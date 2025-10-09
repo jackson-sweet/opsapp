@@ -186,11 +186,11 @@ struct ClientFormSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("CANCEL") {
+                    Button("Cancel") {
                         dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .disabled(isSaving)
                 }
                 
@@ -201,11 +201,11 @@ struct ClientFormSheet: View {
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                                 .scaleEffect(0.8)
                         } else {
-                            Text("SAVE")
+                            Text("Save")
                                 .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
+                    .foregroundColor(name.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
                     .disabled(name.isEmpty || isSaving)
                 }
             }
@@ -327,9 +327,11 @@ struct ClientFormSheet: View {
         guard let companyId = dataController.currentUser?.companyId else {
             throw ClientError.noCompanyId
         }
-        
-        // Create client locally first
-        let newClient = Client(
+
+        print("[CLIENT_CREATE] Creating client in Bubble...")
+
+        // Create local client with temporary UUID
+        let tempClient = Client(
             id: UUID().uuidString,
             name: name,
             email: email.isEmpty ? nil : email,
@@ -338,16 +340,22 @@ struct ClientFormSheet: View {
             companyId: companyId,
             notes: notes.isEmpty ? nil : notes
         )
-        
+
+        // Create in Bubble API first
+        let bubbleId = try await dataController.apiService.createClient(tempClient)
+        print("[CLIENT_CREATE] ✅ Client created in Bubble with ID: \(bubbleId)")
+
+        // Update local client with Bubble ID
+        tempClient.id = bubbleId
+        tempClient.needsSync = false
+        tempClient.lastSyncedAt = Date()
+
         // Save to data controller
         await MainActor.run {
-            dataController.saveClient(newClient)
+            dataController.saveClient(tempClient)
         }
-        
-        // Sync to backend
-        dataController.syncManager?.triggerBackgroundSync()
-        
-        return newClient
+
+        return tempClient
     }
     
     private func updateExistingClient(_ client: Client) async throws {

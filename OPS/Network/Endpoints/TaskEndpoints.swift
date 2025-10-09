@@ -139,19 +139,43 @@ extension APIService {
     ///   - id: The task ID
     ///   - teamMemberIds: Array of user IDs assigned to the task
     func updateTaskTeamMembers(id: String, teamMemberIds: [String]) async throws {
-        
+
         let updateData = [BubbleFields.Task.teamMembers: teamMemberIds]
         let bodyData = try JSONSerialization.data(withJSONObject: updateData)
-        
+
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.task)/\(id)",
             method: "PATCH",
             body: bodyData,
             requiresAuth: false
         )
-        
+
     }
-    
+
+    /// Update task type
+    /// - Parameters:
+    ///   - id: The task ID
+    ///   - taskTypeId: The new task type ID
+    ///   - taskColor: The new task color (optional)
+    func updateTaskType(id: String, taskTypeId: String, taskColor: String? = nil) async throws {
+        print("[API] Updating task \(id) to task type: \(taskTypeId)")
+
+        var updateData: [String: Any] = [BubbleFields.Task.type: taskTypeId]
+        if let color = taskColor {
+            updateData[BubbleFields.Task.taskColor] = color
+        }
+        let bodyData = try JSONSerialization.data(withJSONObject: updateData)
+
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.task)/\(id)",
+            method: "PATCH",
+            body: bodyData,
+            requiresAuth: false
+        )
+
+        print("[API] ✅ Task type updated successfully")
+    }
+
     // MARK: - Task Creation
     
     /// Create a new task
@@ -214,6 +238,7 @@ extension APIService {
     /// Delete a task
     /// - Parameter id: The task ID to delete
     func deleteTask(id: String) async throws {
+        print("[DELETE_TASK] Deleting task: \(id)")
 
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.task)/\(id)",
@@ -222,6 +247,7 @@ extension APIService {
             requiresAuth: false
         )
 
+        print("[DELETE_TASK] ✅ Task deleted successfully")
     }
 
     // MARK: - Task Status Options

@@ -13,7 +13,9 @@ struct CalendarEventCard: View {
     let isOngoing: Bool
     let onTap: () -> Void
     @EnvironmentObject private var dataController: DataController
-    
+    @State private var showingReschedule = false
+    @State private var showingQuickActions = false
+
     init(event: CalendarEvent, isFirst: Bool, isOngoing: Bool = false, onTap: @escaping () -> Void) {
         self.event = event
         self.isFirst = isFirst
@@ -121,19 +123,11 @@ struct CalendarEventCard: View {
                                 .lineLimit(1)
                                 .textCase(.uppercase)
                             
-                            // For task events, show task name as subtitle
-                            if event.type == .task, let task = event.task {
-                                Text(task.displayTitle)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    .lineLimit(1)
-                            } else {
-                                // For project events, show client name as subtitle
-                                Text(project.effectiveClientName)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    .lineLimit(1)
-                            }
+                            // Show client name as subtitle for both tasks and projects
+                            Text(project.effectiveClientName)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .lineLimit(1)
                             
                             // Formatted address (street number, street name, municipality)
                             Text(formattedAddress)
@@ -209,12 +203,77 @@ struct CalendarEventCard: View {
         .onTapGesture {
             onTap()
         }
+        .onLongPressGesture(minimumDuration: 0.5) {
+            showingQuickActions = true
+        }
+        .confirmationDialog("Quick Actions", isPresented: $showingQuickActions, titleVisibility: .visible) {
+            Button("Reschedule") {
+                showingReschedule = true
+            }
+
+            Button("Cancel", role: .cancel) {}
+        }
         .padding(.vertical, 4)
         .padding(.horizontal)
+        .sheet(isPresented: $showingReschedule) {
+            if event.type == .task, let task = event.task {
+                CalendarSchedulerSheet(
+                    isPresented: $showingReschedule,
+                    itemType: .task(task),
+                    currentStartDate: event.startDate,
+                    currentEndDate: event.endDate,
+                    onScheduleUpdate: { newStart, newEnd in
+                        updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
+                    }
+                )
+                .environmentObject(dataController)
+            } else if event.type == .project, let project = associatedProject {
+                CalendarSchedulerSheet(
+                    isPresented: $showingReschedule,
+                    itemType: .project(project),
+                    currentStartDate: event.startDate,
+                    currentEndDate: event.endDate,
+                    onScheduleUpdate: { newStart, newEnd in
+                        updateProjectSchedule(project: project, startDate: newStart, endDate: newEnd)
+                    }
+                )
+                .environmentObject(dataController)
+            }
+        }
     }
     
     // Use darker background color for card
     private var cardBackground: some View {
         OPSStyle.Colors.cardBackgroundDark
+    }
+
+    private func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date) {
+        guard let calendarEvent = task.calendarEvent else { return }
+
+        calendarEvent.startDate = startDate
+        calendarEvent.endDate = endDate
+        calendarEvent.needsSync = true
+
+        do {
+            try dataController.modelContext?.save()
+        } catch {
+            print("Error updating task schedule: \(error)")
+        }
+    }
+
+    private func updateProjectSchedule(project: Project, startDate: Date, endDate: Date) {
+        event.startDate = startDate
+        event.endDate = endDate
+        event.needsSync = true
+
+        project.startDate = startDate
+        project.endDate = endDate
+        project.needsSync = true
+
+        do {
+            try dataController.modelContext?.save()
+        } catch {
+            print("Error updating project schedule: \(error)")
+        }
     }
 }

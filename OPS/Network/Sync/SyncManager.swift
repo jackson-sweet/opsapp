@@ -435,27 +435,33 @@ class SyncManager {
             }
             return
         }
-        
+
         syncInProgress = true
         syncStateSubject.send(true)
-        
+
         Task {
             do {
                 // First sync company data to get latest subscription info
                 await syncCompanyData()
-                
-                // First sync users that need sync (always allowed)
+
+                // Sync clients that need sync (always allowed)
+                let clientSyncCount = await syncPendingClientChanges()
+
+                // Sync tasks that need sync (always allowed)
+                let taskSyncCount = await syncPendingTaskChanges()
+
+                // Sync users that need sync (always allowed)
                 let userSyncCount = await syncPendingUserChanges()
-                
+
                 // Then sync high-priority project items (status changes) if auto-updates are enabled
                 var highPriorityCount = 0
                 if !preventAutoStatusUpdates {
                     highPriorityCount = await syncPendingProjectStatusChanges()
                 } else {
                 }
-                
+
                 // Finally, fetch remote data if we didn't exhaust our sync budget OR if forced
-                if forceProjectSync || (userSyncCount + highPriorityCount) < 10 {
+                if forceProjectSync || (clientSyncCount + taskSyncCount + userSyncCount + highPriorityCount) < 10 {
                     try await syncProjects()
                 } else {
                 }
@@ -851,34 +857,257 @@ class SyncManager {
     }
     
     /// Sync a specific project's status and notes to the backend
+    private func syncClientStatus(_ client: Client) async {
+        guard client.needsSync else { return }
+
+        print("[SYNC] Syncing client: \(client.id) - \(client.name)")
+        print("[SYNC] Client needsSync: \(client.needsSync)")
+        print("[SYNC] Client lastSyncedAt: \(client.lastSyncedAt?.description ?? "nil")")
+
+        do {
+            if client.lastSyncedAt == nil {
+                print("[SYNC] 📝 Client \(client.id) has never been synced - creating NEW client on Bubble")
+
+                let bubbleId = try await apiService.createClient(client)
+                print("[SYNC] ✅ Client created on Bubble with ID: \(bubbleId)")
+
+                let oldId = client.id
+                client.id = bubbleId
+                client.needsSync = false
+                client.lastSyncedAt = Date()
+                try modelContext.save()
+
+                print("[SYNC] ✅ Updated local client ID from \(oldId) to \(bubbleId)")
+
+                return
+            }
+
+            print("[SYNC] Client exists on Bubble, updating information")
+
+            try await apiService.updateClient(
+                id: client.id,
+                name: client.name,
+                email: client.email,
+                phone: client.phoneNumber,
+                address: client.address
+            )
+            print("[SYNC] ✅ Updated client information")
+
+            client.needsSync = false
+            client.lastSyncedAt = Date()
+            try modelContext.save()
+            print("[SYNC] ✅ Client \(client.id) synced successfully")
+        } catch {
+            print("[SYNC] ❌ Failed to sync client \(client.id): \(error)")
+        }
+    }
+
+    private func syncPendingTaskChanges() async -> Int {
+        let predicate = #Predicate<ProjectTask> { $0.needsSync == true }
+        var descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
+
+        do {
+            let pendingTasks = try modelContext.fetch(descriptor)
+            var successCount = 0
+
+            for batch in pendingTasks.chunked(into: 10) {
+                await withTaskGroup(of: Bool.self) { group in
+                    for task in batch {
+                        group.addTask {
+                            await self.syncTaskStatus(task)
+                            return true
+                        }
+                    }
+
+                    for await success in group {
+                        if success {
+                            successCount += 1
+                        }
+                    }
+                }
+            }
+
+            return successCount
+        } catch {
+            print("[SYNC] ❌ Failed to fetch pending tasks: \(error)")
+            return 0
+        }
+    }
+
+    private func syncTaskStatus(_ task: ProjectTask) async {
+        guard task.needsSync else { return }
+
+        print("[SYNC] Syncing task: \(task.id) - Type: \(task.taskType?.display ?? "Unknown")")
+        print("[SYNC] Task needsSync: \(task.needsSync)")
+        print("[SYNC] Task lastSyncedAt: \(task.lastSyncedAt?.description ?? "nil")")
+
+        do {
+            if task.lastSyncedAt == nil {
+                print("[SYNC] 📝 Task \(task.id) has never been synced - creating NEW task on Bubble")
+
+                let taskDTO = TaskDTO(
+                    id: task.id,
+                    calendarEventId: task.calendarEventId,
+                    companyId: task.companyId,
+                    completionDate: nil,
+                    projectId: task.projectId,
+                    scheduledDate: nil,
+                    status: task.status.rawValue,
+                    taskColor: task.taskColor,
+                    taskIndex: task.displayOrder,
+                    taskNotes: task.taskNotes,
+                    teamMembers: task.getTeamMemberIds(),
+                    type: task.taskTypeId,
+                    createdDate: nil,
+                    modifiedDate: nil
+                )
+
+                let createdTask = try await apiService.createTask(taskDTO)
+                print("[SYNC] ✅ Task created on Bubble with ID: \(createdTask.id)")
+
+                let oldId = task.id
+                task.id = createdTask.id
+                task.needsSync = false
+                task.lastSyncedAt = Date()
+                try modelContext.save()
+
+                print("[SYNC] ✅ Updated local task ID from \(oldId) to \(createdTask.id)")
+
+                if let calendarEvent = task.calendarEvent {
+                    print("[SYNC] Creating CalendarEvent for task")
+                    calendarEvent.taskId = createdTask.id
+                    calendarEvent.needsSync = true
+                    try modelContext.save()
+                }
+
+                return
+            }
+
+            print("[SYNC] Task exists on Bubble, updating information")
+
+            if task.taskNotes != nil {
+                try await apiService.updateTaskNotes(id: task.id, notes: task.taskNotes!)
+                print("[SYNC] ✅ Updated task notes")
+            }
+
+            if !task.getTeamMemberIds().isEmpty {
+                try await apiService.updateTaskTeamMembers(id: task.id, teamMemberIds: task.getTeamMemberIds())
+                print("[SYNC] ✅ Updated task team members")
+            }
+
+            task.needsSync = false
+            task.lastSyncedAt = Date()
+            try modelContext.save()
+            print("[SYNC] ✅ Task \(task.id) synced successfully")
+        } catch {
+            print("[SYNC] ❌ Failed to sync task \(task.id): \(error)")
+        }
+    }
+
     private func syncProjectStatus(_ project: Project) async {
         // Only sync if project needs sync
         guard project.needsSync else { return }
-        
+
+        print("[SYNC] Syncing project: \(project.id) - \(project.title)")
+        print("[SYNC] Project needsSync: \(project.needsSync)")
+        print("[SYNC] Project lastSyncedAt: \(project.lastSyncedAt?.description ?? "nil")")
+
         do {
+            // Check if project exists on Bubble (lastSyncedAt == nil means it's a new local project)
+            if project.lastSyncedAt == nil {
+                print("[SYNC] 📝 Project \(project.id) has never been synced - creating NEW project on Bubble")
+
+                let bubbleId = try await apiService.createProject(project)
+                print("[SYNC] ✅ Project created on Bubble with ID: \(bubbleId)")
+
+                // Update local project with Bubble ID
+                let oldId = project.id
+                project.id = bubbleId
+                project.needsSync = false
+                project.lastSyncedAt = Date()
+                try modelContext.save()
+
+                print("[SYNC] ✅ Updated local project ID from \(oldId) to \(bubbleId)")
+
+                // Create CalendarEvent if project has dates
+                if let startDate = project.startDate, let endDate = project.endDate {
+                    print("[SYNC] Creating CalendarEvent for project")
+                    do {
+                        try await createCalendarEventForProject(project, startDate: startDate, endDate: endDate)
+                        print("[SYNC] ✅ CalendarEvent created for project")
+                    } catch {
+                        print("[SYNC] ⚠️ Failed to create CalendarEvent: \(error)")
+                    }
+                } else {
+                    print("[SYNC] ℹ️ Project has no dates - skipping CalendarEvent creation")
+                }
+
+                return
+            }
+
+            print("[SYNC] Project exists on Bubble, updating status")
+
             // Different approach based on the status
             if project.status == .completed {
                 // For completed projects, use the workflow endpoint
                 let newStatus = try await apiService.completeProject(projectId: project.id, status: project.status.rawValue)
+                print("[SYNC] ✅ Completed project workflow executed")
             } else {
                 // For other statuses, use the regular update endpoint
                 try await apiService.updateProjectStatus(id: project.id, status: project.status.rawValue)
+                print("[SYNC] ✅ Updated project status to \(project.status.rawValue)")
             }
-            
+
             // Sync notes if they exist
             if let notes = project.notes, !notes.isEmpty {
                 try await apiService.updateProjectNotes(id: project.id, notes: notes)
+                print("[SYNC] ✅ Updated project notes")
             }
-            
+
             // Mark as synced if successful
             project.needsSync = false
             project.lastSyncedAt = Date()
             try modelContext.save()
+            print("[SYNC] ✅ Project \(project.id) synced successfully")
         } catch {
+            print("[SYNC] ❌ Failed to sync project \(project.id): \(error)")
             // Leave as needsSync=true to retry later
         }
     }
     
+    /// Sync any pending client changes
+    private func syncPendingClientChanges() async -> Int {
+        let predicate = #Predicate<Client> { $0.needsSync == true }
+        var descriptor = FetchDescriptor<Client>(predicate: predicate)
+
+        do {
+            let pendingClients = try modelContext.fetch(descriptor)
+            var successCount = 0
+
+            for batch in pendingClients.chunked(into: 10) {
+                await withTaskGroup(of: Bool.self) { group in
+                    for client in batch {
+                        group.addTask {
+                            await self.syncClientStatus(client)
+                            return true
+                        }
+                    }
+
+                    for await success in group {
+                        if success {
+                            successCount += 1
+                        }
+                    }
+                }
+            }
+
+            return successCount
+        } catch {
+            print("[SYNC] ❌ Failed to fetch pending clients: \(error)")
+            return 0
+        }
+    }
+
     /// Sync any pending project status changes
     private func syncPendingProjectStatusChanges() async -> Int {
         // Skip status synchronization if auto-updates are disabled
@@ -1069,13 +1298,19 @@ class SyncManager {
             try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
         }
         
+        // Sync task types for the company (required before tasks)
+        do {
+            try await syncCompanyTaskTypes(companyId: companyId)
+        } catch {
+        }
+
         // Sync calendar events for the company (critical for calendar view)
         // Syncing calendar events for company
         do {
             try await syncCompanyCalendarEvents(companyId: companyId)
         } catch {
         }
-        
+
         // Sync tasks for all companies (no longer conditional)
         // Syncing tasks for company
         do {
@@ -2912,6 +3147,64 @@ class SyncManager {
             try modelContext.save()
             
         } catch {
+        }
+    }
+
+    // MARK: - Calendar Event Creation
+
+    private func createCalendarEventForProject(_ project: Project, startDate: Date, endDate: Date) async throws {
+        let companyId = project.companyId
+        let companyDescriptor = FetchDescriptor<Company>(
+            predicate: #Predicate<Company> { $0.id == companyId }
+        )
+        let defaultColor = try modelContext.fetch(companyDescriptor).first?.defaultProjectColor ?? "#59779F"
+
+        let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.formatOptions = [.withInternetDateTime]
+
+        let duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
+
+        let eventDTO = CalendarEventDTO(
+            id: UUID().uuidString,
+            color: defaultColor,
+            companyId: project.companyId,
+            projectId: project.id,
+            taskId: nil,
+            duration: Double(duration),
+            endDate: dateFormatter.string(from: endDate),
+            startDate: dateFormatter.string(from: startDate),
+            teamMembers: project.teamMembers.map { $0.id },
+            title: project.title,
+            type: "project",
+            active: true,
+            createdDate: nil,
+            modifiedDate: nil
+        )
+
+        let createdEvent = try await apiService.createCalendarEvent(eventDTO)
+
+        // Create local CalendarEvent and link to project
+        await MainActor.run {
+            let calendarEvent = CalendarEvent(
+                id: createdEvent.id,
+                projectId: project.id,
+                companyId: project.companyId,
+                title: project.title,
+                startDate: startDate,
+                endDate: endDate,
+                color: defaultColor,
+                type: .project,
+                active: true
+            )
+
+            calendarEvent.projectEventType = .project
+            calendarEvent.duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
+            calendarEvent.teamMemberIdsString = project.teamMembers.map { $0.id }.joined(separator: ",")
+
+            modelContext.insert(calendarEvent)
+            project.primaryCalendarEvent = calendarEvent
+
+            try? modelContext.save()
         }
     }
 }

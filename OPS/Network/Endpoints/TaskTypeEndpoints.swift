@@ -16,16 +16,19 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of task type DTOs
     func fetchCompanyTaskTypes(companyId: String) async throws -> [TaskTypeDTO] {
-        
-        // Note: TaskType doesn't have a company field in Bubble
-        // We'll need to fetch all task types and filter client-side
-        // or add a company field to TaskType in Bubble
-        
-        return try await fetchBubbleObjectsWithArrayConstraints(
-            objectType: BubbleFields.Types.taskType,
-            constraints: [],
-            sortField: BubbleFields.TaskType.display
-        )
+
+        // Fetch company to get task type IDs from the relationship
+        let company = try await fetchCompany(id: companyId)
+
+        // Extract task type IDs from the company's taskTypes relationship
+        guard let taskTypeRefs = company.taskTypes, !taskTypeRefs.isEmpty else {
+            return []
+        }
+
+        let taskTypeIds = taskTypeRefs.compactMap { $0.stringValue }
+
+        // Fetch the specific task types by their IDs
+        return try await fetchTaskTypesByIds(ids: taskTypeIds)
     }
     
     /// Fetch a single task type by ID
@@ -67,27 +70,29 @@ extension APIService {
     /// - Parameter taskType: The task type DTO to create
     /// - Returns: The created task type DTO with server-assigned ID
     func createTaskType(_ taskType: TaskTypeDTO) async throws -> TaskTypeDTO {
-        
-        // Prepare task type data for creation
         var taskTypeData: [String: Any] = [
             BubbleFields.TaskType.display: taskType.display,
             BubbleFields.TaskType.color: taskType.color,
             BubbleFields.TaskType.isDefault: taskType.isDefault ?? false
         ]
-        
-        // Note: TaskType doesn't have company, icon, or displayOrder fields in Bubble
-        
+
         let bodyData = try JSONSerialization.data(withJSONObject: taskTypeData)
-        
-        // Create the task type and get the response
-        let response: BubbleObjectResponse<TaskTypeDTO> = try await executeRequest(
+
+        let response: TaskTypeCreationResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.taskType)",
             method: "POST",
             body: bodyData,
             requiresAuth: false
         )
-        
-        return response.response
+
+        return TaskTypeDTO(
+            id: response.id,
+            color: taskType.color,
+            display: taskType.display,
+            isDefault: taskType.isDefault,
+            createdDate: nil,
+            modifiedDate: nil
+        )
     }
     
     // MARK: - TaskType Updates
@@ -132,13 +137,15 @@ extension APIService {
     /// Delete a task type (only if not default and not in use)
     /// - Parameter id: The task type ID to delete
     func deleteTaskType(id: String) async throws {
-        
+        print("[API] Deleting task type: \(id)")
+
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.taskType)/\(id)",
             method: "DELETE",
             body: nil,
             requiresAuth: false
         )
-        
+
+        print("[API] ✅ Task type deleted successfully")
     }
 }

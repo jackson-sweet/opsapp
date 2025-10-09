@@ -33,6 +33,8 @@ struct UniversalJobBoardCard: View {
     @State private var hasTriggeredHaptic = false
     @State private var confirmingStatus: Any? = nil
     @State private var confirmingDirection: SwipeDirection? = nil
+    @State private var showingDeleteConfirmation = false
+    @State private var showingClientDeletionSheet = false
 
     var body: some View {
         if case .client = cardType {
@@ -99,6 +101,11 @@ struct UniversalJobBoardCard: View {
                     .environmentObject(dataController)
             }
         }
+        .sheet(isPresented: $showingClientDeletionSheet) {
+            if case .client(let client) = cardType {
+                ClientDeletionSheet(client: client)
+            }
+        }
     }
 
     @ViewBuilder
@@ -161,21 +168,41 @@ struct UniversalJobBoardCard: View {
         .overlay(
             Group {
                 if case .project(let project) = cardType {
-                    Text(project.status.displayName.uppercased())
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(project.status.color)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(project.status.color.opacity(0.1))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(project.status.color, lineWidth: 1)
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(8)
+                    ZStack {
+                        Text(project.status.displayName.uppercased())
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(project.status.color)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(project.status.color.opacity(0.1))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(project.status.color, lineWidth: 1)
+                            )
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .padding(8)
+
+                        if project.startDate == nil || project.endDate == nil {
+                            Text("UNSCHEDULED")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
+                                )
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                                .padding(8)
+                        }
+                    }
                 }
             }
         )
@@ -239,6 +266,25 @@ struct UniversalJobBoardCard: View {
                 ProjectTeamChangeSheet(project: project)
                     .environmentObject(dataController)
             }
+        }
+        .alert("Delete \(deleteItemName)?", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deleteItem()
+            }
+        } message: {
+            Text("This will permanently delete this \(deleteItemName.lowercased()). This action cannot be undone.")
+        }
+    }
+
+    private var deleteItemName: String {
+        switch cardType {
+        case .project:
+            return "Project"
+        case .client:
+            return "Client"
+        case .task:
+            return "Task"
         }
     }
 
@@ -306,21 +352,41 @@ struct UniversalJobBoardCard: View {
         .overlay(
             Group {
                 if case .task(let task) = cardType {
-                    Text(task.status.displayName.uppercased())
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(task.status.color)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(task.status.color.opacity(0.1))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(task.status.color, lineWidth: 1)
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(8)
+                    ZStack {
+                        Text(task.status.displayName.uppercased())
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(task.status.color)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(task.status.color.opacity(0.1))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(task.status.color, lineWidth: 1)
+                            )
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .padding(8)
+
+                        if task.calendarEvent?.startDate == nil || task.calendarEvent?.endDate == nil {
+                            Text("UNSCHEDULED")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
+                                )
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                                .padding(8)
+                        }
+                    }
                 }
             }
         )
@@ -471,6 +537,10 @@ struct UniversalJobBoardCard: View {
                 showingTeamPicker = true
             }
 
+            Button("Delete", role: .destructive) {
+                showingDeleteConfirmation = true
+            }
+
             Button("Cancel", role: .cancel) {}
         }
     }
@@ -484,6 +554,10 @@ struct UniversalJobBoardCard: View {
 
             Button("Add Project") {
                 showingProjectForm = true
+            }
+
+            Button("Delete", role: .destructive) {
+                showingClientDeletionSheet = true
             }
 
             Button("Cancel", role: .cancel) {}
@@ -513,6 +587,10 @@ struct UniversalJobBoardCard: View {
                 showingTeamPicker = true
             }
 
+            Button("Delete", role: .destructive) {
+                showingDeleteConfirmation = true
+            }
+
             Button("Cancel", role: .cancel) {}
         }
     }
@@ -525,7 +603,7 @@ struct UniversalJobBoardCard: View {
                 ProjectDetailsView(project: project)
             }
         case .client(let client):
-            TeamMemberDetailView(client: client, project: nil)
+            ContactDetailView(client: client, project: nil)
                 .environmentObject(dataController)
         case .task(let task):
             if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
@@ -789,15 +867,18 @@ struct UniversalJobBoardCard: View {
             confirmingDirection = direction
             isChangingStatus = true
 
-            withAnimation(.easeInOut(duration: 0.2)) {
+            // Snap card back to center
+            withAnimation(.easeInOut(duration: 0.15)) {
                 swipeOffset = 0
             }
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            // Brief flash of status confirmation (0.15s), then perform change
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 performStatusChange(to: targetStatus)
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                // Immediately hide confirmation after status change
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    withAnimation(.easeInOut(duration: 0.15)) {
                         isChangingStatus = false
                         confirmingStatus = nil
                         confirmingDirection = nil
@@ -810,6 +891,35 @@ struct UniversalJobBoardCard: View {
                 swipeOffset = 0
             }
             hasTriggeredHaptic = false
+        }
+    }
+
+    private func deleteItem() {
+        Task {
+            do {
+                switch cardType {
+                case .project(let project):
+                    try await dataController.apiService.deleteProject(id: project.id)
+                    await MainActor.run {
+                        modelContext.delete(project)
+                        try? modelContext.save()
+                    }
+                case .client(let client):
+                    try await dataController.apiService.deleteClient(id: client.id)
+                    await MainActor.run {
+                        modelContext.delete(client)
+                        try? modelContext.save()
+                    }
+                case .task(let task):
+                    try await dataController.apiService.deleteTask(id: task.id)
+                    await MainActor.run {
+                        modelContext.delete(task)
+                        try? modelContext.save()
+                    }
+                }
+            } catch {
+                print("[DELETE] ❌ Error deleting item: \(error)")
+            }
         }
     }
 }

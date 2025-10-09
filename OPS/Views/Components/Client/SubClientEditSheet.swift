@@ -181,21 +181,22 @@ struct SubClientEditSheet: View {
                         dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .disabled(isSaving)
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: saveSubClient) {
                         if isSaving {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                                 .scaleEffect(0.8)
                         } else {
                             Text("Save")
                                 .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
+                    .foregroundColor(viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
                     .disabled(viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
             }

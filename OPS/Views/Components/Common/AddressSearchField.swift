@@ -62,7 +62,7 @@ struct AddressSearchField: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .lineLimit(1)
                                 }
-                                
+
                                 let placemark = item.placemark
                                 Text(formatAddress(placemark))
                                     .font(OPSStyle.Typography.caption)
@@ -72,6 +72,7 @@ struct AddressSearchField: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
                         

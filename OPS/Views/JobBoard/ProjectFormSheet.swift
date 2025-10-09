@@ -80,7 +80,7 @@ struct ProjectFormSheet: View {
     @State private var showingError = false
 
     private var isValid: Bool {
-        !title.isEmpty && !address.isEmpty && selectedClientId != nil
+        !title.isEmpty && selectedClientId != nil
     }
 
     private var matchingClients: [Client] {
@@ -144,16 +144,31 @@ struct ProjectFormSheet: View {
             }
             .navigationTitle(mode.isCreate ? "NEW PROJECT" : "EDIT PROJECT")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    dismiss()
-                }.foregroundColor(OPSStyle.Colors.primaryAccent),
-                trailing: Button("Save") {
-                    saveProject()
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .disabled(isSaving)
                 }
-                .foregroundColor(isValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                .disabled(!isValid || isSaving)
-            )
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: saveProject) {
+                        if isSaving {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                .scaleEffect(0.8)
+                        } else {
+                            Text("Save")
+                                .font(OPSStyle.Typography.bodyBold)
+                        }
+                    }
+                    .foregroundColor(isValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .disabled(!isValid || isSaving)
+                }
+            }
         }
         .sheet(isPresented: $showingCreateClient) {
             ClientFormSheet(mode: .create, prefilledName: clientSearchText) { newClient in
@@ -708,13 +723,22 @@ struct ProjectFormSheet: View {
     }
 
     private func createNewProject() async throws -> Project {
+        print("[PROJECT_CREATE] Starting project creation")
+
         guard let companyId = dataController.currentUser?.companyId,
               let client = selectedClient else {
+            print("[PROJECT_CREATE] ❌ Missing required fields - companyId: \(dataController.currentUser?.companyId ?? "nil"), client: \(selectedClient?.name ?? "nil")")
             throw ProjectError.missingRequiredFields
         }
 
+        let projectId = UUID().uuidString
+        print("[PROJECT_CREATE] Creating project with ID: \(projectId)")
+        print("[PROJECT_CREATE] Title: \(title)")
+        print("[PROJECT_CREATE] Client: \(client.name)")
+        print("[PROJECT_CREATE] Status: \(selectedStatus.rawValue)")
+
         let project = Project(
-            id: UUID().uuidString,
+            id: projectId,
             title: title,
             status: selectedStatus
         )
@@ -722,12 +746,21 @@ struct ProjectFormSheet: View {
         project.companyId = companyId
         project.eventType = .project
         project.client = client
+        project.clientId = client.id  // Store the client's ID for API sync
         project.projectDescription = description.isEmpty ? nil : description
         project.notes = notes.isEmpty ? "" : notes
         project.address = address.isEmpty ? "" : address
         project.startDate = startDate
         project.endDate = endDate
         project.allDay = true
+        project.needsSync = true
+
+        print("[PROJECT_CREATE] Client ID stored: \(client.id)")
+        print("[PROJECT_CREATE] Client ID is UUID format: \(client.id.contains("-"))")
+
+        print("[PROJECT_CREATE] Set needsSync = \(project.needsSync)")
+        print("[PROJECT_CREATE] Start date: \(startDate)")
+        print("[PROJECT_CREATE] End date: \(endDate)")
 
         let members = allTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }
         project.teamMembers = Array(members.map { member in
@@ -742,15 +775,34 @@ struct ProjectFormSheet: View {
             return user
         })
 
+        print("[PROJECT_CREATE] Added \(project.teamMembers.count) team members")
+
+        // Create in Bubble API first
+        print("[PROJECT_CREATE] Creating project in Bubble...")
+        let createdProject = try await dataController.apiService.createProject(project)
+        print("[PROJECT_CREATE] ✅ Project created in Bubble with ID: \(createdProject.id)")
+
+        // Update project with Bubble ID
+        project.id = createdProject.id
+        project.needsSync = false
+        project.lastSyncedAt = Date()
+
         await MainActor.run {
+            print("[PROJECT_CREATE] Inserting project into modelContext")
             modelContext.insert(project)
 
+            print("[PROJECT_CREATE] Adding project to client")
             client.projects.append(project)
 
-            try? modelContext.save()
+            do {
+                try modelContext.save()
+                print("[PROJECT_CREATE] ✅ modelContext saved successfully")
+            } catch {
+                print("[PROJECT_CREATE] ❌ Failed to save modelContext: \(error)")
+            }
         }
 
-        dataController.syncManager?.triggerBackgroundSync()
+        print("[PROJECT_CREATE] ✅ Project creation complete")
 
         return project
     }

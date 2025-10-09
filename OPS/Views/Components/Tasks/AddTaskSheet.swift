@@ -190,8 +190,10 @@ struct AddTaskSheet: View {
         
         Task {
             do {
-                // Create the task
-                let task = ProjectTask(
+                print("[TASK_CREATE] Creating task in Bubble...")
+
+                // Create the task locally first with temp ID
+                let tempTask = ProjectTask(
                     id: UUID().uuidString,
                     projectId: project.id,
                     taskTypeId: taskType.id,
@@ -199,10 +201,21 @@ struct AddTaskSheet: View {
                     status: .scheduled,
                     taskColor: taskType.color
                 )
-                
-                task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
-                task.setTeamMemberIds(selectedTeamMembers.map { $0.id })
-                
+
+                tempTask.taskNotes = taskNotes.isEmpty ? nil : taskNotes
+                tempTask.setTeamMemberIds(selectedTeamMembers.map { $0.id })
+
+                // Create in Bubble API first
+                let createdTask = try await dataController.apiService.createTask(
+                    TaskDTO.from(tempTask)
+                )
+                print("[TASK_CREATE] ✅ Task created in Bubble with ID: \(createdTask.id)")
+
+                // Update task with Bubble ID
+                tempTask.id = createdTask.id
+                tempTask.needsSync = false
+                tempTask.lastSyncedAt = Date()
+
                 // Create calendar event for the task
                 let calendarEvent = CalendarEvent(
                     id: UUID().uuidString,
@@ -214,30 +227,26 @@ struct AddTaskSheet: View {
                     color: taskType.color,
                     type: .task
                 )
-                
-                calendarEvent.taskId = task.id
+
+                calendarEvent.taskId = tempTask.id
                 calendarEvent.setTeamMemberIds(selectedTeamMembers.map { $0.id })
-                
+
                 // Link task and calendar event
-                task.calendarEventId = calendarEvent.id
-                task.calendarEvent = calendarEvent
-                calendarEvent.task = task
-                
+                tempTask.calendarEventId = calendarEvent.id
+                tempTask.calendarEvent = calendarEvent
+                calendarEvent.task = tempTask
+
                 // Add to project
-                project.tasks.append(task)
-                
+                project.tasks.append(tempTask)
+
                 // Save to database
-                dataController.modelContext?.insert(task)
+                dataController.modelContext?.insert(tempTask)
                 dataController.modelContext?.insert(calendarEvent)
-                
-                // Mark for sync
-                task.needsSync = true
+
+                // Calendar event will sync later
                 calendarEvent.needsSync = true
-                project.needsSync = true
-                
+
                 try dataController.modelContext?.save()
-                
-                // Sync will happen automatically via needsSync flags
                 
                 await MainActor.run {
                     isLoading = false

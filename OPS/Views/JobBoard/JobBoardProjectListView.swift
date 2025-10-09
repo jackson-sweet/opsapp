@@ -49,18 +49,50 @@ struct JobBoardProjectListView: View {
         }
 
         switch sortOption {
-        case .createdDateDescending:
-            return filtered.sorted(by: { ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast) })
-        case .createdDateAscending:
-            return filtered.sorted(by: { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) })
-        case .scheduledDateDescending:
-            return filtered.sorted(by: { ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast) })
-        case .scheduledDateAscending:
-            return filtered.sorted(by: { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) })
+        case .createdDateDescending, .scheduledDateDescending:
+            return filtered.sorted { p1, p2 in
+                let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
+                let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
+                let p1Unassigned = p1.teamMembers.isEmpty && p1.status != .closed && p1.status != .archived
+                let p2Unassigned = p2.teamMembers.isEmpty && p2.status != .closed && p2.status != .archived
+
+                if p1Unscheduled != p2Unscheduled { return p1Unscheduled }
+                if p1Unassigned != p2Unassigned { return p1Unassigned }
+                return (p1.startDate ?? Date.distantPast) > (p2.startDate ?? Date.distantPast)
+            }
+        case .createdDateAscending, .scheduledDateAscending:
+            return filtered.sorted { p1, p2 in
+                let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
+                let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
+                let p1Unassigned = p1.teamMembers.isEmpty && p1.status != .closed && p1.status != .archived
+                let p2Unassigned = p2.teamMembers.isEmpty && p2.status != .closed && p2.status != .archived
+
+                if p1Unscheduled != p2Unscheduled { return p1Unscheduled }
+                if p1Unassigned != p2Unassigned { return p1Unassigned }
+                return (p1.startDate ?? Date.distantPast) < (p2.startDate ?? Date.distantPast)
+            }
         case .statusAscending:
-            return filtered.sorted(by: { $0.status.sortOrder < $1.status.sortOrder })
+            return filtered.sorted { p1, p2 in
+                let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
+                let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
+                let p1Unassigned = p1.teamMembers.isEmpty && p1.status != .closed && p1.status != .archived
+                let p2Unassigned = p2.teamMembers.isEmpty && p2.status != .closed && p2.status != .archived
+
+                if p1Unscheduled != p2Unscheduled { return p1Unscheduled }
+                if p1Unassigned != p2Unassigned { return p1Unassigned }
+                return p1.status.sortOrder < p2.status.sortOrder
+            }
         case .statusDescending:
-            return filtered.sorted(by: { $0.status.sortOrder > $1.status.sortOrder })
+            return filtered.sorted { p1, p2 in
+                let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
+                let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
+                let p1Unassigned = p1.teamMembers.isEmpty && p1.status != .closed && p1.status != .archived
+                let p2Unassigned = p2.teamMembers.isEmpty && p2.status != .closed && p2.status != .archived
+
+                if p1Unscheduled != p2Unscheduled { return p1Unscheduled }
+                if p1Unassigned != p2Unassigned { return p1Unassigned }
+                return p1.status.sortOrder > p2.status.sortOrder
+            }
         }
     }
 
@@ -97,7 +129,6 @@ struct JobBoardProjectListView: View {
                         LazyVStack(spacing: 12) {
                             ForEach(activeProjects) { project in
                                 UniversalJobBoardCard(cardType: .project(project))
-
                                     .environmentObject(dataController)
                                     .id("\(project.id)-\(project.teamMemberIdsString)-\(project.tasks.count)")
                             }

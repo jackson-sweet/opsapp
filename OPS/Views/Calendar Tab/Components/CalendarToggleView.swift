@@ -54,15 +54,21 @@ struct CalendarToggleView: View {
                     mode: viewModel.viewMode == .week ? .week : .month,
                     selectedDate: viewModel.viewMode == .month ? viewModel.visibleMonth : viewModel.selectedDate,
                     onSelectDate: { date in
-                        withAnimation {
-                            if viewModel.viewMode == .month {
-                                // In month view, update visible month when selecting from picker
-                                viewModel.visibleMonth = date
-                                viewModel.selectDate(date)
-                            } else {
-                                viewModel.selectDate(date)
+                        print("📅 CalendarToggleView: onSelectDate called with \(date)")
+                        if viewModel.viewMode == .month {
+                            let calendar = Calendar.current
+                            if let monthStart = calendar.dateInterval(of: .month, for: date)?.start {
+                                print("📅 Setting visibleMonth to \(monthStart)")
+                                DispatchQueue.main.async {
+                                    viewModel.visibleMonth = monthStart
+                                    viewModel.selectDate(monthStart, userInitiated: false)
+                                    print("📅 visibleMonth set to \(self.viewModel.visibleMonth)")
+                                }
                             }
+                        } else {
+                            viewModel.selectDate(date)
                         }
+                        showDatePicker = false
                     }
                 )
                 .presentationCompactAdaptation(.popover)
@@ -78,12 +84,13 @@ struct CalendarToggleView: View {
         switch viewModel.viewMode {
         case .week:
             // For week view, show the week range (e.g. "May 3-9")
-            let calendar = Calendar.current
-            
-            // Get start of the week containing selected date
+            var calendar = Calendar.current
+            calendar.firstWeekday = 2
+
+            // Get start of the week containing selected date (Monday)
             let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: viewModel.selectedDate))!
-            
-            // Get end of week
+
+            // Get end of week (Sunday)
             let weekEnd = calendar.date(byAdding: .day, value: 6, to: weekStart)!
             
             // Format start date

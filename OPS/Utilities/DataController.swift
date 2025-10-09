@@ -1694,7 +1694,57 @@ class DataController: ObservableObject {
             return []
         }
     }
-    
+
+    func getAllCalendarEvents(from startDate: Date) -> [CalendarEvent] {
+        guard let user = currentUser else {
+            return []
+        }
+        guard let context = modelContext else {
+            return []
+        }
+
+        let descriptor = FetchDescriptor<CalendarEvent>()
+
+        do {
+            let allEvents = try context.fetch(descriptor)
+
+            let filteredEvents = allEvents.filter { event in
+                if event.endDate < startDate {
+                    return false
+                }
+
+                if user.role == .admin || user.role == .officeCrew {
+                    return event.companyId == user.companyId
+                } else {
+                    let eventTeamMemberIds = event.getTeamMemberIds()
+                    let isAssignedViaIds = eventTeamMemberIds.contains(user.id)
+                    let isAssignedViaObjects = event.teamMembers.contains(where: { $0.id == user.id })
+                    let isAssigned = isAssignedViaIds || isAssignedViaObjects
+
+                    if !isAssigned {
+                        if let task = event.task {
+                            let taskTeamMemberIds = task.getTeamMemberIds()
+                            let isAssignedToTask = taskTeamMemberIds.contains(user.id) || task.teamMembers.contains(where: { $0.id == user.id })
+                            return isAssignedToTask
+                        }
+                        if let project = event.project {
+                            let projectTeamMemberIds = project.getTeamMemberIds()
+                            let isAssignedToProject = projectTeamMemberIds.contains(user.id) || project.teamMembers.contains(where: { $0.id == user.id })
+                            return isAssignedToProject
+                        }
+                        return false
+                    }
+
+                    return true
+                }
+            }
+
+            return filteredEvents.sorted { $0.startDate < $1.startDate }
+        } catch {
+            return []
+        }
+    }
+
     func getProjectDetails(projectId: String) async throws -> Project {
         guard let context = modelContext else {
             throw NSError(domain: "DataController", code: 2,

@@ -344,15 +344,15 @@ struct SchedulingModeConversionSheet: View {
 
             if targetMode == .task {
                 // Converting to task-based
-                // Deactivate project's calendar event
+                // Update project's calendar event (deactivates it)
                 if let event = project.primaryCalendarEvent, event.type == .project {
-                    event.active = false
+                    event.updateProjectEventTypeCache(from: project)
                 }
 
-                // Activate all task calendar events
+                // Update all task calendar events (activates them)
                 for task in project.tasks {
                     if let event = task.calendarEvent {
-                        event.active = true
+                        event.updateProjectEventTypeCache(from: project)
                     }
                 }
 
@@ -370,7 +370,7 @@ struct SchedulingModeConversionSheet: View {
                 }
 
                 if let projectEvent = projectEvent {
-                    projectEvent.active = true
+                    projectEvent.updateProjectEventTypeCache(from: project)
                 } else {
                     // Create new calendar event if needed
                     let newEvent = CalendarEvent(
@@ -385,13 +385,14 @@ struct SchedulingModeConversionSheet: View {
                         active: true
                     )
                     newEvent.taskId = nil
+                    newEvent.updateProjectEventTypeCache(from: project)
                     modelContext.insert(newEvent)
                 }
 
-                // Deactivate all task calendar events
+                // Update all task calendar events (deactivates them)
                 for task in project.tasks {
                     if let event = task.calendarEvent {
-                        event.active = false
+                        event.updateProjectEventTypeCache(from: project)
                     }
                 }
             }

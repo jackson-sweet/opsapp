@@ -1,28 +1,26 @@
 //
-//  TaskTypeFormSheet.swift
+//  TaskTypeEditSheet.swift
 //  OPS
 //
-//  Created by Assistant on 2025-09-26.
+//  Form for editing existing task types
 //
 
 import SwiftUI
 import SwiftData
 
-struct TaskTypeFormSheet: View {
-    let onSave: (TaskType) -> Void
+struct TaskTypeEditSheet: View {
+    let taskType: TaskType
+    let onSave: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
 
-    // Form State
     @State private var taskTypeName: String = ""
     @State private var taskTypeIcon: String = "checklist"
     @State private var taskTypeColor: Color = Color(hex: "93A17C")!
     @State private var taskTypeColorHex: String = "93A17C"
-    @State private var isDefault: Bool = false
 
-    // Loading state
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showingError = false
@@ -157,14 +155,13 @@ struct TaskTypeFormSheet: View {
 
             VStack(spacing: 0) {
                 SettingsHeader(
-                    title: "New Task Type",
+                    title: "Edit Task Type",
                     onBackTapped: { dismiss() }
                 )
                 .padding(.bottom, 8)
 
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing4) {
-                        // Name Field
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("TASK TYPE NAME *")
                                 .font(OPSStyle.Typography.captionBold)
@@ -178,7 +175,6 @@ struct TaskTypeFormSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
 
-                        // Icon Selection
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("ICON")
                                 .font(OPSStyle.Typography.captionBold)
@@ -191,7 +187,7 @@ struct TaskTypeFormSheet: View {
                                             icon: icon,
                                             isSelected: taskTypeIcon == icon,
                                             color: taskTypeColor,
-                                            isInUse: existingTaskTypes.contains { $0.icon == icon }
+                                            isInUse: existingTaskTypes.filter { $0.id != taskType.id }.contains { $0.icon == icon }
                                         ) {
                                             withAnimation(.spring(response: 0.3)) {
                                                 taskTypeIcon = icon
@@ -202,7 +198,6 @@ struct TaskTypeFormSheet: View {
                             }
                         }
 
-                        // Color Selection
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("COLOR")
                                 .font(OPSStyle.Typography.captionBold)
@@ -213,7 +208,7 @@ struct TaskTypeFormSheet: View {
                                     ColorOption(
                                         color: colorOption.color,
                                         isSelected: taskTypeColorHex == colorOption.hex,
-                                        isInUse: existingTaskTypes.contains { $0.color == colorOption.hex }
+                                        isInUse: existingTaskTypes.filter { $0.id != taskType.id }.contains { $0.color == colorOption.hex }
                                     ) {
                                         withAnimation(.spring(response: 0.3)) {
                                             taskTypeColor = colorOption.color
@@ -224,7 +219,6 @@ struct TaskTypeFormSheet: View {
                             }
                         }
 
-                        // Preview
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("PREVIEW")
                                 .font(OPSStyle.Typography.captionBold)
@@ -279,6 +273,12 @@ struct TaskTypeFormSheet: View {
         }
         .navigationBarHidden(true)
         .onAppear {
+            taskTypeName = taskType.display
+            taskTypeIcon = taskType.icon ?? "checklist"
+            taskTypeColorHex = taskType.color
+            if let color = Color(hex: taskType.color) {
+                taskTypeColor = color
+            }
             loadExistingTaskTypes()
         }
         .alert("Error", isPresented: $showingError) {
@@ -298,30 +298,18 @@ struct TaskTypeFormSheet: View {
     }
 
     private func saveTaskType() {
-        guard let companyId = dataController.currentUser?.companyId else {
-            errorMessage = "No company ID found"
-            showingError = true
-            return
-        }
-
         isSaving = true
 
         Task {
-            let newTaskType = TaskType(
-                id: UUID().uuidString,
-                display: taskTypeName,
-                color: taskTypeColorHex,
-                companyId: companyId,
-                isDefault: false,
-                icon: taskTypeIcon
-            )
-
             await MainActor.run {
-                modelContext.insert(newTaskType)
+                taskType.display = taskTypeName
+                taskType.icon = taskTypeIcon
+                taskType.color = taskTypeColorHex
+                taskType.needsSync = true
 
                 do {
                     try modelContext.save()
-                    onSave(newTaskType)
+                    onSave()
                     dismiss()
                 } catch {
                     errorMessage = error.localizedDescription
@@ -330,88 +318,7 @@ struct TaskTypeFormSheet: View {
                 }
             }
 
-            // Trigger sync to create in backend
             dataController.syncManager?.triggerBackgroundSync()
-        }
-    }
-}
-
-// MARK: - Supporting Views
-
-struct IconOption: View {
-    let icon: String
-    let isSelected: Bool
-    let color: Color
-    var isInUse: Bool = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(isSelected ? color : OPSStyle.Colors.secondaryText)
-                    .opacity(isInUse && !isSelected ? 0.3 : 1.0)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(isSelected ? color.opacity(0.1) : OPSStyle.Colors.cardBackgroundDark)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(
-                                        isSelected ? color.opacity(0.3) : Color.white.opacity(0.1),
-                                        lineWidth: 1
-                                    )
-                            )
-                    )
-
-                if isInUse && !isSelected {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Circle()
-                                .fill(OPSStyle.Colors.tertiaryText)
-                                .frame(width: 8, height: 8)
-                                .padding(4)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct ColorOption: View {
-    let color: Color
-    let isSelected: Bool
-    var isInUse: Bool = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(color)
-                    .opacity(isInUse && !isSelected ? 0.3 : 1.0)
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white, lineWidth: isSelected ? 3 : 0)
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(color.opacity(0.5), lineWidth: isSelected ? 5 : 0)
-                    )
-                    .scaleEffect(isSelected ? 1.1 : 1.0)
-
-                if isInUse && !isSelected {
-                    Circle()
-                        .fill(OPSStyle.Colors.tertiaryText)
-                        .frame(width: 8, height: 8)
-                        .offset(x: 14, y: 14)
-                }
-            }
         }
     }
 }

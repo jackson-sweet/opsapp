@@ -157,6 +157,98 @@ extension APIService {
             body: bodyData,
             requiresAuth: false
         )
-        
+
+    }
+
+    /// Create a new client on Bubble
+    /// - Parameter client: The local client to create
+    /// - Returns: The Bubble-assigned client ID
+    func createClient(_ client: Client) async throws -> String {
+        print("[CREATE_CLIENT] Building client data for: \(client.name)")
+
+        var clientData: [String: Any] = [
+            BubbleFields.Client.name: client.name
+        ]
+
+        print("[CREATE_CLIENT] Required field - name: \(client.name)")
+
+        if let companyId = client.companyId {
+            clientData[BubbleFields.Client.parentCompany] = companyId
+            print("[CREATE_CLIENT] Parent Company ID: \(companyId)")
+        } else {
+            print("[CREATE_CLIENT] ⚠️ No company ID - client will be created without company reference")
+        }
+
+        if let email = client.email, !email.isEmpty {
+            clientData[BubbleFields.Client.emailAddress] = email
+            print("[CREATE_CLIENT] Email: \(email)")
+        }
+
+        if let phoneNumber = client.phoneNumber, !phoneNumber.isEmpty {
+            clientData[BubbleFields.Client.phoneNumber] = phoneNumber
+            print("[CREATE_CLIENT] Phone: \(phoneNumber)")
+        }
+
+        if let address = client.address, !address.isEmpty {
+            var addressObject: [String: Any] = ["address": address]
+
+            if let lat = client.latitude {
+                addressObject["lat"] = lat
+            }
+
+            if let lng = client.longitude {
+                addressObject["lng"] = lng
+            }
+
+            clientData[BubbleFields.Client.address] = addressObject
+            print("[CREATE_CLIENT] Address object: \(addressObject)")
+        }
+
+        if let notes = client.notes, !notes.isEmpty {
+            clientData["Notes"] = notes
+            print("[CREATE_CLIENT] Notes: \(notes)")
+        }
+
+        let bodyData = try JSONSerialization.data(withJSONObject: clientData)
+
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[CREATE_CLIENT] Request body JSON: \(jsonString)")
+        }
+
+        print("[CREATE_CLIENT] Sending POST to: api/1.1/obj/\(BubbleFields.Types.client)")
+
+        struct CreateResponse: Codable {
+            let id: String
+        }
+
+        do {
+            let response: CreateResponse = try await executeRequest(
+                endpoint: "api/1.1/obj/\(BubbleFields.Types.client)",
+                method: "POST",
+                body: bodyData,
+                requiresAuth: false
+            )
+
+            print("[CREATE_CLIENT] ✅ Success! Bubble ID: \(response.id)")
+            return response.id
+        } catch {
+            print("[CREATE_CLIENT] ❌ Error creating client: \(error)")
+            throw error
+        }
+    }
+
+    /// Delete a client from Bubble
+    /// - Parameter id: The client ID to delete
+    func deleteClient(id: String) async throws {
+        print("[DELETE_CLIENT] Deleting client: \(id)")
+
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.client)/\(id)",
+            method: "DELETE",
+            body: nil,
+            requiresAuth: false
+        )
+
+        print("[DELETE_CLIENT] ✅ Client deleted successfully")
     }
 }

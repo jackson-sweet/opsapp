@@ -55,11 +55,27 @@ extension APIService {
     ///   - data: Dictionary of company properties to update
     func updateCompany(id: String, data: [String: Any]) async throws {
         let bodyData = try JSONSerialization.data(withJSONObject: data)
-        
+
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.company)/\(id)",
             method: "PATCH",
             body: bodyData
         )
+    }
+
+    /// Link a task type to a company
+    /// - Parameters:
+    ///   - companyId: The company ID
+    ///   - taskTypeId: The task type ID to link
+    func linkTaskTypeToCompany(companyId: String, taskTypeId: String) async throws {
+        let company = try await fetchCompany(id: companyId)
+        var taskTypeIds = company.taskTypes?.compactMap { $0.stringValue } ?? []
+
+        if !taskTypeIds.contains(taskTypeId) {
+            taskTypeIds.append(taskTypeId)
+        }
+
+        let updateData: [String: Any] = ["Task Types": taskTypeIds]
+        try await updateCompany(id: companyId, data: updateData)
     }
 }

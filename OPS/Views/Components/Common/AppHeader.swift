@@ -24,6 +24,7 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @State private var selectedTab: SettingsTab = .settings
+    @State private var showingProfileSettings = false
     var headerType: HeaderType
     var onSearchTapped: (() -> Void)? = nil
     var onRefreshTapped: (() -> Void)? = nil
@@ -83,32 +84,42 @@ struct AppHeader: View {
                 }
                 
                 Spacer()
-                
+
                 // User profile image - use unified UserAvatar component
-                if let user = dataController.currentUser {
-                    UserAvatar(user: user, size: 44)
+                Button(action: {
+                    showingProfileSettings = true
+                }) {
+                    if let user = dataController.currentUser {
+                        UserAvatar(user: user, size: 44)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white, lineWidth: 2)
+                            )
+                            .shadow(radius: 2)
+                    } else {
+                        // Fallback if no user
+                        UserAvatar(
+                            firstName: "U",
+                            lastName: "",
+                            size: 44,
+                            backgroundColor: OPSStyle.Colors.primaryAccent
+                        )
                         .overlay(
                             Circle()
                                 .stroke(Color.white, lineWidth: 2)
                         )
                         .shadow(radius: 2)
-                } else {
-                    // Fallback if no user
-                    UserAvatar(
-                        firstName: "U",
-                        lastName: "",
-                        size: 44,
-                        backgroundColor: OPSStyle.Colors.primaryAccent
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white, lineWidth: 2)
-                    )
-                    .shadow(radius: 2)
+                    }
                 }
+                .buttonStyle(PlainButtonStyle())
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            .sheet(isPresented: $showingProfileSettings) {
+                NavigationStack {
+                    ProfileSettingsView()
+                }
+            }
             
         } else {
             

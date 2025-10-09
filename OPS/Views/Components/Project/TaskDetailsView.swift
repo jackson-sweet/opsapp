@@ -29,6 +29,7 @@ struct TaskDetailsView: View {
     @State private var loadedTeamMembers: [User] = []
     @State private var selectedTeamMember: User? = nil
     @State private var showingTeamMemberDetails = false
+    @State private var showingTeamPicker = false
     @State private var showingProjectCompletionAlert = false
     @State private var showingScheduler = false
 
@@ -154,6 +155,17 @@ struct TaskDetailsView: View {
             loadTaskTeamMembers()
             logTaskTeamMemberData()
         }
+        .sheet(isPresented: $showingTeamPicker) {
+            TaskTeamChangeSheet(task: task)
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingTeamMemberDetails) {
+            if let selectedMember = selectedTeamMember {
+                ContactDetailView(user: selectedMember)
+                    .presentationDragIndicator(.visible)
+                    .presentationDetents([.medium, .large])
+            }
+        }
         .overlay(saveNotificationOverlay)
         .confirmationDialog(
             "Unsaved Changes",
@@ -180,7 +192,7 @@ struct TaskDetailsView: View {
         }
         .sheet(isPresented: $showingTeamMemberDetails) {
             if let member = selectedTeamMember {
-                TeamMemberDetailView(user: member)
+                ContactDetailView(user: member)
                     .presentationDragIndicator(.visible)
                     .environmentObject(dataController)
             }
@@ -188,7 +200,7 @@ struct TaskDetailsView: View {
         .sheet(isPresented: $showingClientContact) {
             // Pass the actual Client object if available, otherwise create a temporary one
             if let client = project.client {
-                TeamMemberDetailView(client: client, project: project)
+                ContactDetailView(client: client, project: project)
                     .presentationDragIndicator(.visible)
                     .environmentObject(dataController)
             } else {
@@ -203,7 +215,7 @@ struct TaskDetailsView: View {
                     phone: project.effectiveClientPhone
                 )
 
-                TeamMemberDetailView(teamMember: clientTeamMember)
+                ContactDetailView(teamMember: clientTeamMember)
                     .presentationDragIndicator(.visible)
                     .environmentObject(dataController)
             }
@@ -453,15 +465,36 @@ struct TaskDetailsView: View {
             HStack {
                 Image(systemName: "person.2")
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
+
                 Text("TEAM MEMBERS")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                
+
                 Spacer()
+
+                let teamMembers = loadedTeamMembers.isEmpty ? Array(task.teamMembers) : loadedTeamMembers
+                if !teamMembers.isEmpty {
+                    Button(action: {
+                        showingTeamPicker = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "pencil")
+                                .font(OPSStyle.Typography.smallCaption)
+                            Text("Edit")
+                                .font(OPSStyle.Typography.smallCaption)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        )
+                    }
+                }
             }
             .padding(.horizontal)
-            
+
             // Team members content - matching ProjectTeamView style
             teamMembersList
                 .padding(.horizontal)
@@ -470,16 +503,21 @@ struct TaskDetailsView: View {
     
     private var teamMembersList: some View {
         let teamMembers = loadedTeamMembers.isEmpty ? Array(task.teamMembers) : loadedTeamMembers
-        
+
         return VStack(spacing: 1) {
             if teamMembers.isEmpty {
-                // Empty state in card
+                // Empty state with add button
                 HStack {
                     Text("No team members assigned")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                         .padding(.vertical, 16)
                     Spacer()
+                    Button("ADD") {
+                        showingTeamPicker = true
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding(.horizontal)
                 .background(OPSStyle.Colors.cardBackgroundDark)

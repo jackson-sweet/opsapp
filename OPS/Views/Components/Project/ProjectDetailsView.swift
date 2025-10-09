@@ -35,6 +35,8 @@ struct ProjectDetailsView: View {
     @State private var showingAddressEditor = false
     @State private var editedAddress: String = ""
     @State private var showingTaskBasedSchedulingAlert = false
+    @State private var isEditingTeam = false
+    @State private var triggerTeamSave = false
 
     // Initialize with project's existing notes
     init(project: Project, isEditMode: Bool = false) {
@@ -167,6 +169,20 @@ struct ProjectDetailsView: View {
         HStack {
             StatusBadge.forJobStatus(project.status)
 
+            Text(project.usesTaskBasedScheduling ? "TASK-BASED" : "PROJECT-BASED")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: 1)
+                )
+
             Spacer()
 
             doneButton
@@ -209,9 +225,7 @@ struct ProjectDetailsView: View {
                 locationSection
                 infoSection
 
-                if project.eventType == .task {
-                    tasksSection
-                }
+                tasksSection
 
                 photosSection
                 teamSection
@@ -267,7 +281,7 @@ struct ProjectDetailsView: View {
     @ViewBuilder
     private var clientContactSheet: some View {
         if let client = project.client {
-            TeamMemberDetailView(client: client, project: project)
+            ContactDetailView(client: client, project: project)
                 .presentationDragIndicator(.visible)
                 .environmentObject(dataController)
         } else {
@@ -281,7 +295,7 @@ struct ProjectDetailsView: View {
                 phone: project.effectiveClientPhone
             )
 
-            TeamMemberDetailView(teamMember: clientTeamMember)
+            ContactDetailView(teamMember: clientTeamMember)
                 .presentationDragIndicator(.visible)
                 .environmentObject(dataController)
         }
@@ -727,22 +741,49 @@ struct ProjectDetailsView: View {
     // Team members section with modern styling
     private var teamSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Section heading outside the card (consistent with other sections)
+            // Section heading with icon and edit button
             HStack {
-                Image(systemName: "person.2")
+                Image(systemName: "person.2.fill")
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
+
                 Text("TEAM MEMBERS")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                
+
                 Spacer()
+
+                if !project.usesTaskBasedScheduling {
+                    teamEditButton
+                }
             }
             .padding(.horizontal)
-            
-            // Team members content
-            ProjectTeamView(project: project)
+
+            // Team members card content
+            ProjectTeamView(project: project, isEditing: $isEditingTeam, triggerSave: $triggerTeamSave)
                 .padding(.horizontal)
+        }
+    }
+
+    private var teamEditButton: some View {
+        Button(action: {
+            if isEditingTeam {
+                // Trigger save when Done is pressed
+                triggerTeamSave.toggle()
+            } else {
+                isEditingTeam.toggle()
+            }
+        }) {
+            Text(isEditingTeam ? "Done" : "Edit")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.black)
+                .cornerRadius(OPSStyle.Layout.buttonRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                )
         }
     }
     

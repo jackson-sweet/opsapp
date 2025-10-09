@@ -291,7 +291,7 @@ class CalendarViewModel: ObservableObject {
     }
     
     // Helper method to apply all filters to calendar events
-    private func applyEventFilters(to events: [CalendarEvent]) -> [CalendarEvent] {
+    func applyEventFilters(to events: [CalendarEvent]) -> [CalendarEvent] {
         var filteredEvents = events
         
         // Apply team member filter

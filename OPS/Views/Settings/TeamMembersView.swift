@@ -108,7 +108,7 @@ struct TeamMembersView: View {
             loadTeamMembers()
         }
         .sheet(item: $selectedMember) { member in
-            TeamMemberDetailView(user: member)
+            ContactDetailView(user: member)
         }
     }
     

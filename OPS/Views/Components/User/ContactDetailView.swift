@@ -1,5 +1,5 @@
 //
-//  TeamMemberDetailView.swift
+//  ContactDetailView.swift
 //  OPS
 //
 //  Created by Jackson Sweet on 2025-05-08.
@@ -8,8 +8,8 @@
 import SwiftUI
 import MapKit
 
-/// Detail view for a team member, shown in a sheet with updated aesthetic
-struct TeamMemberDetailView: View {
+/// Detail view for displaying contact information for users, team members, and clients
+struct ContactDetailView: View {
     // Can accept either a User, TeamMember, or Client
     let user: User?
     let teamMember: TeamMember?
@@ -22,7 +22,8 @@ struct TeamMemberDetailView: View {
     
     @State private var showFullContact = false // For animating contact display
     @State private var showingClientEdit = false
-    
+    @State private var showingClientDeletion = false
+
     // Sub-client editing states
     @State private var subClientToEdit: SubClient? = nil  // Single state for both data and presentation
     @State private var subClientsRefreshKey = UUID()  // Force refresh of sub-clients view
@@ -34,6 +35,7 @@ struct TeamMemberDetailView: View {
     @State private var pendingImportData: (name: String, email: String?, phone: String?, address: String?) = ("", nil, nil, nil)
     @State private var selectedProject: Project? = nil  // For showing project details
     @State private var showingCreateProject = false  // For creating a new project
+    @State private var isProjectListExpanded = false  // For expanding project list
 
     // Constants for styling
     private let avatarSize: CGFloat = 80
@@ -179,28 +181,6 @@ struct TeamMemberDetailView: View {
                                     
                                     Spacer()
 
-                                    // Add Project button - only for clients with admin/office permissions
-                                    if isParentContactExpanded && isClient && canEditClient {
-                                        Button(action: {
-                                            showingCreateProject = true
-                                        }) {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "plus")
-                                                    .font(OPSStyle.Typography.smallCaption)
-                                                Text("Add")
-                                                    .font(OPSStyle.Typography.smallCaption)
-                                            }
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                            )
-                                        }
-                                        .transition(.scale.combined(with: .opacity))
-                                    }
-
                                     // Edit button only when expanded
                                     if isParentContactExpanded && isClient && canEditClient {
                                         Button(action: {
@@ -261,45 +241,57 @@ struct TeamMemberDetailView: View {
                                 .padding(.top, 16)
                         }
 
+                        // Sub-contacts section (for clients only) - positioned ABOVE projects
+                        if isClient, let client = client {
+                            SubClientListView(
+                                client: client,
+                                isEditing: false,
+                                onEditSubClient: { subClient in
+                                    subClientToEdit = subClient  // This will trigger the sheet
+                                },
+                                onCreateSubClient: {
+                                    // Use a special marker SubClient with empty ID to indicate new creation
+                                    let tempSubClient = SubClient(
+                                        id: UUID().uuidString,  // Temporary ID
+                                        name: ""  // Empty name indicates new subclient
+                                    )
+                                    subClientToEdit = tempSubClient
+                                },
+                                onDeleteSubClient: { subClient in
+                                    deleteSubClient(subClient)
+                                }
+                            )
+                            .padding(.horizontal)
+                            .padding(.top, 16)
+                            .id(subClientsRefreshKey)  // Force refresh when key changes
+                        }
+
                         // Projects section
                         projectsSection
                             .padding(.horizontal)
                             .padding(.top, 16)
 
-                        // Sub-clients section (for clients only)
-                        if isClient, let client = client {
-                            VStack(spacing: 0) {
-                                // Add spacing before sub-clients section
-                                Spacer()
-                                    .frame(height: 24)
-                                
-                                SubClientListView(
-                                    client: client,
-                                    isEditing: false,
-                                    onEditSubClient: { subClient in
-                                        subClientToEdit = subClient  // This will trigger the sheet
-                                    },
-                                    onCreateSubClient: {
-                                        // Use a special marker SubClient with empty ID to indicate new creation
-                                        let tempSubClient = SubClient(
-                                            id: UUID().uuidString,  // Temporary ID
-                                            name: ""  // Empty name indicates new subclient
-                                        )
-                                        subClientToEdit = tempSubClient
-                                    },
-                                    onDeleteSubClient: { subClient in
-                                        deleteSubClient(subClient)
-                                    }
-                                )
-                                .padding(.horizontal)
-                                .id(subClientsRefreshKey)  // Force refresh when key changes
-                                
-                                // Add spacing after sub-clients section
-                                Spacer()
-                                    .frame(height: 16)
+                        // Delete button at bottom (for clients only)
+                        if isClient && canEditClient {
+                            Button(action: {
+                                showingClientDeletion = true
+                            }) {
+                                Text("Delete Client")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 56)
+                                    .background(Color.clear)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1.5)
+                                    )
                             }
+                            .padding(.horizontal)
+                            .padding(.top, 32)
+                            .padding(.bottom, 32)
                         }
-                        
+
                             // Spacer for bottom padding
                             Spacer(minLength: 100) // Extra space for bottom buttons
                         }
@@ -398,6 +390,17 @@ struct TeamMemberDetailView: View {
                 .environmentObject(dataController)
             }
         }
+        .sheet(isPresented: $showingClientDeletion) {
+            if let client = client {
+                ClientDeletionSheet(client: client)
+                    .onDisappear {
+                        if let modelContext = dataController.modelContext,
+                           modelContext.model(for: client.id) == nil {
+                            dismiss()
+                        }
+                    }
+            }
+        }
     }
     
     // MARK: - Custom Navigation Bar
@@ -424,7 +427,7 @@ struct TeamMemberDetailView: View {
                 .foregroundColor(.white)
             
             Spacer()
-            
+
             // Empty space to balance the layout
             Color.clear
                 .frame(width: 44, height: 44)
@@ -930,7 +933,7 @@ struct TeamMemberDetailView: View {
 
                 // Projects list card
                 VStack(spacing: 0) {
-                    ForEach(Array(projects.prefix(5).enumerated()), id: \.element.id) { index, project in
+                    ForEach(Array((isProjectListExpanded ? projects : Array(projects.prefix(5))).enumerated()), id: \.element.id) { index, project in
                         Button(action: {
                             // Set selected project to show details
                             selectedProject = project
@@ -982,22 +985,31 @@ struct TeamMemberDetailView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
 
-                        if index < min(4, projects.count - 1) {
+                        let displayedProjects = isProjectListExpanded ? projects : Array(projects.prefix(5))
+                        if index < displayedProjects.count - 1 {
                             Divider()
                                 .background(OPSStyle.Colors.secondaryText.opacity(0.2))
                         }
                     }
 
-                    // Show more indicator if there are more than 5 projects
+                    // Show more/less button if there are more than 5 projects
                     if projects.count > 5 {
-                        HStack {
-                            Spacer()
-                            Text("+ \(projects.count - 5) MORE")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            Spacer()
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                isProjectListExpanded.toggle()
+                            }
+                        }) {
+                            HStack {
+                                Spacer()
+                                Text(isProjectListExpanded ? "SHOW LESS" : "+ \(projects.count - 5) MORE")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                Spacer()
+                            }
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.vertical, 12)
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
@@ -1412,7 +1424,7 @@ struct TeamMemberDetailView: View {
 
 // MARK: - Preview
 
-struct TeamMemberDetailView_Previews: PreviewProvider {
+struct ContactDetailView_Previews: PreviewProvider {
     static var previews: some View {
         let user = User(id: "123", firstName: "John", lastName: "Doe", role: .fieldCrew, companyId: "company123")
         user.email = "john.doe@example.com"
@@ -1432,11 +1444,11 @@ struct TeamMemberDetailView_Previews: PreviewProvider {
         let dataController = DataController()
         
         return Group {
-            TeamMemberDetailView(user: user)
+            ContactDetailView(user: user)
                 .environmentObject(dataController)
                 .preferredColorScheme(.dark)
             
-            TeamMemberDetailView(teamMember: teamMember)
+            ContactDetailView(teamMember: teamMember)
                 .environmentObject(dataController)
                 .preferredColorScheme(.dark)
         }

@@ -158,7 +158,10 @@ struct TaskFormSheet: View {
             }
         }
         .sheet(isPresented: $showingCreateTaskType) {
-            TaskTypeFormSheet { _ in }
+            TaskTypeFormSheet { newTaskType in
+                selectedTaskTypeId = newTaskType.id
+            }
+            .environmentObject(dataController)
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK", role: .cancel) { }
@@ -459,13 +462,19 @@ struct TaskFormSheet: View {
                 if case .edit(let existingTask) = mode {
                     task = existingTask
                 } else {
+                    let taskColor = selectedTaskType?.color ?? "#59779F"
+                    print("[TASK_CREATE] 🎨 Creating task with color: \(taskColor) from taskType: \(selectedTaskType?.display ?? "nil")")
+
                     task = ProjectTask(
                         id: UUID().uuidString,
                         projectId: selectedProjectId!,
                         taskTypeId: selectedTaskTypeId!,
                         companyId: dataController.currentUser?.companyId ?? "",
-                        status: .scheduled
+                        status: .scheduled,
+                        taskColor: taskColor
                     )
+
+                    print("[TASK_CREATE] ✅ Task created locally with ID: \(task.id), color: \(task.taskColor)")
 
                     if let project = selectedProject {
                         task.project = project
@@ -481,23 +490,126 @@ struct TaskFormSheet: View {
                 task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
                 task.setTeamMemberIds(Array(selectedTeamMemberIds))
 
-                if let startDate = startDate, let endDate = endDate {
-                    if let calendarEvent = task.calendarEvent {
-                        calendarEvent.startDate = startDate
-                        calendarEvent.endDate = endDate
-                        let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-                        calendarEvent.duration = daysDiff + 1
-                        calendarEvent.needsSync = true
-                    } else {
-                        let newEvent = CalendarEvent.fromTask(task, startDate: startDate, endDate: endDate)
-                        task.calendarEvent = newEvent
-                        modelContext.insert(newEvent)
+                // When creating a new task, switch project to task-based scheduling if needed
+                if case .create = mode, let project = selectedProject {
+                    if project.eventType == .project {
+                        project.eventType = .task
+                        project.needsSync = true
+
+                        // Deactivate project calendar event
+                        if let projectEvent = project.primaryCalendarEvent, projectEvent.type == .project {
+                            projectEvent.active = false
+                            try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": false])
+                            projectEvent.needsSync = false
+                            projectEvent.lastSyncedAt = Date()
+                        }
                     }
                 }
 
-                task.needsSync = true
+                // ALWAYS create calendar event for tasks
+                if let calendarEvent = task.calendarEvent {
+                    // Update existing calendar event
+                    calendarEvent.title = task.project?.effectiveClientName ?? task.displayTitle
+                    calendarEvent.startDate = startDate
+                    calendarEvent.endDate = endDate
+                    if let start = startDate, let end = endDate {
+                        let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+                        calendarEvent.duration = daysDiff + 1
+                    }
+                    calendarEvent.active = true
+                } else {
+                    // Create new calendar event - dates may be nil
+                    let newEvent = CalendarEvent.fromTask(task, startDate: startDate, endDate: endDate)
+                    newEvent.active = true
+                    task.calendarEvent = newEvent
+                    modelContext.insert(newEvent)
+                }
 
                 try modelContext.save()
+
+                // IMMEDIATELY sync to Bubble
+                print("[TASK_FORM] 🔵 Creating task on Bubble...")
+                let taskDTO = TaskDTO.from(task)
+                let createdTask = try await dataController.apiService.createTask(taskDTO)
+                print("[TASK_FORM] ✅ Task created on Bubble with ID: \(createdTask.id)")
+
+                // Update local task with Bubble ID
+                task.id = createdTask.id
+                task.needsSync = false
+                task.lastSyncedAt = Date()
+
+                // Create calendar event on Bubble
+                if let calendarEvent = task.calendarEvent {
+                    print("[TASK_FORM] 📅 Creating calendar event on Bubble...")
+                    let dateFormatter = ISO8601DateFormatter()
+                    let eventDTO = CalendarEventDTO(
+                        id: calendarEvent.id,
+                        color: calendarEvent.color,
+                        companyId: calendarEvent.companyId,
+                        projectId: calendarEvent.projectId,
+                        taskId: createdTask.id,
+                        duration: Double(calendarEvent.duration),
+                        endDate: calendarEvent.endDate.map { dateFormatter.string(from: $0) },
+                        startDate: calendarEvent.startDate.map { dateFormatter.string(from: $0) },
+                        teamMembers: calendarEvent.getTeamMemberIds(),
+                        title: calendarEvent.title,
+                        type: "Task",
+                        active: calendarEvent.active,
+                        createdDate: nil,
+                        modifiedDate: nil
+                    )
+
+                    let createdEvent = try await dataController.apiService.createCalendarEvent(eventDTO)
+                    calendarEvent.id = createdEvent.id
+                    task.calendarEventId = createdEvent.id
+                    calendarEvent.needsSync = false
+                    calendarEvent.lastSyncedAt = Date()
+                    print("[TASK_FORM] ✅ Calendar event created with ID: \(createdEvent.id)")
+
+                    // Update task on Bubble with calendar event ID
+                    print("[TASK_FORM] 🔗 Linking calendar event to task on Bubble...")
+                    try await dataController.apiService.updateTask(
+                        id: task.id,
+                        updates: [BubbleFields.Task.calendarEventId: createdEvent.id]
+                    )
+                    print("[TASK_FORM] ✅ Task updated with calendar event ID on Bubble")
+
+                    // Link calendar event to company
+                    if let companyId = dataController.currentUser?.companyId {
+                        print("[TASK_FORM] 🔗 Linking calendar event to company...")
+                        try await dataController.apiService.linkCalendarEventToCompany(
+                            companyId: companyId,
+                            calendarEventId: createdEvent.id
+                        )
+                        print("[TASK_FORM] ✅ Calendar event linked to company")
+                    }
+                }
+
+                try modelContext.save()
+                print("[TASK_FORM] ✅ Task and calendar event saved to SwiftData")
+
+                // Update project dates if using task-based scheduling
+                if let project = task.project {
+                    print("[TASK_FORM] 📅 Checking if project dates need updating...")
+                    print("[TASK_FORM] Project: \(project.title)")
+                    print("[TASK_FORM] Uses task-based scheduling: \(project.usesTaskBasedScheduling)")
+
+                    await MainActor.run {
+                        project.updateDatesFromTasks()
+                        try? modelContext.save()
+                    }
+
+                    // Sync updated dates to Bubble
+                    print("[TASK_FORM] 🔄 Syncing project dates to Bubble...")
+                    try await dataController.apiService.updateProjectDates(
+                        projectId: project.id,
+                        startDate: project.startDate,
+                        endDate: project.endDate
+                    )
+                    print("[TASK_FORM] ✅ Project dates update complete")
+                } else {
+                    print("[TASK_FORM] ⚠️ No project found for task - skipping date update")
+                }
 
                 await MainActor.run {
                     isSaving = false

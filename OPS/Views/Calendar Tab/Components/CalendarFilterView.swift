@@ -22,6 +22,9 @@ struct CalendarFilterView: View {
     @State private var availableTeamMembers: [TeamMember] = []
     @State private var availableTaskTypes: [TaskType] = []
     @State private var availableClients: [Client] = []
+
+    // Search state for clients
+    @State private var clientSearchText: String = ""
     
     var body: some View {
         NavigationStack {
@@ -230,7 +233,7 @@ struct CalendarFilterView: View {
     }
     
     // MARK: - Clients Content
-    
+
     private var clientsContent: some View {
         VStack(spacing: 0) {
             // Select All option
@@ -241,12 +244,41 @@ struct CalendarFilterView: View {
             ) {
                 selectedClientIds.removeAll()
             }
-            
+
             Divider()
                 .background(Color.white.opacity(0.1))
-            
-            // Individual clients
-            ForEach(availableClients, id: \.id) { client in
+
+            // Search field
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                TextField("Search clients...", text: $clientSearchText)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+
+                if !clientSearchText.isEmpty {
+                    Button(action: {
+                        clientSearchText = ""
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .background(OPSStyle.Colors.background.opacity(0.5))
+
+            Divider()
+                .background(Color.white.opacity(0.1))
+
+            // Individual clients (filtered)
+            ForEach(filteredClients, id: \.id) { client in
                 filterRow(
                     title: client.name,
                     subtitle: client.email ?? "",
@@ -254,13 +286,33 @@ struct CalendarFilterView: View {
                 ) {
                     toggleSelection(client.id, in: &selectedClientIds)
                 }
-                
-                if client.id != availableClients.last?.id {
+
+                if client.id != filteredClients.last?.id {
                     Divider()
                         .background(Color.white.opacity(0.05))
                         .padding(.leading, 16)
                 }
             }
+
+            // Show message if no results
+            if filteredClients.isEmpty && !clientSearchText.isEmpty {
+                Text("No clients found")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(.vertical, 32)
+            }
+        }
+    }
+
+    // Filtered clients based on search text
+    private var filteredClients: [Client] {
+        if clientSearchText.isEmpty {
+            return availableClients
+        }
+        return availableClients.filter { client in
+            client.name.localizedCaseInsensitiveContains(clientSearchText) ||
+            (client.email?.localizedCaseInsensitiveContains(clientSearchText) ?? false) ||
+            (client.address?.localizedCaseInsensitiveContains(clientSearchText) ?? false)
         }
     }
     

@@ -25,8 +25,8 @@ final class CalendarEvent {
     var projectId: String
     var taskId: String?  // Optional - nil means project-level event
     var duration: Int  // Days
-    var endDate: Date
-    var startDate: Date
+    var endDate: Date?
+    var startDate: Date?
     var title: String
     var type: CalendarEventType
     var projectEventType: CalendarEventType? // Cached from parent project for efficient filtering
@@ -55,8 +55,8 @@ final class CalendarEvent {
         projectId: String,
         companyId: String,
         title: String,
-        startDate: Date,
-        endDate: Date,
+        startDate: Date?,
+        endDate: Date?,
         color: String,
         type: CalendarEventType,
         active: Bool = true
@@ -72,7 +72,11 @@ final class CalendarEvent {
         self.active = active
         self.taskId = nil
         self.projectEventType = nil // Will be set when linked to project
-        self.duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
+        if let start = startDate, let end = endDate {
+            self.duration = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 1
+        } else {
+            self.duration = 1
+        }
         self.teamMemberIdsString = ""
         self.teamMembers = []
     }
@@ -112,26 +116,29 @@ final class CalendarEvent {
     
     /// Check if event spans multiple days
     var isMultiDay: Bool {
-        return !Calendar.current.isDate(startDate, inSameDayAs: endDate)
+        guard let start = startDate, let end = endDate else { return false }
+        return !Calendar.current.isDate(start, inSameDayAs: end)
     }
     
     /// Get all dates this event spans
     var spannedDates: [Date] {
+        guard let start = startDate, let end = endDate else { return [] }
+
         var dates: [Date] = []
         let calendar = Calendar.current
-        var currentDate = startDate
-        
+        var currentDate = start
+
         // For single-day events
-        if calendar.isDate(startDate, inSameDayAs: endDate) {
-            return [startDate]
+        if calendar.isDate(start, inSameDayAs: end) {
+            return [start]
         }
-        
+
         // For multi-day events
-        while currentDate <= endDate {
+        while currentDate <= end {
             dates.append(currentDate)
             currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
         }
-        
+
         return dates
     }
     
@@ -250,21 +257,33 @@ final class CalendarEvent {
     }
     
     /// Create from a Task
-    static func fromTask(_ task: ProjectTask, startDate: Date, endDate: Date) -> CalendarEvent {
+    static func fromTask(_ task: ProjectTask, startDate: Date?, endDate: Date?) -> CalendarEvent {
         // Determine if this task event should be active
         let isActive = task.project?.effectiveEventType == .task
+
+        // Use project's client name as the title
+        let eventTitle = task.project?.effectiveClientName ?? task.displayTitle
+
+        print("[CAL_EVENT_FROM_TASK] 🎨 Creating calendar event from task")
+        print("[CAL_EVENT_FROM_TASK] Task ID: \(task.id)")
+        print("[CAL_EVENT_FROM_TASK] Task Color: \(task.taskColor)")
+        print("[CAL_EVENT_FROM_TASK] Task Type: \(task.taskType?.display ?? "nil")")
+        print("[CAL_EVENT_FROM_TASK] Task Type Color: \(task.taskType?.color ?? "nil")")
+        print("[CAL_EVENT_FROM_TASK] Effective Color: \(task.effectiveColor)")
 
         let event = CalendarEvent(
             id: "task-\(task.id)",
             projectId: task.projectId,
             companyId: task.companyId,
-            title: task.displayTitle,
+            title: eventTitle,
             startDate: startDate,
             endDate: endDate,
             color: task.effectiveColor,
             type: .task,
             active: isActive
         )
+
+        print("[CAL_EVENT_FROM_TASK] ✅ Calendar event created with color: \(event.color)")
 
         event.taskId = task.id
         event.task = task

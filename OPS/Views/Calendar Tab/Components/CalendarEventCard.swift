@@ -15,6 +15,12 @@ struct CalendarEventCard: View {
     @EnvironmentObject private var dataController: DataController
     @State private var showingReschedule = false
     @State private var showingQuickActions = false
+    @State private var showingStatusPicker = false
+
+    private var canModify: Bool {
+        guard let user = dataController.currentUser else { return false }
+        return user.role == .admin || user.role == .officeCrew
+    }
 
     init(event: CalendarEvent, isFirst: Bool, isOngoing: Bool = false, onTap: @escaping () -> Void) {
         self.event = event
@@ -206,9 +212,15 @@ struct CalendarEventCard: View {
         .onLongPressGesture(minimumDuration: 0.5) {
             showingQuickActions = true
         }
-        .confirmationDialog("Quick Actions", isPresented: $showingQuickActions, titleVisibility: .visible) {
-            Button("Reschedule") {
-                showingReschedule = true
+        .confirmationDialog("Quick Actions", isPresented: $showingQuickActions, titleVisibility: .hidden) {
+            if canModify {
+                Button("Reschedule") {
+                    showingReschedule = true
+                }
+            } else {
+                Button("Update Status") {
+                    showingStatusPicker = true
+                }
             }
 
             Button("Cancel", role: .cancel) {}
@@ -238,6 +250,15 @@ struct CalendarEventCard: View {
                     }
                 )
                 .environmentObject(dataController)
+            }
+        }
+        .sheet(isPresented: $showingStatusPicker) {
+            if event.type == .task, let task = event.task {
+                TaskStatusChangeSheet(task: task)
+                    .environmentObject(dataController)
+            } else if event.type == .project, let project = associatedProject {
+                ProjectStatusChangeSheet(project: project)
+                    .environmentObject(dataController)
             }
         }
     }

@@ -419,8 +419,8 @@ struct SchedulingModeConversionSheet: View {
         }
 
         // Find earliest start and latest end
-        let startDates = taskEvents.map { $0.startDate }
-        let endDates = taskEvents.map { $0.endDate }
+        let startDates = taskEvents.compactMap { $0.startDate }
+        let endDates = taskEvents.compactMap { $0.endDate }
 
         project.startDate = startDates.min()
         project.endDate = endDates.max()
@@ -429,6 +429,136 @@ struct SchedulingModeConversionSheet: View {
 
 // MARK: - Project Team Change Sheet
 struct ProjectTeamChangeSheet: View {
+    let project: Project
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var dataController: DataController
+    @State private var selectedTaskId: String?
+    @State private var showingTaskTeamChange = false
+
+    var body: some View {
+        NavigationStack {
+            if project.eventType == .task && !project.tasks.isEmpty {
+                TaskPickerForTeamChange(
+                    project: project,
+                    onTaskSelected: { taskId in
+                        selectedTaskId = taskId
+                        showingTaskTeamChange = true
+                    }
+                )
+                .navigationDestination(isPresented: $showingTaskTeamChange) {
+                    if let taskId = selectedTaskId {
+                        TaskTeamChangeView(
+                            taskId: taskId,
+                            project: project,
+                            onComplete: {
+                                dismiss()
+                            }
+                        )
+                        .environmentObject(dataController)
+                    }
+                }
+            } else {
+                ProjectTeamChangeView(project: project)
+                    .environmentObject(dataController)
+            }
+        }
+    }
+}
+
+// MARK: - Task Picker For Team Change
+struct TaskPickerForTeamChange: View {
+    let project: Project
+    let onTaskSelected: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var dataController: DataController
+
+    var body: some View {
+        ZStack {
+            OPSStyle.Colors.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                QuickActionSheetHeader(
+                    title: "SELECT TASK",
+                    canSave: false,
+                    isSaving: false,
+                    onDismiss: { dismiss() },
+                    onSave: {}
+                )
+
+                ScrollView {
+                    VStack(spacing: 20) {
+                        QuickActionContextHeader(
+                            clientName: project.effectiveClientName,
+                            projectAddress: project.address,
+                            projectName: project.title,
+                            taskName: nil,
+                            accentColor: nil
+                        )
+                        .environmentObject(dataController)
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("SELECT WHICH TASK'S TEAM TO EDIT")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            VStack(spacing: 0) {
+                                ForEach(Array(project.tasks.enumerated()), id: \.element.id) { index, task in
+                                    Button(action: {
+                                        onTaskSelected(task.id)
+                                    }) {
+                                        HStack(spacing: 12) {
+                                            Circle()
+                                                .fill(Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent)
+                                                .frame(width: 12, height: 12)
+
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(task.taskType?.display ?? "Task")
+                                                    .font(OPSStyle.Typography.bodyBold)
+                                                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                                if !task.getTeamMemberIds().isEmpty {
+                                                    Text("\(task.getTeamMemberIds().count) team member\(task.getTeamMemberIds().count == 1 ? "" : "s")")
+                                                        .font(OPSStyle.Typography.smallCaption)
+                                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                }
+                                            }
+
+                                            Spacer()
+
+                                            Image(systemName: "chevron.right")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 14)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+
+                                    if index < project.tasks.count - 1 {
+                                        Divider()
+                                            .background(Color.white.opacity(0.05))
+                                    }
+                                }
+                            }
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            )
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Project Team Change View (for project-based scheduling)
+struct ProjectTeamChangeView: View {
     let project: Project
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -610,21 +740,37 @@ struct ProjectTeamChangeSheet: View {
         isSaving = true
 
         Task {
-            await MainActor.run {
-                project.setTeamMemberIds(Array(selectedMemberIds))
-                project.needsSync = true
+            do {
+                await MainActor.run {
+                    project.setTeamMemberIds(Array(selectedMemberIds))
+                    project.needsSync = true
 
-                if project.eventType == .task {
-                    for task in project.tasks {
-                        task.setTeamMemberIds(Array(selectedMemberIds))
-                        task.needsSync = true
+                    if project.eventType == .task {
+                        for task in project.tasks {
+                            task.setTeamMemberIds(Array(selectedMemberIds))
+                            task.needsSync = true
+                        }
                     }
                 }
 
-                do {
-                    try modelContext.save()
-                    dismiss()
-                } catch {
+                try await dataController.apiService.updateProjectTeamMembers(
+                    projectId: project.id,
+                    teamMemberIds: Array(selectedMemberIds)
+                )
+
+                await MainActor.run {
+                    project.needsSync = false
+                    project.lastSyncedAt = Date()
+
+                    do {
+                        try modelContext.save()
+                        dismiss()
+                    } catch {
+                        isSaving = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
                     isSaving = false
                 }
             }
@@ -661,6 +807,288 @@ struct TeamMemberOption: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Task Team Change View
+struct TaskTeamChangeView: View {
+    let taskId: String
+    let project: Project
+    let onComplete: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var dataController: DataController
+    @State private var selectedMemberIds: Set<String>
+    @State private var isSaving = false
+    @State private var availableMembers: [TeamMember] = []
+    @State private var task: ProjectTask?
+
+    init(taskId: String, project: Project, onComplete: @escaping () -> Void) {
+        self.taskId = taskId
+        self.project = project
+        self.onComplete = onComplete
+        _selectedMemberIds = State(initialValue: Set())
+    }
+
+    var body: some View {
+        ZStack {
+            OPSStyle.Colors.background.ignoresSafeArea()
+
+            if let task = task {
+                VStack(spacing: 0) {
+                    QuickActionSheetHeader(
+                        title: "CHANGE TEAM",
+                        canSave: selectedMemberIds != Set(task.getTeamMemberIds()),
+                        isSaving: isSaving,
+                        onDismiss: { dismiss() },
+                        onSave: saveTeam
+                    )
+
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            QuickActionContextHeader(
+                                clientName: project.effectiveClientName,
+                                projectAddress: project.address,
+                                projectName: project.title,
+                                taskName: task.taskType?.display,
+                                accentColor: Color(hex: task.taskColor)
+                            )
+                            .environmentObject(dataController)
+
+                            currentTeamSection
+                            teamSelectionSection
+                        }
+                        .padding(20)
+                    }
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+        .onAppear {
+            loadTask()
+            loadAvailableMembers()
+        }
+    }
+
+    private var currentTeamSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("CURRENT TEAM")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            if task?.getTeamMemberIds().isEmpty ?? true {
+                emptyTeamView
+            } else {
+                currentTeamList
+            }
+        }
+    }
+
+    private var emptyTeamView: some View {
+        HStack {
+            Text("No team members assigned")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer()
+        }
+        .padding(16)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+    }
+
+    private var currentTeamList: some View {
+        VStack(spacing: 0) {
+            if let task = task {
+                ForEach(Array(task.teamMembers.enumerated()), id: \.element.id) { index, member in
+                HStack(spacing: 12) {
+                    Image(systemName: OPSStyle.Icons.personFill)
+                        .font(.system(size: 14))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(width: 20)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(member.fullName)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                        Text(member.role.displayName)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                if index < task.teamMembers.count - 1 {
+                    Divider()
+                        .background(Color.white.opacity(0.05))
+                }
+            }
+            }
+        }
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+    }
+
+    private var teamSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("SELECT TEAM MEMBERS")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            if availableMembers.isEmpty {
+                HStack {
+                    Text("No team members available")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Spacer()
+                }
+                .padding(16)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(availableMembers, id: \.id) { member in
+                        TeamMemberOption(
+                            member: member,
+                            isSelected: selectedMemberIds.contains(member.id)
+                        ) {
+                            if selectedMemberIds.contains(member.id) {
+                                selectedMemberIds.remove(member.id)
+                            } else {
+                                selectedMemberIds.insert(member.id)
+                            }
+                        }
+
+                        if member.id != availableMembers.last?.id {
+                            Divider()
+                                .background(Color.white.opacity(0.05))
+                        }
+                    }
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    private func loadTask() {
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate { $0.id == taskId }
+        )
+
+        if let fetchedTask = try? modelContext.fetch(descriptor).first {
+            task = fetchedTask
+            selectedMemberIds = Set(fetchedTask.getTeamMemberIds())
+        }
+    }
+
+    private func loadAvailableMembers() {
+        availableMembers = dataController.getCompanyTeamMembers(companyId: project.companyId)
+            .sorted { $0.fullName < $1.fullName }
+    }
+
+    private func saveTeam() {
+        guard let task = task else { return }
+        isSaving = true
+
+        Task {
+            do {
+                let currentTaskId = task.id
+                let calendarEventId = task.calendarEvent?.id
+                var projectTeamIds: [String] = []
+
+                await MainActor.run {
+                    task.setTeamMemberIds(Array(selectedMemberIds))
+
+                    let userDescriptor = FetchDescriptor<User>(
+                        predicate: #Predicate<User> { user in
+                            selectedMemberIds.contains(user.id)
+                        }
+                    )
+
+                    if let users = try? modelContext.fetch(userDescriptor) {
+                        task.teamMembers = users
+                    }
+
+                    task.needsSync = true
+
+                    if let calendarEvent = task.calendarEvent {
+                        calendarEvent.setTeamMemberIds(Array(selectedMemberIds))
+                        if let users = try? modelContext.fetch(userDescriptor) {
+                            calendarEvent.teamMembers = users
+                        }
+                        calendarEvent.needsSync = true
+                    }
+
+                    updateProjectTeamFromAllTasks()
+                    projectTeamIds = project.getTeamMemberIds()
+
+                    do {
+                        try modelContext.save()
+                    } catch {
+                        print("[TASK_TEAM_CHANGE] ❌ Error saving: \(error)")
+                    }
+                }
+
+                try await dataController.apiService.updateTaskTeamMembers(
+                    id: currentTaskId,
+                    teamMemberIds: Array(selectedMemberIds)
+                )
+
+                if let eventId = calendarEventId {
+                    try await dataController.apiService.updateCalendarEventTeamMembers(
+                        id: eventId,
+                        teamMemberIds: Array(selectedMemberIds)
+                    )
+                }
+
+                try await dataController.apiService.updateProjectTeamMembers(
+                    projectId: project.id,
+                    teamMemberIds: projectTeamIds
+                )
+
+                await MainActor.run {
+                    onComplete()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                }
+            }
+        }
+    }
+
+    private func updateProjectTeamFromAllTasks() {
+        var allTeamMemberIds = Set<String>()
+
+        for task in project.tasks {
+            allTeamMemberIds.formUnion(task.getTeamMemberIds())
+        }
+
+        project.setTeamMemberIds(Array(allTeamMemberIds))
+        project.needsSync = true
     }
 }
 

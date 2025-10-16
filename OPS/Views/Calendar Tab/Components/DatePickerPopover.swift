@@ -344,7 +344,12 @@ struct DatePickerPopover: View {
         components.day = 1
 
         if let date = calendar.date(from: components) {
+            print("🗓️ DatePicker: selectMonth called")
+            print("🗓️ Selected month index: \(month)")
+            print("🗓️ Created date: \(date)")
+            print("🗓️ Year: \(components.year ?? 0), Month: \(components.month ?? 0)")
             onSelectDate(date)
+            print("🗓️ onSelectDate callback called with: \(date)")
         }
     }
     

@@ -299,39 +299,79 @@ struct TaskTypeFormSheet: View {
 
     private func saveTaskType() {
         guard let companyId = dataController.currentUser?.companyId else {
+            print("[TASK_TYPE_FORM] ❌ No company ID found")
             errorMessage = "No company ID found"
             showingError = true
             return
         }
 
+        print("[TASK_TYPE_FORM] 🔵 Starting task type creation")
+        print("[TASK_TYPE_FORM] Name: \(taskTypeName)")
+        print("[TASK_TYPE_FORM] Color: \(taskTypeColorHex)")
+        print("[TASK_TYPE_FORM] Icon: \(taskTypeIcon)")
+        print("[TASK_TYPE_FORM] Company ID: \(companyId)")
+
         isSaving = true
 
         Task {
-            let newTaskType = TaskType(
-                id: UUID().uuidString,
-                display: taskTypeName,
-                color: taskTypeColorHex,
-                companyId: companyId,
-                isDefault: false,
-                icon: taskTypeIcon
-            )
+            do {
+                // Create task type on Bubble API first to get the real ID
+                let tempTaskType = TaskTypeDTO(
+                    id: UUID().uuidString,
+                    color: taskTypeColorHex,
+                    display: taskTypeName,
+                    isDefault: false,
+                    createdDate: nil,
+                    modifiedDate: nil
+                )
 
-            await MainActor.run {
-                modelContext.insert(newTaskType)
+                print("[TASK_TYPE_FORM] 📤 Sending to Bubble API...")
+                let createdTaskType = try await dataController.apiService.createTaskType(tempTaskType)
+                print("[TASK_TYPE_FORM] ✅ Bubble created task type with ID: \(createdTaskType.id)")
 
-                do {
-                    try modelContext.save()
-                    onSave(newTaskType)
-                    dismiss()
-                } catch {
-                    errorMessage = error.localizedDescription
+                // Link task type to company
+                print("[TASK_TYPE_FORM] 🔗 Linking task type to company...")
+                try await dataController.apiService.linkTaskTypeToCompany(
+                    companyId: companyId,
+                    taskTypeId: createdTaskType.id
+                )
+                print("[TASK_TYPE_FORM] ✅ Task type linked to company")
+
+                // Now create locally with the Bubble ID
+                await MainActor.run {
+                    let newTaskType = TaskType(
+                        id: createdTaskType.id,
+                        display: taskTypeName,
+                        color: taskTypeColorHex,
+                        companyId: companyId,
+                        isDefault: false,
+                        icon: taskTypeIcon
+                    )
+
+                    print("[TASK_TYPE_FORM] 💾 Saving to local database...")
+                    modelContext.insert(newTaskType)
+
+                    do {
+                        try modelContext.save()
+                        print("[TASK_TYPE_FORM] ✅ Local save successful")
+                        print("[TASK_TYPE_FORM] 🎉 Task type created: \(createdTaskType.id)")
+                        onSave(newTaskType)
+                        dismiss()
+                    } catch {
+                        print("[TASK_TYPE_FORM] ❌ Local save failed: \(error)")
+                        errorMessage = error.localizedDescription
+                        showingError = true
+                        isSaving = false
+                    }
+                }
+            } catch {
+                print("[TASK_TYPE_FORM] ❌ API creation failed: \(error)")
+                await MainActor.run {
+                    errorMessage = "Failed to create task type: \(error.localizedDescription)"
                     showingError = true
                     isSaving = false
                 }
             }
-
-            // Trigger sync to create in backend
-            dataController.syncManager?.triggerBackgroundSync()
         }
     }
 }

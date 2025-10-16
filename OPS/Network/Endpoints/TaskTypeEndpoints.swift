@@ -70,6 +70,11 @@ extension APIService {
     /// - Parameter taskType: The task type DTO to create
     /// - Returns: The created task type DTO with server-assigned ID
     func createTaskType(_ taskType: TaskTypeDTO) async throws -> TaskTypeDTO {
+        print("[API_TASKTYPE_CREATE] 🔵 Starting task type creation")
+        print("[API_TASKTYPE_CREATE] Display: \(taskType.display)")
+        print("[API_TASKTYPE_CREATE] Color: \(taskType.color)")
+        print("[API_TASKTYPE_CREATE] Is Default: \(taskType.isDefault ?? false)")
+
         var taskTypeData: [String: Any] = [
             BubbleFields.TaskType.display: taskType.display,
             BubbleFields.TaskType.color: taskType.color,
@@ -78,12 +83,19 @@ extension APIService {
 
         let bodyData = try JSONSerialization.data(withJSONObject: taskTypeData)
 
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[API_TASKTYPE_CREATE] 📤 Request body: \(jsonString)")
+        }
+
+        print("[API_TASKTYPE_CREATE] 📡 Sending POST request to Bubble...")
         let response: TaskTypeCreationResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.taskType)",
             method: "POST",
             body: bodyData,
             requiresAuth: false
         )
+
+        print("[API_TASKTYPE_CREATE] ✅ Bubble returned ID: \(response.id)")
 
         return TaskTypeDTO(
             id: response.id,

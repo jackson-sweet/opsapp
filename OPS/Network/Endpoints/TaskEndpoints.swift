@@ -97,7 +97,22 @@ extension APIService {
     }
     
     // MARK: - Task Updates
-    
+
+    /// Update task with arbitrary fields
+    /// - Parameters:
+    ///   - id: The task ID
+    ///   - updates: Dictionary of fields to update
+    func updateTask(id: String, updates: [String: Any]) async throws {
+        let bodyData = try JSONSerialization.data(withJSONObject: updates)
+
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.task)/\(id)",
+            method: "PATCH",
+            body: bodyData,
+            requiresAuth: false
+        )
+    }
+
     /// Update a task's status
     /// - Parameters:
     ///   - id: The task ID
@@ -182,10 +197,17 @@ extension APIService {
     /// - Parameter task: The task DTO to create
     /// - Returns: The created task DTO with server-assigned ID
     func createTask(_ task: TaskDTO) async throws -> TaskDTO {
-        
+        print("[API_TASK_CREATE] 🔵 Starting task creation")
+        print("[API_TASK_CREATE] Task ID: \(task.id)")
+        print("[API_TASK_CREATE] Project ID: \(task.projectId ?? "nil")")
+        print("[API_TASK_CREATE] Company ID: \(task.companyId ?? "nil")")
+        print("[API_TASK_CREATE] Type: \(task.type ?? "nil")")
+        print("[API_TASK_CREATE] Status: \(task.status ?? "nil")")
+        print("[API_TASK_CREATE] 🎨 Task Color: \(task.taskColor ?? "nil")")
+
         // Prepare task data for creation
         var taskData: [String: Any] = [:]
-        
+
         // Add required and optional fields
         if let projectId = task.projectId {
             taskData[BubbleFields.Task.projectID] = projectId
@@ -202,35 +224,113 @@ extension APIService {
         if let taskColor = task.taskColor {
             taskData[BubbleFields.Task.taskColor] = taskColor
         }
-        
+
         // Add optional fields
         if let notes = task.taskNotes {
             taskData[BubbleFields.Task.taskNotes] = notes
         }
-        
+
         if let teamMembers = task.teamMembers {
             taskData[BubbleFields.Task.teamMembers] = teamMembers
         }
-        
+
         if let taskIndex = task.taskIndex {
             taskData[BubbleFields.Task.taskIndex] = taskIndex
         }
-        
+
         if let calendarEventId = task.calendarEventId {
             taskData[BubbleFields.Task.calendarEventId] = calendarEventId
         }
-        
+
         let bodyData = try JSONSerialization.data(withJSONObject: taskData)
-        
-        // Create the task and get the response
-        let response: BubbleObjectResponse<TaskDTO> = try await executeRequest(
+
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[API_TASK_CREATE] 📤 Request body: \(jsonString)")
+        }
+
+        struct TaskCreationResponse: Codable {
+            let id: String
+        }
+
+        print("[API_TASK_CREATE] 📡 Sending POST request to Bubble...")
+        let response: TaskCreationResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.task)",
             method: "POST",
             body: bodyData,
             requiresAuth: false
         )
-        
-        return response.response
+
+        print("[API_TASK_CREATE] ✅ Bubble returned ID: \(response.id)")
+
+        // Link task to project
+        if let projectId = task.projectId {
+            print("[API_TASK_CREATE] 🔗 Linking task to project...")
+            do {
+                try await linkTaskToProject(taskId: response.id, projectId: projectId)
+                print("[API_TASK_CREATE] ✅ Task linked to project")
+            } catch {
+                print("[API_TASK_CREATE] ⚠️ Failed to link task to project: \(error)")
+            }
+        }
+
+        return TaskDTO(
+            id: response.id,
+            calendarEventId: task.calendarEventId,
+            companyId: task.companyId,
+            completionDate: nil,
+            projectId: task.projectId,
+            scheduledDate: nil,
+            status: task.status,
+            taskColor: task.taskColor,
+            taskIndex: task.taskIndex,
+            taskNotes: task.taskNotes,
+            teamMembers: task.teamMembers,
+            type: task.type,
+            createdDate: nil,
+            modifiedDate: nil
+        )
+    }
+
+    /// Link a task to its parent project
+    private func linkTaskToProject(taskId: String, projectId: String) async throws {
+        print("[LINK_TASK_TO_PROJECT] 🔵 Starting to link task to project")
+        print("[LINK_TASK_TO_PROJECT] Task ID: \(taskId)")
+        print("[LINK_TASK_TO_PROJECT] Project ID: \(projectId)")
+
+        print("[LINK_TASK_TO_PROJECT] 📡 Fetching project from Bubble...")
+        let project = try await fetchProject(id: projectId)
+        print("[LINK_TASK_TO_PROJECT] ✅ Project fetched: \(project.projectName)")
+
+        var taskIds: [String] = []
+        if let tasks = project.tasks {
+            taskIds = tasks.compactMap { $0.stringValue }
+            print("[LINK_TASK_TO_PROJECT] 📋 Existing tasks in project: \(taskIds)")
+        } else {
+            print("[LINK_TASK_TO_PROJECT] ⚠️ Project has no tasks field")
+        }
+
+        if !taskIds.contains(taskId) {
+            taskIds.append(taskId)
+            print("[LINK_TASK_TO_PROJECT] ➕ Adding task to project tasks list")
+        } else {
+            print("[LINK_TASK_TO_PROJECT] ℹ️ Task already in project tasks list")
+        }
+
+        let updateData: [String: Any] = ["Tasks": taskIds]
+        let bodyData = try JSONSerialization.data(withJSONObject: updateData)
+
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[LINK_TASK_TO_PROJECT] 📤 Update payload: \(jsonString)")
+        }
+
+        print("[LINK_TASK_TO_PROJECT] 📡 Sending PATCH request to Bubble...")
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(projectId)",
+            method: "PATCH",
+            body: bodyData,
+            requiresAuth: false
+        )
+        print("[LINK_TASK_TO_PROJECT] ✅ Task successfully linked to project")
     }
     
     // MARK: - Task Deletion

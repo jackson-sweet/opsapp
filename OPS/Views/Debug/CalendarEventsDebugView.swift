@@ -351,8 +351,8 @@ struct CalendarEventDetailCard: View {
                 FieldRow(label: "Company ID", value: event.companyId)
                 FieldRow(label: "Color", value: event.color)
                 FieldRow(label: "Duration", value: "\(event.duration) days")
-                FieldRow(label: "Start Date", value: formatDate(event.startDate))
-                FieldRow(label: "End Date", value: formatDate(event.endDate))
+                FieldRow(label: "Start Date", value: event.startDate.map { formatDate($0) } ?? "nil")
+                FieldRow(label: "End Date", value: event.endDate.map { formatDate($0) } ?? "nil")
                 FieldRow(label: "Multi-Day", value: event.isMultiDay ? "Yes" : "No")
                 FieldRow(label: "Spanned Days", value: "\(event.spannedDates.count)")
                 FieldRow(label: "Team Members", value: event.getTeamMemberIds().joined(separator: ", ").isEmpty ? "none" : event.getTeamMemberIds().joined(separator: ", "))
@@ -390,8 +390,8 @@ struct CalendarEventDetailSheet: View {
                         // Date Range
                         Section("Date Range") {
                             VStack(alignment: .leading, spacing: 8) {
-                                FieldRow(label: "Start", value: formatDateTime(event.startDate))
-                                FieldRow(label: "End", value: formatDateTime(event.endDate))
+                                FieldRow(label: "Start", value: event.startDate.map { formatDateTime($0) } ?? "nil")
+                                FieldRow(label: "End", value: event.endDate.map { formatDateTime($0) } ?? "nil")
                                 FieldRow(label: "Duration", value: "\(event.duration) days")
                                 
                                 if event.isMultiDay {

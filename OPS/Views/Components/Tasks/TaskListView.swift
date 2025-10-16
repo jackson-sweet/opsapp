@@ -15,7 +15,13 @@ struct TaskListView: View {
     @State private var selectedTask: ProjectTask? = nil
     @State private var showingTaskForm = false
     @State private var showingSchedulingModeAlert = false
-    
+    @State private var customAlert: CustomAlertConfig?
+
+    private var canModify: Bool {
+        guard let user = dataController.currentUser else { return false }
+        return user.role == .admin || user.role == .officeCrew
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Section heading outside the card (matching ProjectDetailsView style)
@@ -43,26 +49,28 @@ struct TaskListView: View {
                 }
 
                 // ADD button
-                Button(action: {
-                    if !project.usesTaskBasedScheduling {
-                        showingSchedulingModeAlert = true
-                    } else {
-                        showingTaskForm = true
+                if canModify {
+                    Button(action: {
+                        if !project.usesTaskBasedScheduling {
+                            showingSchedulingModeAlert = true
+                        } else {
+                            showingTaskForm = true
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(OPSStyle.Typography.smallCaption)
+                            Text("Add")
+                                .font(OPSStyle.Typography.smallCaption)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        )
                     }
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(OPSStyle.Typography.smallCaption)
-                        Text("Add")
-                            .font(OPSStyle.Typography.smallCaption)
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                    )
                 }
             }
             .padding(.horizontal)
@@ -106,6 +114,13 @@ struct TaskListView: View {
                             isLast: task.id == project.tasks.sorted { $0.displayOrder < $1.displayOrder }.last?.id,
                             onTap: {
                                 selectedTask = task
+                            },
+                            onDeleteSuccess: { taskName in
+                                customAlert = CustomAlertConfig(
+                                    title: "DELETION SUCCESS",
+                                    message: "\(taskName) has been deleted",
+                                    color: OPSStyle.Colors.successStatus
+                                )
                             }
                         )
                         .environmentObject(dataController)
@@ -137,6 +152,7 @@ struct TaskListView: View {
         } message: {
             Text("By adding tasks, this project will switch to task-based scheduling. Project dates will be determined by individual task schedules.")
         }
+        .customAlert($customAlert)
     }
 }
 
@@ -146,6 +162,7 @@ struct TaskRow: View {
     let isFirst: Bool
     let isLast: Bool
     let onTap: () -> Void
+    let onDeleteSuccess: (String) -> Void
     @EnvironmentObject private var dataController: DataController
     @State private var showingActions = false
     @State private var showingStatusPicker = false
@@ -154,6 +171,11 @@ struct TaskRow: View {
     @State private var showingDeleteConfirmation = false
     @State private var isLongPressing = false
     @State private var hasTriggeredHaptic = false
+
+    private var canModify: Bool {
+        guard let user = dataController.currentUser else { return false }
+        return user.role == .admin || user.role == .officeCrew
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -187,8 +209,8 @@ struct TaskRow: View {
                     }
                     
                     // Date if available
-                    if let calendarEvent = task.calendarEvent {
-                        Text(formatDateRange(calendarEvent.startDate, calendarEvent.endDate))
+                    if let calendarEvent = task.calendarEvent, let start = calendarEvent.startDate, let end = calendarEvent.endDate {
+                        Text(formatDateRange(start, end))
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     } else if let scheduledDate = task.scheduledDate {
@@ -264,14 +286,16 @@ struct TaskRow: View {
             Button("Change Status") {
                 showingStatusPicker = true
             }
-            Button("Change Team") {
-                showingTeamPicker = true
-            }
-            Button("Reschedule") {
-                showingScheduler = true
-            }
-            Button("Delete", role: .destructive) {
-                showingDeleteConfirmation = true
+            if canModify {
+                Button("Change Team") {
+                    showingTeamPicker = true
+                }
+                Button("Reschedule") {
+                    showingScheduler = true
+                }
+                Button("Delete", role: .destructive) {
+                    showingDeleteConfirmation = true
+                }
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -290,12 +314,48 @@ struct TaskRow: View {
                 currentStartDate: task.calendarEvent?.startDate,
                 currentEndDate: task.calendarEvent?.endDate,
                 onScheduleUpdate: { startDate, endDate in
+                    print("[RESCHEDULE_TASK] 📅 Task rescheduled")
+                    print("[RESCHEDULE_TASK] Task: \(task.displayTitle)")
+                    print("[RESCHEDULE_TASK] New dates: \(startDate) to \(endDate)")
+
                     if let calendarEvent = task.calendarEvent {
+                        print("[RESCHEDULE_TASK] Updating existing calendar event: \(calendarEvent.id)")
                         calendarEvent.startDate = startDate
                         calendarEvent.endDate = endDate
                         calendarEvent.needsSync = true
+                    } else {
+                        print("[RESCHEDULE_TASK] Creating new calendar event for task")
+                        Task {
+                            await createCalendarEventForTask(task: task, startDate: startDate, endDate: endDate)
+                        }
                     }
                     try? dataController.modelContext?.save()
+                    print("[RESCHEDULE_TASK] ✅ Task saved to SwiftData")
+
+                    // Update project dates if using task-based scheduling
+                    if let project = task.project {
+                        print("[RESCHEDULE_TASK] 📅 Updating project dates after reschedule...")
+                        print("[RESCHEDULE_TASK] Project: \(project.title)")
+                        print("[RESCHEDULE_TASK] Uses task-based scheduling: \(project.usesTaskBasedScheduling)")
+
+                        Task {
+                            await MainActor.run {
+                                project.updateDatesFromTasks()
+                                try? dataController.modelContext?.save()
+                            }
+
+                            // Sync updated dates to Bubble
+                            print("[RESCHEDULE_TASK] 🔄 Syncing updated project dates to Bubble...")
+                            try? await dataController.apiService.updateProjectDates(
+                                projectId: project.id,
+                                startDate: project.startDate,
+                                endDate: project.endDate
+                            )
+                            print("[RESCHEDULE_TASK] ✅ Project dates update complete")
+                        }
+                    } else {
+                        print("[RESCHEDULE_TASK] ⚠️ No project found - skipping date update")
+                    }
                 }
             )
             .environmentObject(dataController)
@@ -314,17 +374,138 @@ struct TaskRow: View {
     }
 
     private func deleteTask() {
+        let taskName = task.displayTitle
+
         Task {
             do {
-                try await dataController.apiService.deleteTask(id: task.id)
+                // Store IDs and project before deleting
+                let taskId = task.id
+                let calendarEventId = task.calendarEvent?.id
+                let project = task.project
+
                 await MainActor.run {
                     guard let modelContext = dataController.modelContext else { return }
+
+                    // Delete task from local database (cascade will handle calendar event)
                     modelContext.delete(task)
                     try? modelContext.save()
+                }
+
+                // Delete calendar event from Bubble if it exists
+                if let eventId = calendarEventId {
+                    print("[DELETE_TASK] 🗑️ Deleting calendar event: \(eventId)")
+                    try await dataController.apiService.deleteCalendarEvent(id: eventId)
+                    print("[DELETE_TASK] ✅ Calendar event deleted from Bubble")
+                }
+
+                // Then delete the task from Bubble
+                try await dataController.apiService.deleteTask(id: taskId)
+                print("[DELETE_TASK] ✅ Task deleted from Bubble")
+
+                // Update project dates if using task-based scheduling
+                if let project = project {
+                    print("[DELETE_TASK] 📅 Updating project dates after deletion...")
+                    print("[DELETE_TASK] Project: \(project.title)")
+                    print("[DELETE_TASK] Uses task-based scheduling: \(project.usesTaskBasedScheduling)")
+                    print("[DELETE_TASK] Remaining tasks: \(project.tasks.count)")
+
+                    await MainActor.run {
+                        project.updateDatesFromTasks()
+                        try? dataController.modelContext?.save()
+                    }
+
+                    // Sync updated dates to Bubble
+                    print("[DELETE_TASK] 🔄 Syncing updated project dates to Bubble...")
+                    try await dataController.apiService.updateProjectDates(
+                        projectId: project.id,
+                        startDate: project.startDate,
+                        endDate: project.endDate
+                    )
+                    print("[DELETE_TASK] ✅ Project dates update complete")
+                } else {
+                    print("[DELETE_TASK] ⚠️ No project found - skipping date update")
+                }
+
+                // Show success feedback
+                await MainActor.run {
+                    onDeleteSuccess(taskName)
+                    scheduleDeletionNotification(itemType: "TASK", itemName: taskName)
                 }
             } catch {
                 print("[DELETE_TASK] ❌ Error deleting task: \(error)")
             }
+        }
+    }
+
+    private func scheduleDeletionNotification(itemType: String, itemName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "OPS DATABASE"
+        content.body = "Deletion of \(itemName) successful"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("[NOTIFICATION] Error scheduling notification: \(error)")
+            }
+        }
+    }
+
+    private func createCalendarEventForTask(task: ProjectTask, startDate: Date, endDate: Date) async {
+        print("[CREATE_CALENDAR_EVENT] Creating calendar event for task")
+
+        guard let project = task.project else {
+            print("[CREATE_CALENDAR_EVENT] ❌ No project associated with task")
+            return
+        }
+
+        let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.formatOptions = [.withInternetDateTime]
+
+        let duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
+
+        let eventDTO = CalendarEventDTO(
+            id: UUID().uuidString,
+            color: task.taskColor,
+            companyId: task.companyId,
+            projectId: task.projectId,
+            taskId: task.id,
+            duration: Double(duration),
+            endDate: dateFormatter.string(from: endDate),
+            startDate: dateFormatter.string(from: startDate),
+            teamMembers: task.getTeamMemberIds(),
+            title: task.taskType?.display ?? "Task",
+            type: "Task",
+            active: true,
+            createdDate: nil,
+            modifiedDate: nil
+        )
+
+        do {
+            let createdEvent = try await dataController.apiService.createCalendarEvent(eventDTO)
+
+            try await dataController.apiService.linkCalendarEventToCompany(
+                companyId: task.companyId,
+                calendarEventId: createdEvent.id
+            )
+
+            await MainActor.run {
+                if let calendarEvent = createdEvent.toModel() {
+                    calendarEvent.needsSync = false
+                    calendarEvent.lastSyncedAt = Date()
+                    dataController.modelContext?.insert(calendarEvent)
+                    task.calendarEvent = calendarEvent
+                    try? dataController.modelContext?.save()
+                    print("[CREATE_CALENDAR_EVENT] ✅ Calendar event created and linked")
+                }
+            }
+        } catch {
+            print("[CREATE_CALENDAR_EVENT] ❌ Failed to create calendar event: \(error)")
         }
     }
     

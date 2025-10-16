@@ -350,6 +350,10 @@ struct ClientFormSheet: View {
         tempClient.needsSync = false
         tempClient.lastSyncedAt = Date()
 
+        // Link client to company's Client list
+        print("[CLIENT_CREATE] Linking client to company...")
+        try await dataController.apiService.linkClientToCompany(companyId: companyId, clientId: bubbleId)
+
         // Save to data controller
         await MainActor.run {
             dataController.saveClient(tempClient)

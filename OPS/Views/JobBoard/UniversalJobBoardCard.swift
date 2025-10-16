@@ -35,6 +35,16 @@ struct UniversalJobBoardCard: View {
     @State private var confirmingDirection: SwipeDirection? = nil
     @State private var showingDeleteConfirmation = false
     @State private var showingClientDeletionSheet = false
+    @State private var customAlert: CustomAlertConfig?
+
+    private var isFieldCrew: Bool {
+        dataController.currentUser?.role == .fieldCrew
+    }
+
+    private var canModify: Bool {
+        guard let user = dataController.currentUser else { return false }
+        return user.role == .admin || user.role == .officeCrew
+    }
 
     var body: some View {
         if case .client = cardType {
@@ -275,6 +285,7 @@ struct UniversalJobBoardCard: View {
         } message: {
             Text("This will permanently delete this \(deleteItemName.lowercased()). This action cannot be undone.")
         }
+        .customAlert($customAlert)
     }
 
     private var deleteItemName: String {
@@ -521,24 +532,28 @@ struct UniversalJobBoardCard: View {
                 showingDetails = true
             }
 
-            Button("Add Task") {
-                showingTaskForm = true
-            }
+            if canModify {
+                Button("Add Task") {
+                    showingTaskForm = true
+                }
 
-            Button("Reschedule") {
-                showingScheduler = true
+                Button("Reschedule") {
+                    showingScheduler = true
+                }
             }
 
             Button("Change Status") {
                 showingStatusPicker = true
             }
 
-            Button("Change Team") {
-                showingTeamPicker = true
-            }
+            if canModify {
+                Button("Change Team") {
+                    showingTeamPicker = true
+                }
 
-            Button("Delete", role: .destructive) {
-                showingDeleteConfirmation = true
+                Button("Delete", role: .destructive) {
+                    showingDeleteConfirmation = true
+                }
             }
 
             Button("Cancel", role: .cancel) {}
@@ -552,12 +567,14 @@ struct UniversalJobBoardCard: View {
                 showingDetails = true
             }
 
-            Button("Add Project") {
-                showingProjectForm = true
-            }
+            if canModify {
+                Button("Add Project") {
+                    showingProjectForm = true
+                }
 
-            Button("Delete", role: .destructive) {
-                showingClientDeletionSheet = true
+                Button("Delete", role: .destructive) {
+                    showingClientDeletionSheet = true
+                }
             }
 
             Button("Cancel", role: .cancel) {}
@@ -575,20 +592,24 @@ struct UniversalJobBoardCard: View {
                 showingProjectDetails = true
             }
 
-            Button("Reschedule") {
-                showingScheduler = true
+            if canModify {
+                Button("Reschedule") {
+                    showingScheduler = true
+                }
             }
 
             Button("Change Status") {
                 showingStatusPicker = true
             }
 
-            Button("Change Team") {
-                showingTeamPicker = true
-            }
+            if canModify {
+                Button("Change Team") {
+                    showingTeamPicker = true
+                }
 
-            Button("Delete", role: .destructive) {
-                showingDeleteConfirmation = true
+                Button("Delete", role: .destructive) {
+                    showingDeleteConfirmation = true
+                }
             }
 
             Button("Cancel", role: .cancel) {}
@@ -755,9 +776,10 @@ struct UniversalJobBoardCard: View {
             }
 
             if project.eventType == .task {
-                items.append((OPSStyle.Icons.checklist, "\(project.tasks.count)"))
+                let taskText = project.tasks.count == 1 ? "TASK" : "TASKS"
+                items.append((OPSStyle.Icons.checklist, "\(project.tasks.count) \(taskText)"))
             } else {
-                items.append((OPSStyle.Icons.folderFill, "Project"))
+                items.append((OPSStyle.Icons.folderFill, "PROJECT"))
             }
 
             return items
@@ -895,6 +917,18 @@ struct UniversalJobBoardCard: View {
     }
 
     private func deleteItem() {
+        let itemName = title
+        let itemType: String
+
+        switch cardType {
+        case .project:
+            itemType = "PROJECT"
+        case .client:
+            itemType = "CLIENT"
+        case .task:
+            itemType = "TASK"
+        }
+
         Task {
             do {
                 switch cardType {
@@ -911,14 +945,88 @@ struct UniversalJobBoardCard: View {
                         try? modelContext.save()
                     }
                 case .task(let task):
-                    try await dataController.apiService.deleteTask(id: task.id)
+                    print("[DELETE_TASK_CARD] 🗑️ Deleting task from UniversalJobBoardCard")
+                    print("[DELETE_TASK_CARD] Task: \(itemName)")
+
+                    // Store IDs and project before deleting
+                    let taskId = task.id
+                    let calendarEventId = task.calendarEvent?.id
+                    let project = task.project
+
                     await MainActor.run {
+                        // Delete task from local database (cascade will handle calendar event)
                         modelContext.delete(task)
                         try? modelContext.save()
+                        print("[DELETE_TASK_CARD] ✅ Task deleted from SwiftData")
                     }
+
+                    // Delete calendar event from Bubble if it exists
+                    if let eventId = calendarEventId {
+                        print("[DELETE_TASK_CARD] 🗑️ Deleting calendar event: \(eventId)")
+                        try await dataController.apiService.deleteCalendarEvent(id: eventId)
+                        print("[DELETE_TASK_CARD] ✅ Calendar event deleted from Bubble")
+                    }
+
+                    // Delete task from Bubble
+                    print("[DELETE_TASK_CARD] 🗑️ Deleting task from Bubble: \(taskId)")
+                    try await dataController.apiService.deleteTask(id: taskId)
+                    print("[DELETE_TASK_CARD] ✅ Task deleted from Bubble")
+
+                    // Update project dates if using task-based scheduling
+                    if let project = project {
+                        print("[DELETE_TASK_CARD] 📅 Updating project dates after deletion...")
+                        print("[DELETE_TASK_CARD] Project: \(project.title)")
+                        print("[DELETE_TASK_CARD] Uses task-based scheduling: \(project.usesTaskBasedScheduling)")
+                        print("[DELETE_TASK_CARD] Remaining tasks: \(project.tasks.count)")
+
+                        await MainActor.run {
+                            project.updateDatesFromTasks()
+                            try? modelContext.save()
+                        }
+
+                        // Sync updated dates to Bubble
+                        print("[DELETE_TASK_CARD] 🔄 Syncing updated project dates to Bubble...")
+                        try await dataController.apiService.updateProjectDates(
+                            projectId: project.id,
+                            startDate: project.startDate,
+                            endDate: project.endDate
+                        )
+                        print("[DELETE_TASK_CARD] ✅ Project dates update complete")
+                    } else {
+                        print("[DELETE_TASK_CARD] ⚠️ No project found - skipping date update")
+                    }
+                }
+
+                // Show success feedback
+                await MainActor.run {
+                    customAlert = CustomAlertConfig(
+                        title: "DELETION SUCCESS",
+                        message: "\(itemName) has been deleted",
+                        color: OPSStyle.Colors.successStatus
+                    )
+                    scheduleDeletionNotification(itemType: itemType, itemName: itemName)
                 }
             } catch {
                 print("[DELETE] ❌ Error deleting item: \(error)")
+            }
+        }
+    }
+
+    private func scheduleDeletionNotification(itemType: String, itemName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "OPS DATABASE"
+        content.body = "Deletion of \(itemName) successful"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("[NOTIFICATION] Error scheduling notification: \(error)")
             }
         }
     }

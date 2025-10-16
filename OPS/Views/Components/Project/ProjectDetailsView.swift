@@ -37,6 +37,7 @@ struct ProjectDetailsView: View {
     @State private var showingTaskBasedSchedulingAlert = false
     @State private var isEditingTeam = false
     @State private var triggerTeamSave = false
+    @State private var showingCompletionSheet = false
 
     // Initialize with project's existing notes
     init(project: Project, isEditMode: Bool = false) {
@@ -122,6 +123,14 @@ struct ProjectDetailsView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text("This project uses task-based scheduling. Project dates are determined by the individual task schedules. To change dates, schedule the tasks instead.")
+            }
+            .sheet(isPresented: $showingCompletionSheet) {
+                if project.usesTaskBasedScheduling {
+                    TaskCompletionChecklistSheet(project: project, onComplete: {
+                        markProjectComplete()
+                    })
+                    .environmentObject(dataController)
+                }
             }
             .sheet(isPresented: $showingAddressEditor) {
                 AddressEditorSheet(
@@ -229,6 +238,10 @@ struct ProjectDetailsView: View {
 
                 photosSection
                 teamSection
+
+                if project.status != .completed {
+                    completeButton
+                }
 
                 Spacer()
                     .frame(height: 80)
@@ -369,7 +382,10 @@ struct ProjectDetailsView: View {
 
                 print("📅 Updated calendar event: \(projectEvent.title) - \(startDate) to \(endDate) (\(projectEvent.duration) days)")
             } else {
-                print("⚠️ No primary calendar event found for project")
+                print("⚠️ No primary calendar event found for project - creating one now")
+                Task {
+                    await createCalendarEventForProject(startDate: startDate, endDate: endDate)
+                }
             }
         } else if project.eventType == .task {
             // For task-based projects, update the individual task calendar events if needed
@@ -386,8 +402,8 @@ struct ProjectDetailsView: View {
             // Use standard ISO format without fractional seconds (matches createCalendarEvent)
             formatter.formatOptions = [.withInternetDateTime]
 
-            let startDateString = formatter.string(from: calendarEvent.startDate)
-            let endDateString = formatter.string(from: calendarEvent.endDate)
+            let startDateString = calendarEvent.startDate.map { formatter.string(from: $0) } ?? ""
+            let endDateString = calendarEvent.endDate.map { formatter.string(from: $0) } ?? ""
 
             print("📅 Formatted dates - Start: \(startDateString), End: \(endDateString)")
 
@@ -408,6 +424,53 @@ struct ProjectDetailsView: View {
             print("✅ Calendar event synced successfully to server")
         } catch {
             print("⚠️ Failed to sync calendar event to server: \(error)")
+        }
+    }
+
+    private func createCalendarEventForProject(startDate: Date, endDate: Date) async {
+        print("[CREATE_CALENDAR_EVENT] Creating calendar event for project: \(project.title)")
+
+        let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.formatOptions = [.withInternetDateTime]
+
+        let duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
+
+        let eventDTO = CalendarEventDTO(
+            id: UUID().uuidString,
+            color: "#59779F",
+            companyId: project.companyId,
+            projectId: project.id,
+            taskId: nil,
+            duration: Double(duration),
+            endDate: dateFormatter.string(from: endDate),
+            startDate: dateFormatter.string(from: startDate),
+            teamMembers: project.teamMembers.map { $0.id },
+            title: project.title,
+            type: "Project",
+            active: true,
+            createdDate: nil,
+            modifiedDate: nil
+        )
+
+        do {
+            let createdEvent = try await dataController.apiService.createCalendarEvent(eventDTO)
+
+            try await dataController.apiService.linkCalendarEventToCompany(
+                companyId: project.companyId,
+                calendarEventId: createdEvent.id
+            )
+
+            await MainActor.run {
+                if let calendarEvent = createdEvent.toModel() {
+                    calendarEvent.needsSync = false
+                    calendarEvent.lastSyncedAt = Date()
+                    dataController.modelContext?.insert(calendarEvent)
+                    try? dataController.modelContext?.save()
+                    print("[CREATE_CALENDAR_EVENT] ✅ Calendar event created and linked")
+                }
+            }
+        } catch {
+            print("[CREATE_CALENDAR_EVENT] ❌ Failed to create calendar event: \(error)")
         }
     }
 
@@ -752,7 +815,7 @@ struct ProjectDetailsView: View {
 
                 Spacer()
 
-                if !project.usesTaskBasedScheduling {
+                if !project.usesTaskBasedScheduling && canEditProjectSettings() {
                     teamEditButton
                 }
             }
@@ -925,24 +988,28 @@ struct ProjectDetailsView: View {
     
     // Add photos button
     private var addPhotosButton: some View {
-        Button(action: {
-            showingImagePicker = true
-        }) {
-            HStack(spacing: 8) {
-                Image(systemName: "plus.viewfinder")
-                    .font(.system(size: 16, weight: .medium))
-                
-                Text("ADD PHOTOS")
-                    .font(OPSStyle.Typography.bodyBold)
+        Group {
+            if canEditProjectSettings() {
+                Button(action: {
+                    showingImagePicker = true
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.viewfinder")
+                            .font(.system(size: 16, weight: .medium))
+
+                        Text("ADD PHOTOS")
+                            .font(OPSStyle.Typography.bodyBold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(.white)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+                .disabled(processingImages)
+                .padding(.horizontal)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(OPSStyle.Colors.primaryAccent)
-            .foregroundColor(.white)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
-        .disabled(processingImages)
-        .padding(.horizontal)
     }
     
     // Processing indicator
@@ -1000,11 +1067,45 @@ struct ProjectDetailsView: View {
             .environmentObject(dataController)
             .environmentObject(appState)
     }
-    
+
+    private var completeButton: some View {
+        Button(action: {
+            if project.usesTaskBasedScheduling {
+                showingCompletionSheet = true
+            } else {
+                markProjectComplete()
+            }
+        }) {
+            Text("MARK PROJECT COMPLETE")
+                .font(OPSStyle.Typography.bodyBold)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .background(Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                )
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
     // Check if user can edit project settings
     private func canEditProjectSettings() -> Bool {
         guard let currentUser = dataController.currentUser else { return false }
         return currentUser.role != .fieldCrew
+    }
+
+    private func markProjectComplete() {
+        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+        impactFeedback.impactOccurred()
+
+        dataController.syncManager.updateProjectStatus(
+            projectId: project.id,
+            status: .completed,
+            forceSync: true
+        )
     }
     
     // Helper to format date
@@ -1274,6 +1375,8 @@ struct AddressEditorSheet: View {
     @State private var isReverseGeocoding = false
     @State private var lastUserTypedAddress: String = ""
     @State private var lastCoordinate = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+    @State private var isUserEditingText = false
+    @State private var debounceTask: Task<Void, Never>?
 
     var body: some View {
         NavigationView {
@@ -1281,11 +1384,22 @@ struct AddressEditorSheet: View {
                 MapViewWithCallback(
                     region: $region,
                     onRegionChange: { newRegion in
+                        guard !isUserEditingText else { return }
+
                         let newCoord = newRegion.center
-                        if abs(newCoord.latitude - lastCoordinate.latitude) > 0.0001 ||
-                           abs(newCoord.longitude - lastCoordinate.longitude) > 0.0001 {
+                        if abs(newCoord.latitude - lastCoordinate.latitude) > 0.001 ||
+                           abs(newCoord.longitude - lastCoordinate.longitude) > 0.001 {
                             lastCoordinate = newCoord
-                            reverseGeocodeCoordinate(newCoord)
+
+                            debounceTask?.cancel()
+                            debounceTask = Task {
+                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                if !Task.isCancelled {
+                                    await MainActor.run {
+                                        reverseGeocodeCoordinate(newCoord)
+                                    }
+                                }
+                            }
                         }
                     }
                 )
@@ -1299,16 +1413,27 @@ struct AddressEditorSheet: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        TextField("Enter address or drag map", text: $address)
+                        TextField("Enter address or drag map", text: $address, onEditingChanged: { isEditing in
+                            isUserEditingText = isEditing
+                        })
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .onChange(of: address) { newValue in
-                                if newValue != lastUserTypedAddress {
+                            .onChange(of: address) { _, newValue in
+                                if newValue != lastUserTypedAddress && isUserEditingText {
                                     lastUserTypedAddress = newValue
-                                    geocodeAddress(newValue)
+
+                                    debounceTask?.cancel()
+                                    debounceTask = Task {
+                                        try? await Task.sleep(nanoseconds: 800_000_000)
+                                        if !Task.isCancelled {
+                                            await MainActor.run {
+                                                geocodeAddress(newValue)
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
@@ -1389,7 +1514,7 @@ struct AddressEditorSheet: View {
     }
 
     private func reverseGeocodeCoordinate(_ coordinate: CLLocationCoordinate2D) {
-        guard !isGeocodingAddress else { return }
+        guard !isGeocodingAddress, !isUserEditingText else { return }
 
         isReverseGeocoding = true
 
@@ -1399,6 +1524,8 @@ struct AddressEditorSheet: View {
         geocoder.reverseGeocodeLocation(location) { placemarks, error in
             DispatchQueue.main.async {
                 isReverseGeocoding = false
+
+                guard !isUserEditingText else { return }
 
                 if let placemark = placemarks?.first {
                     var addressComponents: [String] = []

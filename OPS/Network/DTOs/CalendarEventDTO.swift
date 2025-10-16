@@ -40,26 +40,26 @@ struct CalendarEventDTO: Codable {
         case teamMembers = "Team Members"
         case title = "Title"
         case type = "Type"
-        case active = "Active"
+        case active = "active"
         case createdDate = "Created Date"
         case modifiedDate = "Modified Date"
     }
     
     /// Convert DTO to SwiftData model
     func toModel() -> CalendarEvent? {
-        
+
         // Parse dates with validation
         let dateFormatter = ISO8601DateFormatter()
         dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
+
         // Also try without fractional seconds if first attempt fails
         let alternativeFormatter = ISO8601DateFormatter()
         alternativeFormatter.formatOptions = [.withInternetDateTime]
-        
-        let startDateObj: Date
-        var endDateObj: Date
-        
-        // Handle start date
+
+        var startDateObj: Date? = nil
+        var endDateObj: Date? = nil
+
+        // Handle start date (optional - may be nil for unscheduled projects)
         if let startDateString = startDate {
             if let parsedStart = dateFormatter.date(from: startDateString) {
                 startDateObj = parsedStart
@@ -72,14 +72,12 @@ struct CalendarEventDTO: Codable {
                 if let parsedStart = bubbleFormatter.date(from: startDateString) {
                     startDateObj = parsedStart
                 } else {
-                    return nil // Don't create events with invalid dates
+                    print("[CalendarEventDTO] ⚠️ Failed to parse start date: \(startDateString)")
                 }
             }
-        } else {
-            return nil // Don't create events without dates
         }
         
-        // Handle end date with validation
+        // Handle end date (optional - may be nil for unscheduled projects)
         if let endDateString = endDate {
             if let parsedEnd = dateFormatter.date(from: endDateString) {
                 endDateObj = parsedEnd
@@ -92,25 +90,24 @@ struct CalendarEventDTO: Codable {
                 if let parsedEnd = bubbleFormatter.date(from: endDateString) {
                     endDateObj = parsedEnd
                 } else {
-                    endDateObj = startDateObj
+                    print("[CalendarEventDTO] ⚠️ Failed to parse end date: \(endDateString)")
                 }
             }
-        } else {
-            endDateObj = startDateObj // Default to start date if missing
         }
-        
-        // Validate date order - end must be on or after start
-        if endDateObj < startDateObj {
-            endDateObj = startDateObj
+
+        // Validate date order if both dates exist - end must be on or after start
+        if let start = startDateObj, let end = endDateObj, end < start {
+            endDateObj = start
         }
-        
-        // Validate duration
-        if let durationValue = duration {
-            if durationValue < 0 {
-                endDateObj = startDateObj
-            } else if durationValue == 0 {
-                // Zero duration = same day event
-                endDateObj = startDateObj
+
+        // Validate duration only if we have dates
+        if startDateObj != nil && endDateObj != nil {
+            if let durationValue = duration {
+                if durationValue < 0 {
+                    endDateObj = startDateObj
+                } else if durationValue == 0 {
+                    endDateObj = startDateObj
+                }
             }
         }
         
@@ -172,8 +169,8 @@ struct CalendarEventDTO: Codable {
             projectId: event.projectId,
             taskId: event.taskId,
             duration: Double(event.duration),  // Convert Int to Double
-            endDate: dateFormatter.string(from: event.endDate),
-            startDate: dateFormatter.string(from: event.startDate),
+            endDate: event.endDate.map { dateFormatter.string(from: $0) },
+            startDate: event.startDate.map { dateFormatter.string(from: $0) },
             teamMembers: event.getTeamMemberIds(),
             title: event.title,
             type: event.type.rawValue,

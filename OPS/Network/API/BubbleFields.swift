@@ -172,6 +172,7 @@ struct BubbleFields {
     /// CalendarEvent entity fields (match your Bubble field names exactly)
     struct CalendarEvent {
         static let id = "_id"
+        static let active = "active"
         static let color = "Color"
         static let companyId = "companyId"  // lowercase 'c'
         static let duration = "Duration"

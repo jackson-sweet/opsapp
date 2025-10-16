@@ -100,7 +100,14 @@ struct TaskDTO: Codable {
         let dateFormatter = ISO8601DateFormatter()
         let scheduledDateString = task.scheduledDate != nil ? dateFormatter.string(from: task.scheduledDate!) : nil
         let completionDateString = task.completionDate != nil ? dateFormatter.string(from: task.completionDate!) : nil
-        
+
+        print("[TASK_DTO] 🎨 Creating TaskDTO from ProjectTask")
+        print("[TASK_DTO] Task ID: \(task.id)")
+        print("[TASK_DTO] Task Color: \(task.taskColor)")
+        print("[TASK_DTO] Task Type ID: \(task.taskTypeId)")
+        print("[TASK_DTO] Task Type Display: \(task.taskType?.display ?? "nil")")
+        print("[TASK_DTO] Task Type Color: \(task.taskType?.color ?? "nil")")
+
         return TaskDTO(
             id: task.id,
             calendarEventId: task.calendarEventId,

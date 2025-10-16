@@ -28,6 +28,7 @@ struct CalendarSchedulerSheet: View {
     @State private var conflictingEvents: [CalendarEvent] = []
     @State private var showingConflictWarning = false
     @State private var showOnlyTeamEvents = true  // Filter by team members by default
+    @State private var showOnlyProjectTasks = false  // Filter by same project tasks
     @State private var allCalendarEvents: [CalendarEvent] = []
     @State private var filteredCalendarEvents: [CalendarEvent] = []
 
@@ -89,8 +90,13 @@ struct CalendarSchedulerSheet: View {
                         // Calendar Grid (full width)
                         calendarSectionFullWidth
 
-                        // Team filter toggle
+                        // Filter toggles
                         teamFilterToggle
+
+                        // Project tasks filter (only show for tasks)
+                        if case .task = itemType {
+                            projectTasksFilterToggle
+                        }
 
                         // Selected Dates Summary
                         if viewMode == .reviewing {
@@ -263,6 +269,51 @@ struct CalendarSchedulerSheet: View {
         )
         .padding(.horizontal, 20)
         .onChange(of: showOnlyTeamEvents) { _ in
+            if showOnlyTeamEvents {
+                showOnlyProjectTasks = false
+            }
+            filterCalendarEvents()
+        }
+    }
+
+    // MARK: - Project Tasks Filter Toggle
+    private var projectTasksFilterToggle: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: showOnlyProjectTasks ? "checklist" : "calendar")
+                    .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                    .font(.system(size: 14))
+
+                Text(showOnlyProjectTasks ? "Showing other tasks for this project" : "Show project tasks")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Spacer()
+
+                Toggle("", isOn: $showOnlyProjectTasks)
+                    .labelsHidden()
+                    .tint(OPSStyle.Colors.secondaryAccent)
+                    .scaleEffect(0.8)
+            }
+
+            if showOnlyProjectTasks {
+                Text("Showing only other tasks from the same project to help coordinate scheduling.")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+        .padding(16)
+        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+        )
+        .padding(.horizontal, 20)
+        .onChange(of: showOnlyProjectTasks) { _ in
+            if showOnlyProjectTasks {
+                showOnlyTeamEvents = false
+            }
             filterCalendarEvents()
         }
     }
@@ -413,8 +464,8 @@ struct CalendarSchedulerSheet: View {
 
                         Spacer()
 
-                        let startDateStr = formatDate(event.startDate, short: true)
-                        let endDateStr = formatDate(event.endDate, short: true)
+                        let startDateStr = event.startDate.map { formatDate($0, short: true) } ?? "-"
+                        let endDateStr = event.endDate.map { formatDate($0, short: true) } ?? "-"
                         Text("\(startDateStr) - \(endDateStr)")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -651,6 +702,23 @@ struct CalendarSchedulerSheet: View {
     }
 
     private func filterCalendarEvents() {
+        // Handle project tasks filter (only for tasks)
+        if showOnlyProjectTasks, case .task(let task) = itemType {
+            // Show only other tasks from the same project
+            filteredCalendarEvents = allCalendarEvents.filter { event in
+                // Must be a task event
+                guard event.type == .task else { return false }
+
+                // Must be from the same project
+                guard event.projectId == task.projectId else { return false }
+
+                // Exclude the current task being scheduled
+                return event.taskId != task.id
+            }
+            return
+        }
+
+        // Handle team events filter
         guard showOnlyTeamEvents else {
             filteredCalendarEvents = allCalendarEvents
             return
@@ -675,7 +743,7 @@ struct CalendarSchedulerSheet: View {
 
     private func checkForConflicts() {
         // Get events to check based on current filter
-        let eventsToCheck = showOnlyTeamEvents ? filteredCalendarEvents : allCalendarEvents
+        let eventsToCheck = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredCalendarEvents : allCalendarEvents
 
         // Filter for events that overlap with the selected date range
         conflictingEvents = eventsToCheck.filter { event in
@@ -689,13 +757,13 @@ struct CalendarSchedulerSheet: View {
             }
 
             // Check for date overlap
-            if !isSameItem {
-                let eventRange = event.startDate...event.endDate
+            if !isSameItem, let eventStart = event.startDate, let eventEnd = event.endDate {
+                let eventRange = eventStart...eventEnd
                 let selectedRange = selectedStartDate...selectedEndDate
                 return eventRange.overlaps(selectedRange)
             }
             return false
-        }.sorted { $0.startDate < $1.startDate }
+        }.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
     }
 
     private func handleConfirmSchedule() {

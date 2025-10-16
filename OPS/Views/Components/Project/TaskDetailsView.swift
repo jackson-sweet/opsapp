@@ -377,8 +377,8 @@ struct TaskDetailsView: View {
                                     Text(formatDate(date))
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
-                                } else if let calendarEvent = task.calendarEvent {
-                                    Text(formatDateRange(calendarEvent.startDate, calendarEvent.endDate))
+                                } else if let calendarEvent = task.calendarEvent, let start = calendarEvent.startDate, let end = calendarEvent.endDate {
+                                    Text(formatDateRange(start, end))
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                 } else {
@@ -473,7 +473,7 @@ struct TaskDetailsView: View {
                 Spacer()
 
                 let teamMembers = loadedTeamMembers.isEmpty ? Array(task.teamMembers) : loadedTeamMembers
-                if !teamMembers.isEmpty {
+                if !teamMembers.isEmpty && canModify {
                     Button(action: {
                         showingTeamPicker = true
                     }) {
@@ -513,11 +513,13 @@ struct TaskDetailsView: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                         .padding(.vertical, 16)
                     Spacer()
-                    Button("ADD") {
-                        showingTeamPicker = true
+                    if canModify {
+                        Button("ADD") {
+                            showingTeamPicker = true
+                        }
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding(.horizontal)
                 .background(OPSStyle.Colors.cardBackgroundDark)
@@ -829,8 +831,8 @@ struct TaskDetailsView: View {
         if let project = task.project {
             let allTaskEvents = project.tasks.compactMap { $0.calendarEvent }
             if !allTaskEvents.isEmpty {
-                let earliestStart = allTaskEvents.map { $0.startDate }.min() ?? startDate
-                let latestEnd = allTaskEvents.map { $0.endDate }.max() ?? endDate
+                let earliestStart = allTaskEvents.compactMap { $0.startDate }.min() ?? startDate
+                let latestEnd = allTaskEvents.compactMap { $0.endDate }.max() ?? endDate
 
                 if project.startDate != earliestStart || project.endDate != latestEnd {
                     print("🔄 Updating project dates to match task range")
@@ -867,8 +869,8 @@ struct TaskDetailsView: View {
             // Use standard ISO format without fractional seconds (matches createCalendarEvent)
             formatter.formatOptions = [.withInternetDateTime]
 
-            let startDateString = formatter.string(from: calendarEvent.startDate)
-            let endDateString = formatter.string(from: calendarEvent.endDate)
+            let startDateString = calendarEvent.startDate.map { formatter.string(from: $0) } ?? ""
+            let endDateString = calendarEvent.endDate.map { formatter.string(from: $0) } ?? ""
 
             print("📅 Formatted dates - Start: \(startDateString), End: \(endDateString)")
 
@@ -1031,25 +1033,28 @@ struct TaskDetailsView: View {
     }
     
     private func updateTaskStatus(to newStatus: TaskStatus) {
-        // Haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
-        
-        // Update status
+
         task.status = newStatus
-        
-        // Note: completion date is managed by the task itself
-        
         task.needsSync = true
         project.needsSync = true
-        try? dataController.modelContext?.save()
-        
-        // If marking as completed, check if all tasks are now complete
+
         if newStatus == .completed {
             checkIfAllTasksComplete()
+        } else if newStatus == .inProgress {
+            if project.status == .completed {
+                project.status = .inProgress
+                dataController.syncManager.updateProjectStatus(
+                    projectId: project.id,
+                    status: .inProgress,
+                    forceSync: true
+                )
+            }
         }
-        
-        // Sync to API
+
+        try? dataController.modelContext?.save()
+
         Task {
             await syncTaskStatusToAPI()
         }
@@ -1093,6 +1098,11 @@ struct TaskDetailsView: View {
         return formatter.string(from: date)
     }
     
+    private var canModify: Bool {
+        guard let user = dataController.currentUser else { return false }
+        return user.role == .admin || user.role == .officeCrew
+    }
+
     private func formatDateRange(_ start: Date, _ end: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"

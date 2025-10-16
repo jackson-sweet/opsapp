@@ -779,13 +779,28 @@ struct ProjectFormSheet: View {
 
         // Create in Bubble API first
         print("[PROJECT_CREATE] Creating project in Bubble...")
-        let createdProject = try await dataController.apiService.createProject(project)
-        print("[PROJECT_CREATE] ✅ Project created in Bubble with ID: \(createdProject.id)")
+        let bubbleProjectId = try await dataController.apiService.createProject(project)
+        print("[PROJECT_CREATE] ✅ Project created in Bubble with ID: \(bubbleProjectId)")
 
         // Update project with Bubble ID
-        project.id = createdProject.id
+        project.id = bubbleProjectId
         project.needsSync = false
         project.lastSyncedAt = Date()
+
+        // Link project to client's Projects List
+        print("[PROJECT_CREATE] Linking project to client...")
+        try await dataController.apiService.linkProjectToClient(clientId: client.id, projectId: bubbleProjectId)
+        print("[PROJECT_CREATE] ✅ Project linked to client")
+
+        // Link project to company's Projects list
+        print("[PROJECT_CREATE] Linking project to company...")
+        try await dataController.apiService.linkProjectToCompany(companyId: companyId, projectId: bubbleProjectId)
+        print("[PROJECT_CREATE] ✅ Project linked to company")
+
+        // Always create calendar event for the project (even without dates)
+        print("[PROJECT_CREATE] Creating calendar event for project...")
+        try await createCalendarEventForProject(project)
+        print("[PROJECT_CREATE] ✅ Calendar event created")
 
         await MainActor.run {
             print("[PROJECT_CREATE] Inserting project into modelContext")
@@ -839,6 +854,63 @@ struct ProjectFormSheet: View {
         }
 
         dataController.syncManager?.triggerBackgroundSync()
+    }
+
+    private func createCalendarEventForProject(_ project: Project) async throws {
+        let dateFormatter = ISO8601DateFormatter()
+
+        // Calculate duration if dates exist
+        let duration: Double
+        let startDateString: String?
+        let endDateString: String?
+
+        if let startDate = project.startDate, let endDate = project.endDate {
+            duration = Double(Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1)
+            startDateString = dateFormatter.string(from: startDate)
+            endDateString = dateFormatter.string(from: endDate)
+            print("[CREATE_CALENDAR_EVENT] Project has dates - start: \(startDateString!), end: \(endDateString!)")
+        } else {
+            duration = 1
+            startDateString = nil
+            endDateString = nil
+            print("[CREATE_CALENDAR_EVENT] Project has no dates - creating unscheduled calendar event")
+        }
+
+        let eventDTO = CalendarEventDTO(
+            id: UUID().uuidString,
+            color: "#59779F",
+            companyId: project.companyId,
+            projectId: project.id,
+            taskId: nil,
+            duration: duration,
+            endDate: endDateString,
+            startDate: startDateString,
+            teamMembers: project.teamMembers.map { $0.id },
+            title: project.title,
+            type: "Project",
+            active: true,
+            createdDate: nil,
+            modifiedDate: nil
+        )
+
+        let createdEvent = try await dataController.apiService.createCalendarEvent(eventDTO)
+
+        try await dataController.apiService.linkCalendarEventToCompany(
+            companyId: project.companyId,
+            calendarEventId: createdEvent.id
+        )
+
+        await MainActor.run {
+            if let calendarEvent = createdEvent.toModel() {
+                calendarEvent.needsSync = false
+                calendarEvent.lastSyncedAt = Date()
+                modelContext.insert(calendarEvent)
+                try? modelContext.save()
+                print("[CREATE_CALENDAR_EVENT] ✅ Calendar event saved to database")
+            } else {
+                print("[CREATE_CALENDAR_EVENT] ⚠️ Failed to convert DTO to model")
+            }
+        }
     }
 }
 

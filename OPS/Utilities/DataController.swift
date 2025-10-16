@@ -1558,15 +1558,20 @@ class DataController: ObservableObject {
         guard isConnected, isAuthenticated else {
             return
         }
-        
+
         guard let syncManager = syncManager else {
             return
         }
-        
-        
-        // Force sync projects from Bubble
-        await syncManager.forceSyncProjects()
-        
+
+        guard let companyId = currentUser?.companyId else {
+            return
+        }
+
+        print("[MANUAL_SYNC] 🔄 Starting comprehensive manual sync...")
+
+        await syncManager.manualFullSync(companyId: companyId)
+
+        print("[MANUAL_SYNC] ✅ Manual sync completed")
     }
     
     // MARK: - CalendarEvent Methods
@@ -1589,7 +1594,7 @@ class DataController: ObservableObject {
                 return spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
             }
 
-            return filteredEvents.sorted { $0.startDate < $1.startDate }
+            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
         } catch {
             return []
         }
@@ -1689,7 +1694,7 @@ class DataController: ObservableObject {
             // for event in filteredEvents {
             // }
             
-            return filteredEvents.sorted { $0.startDate < $1.startDate }
+            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
         } catch {
             return []
         }
@@ -1709,7 +1714,8 @@ class DataController: ObservableObject {
             let allEvents = try context.fetch(descriptor)
 
             let filteredEvents = allEvents.filter { event in
-                if event.endDate < startDate {
+                guard let eventEndDate = event.endDate else { return false }
+                if eventEndDate < startDate {
                     return false
                 }
 
@@ -1739,7 +1745,7 @@ class DataController: ObservableObject {
                 }
             }
 
-            return filteredEvents.sorted { $0.startDate < $1.startDate }
+            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
         } catch {
             return []
         }

@@ -7,6 +7,11 @@
 
 import SwiftUI
 
+struct IdentifiableDate: Identifiable {
+    let id = UUID()
+    let date: Date
+}
+
 struct ScrollOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -75,8 +80,9 @@ class MonthGridCache: ObservableObject {
             let filteredEvents = viewModel.applyEventFilters(to: allEvents)
 
             for event in filteredEvents {
-                let eventStart = calendar.startOfDay(for: event.startDate)
-                let eventEnd = calendar.startOfDay(for: event.endDate)
+                guard let startDate = event.startDate, let endDate = event.endDate else { continue }
+                let eventStart = calendar.startOfDay(for: startDate)
+                let eventEnd = calendar.startOfDay(for: endDate)
 
                 let isMultiDay = !calendar.isDate(eventStart, inSameDayAs: eventEnd)
                 let daySpan = calendar.dateComponents([.day], from: eventStart, to: eventEnd).day ?? 0
@@ -145,11 +151,12 @@ struct MonthGridView: View {
     @ObservedObject var viewModel: CalendarViewModel
     @StateObject private var cache = MonthGridCache()
     @State private var cellHeight: CGFloat = 120
-    @State private var selectedDate: Date?
-    @State private var showingDaySheet = false
+    @State private var sheetDate: IdentifiableDate?
     @State private var scrollOffset: CGFloat = 0
     @State private var gestureStartHeight: CGFloat = 120
     @State private var hasScrolledToCurrentMonth = false
+    @State private var isProgrammaticScroll = false
+    @State private var updateWorkItem: DispatchWorkItem?
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     private let weekdayLabels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
@@ -201,15 +208,20 @@ struct MonthGridView: View {
 
 
     private func updateVisibleMonth(for date: Date, offset: CGFloat) {
+        guard !isProgrammaticScroll else { return }
+
         let calendar = Calendar.current
         let threshold: CGFloat = 100
 
         if offset > -threshold && offset < threshold {
             if let monthStart = calendar.dateInterval(of: .month, for: date)?.start {
                 if !calendar.isDate(viewModel.visibleMonth, equalTo: monthStart, toGranularity: .month) {
-                    DispatchQueue.main.async {
-                        viewModel.visibleMonth = monthStart
+                    updateWorkItem?.cancel()
+                    let workItem = DispatchWorkItem {
+                        self.viewModel.visibleMonth = monthStart
                     }
+                    updateWorkItem = workItem
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
                 }
             }
         }
@@ -408,8 +420,7 @@ struct MonthGridView: View {
                                                                 cache: cache,
                                                                 cellHeight: cellHeight,
                                                                 onTap: {
-                                                                    selectedDate = date
-                                                                    showingDaySheet = true
+                                                                    sheetDate = IdentifiableDate(date: date)
                                                                 }
                                                             )
                                                         } else {
@@ -505,20 +516,37 @@ struct MonthGridView: View {
 
                     if !calendar.isDate(oldStart, equalTo: newStart, toGranularity: .month) {
                         print("📅 Scrolling to \(newStart)")
+                        isProgrammaticScroll = true
                         withAnimation(.easeInOut(duration: 0.3)) {
                             proxy.scrollTo(newStart, anchor: .top)
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            isProgrammaticScroll = false
                         }
                     } else {
                         print("📅 Same month, not scrolling")
                     }
                 }
             }
-            .sheet(isPresented: $showingDaySheet) {
-                if let date = selectedDate {
-                    DayDetailsSheet(date: date, viewModel: viewModel, cache: cache)
-                        .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
+            .onChange(of: viewModel.selectedTeamMemberIds) { _, _ in
+                if let dataController = viewModel.dataController {
+                    cache.loadEvents(from: dataController, viewModel: viewModel)
                 }
+            }
+            .onChange(of: viewModel.selectedTaskTypeIds) { _, _ in
+                if let dataController = viewModel.dataController {
+                    cache.loadEvents(from: dataController, viewModel: viewModel)
+                }
+            }
+            .onChange(of: viewModel.selectedClientIds) { _, _ in
+                if let dataController = viewModel.dataController {
+                    cache.loadEvents(from: dataController, viewModel: viewModel)
+                }
+            }
+            .sheet(item: $sheetDate) { identifiableDate in
+                DayDetailsSheet(date: identifiableDate.date, viewModel: viewModel, cache: cache)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
@@ -870,6 +898,14 @@ struct DayDetailsSheet: View {
 
 struct EventDetailCard: View {
     let event: CalendarEvent
+    @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
+    @State private var showingQuickActions = false
+    @State private var showingReschedule = false
+    @State private var showingDetailView = false
+    @State private var isLongPressing = false
+    @State private var hasTriggeredHaptic = false
+    @State private var isPressed = false
 
     private var eventColor: Color {
         Color(hex: event.color) ?? OPSStyle.Colors.primaryAccent
@@ -903,13 +939,23 @@ struct EventDetailCard: View {
                     HStack(spacing: 4) {
                         Image(systemName: "calendar")
                             .font(.system(size: 12))
-                        Text("\(event.startDate.formatted(date: .abbreviated, time: .omitted)) - \(event.endDate.formatted(date: .abbreviated, time: .omitted))")
-                            .font(OPSStyle.Typography.smallCaption)
+                        if let start = event.startDate, let end = event.endDate {
+                            Text("\(start.formatted(date: .abbreviated, time: .omitted)) - \(end.formatted(date: .abbreviated, time: .omitted))")
+                                .font(OPSStyle.Typography.smallCaption)
+                        } else {
+                            Text("No dates")
+                                .font(OPSStyle.Typography.smallCaption)
+                        }
                     }
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
 
                 Spacer()
+
+                // Chevron to indicate tappable
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
         .padding(12)
@@ -919,5 +965,112 @@ struct EventDetailCard: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
+        .contentShape(Rectangle())
+        .scaleEffect(isLongPressing ? 0.95 : (isPressed ? 0.98 : 1.0))
+        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
+        .animation(.spring(response: 0.1, dampingFraction: 0.8), value: isPressed)
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.easeInOut(duration: 0.1)) {
+                    isPressed = false
+                }
+                showingDetailView = true
+            }
+        }
+        .onLongPressGesture(minimumDuration: 0.3) {
+            showingQuickActions = true
+        } onPressingChanged: { pressing in
+            if pressing {
+                isLongPressing = true
+                hasTriggeredHaptic = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    if isLongPressing && !hasTriggeredHaptic {
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                        impactFeedback.impactOccurred()
+                        hasTriggeredHaptic = true
+                    }
+                }
+            } else {
+                isLongPressing = false
+                hasTriggeredHaptic = false
+            }
+        }
+        .confirmationDialog("Quick Actions", isPresented: $showingQuickActions, titleVisibility: .hidden) {
+            Button("Reschedule") {
+                showingReschedule = true
+            }
+
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(isPresented: $showingDetailView) {
+            if event.type == .task, let task = event.task, let project = task.project {
+                TaskDetailsView(task: task, project: project)
+                    .environmentObject(dataController)
+                    .environmentObject(appState)
+                    .environment(\.modelContext, dataController.modelContext!)
+            } else if event.type == .project, let project = event.project {
+                ProjectDetailsView(project: project)
+                    .environmentObject(dataController)
+                    .environmentObject(appState)
+            }
+        }
+        .sheet(isPresented: $showingReschedule) {
+            if event.type == .task, let task = event.task {
+                CalendarSchedulerSheet(
+                    isPresented: $showingReschedule,
+                    itemType: .task(task),
+                    currentStartDate: event.startDate,
+                    currentEndDate: event.endDate,
+                    onScheduleUpdate: { newStart, newEnd in
+                        updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
+                    }
+                )
+                .environmentObject(dataController)
+            } else if event.type == .project, let project = event.project {
+                CalendarSchedulerSheet(
+                    isPresented: $showingReschedule,
+                    itemType: .project(project),
+                    currentStartDate: event.startDate,
+                    currentEndDate: event.endDate,
+                    onScheduleUpdate: { newStart, newEnd in
+                        updateProjectSchedule(project: project, startDate: newStart, endDate: newEnd)
+                    }
+                )
+                .environmentObject(dataController)
+            }
+        }
+    }
+
+    private func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date) {
+        guard let calendarEvent = task.calendarEvent else { return }
+
+        calendarEvent.startDate = startDate
+        calendarEvent.endDate = endDate
+        calendarEvent.needsSync = true
+
+        do {
+            try dataController.modelContext?.save()
+        } catch {
+            print("Error updating task schedule: \(error)")
+        }
+    }
+
+    private func updateProjectSchedule(project: Project, startDate: Date, endDate: Date) {
+        event.startDate = startDate
+        event.endDate = endDate
+        event.needsSync = true
+
+        project.startDate = startDate
+        project.endDate = endDate
+        project.needsSync = true
+
+        do {
+            try dataController.modelContext?.save()
+        } catch {
+            print("Error updating project schedule: \(error)")
+        }
     }
 }

@@ -457,7 +457,8 @@ struct TaskTestView: View {
         }
     }
     
-    private func formatDate(_ date: Date) -> String {
+    private func formatDate(_ date: Date?) -> String {
+        guard let date = date else { return "nil" }
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         return formatter.string(from: date)

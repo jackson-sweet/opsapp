@@ -429,13 +429,20 @@ class SyncManager {
     /// Trigger background sync with intelligent retry
     /// - Parameter forceProjectSync: If true, always sync projects regardless of sync budget
     func triggerBackgroundSync(forceProjectSync: Bool = false) {
+        print("[SYNC] 🔵 triggerBackgroundSync called")
+        print("[SYNC] syncInProgress: \(syncInProgress)")
+        print("[SYNC] isConnected: \(connectivityMonitor.isConnected)")
+
         guard !syncInProgress, connectivityMonitor.isConnected else {
             if syncInProgress {
+                print("[SYNC] ⚠️ Sync already in progress, skipping")
             } else if !connectivityMonitor.isConnected {
+                print("[SYNC] ⚠️ No internet connection, skipping sync")
             }
             return
         }
 
+        print("[SYNC] ✅ Starting background sync")
         syncInProgress = true
         syncStateSubject.send(true)
 
@@ -903,11 +910,13 @@ class SyncManager {
     }
 
     private func syncPendingTaskChanges() async -> Int {
+        print("[SYNC] 🔵 syncPendingTaskChanges called")
         let predicate = #Predicate<ProjectTask> { $0.needsSync == true }
         var descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
 
         do {
             let pendingTasks = try modelContext.fetch(descriptor)
+            print("[SYNC] 📋 Found \(pendingTasks.count) pending tasks to sync")
             var successCount = 0
 
             for batch in pendingTasks.chunked(into: 10) {
@@ -974,10 +983,37 @@ class SyncManager {
                 print("[SYNC] ✅ Updated local task ID from \(oldId) to \(createdTask.id)")
 
                 if let calendarEvent = task.calendarEvent {
-                    print("[SYNC] Creating CalendarEvent for task")
+                    print("[SYNC] 📅 Creating CalendarEvent for task on Bubble...")
                     calendarEvent.taskId = createdTask.id
-                    calendarEvent.needsSync = true
+
+                    // Create calendar event on Bubble
+                    let dateFormatter = ISO8601DateFormatter()
+                    let eventDTO = CalendarEventDTO(
+                        id: calendarEvent.id,
+                        color: calendarEvent.color,
+                        companyId: calendarEvent.companyId,
+                        projectId: calendarEvent.projectId,
+                        taskId: createdTask.id,
+                        duration: Double(calendarEvent.duration),
+                        endDate: calendarEvent.endDate.map { dateFormatter.string(from: $0) },
+                        startDate: calendarEvent.startDate.map { dateFormatter.string(from: $0) },
+                        teamMembers: calendarEvent.getTeamMemberIds(),
+                        title: calendarEvent.title,
+                        type: "task",
+                        active: calendarEvent.active,
+                        createdDate: nil,
+                        modifiedDate: nil
+                    )
+
+                    let createdEventDTO = try await apiService.createCalendarEvent(eventDTO)
+                    calendarEvent.id = createdEventDTO.id
+                    calendarEvent.needsSync = false
+                    calendarEvent.lastSyncedAt = Date()
+
+                    // Update task with calendar event ID
+                    task.calendarEventId = createdEventDTO.id
                     try modelContext.save()
+                    print("[SYNC] ✅ CalendarEvent created with ID: \(createdEventDTO.id)")
                 }
 
                 return
@@ -1156,11 +1192,44 @@ class SyncManager {
     func forceSyncProjects() async {
         do {
             try await syncProjects()
-            
+
             // Also refresh any placeholder clients
             await refreshPlaceholderClients()
-            
+
         } catch {
+        }
+    }
+
+    func manualFullSync(companyId: String) async {
+        print("[MANUAL_FULL_SYNC] 🚀 Starting comprehensive sync for company: \(companyId)")
+
+        do {
+            print("[MANUAL_FULL_SYNC] 📦 Syncing company data...")
+            await syncCompanyData()
+
+            print("[MANUAL_FULL_SYNC] 👥 Syncing team members...")
+            if let company = try? modelContext.fetch(FetchDescriptor<Company>()).first(where: { $0.id == companyId }) {
+                await syncCompanyTeamMembers(company)
+            }
+
+            print("[MANUAL_FULL_SYNC] 👤 Syncing clients...")
+            await syncCompanyClients(companyId: companyId)
+
+            print("[MANUAL_FULL_SYNC] 📋 Syncing projects...")
+            try await syncProjects()
+
+            print("[MANUAL_FULL_SYNC] ✅ Syncing tasks...")
+            try await syncCompanyTasks(companyId: companyId)
+
+            print("[MANUAL_FULL_SYNC] 📅 Syncing calendar events...")
+            try await syncCompanyCalendarEvents(companyId: companyId)
+
+            print("[MANUAL_FULL_SYNC] 🏷️ Syncing task types...")
+            try await syncCompanyTaskTypes(companyId: companyId)
+
+            print("[MANUAL_FULL_SYNC] ✅ Comprehensive sync completed successfully")
+        } catch {
+            print("[MANUAL_FULL_SYNC] ❌ Error during full sync: \(error)")
         }
     }
     
@@ -3175,7 +3244,7 @@ class SyncManager {
             startDate: dateFormatter.string(from: startDate),
             teamMembers: project.teamMembers.map { $0.id },
             title: project.title,
-            type: "project",
+            type: "Project",
             active: true,
             createdDate: nil,
             modifiedDate: nil

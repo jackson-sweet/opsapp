@@ -251,4 +251,49 @@ extension APIService {
 
         print("[DELETE_CLIENT] ✅ Client deleted successfully")
     }
+
+    /// Link a client to a company's Client list
+    /// - Parameters:
+    ///   - companyId: The company ID
+    ///   - clientId: The client ID to link
+    func linkClientToCompany(companyId: String, clientId: String) async throws {
+        print("[LINK_CLIENT_TO_COMPANY] 🔵 Linking client to company")
+        print("[LINK_CLIENT_TO_COMPANY] Client ID: \(clientId)")
+        print("[LINK_CLIENT_TO_COMPANY] Company ID: \(companyId)")
+
+        let company = try await fetchCompany(id: companyId)
+        print("[LINK_CLIENT_TO_COMPANY] ✅ Company fetched")
+
+        var clientIds: [String] = []
+        if let clients = company.clients {
+            clientIds = clients.compactMap { $0.stringValue }
+            print("[LINK_CLIENT_TO_COMPANY] 📋 Existing clients in company: \(clientIds.count)")
+        } else {
+            print("[LINK_CLIENT_TO_COMPANY] ⚠️ Company has no clients")
+        }
+
+        if !clientIds.contains(clientId) {
+            clientIds.append(clientId)
+            print("[LINK_CLIENT_TO_COMPANY] ➕ Adding client to company clients list")
+        } else {
+            print("[LINK_CLIENT_TO_COMPANY] ℹ️ Client already in company clients list")
+            return
+        }
+
+        let updateData: [String: Any] = ["Client": clientIds]
+        let bodyData = try JSONSerialization.data(withJSONObject: updateData)
+
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[LINK_CLIENT_TO_COMPANY] 📤 Update payload: \(jsonString)")
+        }
+
+        print("[LINK_CLIENT_TO_COMPANY] 📡 Sending PATCH request to Bubble...")
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.company)/\(companyId)",
+            method: "PATCH",
+            body: bodyData,
+            requiresAuth: false
+        )
+        print("[LINK_CLIENT_TO_COMPANY] ✅ Client successfully linked to company")
+    }
 }

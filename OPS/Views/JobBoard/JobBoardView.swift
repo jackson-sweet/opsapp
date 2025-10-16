@@ -647,6 +647,7 @@ struct JobBoardTasksView: View {
                         ForEach(activeTasks) { task in
                             UniversalJobBoardCard(cardType: .task(task))
                                 .environmentObject(dataController)
+                                .environment(\.modelContext, dataController.modelContext!)
                         }
 
                         if !cancelledTasks.isEmpty {
@@ -658,6 +659,7 @@ struct JobBoardTasksView: View {
                                 ForEach(cancelledTasks) { task in
                                     UniversalJobBoardCard(cardType: .task(task))
                                         .environmentObject(dataController)
+                                        .environment(\.modelContext, dataController.modelContext!)
                                 }
                             }
                         }

@@ -451,5 +451,38 @@ final class Project: Identifiable {
         }
         return effectiveEndDate
     }
+
+    /// Update project start and end dates based on task dates (for task-based scheduling)
+    /// Should be called after task creation, update, or deletion
+    func updateDatesFromTasks() {
+        guard usesTaskBasedScheduling else { return }
+
+        print("[PROJECT_DATES] 🔄 Updating project dates from tasks...")
+        print("[PROJECT_DATES] Project: \(title)")
+        print("[PROJECT_DATES] Current start: \(startDate?.description ?? "nil"), end: \(endDate?.description ?? "nil")")
+
+        let taskDates = tasks.compactMap { task -> (start: Date?, end: Date?) in
+            (task.calendarEvent?.startDate, task.calendarEvent?.endDate)
+        }
+
+        let allStartDates = taskDates.compactMap { $0.start }
+        let allEndDates = taskDates.compactMap { $0.end }
+
+        print("[PROJECT_DATES] Found \(allStartDates.count) task start dates and \(allEndDates.count) task end dates")
+
+        if !allStartDates.isEmpty {
+            let earliestStart = allStartDates.min()
+            print("[PROJECT_DATES] Earliest task start: \(earliestStart?.description ?? "nil")")
+            startDate = earliestStart
+        }
+
+        if !allEndDates.isEmpty {
+            let latestEnd = allEndDates.max()
+            print("[PROJECT_DATES] Latest task end: \(latestEnd?.description ?? "nil")")
+            endDate = latestEnd
+        }
+
+        print("[PROJECT_DATES] ✅ Updated start: \(startDate?.description ?? "nil"), end: \(endDate?.description ?? "nil")")
+    }
 }
 

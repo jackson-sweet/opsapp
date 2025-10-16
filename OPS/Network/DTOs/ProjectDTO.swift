@@ -54,6 +54,7 @@ struct ProjectDTO: Codable {
         self.balance = try container.decodeIfPresent(Double.self, forKey: .balance)
         self.slug = try container.decodeIfPresent(String.self, forKey: .slug)
         self.eventType = try container.decodeIfPresent(String.self, forKey: .eventType)
+        self.tasks = try container.decodeIfPresent([BubbleReference].self, forKey: .tasks)
         
         // Log eventType for debugging
         if let eventTypeValue = self.eventType {
@@ -76,6 +77,7 @@ struct ProjectDTO: Codable {
     let projectImages: [String]?  // Added this field
     let duration: Int? // Duration in days
     let eventType: String? // CalendarEventType - "Task" or "Project"
+    let tasks: [BubbleReference]? // List of tasks associated with this project
     
     // Additional fields from the actual API response
     let projectValue: Double?
@@ -108,6 +110,7 @@ struct ProjectDTO: Codable {
         case projectImages = "Project Images" // list of type image, that have been uploaded to the project object.
         case duration = "Duration" // Duration in days for the project. type number.
         case eventType = "eventType" // CalendarEventType - determines if project uses task-based or project scheduling
+        case tasks = "Tasks" // List of tasks associated with this project, type list of Task
     }
     
     /// Convert DTO to SwiftData model

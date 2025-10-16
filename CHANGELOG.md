@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-10-01
+## [Unreleased] - 2025-10-16
+
+### Project Completion & Permissions
+
+#### Completion Workflow
+- **Project Completion Button**: Added "MARK PROJECT COMPLETE" button to ProjectDetailsView
+- **Task-Based Validation**: TaskCompletionChecklistSheet requires all tasks to be checked off before project completion
+- **Smart Status Management**: Task status changes to "in progress" automatically revert completed projects back to in progress
+- **Tactical Minimalist UI**: Simplified completion checklist with dividers, radio-style selectors, and accent outline buttons
+
+#### Role-Based Permissions
+- **Field Crew Restrictions**: Limited to view and status update operations only
+- **Admin/Office Access**: Full edit, delete, reschedule, and team assignment capabilities
+- **Context-Aware Menus**: Quick action menus show appropriate options based on user role
+- **Calendar Integration**: CalendarEventCard respects role permissions in quick actions
+
+#### UI Components
+- **TaskCompletionChecklistSheet**: New modal for task-based project completion validation
+- **Outline Button Style**: Primary accent outline buttons for completion actions
+- **Radio Selectors**: Minimalist circle indicators instead of checkboxes
+- **Divider Separated Lists**: Clean task row separation without card backgrounds
 
 ### Job Board Enhancements
 

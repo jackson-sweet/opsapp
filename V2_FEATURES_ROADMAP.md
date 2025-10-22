@@ -87,6 +87,17 @@ Several originally planned V2 features were accelerated into v1.2.0 due to archi
   - Enhanced visible month tracking with real-time updates
 - **Team member filter for office crew on schedule page**
   
+- **Timeline Extension System** (Not Started)
+  - **EXTEND TIMELINE** feature for team members
+    - Allow field crew to request project/task deadline extensions
+    - Specify number of days to extend (1-7 days typical)
+    - Automatic notification to admin/office crew for approval
+    - Visual indicator showing original vs extended timeline
+    - Reason field for extension request (optional)
+    - Approval workflow with accept/deny/counter-offer options
+    - Automatic calendar event adjustment upon approval
+    - Extension history tracking per project
+
 - **Calendar Request System** (Not Started)
   - Long press on calendar date to make requests:
     - Day off/vacation requests

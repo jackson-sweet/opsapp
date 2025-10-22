@@ -1,7 +1,7 @@
 # OPS App - V2 Features Roadmap
 
-**Last Updated**: September 2025  
-**Current Version**: 1.2.0  
+**Last Updated**: October 2025
+**Current Version**: 1.2.0
 
 This document tracks features identified for V2 implementation. Features are organized by category and priority, with status updates reflecting the latest implementation progress.
 
@@ -14,6 +14,8 @@ This document tracks features identified for V2 implementation. Features are org
 - **Real-time Task Management**: Immediate sync of status and notes changes
 - **SwiftData Defensive Patterns**: Prevention of model invalidation crashes
 - **Enhanced Team Management**: Individual task assignment and role detection
+- **Project Completion Workflow**: Task-based validation with completion checklist
+- **Role-Based Permissions**: Comprehensive access control for field crew vs admin/office
 
 ### Features Moved from V2 to Production
 Several originally planned V2 features were accelerated into v1.2.0 due to architectural foundations being established:
@@ -33,6 +35,10 @@ Several originally planned V2 features were accelerated into v1.2.0 due to archi
 - Real-time task status and notes sync
 - Previous/Next task navigation
 - Individual team member assignment per task
+- **Project completion workflow with task validation**
+- **TaskCompletionChecklistSheet** requiring all tasks to be checked off
+- **Smart status management** - tasks marked in progress revert completed projects back to in progress
+- **Tactical minimalist completion UI** with radio-style selectors and outline buttons
 
 **Future Enhancements:**
 - **Task Dependencies**
@@ -246,10 +252,14 @@ Several originally planned V2 features were accelerated into v1.2.0 due to archi
 ## Priority 6: Administrative Features
 
 ### User Management
-- Role-based permissions refinement
-- Termination workflow and screens
-- User activity tracking
-- Audit logs
+- **✅ Role-based permissions** (IMPLEMENTED in v1.2.0)
+  - Field crew restricted to view and status updates only
+  - Admin/office crew have full edit, delete, and reschedule access
+  - Context-aware quick action menus based on user role
+  - Calendar event permissions integration
+- Termination workflow and screens (Not Started)
+- User activity tracking (Not Started)
+- Audit logs (Not Started)
 
 ### Development Transparency
 - OPS Development page showing:

@@ -66,6 +66,7 @@ struct UniversalSearchBar: View {
                     TextField(placeholderText, text: $searchText)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
+                        .autocorrectionDisabled(true)
 
                     if !searchText.isEmpty {
                         Button(action: {

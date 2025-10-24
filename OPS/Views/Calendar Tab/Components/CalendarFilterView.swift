@@ -258,7 +258,7 @@ struct CalendarFilterView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .autocapitalization(.none)
-                    .disableAutocorrection(true)
+                    .autocorrectionDisabled(true)
 
                 if !clientSearchText.isEmpty {
                     Button(action: {

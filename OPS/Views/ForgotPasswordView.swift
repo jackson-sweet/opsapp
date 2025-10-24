@@ -60,7 +60,7 @@ struct ForgotPasswordView: View {
                                 .font(OPSStyle.Typography.subtitle)
                                 .keyboardType(.emailAddress)
                                 .textInputAutocapitalization(.never)
-                                .disableAutocorrection(true)
+                                .autocorrectionDisabled(true)
                                 .foregroundColor(.white)
                                 .textFieldStyle(PlainTextFieldStyle())
                             

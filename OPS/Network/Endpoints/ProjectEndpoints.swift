@@ -35,7 +35,18 @@ extension APIService {
     func updateProjectStatus(id: String, status: String) async throws {
         let statusData = [BubbleFields.Project.status: status]
         let bodyData = try JSONSerialization.data(withJSONObject: statusData)
-        
+
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(id)",
+            method: "PATCH",
+            body: bodyData,
+            requiresAuth: false
+        )
+    }
+
+    func updateProject(id: String, updates: [String: Any]) async throws {
+        let bodyData = try JSONSerialization.data(withJSONObject: updates)
+
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(id)",
             method: "PATCH",

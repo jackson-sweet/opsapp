@@ -51,8 +51,8 @@ struct CompanyAddressView: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .padding(.horizontal, 24)
-                
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+
                 // Step indicator bars
                 HStack(spacing: 4) {
                     ForEach(0..<totalSteps) { step in
@@ -62,7 +62,7 @@ struct CompanyAddressView: View {
                     }
                 }
                 .padding(.bottom, 16)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             
             // Main content area - top-justified
             VStack(spacing: 0) {
@@ -96,8 +96,19 @@ struct CompanyAddressView: View {
                         
                         if let selectedLocation = selectedLocation {
                             Map(initialPosition: .region(region)) {
-                                Marker("", coordinate: selectedLocation)
-                                    .tint(Color(OPSStyle.Colors.background))
+                                Annotation("", coordinate: selectedLocation) {
+                                    // Tactical minimalism pin - simple circle with accent color
+                                    ZStack {
+                                        Circle()
+                                            .fill(OPSStyle.Colors.primaryAccent)
+                                            .frame(width: 20, height: 20)
+
+                                        Circle()
+                                            .fill(Color.white)
+                                            .frame(width: 8, height: 8)
+                                    }
+                                    .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+                                }
                             }
                             .frame(height: 200)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -105,13 +116,13 @@ struct CompanyAddressView: View {
                         }
                     }
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, 40) // Add consistent top padding
                 }
-                
+
                 Spacer()
             }
-            
+
             // Bottom button section
             VStack(spacing: 16) {
                 StandardContinueButton(
@@ -120,7 +131,7 @@ struct CompanyAddressView: View {
                         onboardingViewModel.moveToNextStep()
                     }
                 )
-                
+
                 Button(action: {
                     onboardingViewModel.moveToNextStep()
                 }) {
@@ -129,7 +140,7 @@ struct CompanyAddressView: View {
                         .foregroundColor(Color("TextSecondary"))
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.bottom, 34)
             .background(
                 Rectangle()

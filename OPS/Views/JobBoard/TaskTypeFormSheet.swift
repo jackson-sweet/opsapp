@@ -173,6 +173,8 @@ struct TaskTypeFormSheet: View {
                             TextField("Enter task type name", text: $taskTypeName)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
+                                .autocorrectionDisabled(true)
+                                .textInputAutocapitalization(.words)
                                 .padding(12)
                                 .background(OPSStyle.Colors.cardBackgroundDark)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)

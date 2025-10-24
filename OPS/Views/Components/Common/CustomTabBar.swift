@@ -10,22 +10,23 @@ import SwiftUI
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     let tabs: [TabItem]
-    
+
     @State private var selectedIndicatorOffset: CGFloat = 0
     @State private var tabWidth: CGFloat = 0
     @State private var iconWidth: CGFloat = 28 // SF Symbols 28pt size
-    
+    @State private var tabCount: Int = 0
+
     var body: some View {
         ZStack(alignment: .top) {
             // Tab bar background with dark blur and overlay
-            
+
             ZStack {
                 BlurView(style: .systemUltraThinMaterialDark)
                 OPSStyle.Colors.cardBackgroundDark.opacity(0.4)
             }
             .frame(height: 100)
 
-            
+
             VStack(spacing: 0) {
                 // Sliding indicator bar - sized to match icon width
                 HStack {
@@ -35,11 +36,11 @@ struct CustomTabBar: View {
                         .cornerRadius(1.5)
                         .offset(x: selectedIndicatorOffset)
                         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: selectedIndicatorOffset)
-                    
+
                     Spacer()
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                
+
                 // Tab items
                 HStack(spacing: 0) {
                     ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
@@ -71,21 +72,50 @@ struct CustomTabBar: View {
                         )
                     }
                 }
+                .id("tabbar_\(tabs.count)") // Force recreation when tab count changes
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.bottom, 16)
             }
             .padding(.top, 16)
         }
-        
-        
+
+
         .onAppear {
             // Set initial position after a brief delay to ensure layout is complete
+            tabCount = tabs.count
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 updateIndicatorPosition(for: selectedTab)
             }
         }
+        .onChange(of: tabs.count) { _, newCount in
+            print("[TAB_BAR] Tab count changed from \(tabCount) to \(newCount)")
+
+            // When tab count changes, reset tabWidth to force recalculation
+            tabCount = newCount
+            tabWidth = 0
+
+            // Force immediate recalculation with multiple attempts to ensure geometry is updated
+            DispatchQueue.main.async {
+                updateIndicatorPosition(for: selectedTab)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                updateIndicatorPosition(for: selectedTab)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                updateIndicatorPosition(for: selectedTab)
+                print("[TAB_BAR] Final indicator position updated after tab count change")
+            }
+        }
+        .onChange(of: selectedTab) { _, _ in
+            // Also recalculate when selected tab changes, in case geometry has shifted
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                updateIndicatorPosition(for: selectedTab)
+            }
+        }
     }
-    
+
     private func updateIndicatorPosition(for index: Int) {
         // Center the indicator under the icon
         let tabCenter = CGFloat(index) * tabWidth + (tabWidth / 2)

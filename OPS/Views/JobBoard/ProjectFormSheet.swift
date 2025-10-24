@@ -296,6 +296,7 @@ struct ProjectFormSheet: View {
                 TextField("Search or create client...", text: $clientSearchText)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
+                    .autocorrectionDisabled(true)
 
                 if !clientSearchText.isEmpty {
                     Button(action: {
@@ -362,6 +363,8 @@ struct ProjectFormSheet: View {
             TextField("Enter project name", text: $title)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
+                .autocorrectionDisabled(true)
+                .textInputAutocapitalization(.words)
                 .padding()
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -599,21 +602,21 @@ struct ProjectFormSheet: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(Array(projectImages.enumerated()), id: \.offset) { index, image in
-                            ZStack(alignment: .topTrailing) {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 100, height: 100)
-                                    .clipped()
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-
-                                Button(action: { removeImage(at: index) }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.white)
-                                        .background(Circle().fill(Color.black.opacity(0.7)))
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 100, height: 100)
+                                .clipped()
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(alignment: .topTrailing) {
+                                    Button(action: { removeImage(at: index) }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 24))
+                                            .foregroundColor(.white)
+                                            .background(Circle().fill(Color.black.opacity(0.8)).padding(-4))
+                                    }
+                                    .padding(6)
                                 }
-                                .offset(x: 5, y: -5)
-                            }
                         }
 
                         Button(action: { showingImagePicker = true }) {
@@ -727,15 +730,12 @@ struct ProjectFormSheet: View {
 
         guard let companyId = dataController.currentUser?.companyId,
               let client = selectedClient else {
-            print("[PROJECT_CREATE] ❌ Missing required fields - companyId: \(dataController.currentUser?.companyId ?? "nil"), client: \(selectedClient?.name ?? "nil")")
+            print("[PROJECT_CREATE] ❌ Missing required fields")
             throw ProjectError.missingRequiredFields
         }
 
         let projectId = UUID().uuidString
-        print("[PROJECT_CREATE] Creating project with ID: \(projectId)")
-        print("[PROJECT_CREATE] Title: \(title)")
-        print("[PROJECT_CREATE] Client: \(client.name)")
-        print("[PROJECT_CREATE] Status: \(selectedStatus.rawValue)")
+        print("[PROJECT_CREATE] Creating project locally with ID: \(projectId)")
 
         let project = Project(
             id: projectId,
@@ -746,7 +746,7 @@ struct ProjectFormSheet: View {
         project.companyId = companyId
         project.eventType = .project
         project.client = client
-        project.clientId = client.id  // Store the client's ID for API sync
+        project.clientId = client.id
         project.projectDescription = description.isEmpty ? nil : description
         project.notes = notes.isEmpty ? "" : notes
         project.address = address.isEmpty ? "" : address
@@ -754,13 +754,6 @@ struct ProjectFormSheet: View {
         project.endDate = endDate
         project.allDay = true
         project.needsSync = true
-
-        print("[PROJECT_CREATE] Client ID stored: \(client.id)")
-        print("[PROJECT_CREATE] Client ID is UUID format: \(client.id.contains("-"))")
-
-        print("[PROJECT_CREATE] Set needsSync = \(project.needsSync)")
-        print("[PROJECT_CREATE] Start date: \(startDate)")
-        print("[PROJECT_CREATE] End date: \(endDate)")
 
         let members = allTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }
         project.teamMembers = Array(members.map { member in
@@ -775,50 +768,70 @@ struct ProjectFormSheet: View {
             return user
         })
 
-        print("[PROJECT_CREATE] Added \(project.teamMembers.count) team members")
+        await MainActor.run {
+            modelContext.insert(project)
+            client.projects.append(project)
+            try? modelContext.save()
+            print("[PROJECT_CREATE] ✅ Project saved locally")
+        }
 
-        // Create in Bubble API first
-        print("[PROJECT_CREATE] Creating project in Bubble...")
-        let bubbleProjectId = try await dataController.apiService.createProject(project)
-        print("[PROJECT_CREATE] ✅ Project created in Bubble with ID: \(bubbleProjectId)")
+        var savedOffline = false
 
-        // Update project with Bubble ID
-        project.id = bubbleProjectId
-        project.needsSync = false
-        project.lastSyncedAt = Date()
+        do {
+            try await Task.timeout(seconds: 5) {
+                print("[PROJECT_CREATE] Creating project in Bubble...")
+                let bubbleProjectId = try await dataController.apiService.createProject(project)
+                print("[PROJECT_CREATE] ✅ Project created in Bubble with ID: \(bubbleProjectId)")
 
-        // Link project to client's Projects List
-        print("[PROJECT_CREATE] Linking project to client...")
-        try await dataController.apiService.linkProjectToClient(clientId: client.id, projectId: bubbleProjectId)
-        print("[PROJECT_CREATE] ✅ Project linked to client")
+                project.id = bubbleProjectId
+                project.needsSync = false
+                project.lastSyncedAt = Date()
 
-        // Link project to company's Projects list
-        print("[PROJECT_CREATE] Linking project to company...")
-        try await dataController.apiService.linkProjectToCompany(companyId: companyId, projectId: bubbleProjectId)
-        print("[PROJECT_CREATE] ✅ Project linked to company")
+                print("[PROJECT_CREATE] Linking project to client...")
+                try await dataController.apiService.linkProjectToClient(clientId: client.id, projectId: bubbleProjectId)
+                print("[PROJECT_CREATE] ✅ Project linked to client")
 
-        // Always create calendar event for the project (even without dates)
-        print("[PROJECT_CREATE] Creating calendar event for project...")
-        try await createCalendarEventForProject(project)
-        print("[PROJECT_CREATE] ✅ Calendar event created")
+                print("[PROJECT_CREATE] Linking project to company...")
+                try await dataController.apiService.linkProjectToCompany(companyId: companyId, projectId: bubbleProjectId)
+                print("[PROJECT_CREATE] ✅ Project linked to company")
+
+                if !projectImages.isEmpty {
+                    print("[PROJECT_CREATE] Uploading \(projectImages.count) project images...")
+                    let imageUrls = await dataController.imageSyncManager.saveImages(projectImages, for: project)
+                    print("[PROJECT_CREATE] ✅ Uploaded \(imageUrls.count) images")
+                }
+
+                print("[PROJECT_CREATE] Creating calendar event for project...")
+                try await createCalendarEventForProject(project)
+                print("[PROJECT_CREATE] ✅ Calendar event created")
+
+                await MainActor.run {
+                    try? modelContext.save()
+                }
+            }
+        } catch is CancellationError {
+            savedOffline = true
+            print("[PROJECT_CREATE] ⏱️ Network timeout - project saved offline")
+        } catch {
+            savedOffline = true
+            print("[PROJECT_CREATE] ❌ Network error - project saved offline: \(error)")
+        }
 
         await MainActor.run {
-            print("[PROJECT_CREATE] Inserting project into modelContext")
-            modelContext.insert(project)
-
-            print("[PROJECT_CREATE] Adding project to client")
-            client.projects.append(project)
-
-            do {
-                try modelContext.save()
-                print("[PROJECT_CREATE] ✅ modelContext saved successfully")
-            } catch {
-                print("[PROJECT_CREATE] ❌ Failed to save modelContext: \(error)")
+            if savedOffline {
+                errorMessage = "WEAK/NO CONNECTION, QUEUING FOR LATER SYNC. SAVED LOCALLY"
+                showingError = true
+                isSaving = false
+            } else {
+                isSaving = false
             }
         }
 
-        print("[PROJECT_CREATE] ✅ Project creation complete")
+        if savedOffline {
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+        }
 
+        print("[PROJECT_CREATE] ✅ Project creation complete")
         return project
     }
 
@@ -886,19 +899,14 @@ struct ProjectFormSheet: View {
             endDate: endDateString,
             startDate: startDateString,
             teamMembers: project.teamMembers.map { $0.id },
-            title: project.title,
+            title: project.clientName,
             type: "Project",
             active: true,
             createdDate: nil,
             modifiedDate: nil
         )
 
-        let createdEvent = try await dataController.apiService.createCalendarEvent(eventDTO)
-
-        try await dataController.apiService.linkCalendarEventToCompany(
-            companyId: project.companyId,
-            calendarEventId: createdEvent.id
-        )
+        let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
 
         await MainActor.run {
             if let calendarEvent = createdEvent.toModel() {

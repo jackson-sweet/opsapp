@@ -277,8 +277,12 @@ struct AppHeader: View {
             if let company = dataController.getCurrentUserCompany(),
                let trialEnd = company.trialEndDate {
                 let days = Calendar.current.dateComponents([.day], from: Date(), to: trialEnd).day ?? 0
+                let formatter = DateFormatter()
+                formatter.dateFormat = "MMM d"
+                let dateString = formatter.string(from: trialEnd)
+
                 if days > 0 {
-                    return "TRIAL • \(days) DAYS LEFT"
+                    return "TRIAL • ENDS \(dateString)"
                 } else {
                     return "TRIAL ENDING"
                 }

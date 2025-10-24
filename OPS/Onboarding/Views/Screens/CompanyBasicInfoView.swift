@@ -58,8 +58,8 @@ struct CompanyBasicInfoView: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .padding(.horizontal, 24)
-                
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+
                 // Step indicator bars
                 HStack(spacing: 4) {
                     ForEach(0..<totalSteps) { step in
@@ -69,7 +69,7 @@ struct CompanyBasicInfoView: View {
                     }
                 }
                 .padding(.bottom, 16)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content area - top-justified
                 VStack(spacing: 0) {
@@ -87,7 +87,7 @@ struct CompanyBasicInfoView: View {
                         }
                     }
                     .transition(.opacity)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, 40) // Add consistent top padding
                     
                     Spacer()

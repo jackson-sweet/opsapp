@@ -65,7 +65,8 @@ struct PermissionsView: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+
                 // Step indicator bars
                 HStack(spacing: 4) {
                     ForEach(0..<totalSteps, id: \.self) { step in
@@ -77,6 +78,7 @@ struct PermissionsView: View {
                     }
                 }
                 .padding(.bottom, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Two-phase permissions content
                 VStack(spacing: 0) {
@@ -105,7 +107,6 @@ struct PermissionsView: View {
                     }
                 }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .onChange(of: viewModel.isLocationPermissionGranted) { _, _ in
                 isRequestingLocation = false
             }
@@ -154,7 +155,7 @@ struct LocationPermissionPhase: View {
                     .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, 40)
             
             Spacer()
@@ -210,14 +211,14 @@ struct LocationPermissionPhase: View {
                     Spacer()
                 }
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .background(viewModel.shouldUseLightTheme ? Color.white : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
             )
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             
             Spacer()
             
@@ -254,11 +255,11 @@ struct LocationPermissionPhase: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                 )
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.bottom, 40)
             .disabled(isRequestingLocation)
         }
@@ -282,7 +283,7 @@ struct NotificationPermissionPhase: View {
                     .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, 40)
             
             Spacer()
@@ -342,14 +343,14 @@ struct NotificationPermissionPhase: View {
                     Spacer()
                 }
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .background(viewModel.shouldUseLightTheme ? Color.white : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
             )
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             
             Spacer()
             
@@ -392,11 +393,11 @@ struct NotificationPermissionPhase: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                 )
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.bottom, 40)
             .disabled(isRequestingNotifications)
         }

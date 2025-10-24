@@ -90,6 +90,7 @@ struct JobBoardView: View {
                             }
                         )
                         .padding(.top, 12)
+                        .padding(.bottom, 8)
                     }
 
                     // Main content with slide transitions
@@ -99,21 +100,21 @@ struct JobBoardView: View {
                             JobBoardDashboard()
                         case .clients:
                             ClientListView(searchText: searchText)
-                                .padding(.horizontal, 4)
+                                .padding(.horizontal, 16)
                         case .projects:
                             JobBoardProjectListView(
                                 searchText: searchText,
                                 showingFilters: $showingFilters,
                                 showingFilterSheet: $showingProjectFilterSheet
                             )
-                            .padding(.horizontal, 4)
+                            .padding(.horizontal, 16)
                         case .tasks:
                             JobBoardTasksView(
                                 searchText: searchText,
                                 showingFilters: $showingFilters,
                                 showingFilterSheet: $showingTaskFilterSheet
                             )
-                            .padding(.horizontal, 4)
+                            .padding(.horizontal, 16)
                         }
                     }
                     .id(selectedSection)
@@ -555,6 +556,7 @@ struct JobBoardTasksView: View {
     @State private var selectedTaskType: TaskType?
     @State private var showingTaskTypeDetails = false
     @State private var isCancelledExpanded = false
+    @State private var isCompletedExpanded = false
 
     private var allTasks: [ProjectTask] {
         let projects = dataController.getAllProjects()
@@ -576,6 +578,13 @@ struct JobBoardTasksView: View {
 
     private var filteredTasks: [ProjectTask] {
         var filtered = allTasks
+
+        filtered = filtered.filter { task in
+            guard let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) else {
+                return false
+            }
+            return project.eventType == .task
+        }
 
         if !selectedStatuses.isEmpty {
             filtered = filtered.filter { selectedStatuses.contains($0.status) }
@@ -621,7 +630,11 @@ struct JobBoardTasksView: View {
     }
 
     private var activeTasks: [ProjectTask] {
-        filteredTasks.filter { $0.status != .cancelled }
+        filteredTasks.filter { $0.status != .cancelled && $0.status != .completed }
+    }
+
+    private var completedTasks: [ProjectTask] {
+        filteredTasks.filter { $0.status == .completed }
     }
 
     private var cancelledTasks: [ProjectTask] {
@@ -650,6 +663,20 @@ struct JobBoardTasksView: View {
                                 .environment(\.modelContext, dataController.modelContext!)
                         }
 
+                        if !completedTasks.isEmpty {
+                            CollapsibleSection(
+                                title: "COMPLETED",
+                                count: completedTasks.count,
+                                isExpanded: $isCompletedExpanded
+                            ) {
+                                ForEach(completedTasks) { task in
+                                    UniversalJobBoardCard(cardType: .task(task))
+                                        .environmentObject(dataController)
+                                        .environment(\.modelContext, dataController.modelContext!)
+                                }
+                            }
+                        }
+
                         if !cancelledTasks.isEmpty {
                             CollapsibleSection(
                                 title: "CANCELLED",
@@ -664,6 +691,7 @@ struct JobBoardTasksView: View {
                             }
                         }
                     }
+                    .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, 120)
                 }

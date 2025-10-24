@@ -105,10 +105,39 @@ extension APIService {
     }
     
     // MARK: - Calendar Event Creation
-    
-    /// Create a new calendar event
+
+    /// Create a new calendar event and link it to the company
+    /// This is the universal method that should be used for all calendar event creation
     /// - Parameter event: The calendar event DTO to create
     /// - Returns: The created calendar event DTO with server-assigned ID
+    /// - Note: Automatically links the event to the company's Calendar.EventsList
+    func createAndLinkCalendarEvent(_ event: CalendarEventDTO) async throws -> CalendarEventDTO {
+        print("[CREATE_AND_LINK_EVENT] 🆕 Creating and linking calendar event")
+        print("[CREATE_AND_LINK_EVENT] Title: \(event.title ?? "Untitled")")
+        print("[CREATE_AND_LINK_EVENT] Type: \(event.type ?? "Unknown")")
+        print("[CREATE_AND_LINK_EVENT] Company ID: \(event.companyId ?? "Unknown")")
+
+        let createdEvent = try await createCalendarEvent(event)
+        print("[CREATE_AND_LINK_EVENT] ✅ Event created with ID: \(createdEvent.id)")
+
+        guard let companyId = event.companyId else {
+            print("[CREATE_AND_LINK_EVENT] ⚠️ No company ID provided - skipping company link")
+            return createdEvent
+        }
+
+        try await linkCalendarEventToCompany(
+            companyId: companyId,
+            calendarEventId: createdEvent.id
+        )
+        print("[CREATE_AND_LINK_EVENT] ✅ Event linked to company")
+
+        return createdEvent
+    }
+
+    /// Create a new calendar event (low-level method)
+    /// - Parameter event: The calendar event DTO to create
+    /// - Returns: The created calendar event DTO with server-assigned ID
+    /// - Warning: This method does NOT link the event to the company. Use createAndLinkCalendarEvent instead.
     func createCalendarEvent(_ event: CalendarEventDTO) async throws -> CalendarEventDTO {
 
         let dateFormatter = ISO8601DateFormatter()

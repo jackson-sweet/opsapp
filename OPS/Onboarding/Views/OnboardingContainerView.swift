@@ -86,6 +86,7 @@ struct OnboardingView: View {
                 case .companyAddress:
                     CompanyAddressView()
                         .environmentObject(viewModel)
+                        .environmentObject(viewModel.locationManager)
                 case .companyContact:
                     CompanyContactView()
                         .environmentObject(viewModel)

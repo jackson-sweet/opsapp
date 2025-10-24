@@ -35,9 +35,13 @@ struct ProjectDetailsView: View {
     @State private var showingAddressEditor = false
     @State private var editedAddress: String = ""
     @State private var showingTaskBasedSchedulingAlert = false
+    @State private var showingSwitchToTaskBasedAlert = false
     @State private var isEditingTeam = false
     @State private var triggerTeamSave = false
     @State private var showingCompletionSheet = false
+    @State private var showingCompletionAlert = false
+    @State private var showingDeleteAlert = false
+    @State private var showingProjectBasedAlert = false
 
     // Initialize with project's existing notes
     init(project: Project, isEditMode: Bool = false) {
@@ -240,11 +244,15 @@ struct ProjectDetailsView: View {
                 teamSection
 
                 if project.status != .completed {
+                    Spacer()
+                        .frame(height: 40)
+
                     completeButton
                 }
 
-                Spacer()
-                    .frame(height: 80)
+                if canEditProjectSettings() {
+                    deleteButton
+                }
             }
             .padding(.top, 16)
         }
@@ -453,20 +461,18 @@ struct ProjectDetailsView: View {
         )
 
         do {
-            let createdEvent = try await dataController.apiService.createCalendarEvent(eventDTO)
-
-            try await dataController.apiService.linkCalendarEventToCompany(
-                companyId: project.companyId,
-                calendarEventId: createdEvent.id
-            )
+            let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
 
             await MainActor.run {
                 if let calendarEvent = createdEvent.toModel() {
                     calendarEvent.needsSync = false
                     calendarEvent.lastSyncedAt = Date()
                     dataController.modelContext?.insert(calendarEvent)
+
+                    project.primaryCalendarEvent = calendarEvent
+
                     try? dataController.modelContext?.save()
-                    print("[CREATE_CALENDAR_EVENT] ✅ Calendar event created and linked")
+                    print("[CREATE_CALENDAR_EVENT] ✅ Calendar event created and linked to project")
                 }
             }
         } catch {
@@ -988,30 +994,26 @@ struct ProjectDetailsView: View {
     
     // Add photos button
     private var addPhotosButton: some View {
-        Group {
-            if canEditProjectSettings() {
-                Button(action: {
-                    showingImagePicker = true
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "plus.viewfinder")
-                            .font(.system(size: 16, weight: .medium))
+        Button(action: {
+            showingImagePicker = true
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.viewfinder")
+                    .font(.system(size: 16, weight: .medium))
 
-                        Text("ADD PHOTOS")
-                            .font(OPSStyle.Typography.bodyBold)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.primaryAccent)
-                    .foregroundColor(.white)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                }
-                .disabled(processingImages)
-                .padding(.horizontal)
+                Text("ADD PHOTOS")
+                    .font(OPSStyle.Typography.bodyBold)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(OPSStyle.Colors.primaryAccent)
+            .foregroundColor(.white)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
+        .disabled(processingImages)
+        .padding(.horizontal)
     }
-    
+
     // Processing indicator
     private var processingIndicator: some View {
         HStack {
@@ -1063,15 +1065,131 @@ struct ProjectDetailsView: View {
     
     // Tasks section
     private var tasksSection: some View {
-        TaskListView(project: project)
-            .environmentObject(dataController)
-            .environmentObject(appState)
+        VStack(alignment: .leading, spacing: 12) {
+            if project.eventType == .project {
+                // Show button to switch to task-based scheduling
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "hammer.circle")
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                        Text("TASKS")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+
+                    Button(action: {
+                        showingSwitchToTaskBasedAlert = true
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "calendar.badge.plus")
+                                .font(.system(size: 16))
+
+                            Text("SWITCH TO TASK-BASED SCHEDULING")
+                                .font(OPSStyle.Typography.bodyBold)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        )
+                    }
+                    .padding(.horizontal)
+                }
+                .alert("Switch to Task-Based Scheduling", isPresented: $showingSwitchToTaskBasedAlert) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Switch") {
+                        switchToTaskBasedScheduling()
+                    }
+                } message: {
+                    Text("This will change the project to use task-based scheduling. You'll be able to create and manage individual tasks for this project.")
+                }
+            } else {
+                // Show task list
+                TaskListView(project: project, onSwitchToProjectBased: {
+                    showingProjectBasedAlert = true
+                })
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .alert("Switch to Project-Based Scheduling", isPresented: $showingProjectBasedAlert) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Switch") {
+                        switchToProjectBasedScheduling()
+                    }
+                } message: {
+                    Text("This will change the project to use project-based scheduling. All tasks will remain but won't be used for scheduling.")
+                }
+            }
+        }
+    }
+
+    private func switchToTaskBasedScheduling() {
+        Task {
+            do {
+                print("[PROJECT_DETAILS] 🔄 Switching project to task-based scheduling...")
+                try await dataController.apiService.updateProject(id: project.id, updates: ["eventType": "Task"])
+
+                await MainActor.run {
+                    project.eventType = .task
+                    project.needsSync = false
+                    project.lastSyncedAt = Date()
+                }
+
+                if let projectEvent = project.primaryCalendarEvent, projectEvent.type == .project {
+                    projectEvent.active = false
+                    try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": false])
+                    projectEvent.needsSync = false
+                    projectEvent.lastSyncedAt = Date()
+                }
+
+                print("[PROJECT_DETAILS] ✅ Project switched to task-based scheduling")
+            } catch {
+                print("[PROJECT_DETAILS] ❌ Failed to switch scheduling type: \(error)")
+            }
+        }
+    }
+
+    private func switchToProjectBasedScheduling() {
+        Task {
+            do {
+                print("[PROJECT_DETAILS] 🔄 Switching project to project-based scheduling...")
+                try await dataController.apiService.updateProject(id: project.id, updates: ["eventType": "Project"])
+
+                await MainActor.run {
+                    project.eventType = .project
+                    project.needsSync = false
+                    project.lastSyncedAt = Date()
+                }
+
+                if let projectEvent = project.primaryCalendarEvent, projectEvent.type == .project {
+                    projectEvent.active = true
+                    try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": true])
+                    projectEvent.needsSync = false
+                    projectEvent.lastSyncedAt = Date()
+                }
+
+                print("[PROJECT_DETAILS] ✅ Project switched to project-based scheduling")
+            } catch {
+                print("[PROJECT_DETAILS] ❌ Failed to switch scheduling type: \(error)")
+            }
+        }
     }
 
     private var completeButton: some View {
         Button(action: {
             if project.usesTaskBasedScheduling {
-                showingCompletionSheet = true
+                let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+                if !incompleteTasks.isEmpty {
+                    showingCompletionAlert = true
+                } else {
+                    markProjectComplete()
+                }
             } else {
                 markProjectComplete()
             }
@@ -1089,6 +1207,42 @@ struct ProjectDetailsView: View {
         }
         .padding(.horizontal)
         .padding(.top, 8)
+        .alert("Complete Project", isPresented: $showingCompletionAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Complete All") {
+                markProjectCompleteWithTasks()
+            }
+        } message: {
+            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+            Text("This project has \(incompleteTasks.count) incomplete task\(incompleteTasks.count == 1 ? "" : "s"). All incomplete tasks will be marked as completed.")
+        }
+    }
+
+    private var deleteButton: some View {
+        Button(action: {
+            showingDeleteAlert = true
+        }) {
+            Text("DELETE PROJECT")
+                .font(OPSStyle.Typography.bodyBold)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .foregroundColor(OPSStyle.Colors.errorStatus)
+                .background(Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1)
+                )
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .alert("Delete Project", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                deleteProject()
+            }
+        } message: {
+            Text("Are you sure you want to delete this project? This action cannot be undone.")
+        }
     }
 
     // Check if user can edit project settings
@@ -1101,13 +1255,81 @@ struct ProjectDetailsView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
         impactFeedback.impactOccurred()
 
-        dataController.syncManager.updateProjectStatus(
+        dataController.syncManager?.updateProjectStatus(
             projectId: project.id,
             status: .completed,
             forceSync: true
         )
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            dismiss()
+        }
     }
-    
+
+    private func markProjectCompleteWithTasks() {
+        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+        impactFeedback.impactOccurred()
+
+        Task {
+            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+
+            for task in incompleteTasks {
+                await MainActor.run {
+                    task.status = .completed
+                    task.needsSync = true
+                }
+
+                do {
+                    try await dataController.apiService.updateTaskStatus(id: task.id, status: "Completed")
+                    await MainActor.run {
+                        task.needsSync = false
+                        task.lastSyncedAt = Date()
+                    }
+                    print("[PROJECT_COMPLETE] ✅ Task \(task.id) marked complete")
+                } catch {
+                    print("[PROJECT_COMPLETE] ❌ Failed to sync task \(task.id): \(error)")
+                }
+            }
+
+            await MainActor.run {
+                dataController.syncManager?.updateProjectStatus(
+                    projectId: project.id,
+                    status: .completed,
+                    forceSync: true
+                )
+            }
+
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            await MainActor.run {
+                dismiss()
+            }
+        }
+    }
+
+    private func deleteProject() {
+        Task {
+            do {
+                try await dataController.apiService.deleteProject(id: project.id)
+
+                await MainActor.run {
+                    if let modelContext = dataController.modelContext {
+                        modelContext.delete(project)
+                        try? modelContext.save()
+                    }
+                    dismiss()
+                }
+
+                print("[PROJECT_DETAILS] ✅ Project deleted successfully")
+            } catch {
+                print("[PROJECT_DETAILS] ❌ Failed to delete project: \(error)")
+                await MainActor.run {
+                    networkErrorMessage = "Failed to delete project. Please try again."
+                    showingNetworkError = true
+                }
+            }
+        }
+    }
+
     // Helper to format date
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -1418,6 +1640,7 @@ struct AddressEditorSheet: View {
                         })
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
+                            .autocorrectionDisabled(true)
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)

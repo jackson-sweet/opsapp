@@ -10,6 +10,7 @@ import SwiftData
 
 struct TaskListView: View {
     let project: Project
+    var onSwitchToProjectBased: (() -> Void)? = nil
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @State private var selectedTask: ProjectTask? = nil
@@ -46,6 +47,23 @@ struct TaskListView: View {
                             Capsule()
                                 .fill(Color.black)
                         )
+                }
+
+                // Project-Based button (for switching back)
+                if canModify, let onSwitch = onSwitchToProjectBased {
+                    Button(action: {
+                        onSwitch()
+                    }) {
+                        Text("Project-Based")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                            )
+                    }
                 }
 
                 // ADD button
@@ -124,8 +142,10 @@ struct TaskListView: View {
                             }
                         )
                         .environmentObject(dataController)
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
                     }
                 }
+                .animation(.easeInOut(duration: 0.3), value: project.tasks.count)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -164,6 +184,7 @@ struct TaskRow: View {
     let onTap: () -> Void
     let onDeleteSuccess: (String) -> Void
     @EnvironmentObject private var dataController: DataController
+    @Query private var users: [User]
     @State private var showingActions = false
     @State private var showingStatusPicker = false
     @State private var showingTeamPicker = false
@@ -175,6 +196,19 @@ struct TaskRow: View {
     private var canModify: Bool {
         guard let user = dataController.currentUser else { return false }
         return user.role == .admin || user.role == .officeCrew
+    }
+
+    private var displayTeamMembers: [User] {
+        if !task.teamMembers.isEmpty {
+            return Array(task.teamMembers)
+        }
+
+        let teamMemberIds = task.getTeamMemberIds()
+        guard !teamMemberIds.isEmpty else { return [] }
+
+        return teamMemberIds.compactMap { id in
+            users.first(where: { $0.id == id })
+        }
     }
 
     var body: some View {
@@ -221,25 +255,25 @@ struct TaskRow: View {
                 }
                 
                 Spacer()
-                
+
                 // Team member avatars (if any)
-                if !task.teamMembers.isEmpty {
+                if !displayTeamMembers.isEmpty {
                     HStack(spacing: -8) {
-                        ForEach(task.teamMembers.prefix(3)) { member in
+                        ForEach(displayTeamMembers.prefix(3)) { member in
                             UserAvatar(user: member, size: 24)
                                 .overlay(
                                     Circle()
                                         .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 2)
                                 )
                         }
-                        
-                        if task.teamMembers.count > 3 {
+
+                        if displayTeamMembers.count > 3 {
                             ZStack {
                                 Circle()
                                     .fill(OPSStyle.Colors.cardBackground)
                                     .frame(width: 24, height: 24)
-                                
-                                Text("+\(task.teamMembers.count - 3)")
+
+                                Text("+\(displayTeamMembers.count - 3)")
                                     .font(.system(size: 10))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
@@ -387,7 +421,9 @@ struct TaskRow: View {
                     guard let modelContext = dataController.modelContext else { return }
 
                     // Delete task from local database (cascade will handle calendar event)
-                    modelContext.delete(task)
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        modelContext.delete(task)
+                    }
                     try? modelContext.save()
                 }
 
@@ -487,12 +523,7 @@ struct TaskRow: View {
         )
 
         do {
-            let createdEvent = try await dataController.apiService.createCalendarEvent(eventDTO)
-
-            try await dataController.apiService.linkCalendarEventToCompany(
-                companyId: task.companyId,
-                calendarEventId: createdEvent.id
-            )
+            let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
 
             await MainActor.run {
                 if let calendarEvent = createdEvent.toModel() {

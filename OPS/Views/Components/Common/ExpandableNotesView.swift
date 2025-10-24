@@ -128,23 +128,46 @@ struct ExpandableNotesView: View {
                                 }
                             }
                         } else {
-                            // Single line with truncation
-                            HStack {
+                            // Single line with truncation and gradient
+                            ZStack(alignment: .bottomLeading) {
                                 Text(notes)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .lineLimit(3)
-                                    .truncationMode(.tail)
-                                
-                                Spacer()
-                                
-                                Button(action: {
-                                    isEditing = true
-                                    isExpanded = true
-                                }) {
-                                    Image(systemName: "square.and.pencil")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .padding(.bottom, 24)
+
+                                LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        OPSStyle.Colors.cardBackgroundDark.opacity(0),
+                                        OPSStyle.Colors.cardBackgroundDark
+                                    ]),
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                                .frame(height: 40)
+                                .frame(maxWidth: .infinity)
+
+                                HStack {
+                                    Button(action: {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            isExpanded = true
+                                        }
+                                    }) {
+                                        Text("Show more...")
+                                            .font(OPSStyle.Typography.caption)
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    }
+
+                                    Spacer()
+
+                                    Button(action: {
+                                        isEditing = true
+                                        isExpanded = true
+                                    }) {
+                                        Image(systemName: "square.and.pencil")
+                                            .font(.system(size: 24))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    }
                                 }
                             }
                         }

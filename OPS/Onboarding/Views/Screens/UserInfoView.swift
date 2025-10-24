@@ -226,7 +226,7 @@ struct FirstNamePhaseView: View {
             UnderlineTextField(
                 placeholder: "First name",
                 text: $firstName,
-                keyboardType: .namePhonePad,
+                keyboardType: .default,
                 autocapitalization: .words,
                 viewModel: viewModel
             )
@@ -278,7 +278,7 @@ struct LastNamePhaseView: View {
             UnderlineTextField(
                 placeholder: "Last name",
                 text: $lastName,
-                keyboardType: .namePhonePad,
+                keyboardType: .default,
                 autocapitalization: .words,
                 viewModel: viewModel
             )

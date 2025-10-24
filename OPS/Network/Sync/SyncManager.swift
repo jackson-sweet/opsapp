@@ -472,16 +472,72 @@ class SyncManager {
                     try await syncProjects()
                 } else {
                 }
-                
+
                 // Schedule notifications for future projects after sync
                 await NotificationManager.shared.scheduleNotificationsForAllProjects(using: modelContext)
-                
+
                 syncInProgress = false
                 syncStateSubject.send(false)
             } catch {
                 syncInProgress = false
                 syncStateSubject.send(false)
             }
+        }
+    }
+
+    /// Awaitable version of triggerBackgroundSync for onboarding
+    /// This ensures the sync completes before continuing
+    func performOnboardingSync() async {
+        print("[SYNC] 🔵 performOnboardingSync called (awaitable)")
+        print("[SYNC] syncInProgress: \(syncInProgress)")
+        print("[SYNC] isConnected: \(connectivityMonitor.isConnected)")
+
+        guard !syncInProgress, connectivityMonitor.isConnected else {
+            if syncInProgress {
+                print("[SYNC] ⚠️ Sync already in progress, skipping")
+            } else if !connectivityMonitor.isConnected {
+                print("[SYNC] ⚠️ No internet connection, skipping sync")
+            }
+            return
+        }
+
+        print("[SYNC] ✅ Starting onboarding sync")
+        syncInProgress = true
+        syncStateSubject.send(true)
+
+        do {
+            // First sync company data to get latest subscription info
+            await syncCompanyData()
+
+            // Sync clients that need sync (always allowed)
+            let clientSyncCount = await syncPendingClientChanges()
+
+            // Sync tasks that need sync (always allowed)
+            let taskSyncCount = await syncPendingTaskChanges()
+
+            // Sync users that need sync (always allowed)
+            let userSyncCount = await syncPendingUserChanges()
+
+            // Then sync high-priority project items (status changes) if auto-updates are enabled
+            var highPriorityCount = 0
+            if !preventAutoStatusUpdates {
+                highPriorityCount = await syncPendingProjectStatusChanges()
+            }
+
+            // Force project sync for onboarding
+            try await syncProjects()
+
+            // Schedule notifications for future projects after sync
+            await NotificationManager.shared.scheduleNotificationsForAllProjects(using: modelContext)
+
+            print("[SYNC] ✅ Onboarding sync completed successfully")
+
+            syncInProgress = false
+            syncStateSubject.send(false)
+        } catch {
+            print("[SYNC] ❌ Onboarding sync failed: \(error)")
+            syncInProgress = false
+            syncStateSubject.send(false)
         }
     }
     
@@ -1005,7 +1061,7 @@ class SyncManager {
                         modifiedDate: nil
                     )
 
-                    let createdEventDTO = try await apiService.createCalendarEvent(eventDTO)
+                    let createdEventDTO = try await apiService.createAndLinkCalendarEvent(eventDTO)
                     calendarEvent.id = createdEventDTO.id
                     calendarEvent.needsSync = false
                     calendarEvent.lastSyncedAt = Date()
@@ -2153,19 +2209,31 @@ class SyncManager {
     /// Sync specific task types by their IDs
     func syncSpecificTaskTypes(taskTypeIds: [String], companyId: String) async throws {
         guard !taskTypeIds.isEmpty else { return }
-        
-        
+
+
         // Fetch specific task types from API
         let remoteTaskTypes = try await apiService.fetchTaskTypesByIds(ids: taskTypeIds)
-        
-        // Process each task type
+
+        // CRITICAL: Deduplicate remote task types by ID to prevent crash
+        var uniqueRemoteTaskTypes: [TaskTypeDTO] = []
+        var seenIds = Set<String>()
         for remoteTaskType in remoteTaskTypes {
+            if !seenIds.contains(remoteTaskType.id) {
+                uniqueRemoteTaskTypes.append(remoteTaskType)
+                seenIds.insert(remoteTaskType.id)
+            } else {
+                print("[SYNC] ⚠️ Skipping duplicate task type ID in specific sync: \(remoteTaskType.id)")
+            }
+        }
+
+        // Process each task type (deduplicated)
+        for remoteTaskType in uniqueRemoteTaskTypes {
             // Check if exists locally
             let descriptor = FetchDescriptor<TaskType>(
                 predicate: #Predicate<TaskType> { $0.id == remoteTaskType.id }
             )
             let existing = try modelContext.fetch(descriptor).first
-            
+
             if let existingType = existing {
                 // Update existing
                 existingType.display = remoteTaskType.display
@@ -2549,9 +2617,22 @@ class SyncManager {
         }
         
         let localTaskTypeIds = Set(localTaskTypes.map { $0.id })
-        
-        // Process remote task types
+
+        // CRITICAL: Deduplicate remote task types by ID to prevent crash
+        // Bubble API sometimes returns duplicate IDs which causes SwiftData unique constraint violation
+        var uniqueRemoteTaskTypes: [TaskTypeDTO] = []
+        var seenIds = Set<String>()
         for remoteTaskType in remoteTaskTypes {
+            if !seenIds.contains(remoteTaskType.id) {
+                uniqueRemoteTaskTypes.append(remoteTaskType)
+                seenIds.insert(remoteTaskType.id)
+            } else {
+                print("[SYNC] ⚠️ Skipping duplicate task type ID: \(remoteTaskType.id)")
+            }
+        }
+
+        // Process remote task types (deduplicated)
+        for remoteTaskType in uniqueRemoteTaskTypes {
             if localTaskTypeIds.contains(remoteTaskType.id) {
                 // Update existing task type
                 if let localTaskType = localTaskTypes.first(where: { $0.id == remoteTaskType.id }) {
@@ -2572,9 +2653,9 @@ class SyncManager {
                 modelContext.insert(newTaskType)
             }
         }
-        
-        // Remove local task types not in remote
-        let remoteTaskTypeIds = Set(remoteTaskTypes.map { $0.id })
+
+        // Remove local task types not in remote (use deduplicated list)
+        let remoteTaskTypeIds = Set(uniqueRemoteTaskTypes.map { $0.id })
         for localTaskType in localTaskTypes {
             if !remoteTaskTypeIds.contains(localTaskType.id) {
                 modelContext.delete(localTaskType)
@@ -3243,14 +3324,14 @@ class SyncManager {
             endDate: dateFormatter.string(from: endDate),
             startDate: dateFormatter.string(from: startDate),
             teamMembers: project.teamMembers.map { $0.id },
-            title: project.title,
+            title: project.clientName,
             type: "Project",
             active: true,
             createdDate: nil,
             modifiedDate: nil
         )
 
-        let createdEvent = try await apiService.createCalendarEvent(eventDTO)
+        let createdEvent = try await apiService.createAndLinkCalendarEvent(eventDTO)
 
         // Create local CalendarEvent and link to project
         await MainActor.run {
@@ -3258,7 +3339,7 @@ class SyncManager {
                 id: createdEvent.id,
                 projectId: project.id,
                 companyId: project.companyId,
-                title: project.title,
+                title: project.clientName,
                 startDate: startDate,
                 endDate: endDate,
                 color: defaultColor,

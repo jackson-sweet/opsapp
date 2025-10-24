@@ -49,7 +49,7 @@ struct CompanyContactView: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
@@ -60,7 +60,7 @@ struct CompanyContactView: View {
                     }
                 }
                 .padding(.bottom, 16)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content area - top-justified
                 VStack(spacing: 0) {
@@ -91,10 +91,10 @@ struct CompanyContactView: View {
                                     .lineLimit(1)
                             }
                             .foregroundColor(Color("AccentPrimary"))
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 12)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(Color("AccentPrimary"), lineWidth: 1)
                             )
                             
@@ -115,10 +115,10 @@ struct CompanyContactView: View {
                                     .lineLimit(1)
                             }
                             .foregroundColor(Color("AccentPrimary"))
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 12)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(Color("AccentPrimary"), lineWidth: 1)
                             )
 
@@ -172,7 +172,7 @@ struct CompanyContactView: View {
                         }
                         }
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, 40) // Add consistent top padding
                     
                     Spacer()
@@ -191,7 +191,7 @@ struct CompanyContactView: View {
                     }
                 )
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.bottom, 34)
             .background(
                 Rectangle()

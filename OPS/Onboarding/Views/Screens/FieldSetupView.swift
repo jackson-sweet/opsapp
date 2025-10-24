@@ -58,7 +58,7 @@ struct FieldSetupView: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
@@ -71,7 +71,7 @@ struct FieldSetupView: View {
                     }
                 }
                 .padding(.bottom, 16)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content area wrapped in ScrollView
                 ScrollView {
@@ -82,7 +82,7 @@ struct FieldSetupView: View {
                             subtitle: "Customize how OPS should work when you're on job sites with limited connectivity.",
                             isLightTheme: viewModel.shouldUseLightTheme
                         )
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.bottom, 30)
                         
                         // Field settings
@@ -97,7 +97,7 @@ struct FieldSetupView: View {
                             }
                             .environmentObject(viewModel)
                         }
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.bottom, 40) // Add bottom padding to prevent cutoff
                     }
                     .padding(.top, 40) // Add consistent top padding
@@ -112,7 +112,7 @@ struct FieldSetupView: View {
                         applySettings()
                     }
                 )
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 16)
             }
         }
@@ -173,7 +173,7 @@ struct SettingsSection<Content: View>: View {
             
             content
         }
-        .padding()
+        .padding(OPSStyle.Layout.spacing3)
         .background(viewModel.shouldUseLightTheme ? Color.white : OPSStyle.Colors.cardBackground)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

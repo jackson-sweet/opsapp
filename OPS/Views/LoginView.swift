@@ -199,7 +199,7 @@ struct LoginView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(.vertical, 12)
                                 .autocapitalization(.none)
-                                .disableAutocorrection(true)
+                                .autocorrectionDisabled(true)
                                 .overlay(
                                     VStack {
                                         Spacer()

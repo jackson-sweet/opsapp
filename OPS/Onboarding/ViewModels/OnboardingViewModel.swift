@@ -513,25 +513,58 @@ class OnboardingViewModel: ObservableObject {
                         isSignedUp = true
                         userId = userIdValue
                         UserDefaults.standard.set(userIdValue, forKey: "user_id")
-                        
+
                         // Print detailed success information for debugging
-                        
+                        print("[ONBOARDING] User signed up successfully with ID: \(userIdValue)")
+
+                        // CRITICAL: Create User object in SwiftData immediately after signup
+                        // This ensures the user exists when we need to update it with companyId later
+                        if let modelContext = dataController?.modelContext {
+                            print("[ONBOARDING] Creating User object in SwiftData")
+
+                            // Check if user already exists (shouldn't, but be safe)
+                            let descriptor = FetchDescriptor<User>(
+                                predicate: #Predicate<User> { $0.id == userIdValue }
+                            )
+                            let existingUsers = try? modelContext.fetch(descriptor)
+
+                            if existingUsers?.isEmpty ?? true {
+                                // Create new user object with basic info
+                                let userObject = User(
+                                    id: userIdValue,
+                                    firstName: "", // Will be filled in later during onboarding
+                                    lastName: "",  // Will be filled in later during onboarding
+                                    role: .fieldCrew, // Default role, will be updated later
+                                    companyId: "" // Empty string, will be set when company is created/joined
+                                )
+                                userObject.email = email
+
+                                modelContext.insert(userObject)
+                                try? modelContext.save()
+                                print("[ONBOARDING] ✅ User object created in SwiftData")
+                            } else {
+                                print("[ONBOARDING] User already exists in SwiftData")
+                            }
+                        } else {
+                            print("[ONBOARDING] ⚠️ ModelContext not available, cannot create User in SwiftData")
+                        }
+
                         // Store email and password in UserDefaults for later (crucial for API calls)
                         UserDefaults.standard.set(email, forKey: "user_email")
                         UserDefaults.standard.set(password, forKey: "user_password")
-                        
+
                         // Save user type now that signup is successful
                         if let userType = selectedUserType {
                             UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
                         }
-                        
+
                         // Log that we've saved these important credentials
-                        
+
                         // DO NOT mark as authenticated yet - wait until onboarding is complete
                         // This prevents access to the app with test data
                         UserDefaults.standard.set(false, forKey: "is_authenticated")
                         UserDefaults.standard.set(false, forKey: "onboarding_completed")
-                        
+
                         // Save the current onboarding step - at this point they've completed account setup
                         UserDefaults.standard.set(OnboardingStep.organizationJoin.rawValue, forKey: "last_onboarding_step_v2")
                     } else {
@@ -731,7 +764,22 @@ class OnboardingViewModel: ObservableObject {
                     }
                 }
             }
-            
+
+            // CRITICAL: If join was successful, perform full sync immediately
+            // This ensures all data (user role, company info, subscription status, projects)
+            // is loaded BEFORE user enters the main app
+            if isCompanyJoined {
+                print("[ONBOARDING] Employee joined company successfully, triggering full sync")
+                if let syncManager = dataController?.syncManager {
+                    await syncManager.performOnboardingSync()
+                    print("[ONBOARDING] Full sync completed after joining company")
+
+                    // CRITICAL: Reload currentUser from SwiftData after sync
+                    // This ensures DataController has the updated user with correct role
+                    await reloadCurrentUser()
+                }
+            }
+
             return isCompanyJoined
             
         } catch let joinError as SignUpError {
@@ -1148,19 +1196,17 @@ class OnboardingViewModel: ObservableObject {
                 userPhone: formattedPhone
             )
             
+            // Store company data and update SwiftData (ALL on MainActor to avoid threading issues)
             await MainActor.run {
                 isLoading = false
-                // Store company data
                 UserDefaults.standard.set(companyName, forKey: "Company Name")
                 UserDefaults.standard.set(true, forKey: "company_created")
-                
-                // Store company ID and code if available
+
                 if let company = response.extractedCompany {
-                    
-                    // Store company ID first
                     if let companyId = company.extractedId, !companyId.isEmpty {
+                        // Store company ID in UserDefaults
                         UserDefaults.standard.set(companyId, forKey: "company_id")
-                        
+
                         // Create or update Company object in SwiftData
                         if let modelContext = dataController?.modelContext {
                             // Check if company already exists
@@ -1168,17 +1214,19 @@ class OnboardingViewModel: ObservableObject {
                                 predicate: #Predicate<Company> { $0.id == companyId }
                             )
                             let existingCompanies = try? modelContext.fetch(descriptor)
-                            
+
                             var companyObject: Company
                             if let existing = existingCompanies?.first {
                                 // Update existing company
                                 companyObject = existing
+                                print("[ONBOARDING] Updating existing company in SwiftData")
                             } else {
                                 // Create new company
                                 companyObject = Company(id: companyId, name: companyName)
                                 modelContext.insert(companyObject)
+                                print("[ONBOARDING] Creating new company in SwiftData")
                             }
-                            
+
                             // Update company properties from response
                             companyObject.name = company.extractedName ?? companyName
                             companyObject.email = company.officeEmail ?? company.email ?? companyEmail
@@ -1186,31 +1234,107 @@ class OnboardingViewModel: ObservableObject {
                             companyObject.address = companyAddress
                             companyObject.companySize = company.companySize ?? company.size ?? companySize?.rawValue
                             companyObject.companyAge = company.companyAge ?? company.age ?? companyAge?.rawValue
-                            
+
                             // Set industries
                             if let industries = company.industry {
                                 companyObject.setIndustries(industries)
                             } else if let industry = companyIndustry {
                                 companyObject.setIndustries([industry.rawValue])
                             }
-                            
-                            // Save to database
+
+                            // Save company to database
                             try? modelContext.save()
+                            print("[ONBOARDING] ✅ Company saved to SwiftData")
+
+                            // CRITICAL: Update existing User object in SwiftData with company ID
+                            // The user MUST already exist from the account signup step
+                            // This MUST happen before the sync so the sync can find the user with companyId
+                            print("[ONBOARDING] Updating existing user in SwiftData with company ID")
+                            let userDescriptor = FetchDescriptor<User>(
+                                predicate: #Predicate<User> { $0.id == userId }
+                            )
+
+                            if let userObject = try? modelContext.fetch(userDescriptor).first {
+                                print("[ONBOARDING] ✅ Found existing user, updating with company ID")
+
+                                // Update user properties with company information
+                                userObject.companyId = companyId
+                                userObject.role = .admin  // Company owner is always admin
+                                userObject.firstName = firstName
+                                userObject.lastName = lastName
+                                userObject.phone = phoneNumber
+                                userObject.hasCompletedAppOnboarding = false  // Not done yet
+
+                                // Save user to database
+                                try? modelContext.save()
+
+                                print("[ONBOARDING] User updated - Company ID: \(companyId), Role: \(userObject.role)")
+
+                                // Update DataController's currentUser reference
+                                if let dataController = dataController {
+                                    dataController.currentUser = userObject
+                                    print("[ONBOARDING] ✅ Updated DataController.currentUser with role: \(userObject.role)")
+                                } else {
+                                    print("[ONBOARDING] ⚠️ DataController not available")
+                                }
+                            } else {
+                                print("[ONBOARDING] ❌ CRITICAL ERROR: User not found in SwiftData")
+                                print("[ONBOARDING] User ID: \(userId)")
+                                print("[ONBOARDING] This means the user was not created during signup")
+                                errorMessage = "User account not found. Please restart onboarding."
+                            }
+                        }
+
+                        // Store company code - prefer the actual code field if available
+                        if let companyCode = company.extractedCode, !companyCode.isEmpty {
+                            self.companyCode = companyCode
+                            UserDefaults.standard.set(companyCode, forKey: "company_code")
+                        } else {
+                            // Fallback: Use company ID as the code if no specific code field
+                            self.companyCode = companyId
+                            UserDefaults.standard.set(companyId, forKey: "company_code")
                         }
                     }
-                    
-                    // Store company code - prefer the actual code field if available
-                    if let companyCode = company.extractedCode, !companyCode.isEmpty {
-                        self.companyCode = companyCode
-                        UserDefaults.standard.set(companyCode, forKey: "company_code")
-                    } else if let companyId = company.extractedId, !companyId.isEmpty {
-                        // Fallback: Use company ID as the code if no specific code field
-                        self.companyCode = companyId
-                        UserDefaults.standard.set(companyId, forKey: "company_code")
-                    }
-                } else {
                 }
             }
+
+            // CRITICAL: Perform full sync immediately after company creation
+            // This ensures all data (user role, company info, subscription status, projects)
+            // is loaded BEFORE user enters the main app
+            print("[ONBOARDING] Company created successfully, triggering full sync")
+
+            guard let dataController = dataController else {
+                print("[ONBOARDING] ❌ DataController is nil, cannot sync")
+                return
+            }
+
+            // CRITICAL: Ensure SyncManager is initialized now that we have a user
+            // This is needed because setModelContext might have been called before currentUser was set
+            if dataController.syncManager == nil {
+                print("[ONBOARDING] SyncManager is nil, initializing now...")
+                // Force initialization by calling setModelContext again
+                if let modelContext = dataController.modelContext {
+                    await dataController.setModelContext(modelContext)
+                    print("[ONBOARDING] ✅ SyncManager initialization requested")
+                }
+            } else {
+                print("[ONBOARDING] SyncManager already initialized")
+            }
+
+            guard let syncManager = dataController.syncManager else {
+                print("[ONBOARDING] ❌ SyncManager is still nil after initialization attempt, cannot sync")
+                return
+            }
+
+            print("[ONBOARDING] ✅ SyncManager found, starting performOnboardingSync...")
+            await syncManager.performOnboardingSync()
+            print("[ONBOARDING] ✅ Full sync completed after company creation")
+
+            // CRITICAL: Reload currentUser from SwiftData after sync
+            // This ensures DataController has the updated user with correct role
+            print("[ONBOARDING] Reloading current user...")
+            await reloadCurrentUser()
+            print("[ONBOARDING] ✅ Current user reloaded")
         } catch {
             await MainActor.run {
                 isLoading = false
@@ -1248,16 +1372,16 @@ class OnboardingViewModel: ObservableObject {
         // Mark onboarding as completed
         UserDefaults.standard.set(true, forKey: "onboarding_completed")
         UserDefaults.standard.set(false, forKey: "resume_onboarding")
-        
+
         // Store final user type
         if let userType = selectedUserType {
             UserDefaults.standard.set(userType.rawValue, forKey: "user_type")
         }
-        
+
         // Set authentication flag to enter the app
         UserDefaults.standard.set(true, forKey: "is_authenticated")
-        
-        
+
+
         // Update the server with onboarding completion status
         if let userId = UserDefaults.standard.string(forKey: "user_id"),
            let dataController = dataController {
@@ -1265,7 +1389,7 @@ class OnboardingViewModel: ObservableObject {
                 do {
                     let updateData = ["hasCompletedAppOnboarding": true]
                     try await dataController.apiService.updateUser(id: userId, userData: updateData)
-                    
+
                     // Update the local user model
                     await MainActor.run {
                         if let user = dataController.currentUser {
@@ -1275,22 +1399,81 @@ class OnboardingViewModel: ObservableObject {
                 } catch {
                     // Continue anyway - we don't want to block the user
                 }
+
+                // NOTE: Full sync already happened in createCompany() before reaching this point
+                // No need to sync again here - all data is already loaded
+                print("[ONBOARDING] Onboarding complete, data already synced from createCompany()")
             }
         }
-        
+
         // Update DataController if available
         if let dataController = dataController {
             DispatchQueue.main.async {
                 dataController.isAuthenticated = true
             }
         }
-        
+
         // Dismiss the onboarding overlay
         NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
     }
     
+    /// Reload the current user from SwiftData after sync completes
+    /// This ensures DataController has the latest user data with correct role
+    @MainActor
+    private func reloadCurrentUser() async {
+        guard let userId = UserDefaults.standard.string(forKey: "user_id"),
+              let modelContext = dataController?.modelContext,
+              let dataController = dataController else {
+            print("[ONBOARDING] Cannot reload user - missing userId, modelContext, or dataController")
+            return
+        }
+
+        // Add a small delay to ensure SwiftData has finished persisting
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+
+        do {
+            let descriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { $0.id == userId }
+            )
+
+            let users = try modelContext.fetch(descriptor)
+
+            if let user = users.first {
+                print("[ONBOARDING] ✅ Reloaded user from SwiftData")
+                print("[ONBOARDING]    - User ID: \(user.id)")
+                print("[ONBOARDING]    - Name: \(user.fullName)")
+                print("[ONBOARDING]    - Role: \(user.role)")
+                print("[ONBOARDING]    - Company ID: \(user.companyId ?? "none")")
+
+                // Update currentUser on main thread
+                await MainActor.run {
+                    dataController.currentUser = user
+                    // Force views to update
+                    dataController.objectWillChange.send()
+                }
+
+                // Also verify the company is accessible
+                if let companyId = user.companyId {
+                    let companyDescriptor = FetchDescriptor<Company>(
+                        predicate: #Predicate<Company> { $0.id == companyId }
+                    )
+                    if let company = try? modelContext.fetch(companyDescriptor).first {
+                        print("[ONBOARDING]    - Company: \(company.name)")
+                        print("[ONBOARDING]    - Subscription Status: \(company.subscriptionStatus ?? "none")")
+                    } else {
+                        print("[ONBOARDING]    - ⚠️ Company not found in SwiftData")
+                    }
+                }
+            } else {
+                print("[ONBOARDING] ❌ User not found in SwiftData after sync")
+            }
+        } catch {
+            print("[ONBOARDING] ❌ Error reloading user: \(error.localizedDescription)")
+        }
+    }
+
     func logoutAndReturnToLogin() {
-        
+
         // Use DataController's logout method to properly clean everything
         if let dataController = dataController {
             Task { @MainActor in

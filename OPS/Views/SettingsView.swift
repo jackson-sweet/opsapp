@@ -313,7 +313,7 @@ struct SettingsView: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .focused($isSearchFocused)
                 .autocapitalization(.none)
-                .disableAutocorrection(true)
+                .autocorrectionDisabled(true)
 
             // Clear button - only show when there's text
             if !searchText.isEmpty {

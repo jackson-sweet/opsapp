@@ -39,6 +39,9 @@ struct HomeContentView: View {
     // State for project editing
     @State private var showingEditProject = false
     @State private var projectToEdit: Project?
+
+    // State for random quote - only set once on view creation
+    @State private var randomQuote: String = AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects found"
     
     var body: some View {
         ZStack {
@@ -237,6 +240,7 @@ struct HomeContentView: View {
                     )
                 } else if !isLoading {
                     emptyProjectsView
+                        .padding(.top, 20)
                 }
             }
         }
@@ -255,32 +259,29 @@ struct HomeContentView: View {
     }
     
     private var emptyProjectsView: some View {
-        GeometryReader { geometry in
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                // Project title
-                Text("NO PROJECTS SCHEDULED FOR TODAY.")
-                    .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                    // Client name
-                    Text(AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects found")
-                        .font(OPSStyle.Typography.cardBody)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-            }
-            .padding()
-            //.frame(width: geometry.size.width - 40) // Remove fixed height
-            .background(
-                // Custom background with blur effect
-                BlurView(style: .dark)
-                    .cornerRadius(5)
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .position(x: geometry.size.width / 2, y: geometry.size.height / 4) // Center the card
-            .contentShape(Rectangle()) // Make entire card tappable
-            .frame(width: 362, height: 85)
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            // Project title
+            Text("NO PROJECTS SCHEDULED FOR TODAY.")
+                .font(OPSStyle.Typography.cardTitle)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            // Client name - uses the state variable that was set once on view creation
+            Text(randomQuote)
+                .font(OPSStyle.Typography.cardBody)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true) // Allow text to expand vertically
+
         }
-        .frame(height: 190) // Set height for the container
+        .frame(maxWidth: .infinity, alignment: .leading) // Full width
+        .padding(OPSStyle.Layout.spacing3) // Use standard spacing
+        .background(
+            // Custom background with blur effect
+            BlurView(style: .dark)
+                .cornerRadius(5)
+        )
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .padding(.horizontal, 20) // Match carousel horizontal padding
+        .contentShape(Rectangle()) // Make entire card tappable
     }
     
     private var loadingOverlay: some View {

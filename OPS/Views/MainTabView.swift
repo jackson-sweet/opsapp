@@ -15,13 +15,14 @@ struct MainTabView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var locationManager: LocationManager
-    
+
     @State private var selectedTab = 0
     @State private var previousTab = 0
     @State private var keyboardIsShowing = false
     @State private var sheetIsPresented = false
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
     @ObservedObject private var inProgressManager = InProgressManager.shared
+    @State private var userRole: UserRole? = nil // Track user role changes explicitly
     
     // Observer for fetch active project notifications
     private let fetchProjectObserver = NotificationCenter.default
@@ -49,8 +50,8 @@ struct MainTabView: View {
         ]
 
         // Add Job Board tab for admin and office crew only
-        if let currentUser = dataController.currentUser,
-           (currentUser.role == .admin || currentUser.role == .officeCrew) {
+        // Use the tracked userRole state to ensure reactivity
+        if userRole == .admin || userRole == .officeCrew {
             baseTabs.append(TabItem(iconName: "briefcase.fill"))
         }
 
@@ -206,6 +207,34 @@ struct MainTabView: View {
         .onAppear {
             // Clear all pending image syncs on app bootup
             clearPendingImageSyncs()
+
+            // Initialize user role
+            userRole = dataController.currentUser?.role
+            print("[MAIN_TAB_VIEW] onAppear - Initial user role: \(String(describing: userRole))")
+            print("[MAIN_TAB_VIEW] onAppear - Current user: \(String(describing: dataController.currentUser?.fullName))")
+            print("[MAIN_TAB_VIEW] onAppear - Tab count: \(tabs.count)")
+        }
+        .onChange(of: dataController.currentUser?.role) { oldRole, newRole in
+            print("[MAIN_TAB_VIEW] User role changed from \(String(describing: oldRole)) to \(String(describing: newRole))")
+            userRole = newRole
+            print("[MAIN_TAB_VIEW] After role change - Tab count: \(tabs.count)")
+
+            // Ensure selected tab is valid for new tab count
+            let newTabCount = tabs.count
+            if selectedTab >= newTabCount {
+                selectedTab = 0 // Reset to home if current tab no longer exists
+            }
+        }
+        .onChange(of: dataController.currentUser) { oldUser, newUser in
+            print("[MAIN_TAB_VIEW] currentUser object changed")
+            print("[MAIN_TAB_VIEW]   Old: \(String(describing: oldUser?.fullName)) - Role: \(String(describing: oldUser?.role))")
+            print("[MAIN_TAB_VIEW]   New: \(String(describing: newUser?.fullName)) - Role: \(String(describing: newUser?.role))")
+
+            // Update userRole when currentUser changes
+            if let newRole = newUser?.role {
+                userRole = newRole
+                print("[MAIN_TAB_VIEW] Updated userRole to: \(newRole)")
+            }
         }
     }
     

@@ -56,7 +56,7 @@ struct WelcomeView: View {
                     }
                     .opacity(buttonOpacity)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, 40)
                 
                 // Main content with spacing
@@ -109,7 +109,7 @@ struct WelcomeView: View {
                     .opacity(buttonOpacity)
                     .padding(.bottom, 30)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
         .onAppear {

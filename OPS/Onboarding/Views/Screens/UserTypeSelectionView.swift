@@ -96,7 +96,7 @@ struct UserTypeSelectionView: View {
                 )
                 .padding(.bottom, 50)
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3)
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.selectedUserType)
     }
@@ -147,14 +147,14 @@ struct UserTypeOption: View {
                     .font(.system(size: 24))
                     .foregroundColor(isSelected ? (isLightTheme ? .white : .black) : primaryTextColor)
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? 
-                          (isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText) : 
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(isSelected ?
+                          (isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText) :
                           cardBackgroundColor.opacity(0.3))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(isSelected ? OPSStyle.Colors.secondaryText : Color.clear, lineWidth: 1)
                     )
             )

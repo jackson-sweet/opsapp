@@ -9,7 +9,6 @@
 	<key>com.apple.developer.in-app-payments</key>
 	<array>
 		<string>merchant.co.opsapp</string>
-		<string>merchant.co.opsapp.test</string>
 	</array>
 </dict>
 </plist>

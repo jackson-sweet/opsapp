@@ -44,6 +44,8 @@ struct ClientSearchField: View {
                 TextField(placeholder, text: $searchText)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
+                    .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.words)
                     .focused($isFocused)
                     .onChange(of: searchText) { _, newValue in
                         if !newValue.isEmpty {

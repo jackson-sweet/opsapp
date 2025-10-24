@@ -11,7 +11,7 @@ This document contains the exact field names and types for all Bubble.io data ob
 | Active Projects | List of Projects | activeProjects | |
 | Admin | List of Users | admin | |
 | billingPeriodEnd | date | billingPeriodEnd | |
-| Calendar EventsList | List of CalendarEvents | calendarEventsList | |
+| Calendar.EventsList | List of CalendarEvents | calendarEventsList | Uses dot notation |
 | Client | List of Clients | clients | |
 | Close Hour | text | closeHour | |
 | Company Description | text | companyDescription | |

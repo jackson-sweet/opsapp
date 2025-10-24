@@ -51,7 +51,7 @@ struct OrganizationJoinView: View {
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 8)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     
                     // Don't show step indicator on this screen since it's not counted as a step
                     
@@ -68,7 +68,7 @@ struct OrganizationJoinView: View {
                         
                         Spacer() // This will push content up and button to the bottom
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, 40)
                     
                     // Continue button
@@ -78,7 +78,7 @@ struct OrganizationJoinView: View {
                         }
                     )
                     .padding(.bottom, 30)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
             }
         }

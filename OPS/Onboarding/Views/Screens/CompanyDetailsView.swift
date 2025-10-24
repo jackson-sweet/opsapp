@@ -74,7 +74,7 @@ struct CompanyDetailsView: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
@@ -85,7 +85,7 @@ struct CompanyDetailsView: View {
                     }
                 }
                 .padding(.bottom, 16)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Content area with phases - top-justified
                 VStack(spacing: 0) {
@@ -139,7 +139,7 @@ struct CompanyDetailsView: View {
                         }
                         .transition(.opacity)
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, 40) // Add consistent top padding
                     
                     Spacer()
@@ -202,13 +202,13 @@ struct IndustryPhaseView: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, 16)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .fill(OPSStyle.Colors.cardBackground)
                             )
                     )
@@ -282,13 +282,13 @@ struct SizePhaseView: View {
                                     .frame(width: 20, height: 20)
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 16)
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(selectedSize == size ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackground)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(selectedSize == size ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
                                 )
                         )
@@ -365,13 +365,13 @@ struct AgePhaseView: View {
                                     .frame(width: 20, height: 20)
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 16)
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(selectedAge == age ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackground)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(selectedAge == age ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
                                 )
                         )
@@ -441,17 +441,17 @@ struct IndustryPickerView: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 12)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .fill(OPSStyle.Colors.cardBackground)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
                         )
                 )
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, 16)
                 
                 // Industry List

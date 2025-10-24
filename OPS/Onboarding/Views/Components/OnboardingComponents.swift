@@ -98,7 +98,7 @@ struct OnboardingProgressIndicator: View {
                     .frame(height: 4)
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, 12)
     }
 }
@@ -164,7 +164,7 @@ struct StandardNavigationHeader: View {
         }
         .padding(.top, 8)
         .padding(.bottom, 8)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }
 
@@ -232,7 +232,7 @@ struct StandardContinueButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(isDisabled ? Color.gray : OPSStyle.Colors.primaryAccent, lineWidth: 1)
             )
         }
@@ -332,11 +332,11 @@ struct OnboardingNavigationButtons: View {
                             .progressViewStyle(CircularProgressViewStyle(tint: isLightTheme ? .white : .black))
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .frame(height: 52)
                 .frame(maxWidth: .infinity)
-                .background(isPrimaryDisabled || isLoading ? 
-                           (isLightTheme ? OPSStyle.Colors.primaryAccent.opacity(0.7) : Color.white.opacity(0.7)) : 
+                .background(isPrimaryDisabled || isLoading ?
+                           (isLightTheme ? OPSStyle.Colors.primaryAccent.opacity(0.7) : Color.white.opacity(0.7)) :
                            (isLightTheme ? OPSStyle.Colors.primaryAccent : Color.white))
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
@@ -362,7 +362,7 @@ struct OnboardingNavigationButtons: View {
                         }
                     }
                     .foregroundColor(isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .frame(height: 52)
                     .frame(maxWidth: .infinity)
                 }

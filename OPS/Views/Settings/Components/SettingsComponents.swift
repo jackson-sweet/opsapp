@@ -309,6 +309,7 @@ struct SettingsField: View {
                     TextField(placeholder, text: $text)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(.white)
+                        .autocorrectionDisabled(true)
                         .padding()
                         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                         .cornerRadius(OPSStyle.Layout.cornerRadius)

@@ -354,18 +354,19 @@ struct JobBoardDashboard: View {
     }
 
     private func changeProjectStatus(_ project: Project, to newStatus: Status) {
+        print("[ARCHIVE_DEBUG] 📦 Changing project '\(project.title)' status from \(project.status.rawValue) to \(newStatus.rawValue)")
+
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
 
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-            project.status = newStatus
-            project.needsSync = true
+        project.status = newStatus
+        project.needsSync = true
 
-            do {
-                try modelContext.save()
-            } catch {
-                print("Failed to save project status: \(error)")
-            }
+        do {
+            try modelContext.save()
+            print("[ARCHIVE_DEBUG] ✅ Project status saved successfully to \(newStatus.rawValue)")
+        } catch {
+            print("[ARCHIVE_DEBUG] ❌ Failed to save project status: \(error)")
         }
     }
 

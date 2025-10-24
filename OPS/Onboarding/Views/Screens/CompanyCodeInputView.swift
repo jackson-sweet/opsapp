@@ -70,7 +70,7 @@ struct CompanyCodeInputView: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
@@ -83,7 +83,7 @@ struct CompanyCodeInputView: View {
                     }
                 }
                 .padding(.bottom, 16)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content - top-justified
                 VStack(spacing: 0) {
@@ -112,7 +112,7 @@ struct CompanyCodeInputView: View {
                             }
                             .opacity(welcomeOpacity)
                         }
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.top, 80) // Add padding for welcome phase
                     } else {
                         // Input form
@@ -189,19 +189,19 @@ struct CompanyCodeInputView: View {
                                     .foregroundColor(Color("StatusError"))
                                     .multilineTextAlignment(.leading)
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 12)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .fill(Color("StatusError").opacity(0.1))
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                             .stroke(Color("StatusError").opacity(0.3), lineWidth: 1)
                                     )
                             )
                         }
                         }
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.top, 40) // Add consistent top padding
                     } // End of else block
                     
@@ -235,7 +235,7 @@ struct CompanyCodeInputView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.bottom, 34)
             }
         }

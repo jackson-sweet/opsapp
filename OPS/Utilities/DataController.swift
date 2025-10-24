@@ -91,15 +91,17 @@ class DataController: ObservableObject {
     @MainActor
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
-        
+
         // Set up in proper sequence to avoid race conditions
         Task {
             // First clean up any duplicate users that might exist
             await cleanupDuplicateUsers()
-            
+
             // Only after cleanup is done, initialize sync manager if needed
             await MainActor.run {
-                if isAuthenticated {
+                // Initialize sync manager if authenticated OR if we have a current user (onboarding)
+                // This ensures sync is available during company creation in onboarding
+                if isAuthenticated || currentUser != nil {
                     initializeSyncManager()
                 }
             }
@@ -1279,15 +1281,25 @@ class DataController: ObservableObject {
            let adminRefs = dto.admin {
             // Check if current user's ID is in the admin list
             let adminIds = adminRefs.compactMap { $0.stringValue }
-            
+
+            print("[DATA_CONTROLLER] Checking admin status for user: \(currentUser.id)")
+            print("[DATA_CONTROLLER] Company admin IDs: \(adminIds)")
+
             if adminIds.contains(currentUser.id) {
+                print("[DATA_CONTROLLER] ✅ User IS admin - updating role from \(currentUser.role) to .admin")
                 // Update current user's role to admin
                 currentUser.role = .admin
                 // Save the context immediately to ensure role update is persisted
                 try? modelContext?.save()
+
+                // CRITICAL: Force UI update by triggering objectWillChange
+                self.objectWillChange.send()
+                print("[DATA_CONTROLLER] Admin role updated and UI notified")
             } else {
+                print("[DATA_CONTROLLER] ⚠️ User is NOT admin")
             }
         } else {
+            print("[DATA_CONTROLLER] Cannot check admin status - missing currentUser or admin list")
         }
         
         // Handle admin list

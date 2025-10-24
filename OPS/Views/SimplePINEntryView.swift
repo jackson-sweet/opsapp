@@ -187,6 +187,7 @@ struct PINDigitBoxes: View {
             // Hidden TextField to capture keyboard input
             TextField("", text: $pin)
                 .keyboardType(.numberPad)
+                .autocorrectionDisabled(true)
                 .focused($isFieldFocused)
                 .frame(width: 1, height: 1)
                 .opacity(0)

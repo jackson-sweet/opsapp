@@ -767,6 +767,12 @@ struct UniversalJobBoardCard: View {
         case .project(let project):
             var items: [(icon: String, text: String)] = []
 
+            if let address = project.address, !address.isEmpty {
+                items.append((OPSStyle.Icons.location, address.formatAsSimpleAddress()))
+            } else {
+                items.append((OPSStyle.Icons.location, "NO ADDRESS"))
+            }
+
             if let startDate = project.startDate {
                 items.append((OPSStyle.Icons.calendar, DateHelper.fullDateString(from: startDate)))
             }
@@ -799,6 +805,14 @@ struct UniversalJobBoardCard: View {
 
         case .task(let task):
             var items: [(icon: String, text: String)] = []
+
+            if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
+                if let address = project.address, !address.isEmpty {
+                    items.append((OPSStyle.Icons.location, address.formatAsSimpleAddress()))
+                } else {
+                    items.append((OPSStyle.Icons.location, "NO ADDRESS"))
+                }
+            }
 
             if let startDate = task.calendarEvent?.startDate {
                 items.append((OPSStyle.Icons.calendar, DateHelper.fullDateString(from: startDate)))

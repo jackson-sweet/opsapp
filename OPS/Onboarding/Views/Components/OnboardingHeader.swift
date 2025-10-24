@@ -56,9 +56,9 @@ struct OnboardingHeader: View {
                         .frame(width: 24)
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 16)
-            
+
             Divider()
                 .background(Color("StatusInactive").opacity(0.3))
         }

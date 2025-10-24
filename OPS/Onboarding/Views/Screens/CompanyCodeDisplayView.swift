@@ -69,7 +69,7 @@ struct CompanyCodeDisplayView: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Step indicator bars
                 HStack(spacing: 4) {
@@ -80,7 +80,7 @@ struct CompanyCodeDisplayView: View {
                     }
                 }
                 .padding(.bottom, 16)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content
                 ScrollView {
@@ -122,7 +122,7 @@ struct CompanyCodeDisplayView: View {
                                             .tracking(2)
                                     }
                                     .padding(.vertical, 24)
-                                    .padding(.horizontal, 16)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                                     
                                     // Copy button
                                     Button(action: {
@@ -145,10 +145,10 @@ struct CompanyCodeDisplayView: View {
                                                 .font(OPSStyle.Typography.bodyBold)
                                         }
                                         .foregroundColor(showCopyFeedback ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent)
-                                        .padding(.horizontal, 24)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         .padding(.vertical, 12)
                                         .background(
-                                            RoundedRectangle(cornerRadius: 8)
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(showCopyFeedback ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent, lineWidth: 1)
                                         )
                                     }
@@ -196,14 +196,14 @@ struct CompanyCodeDisplayView: View {
                                     }
                                 }
                             }
-                            .padding(20)
+                            .padding(OPSStyle.Layout.spacing3)
                             .background(
-                                RoundedRectangle(cornerRadius: 12)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .fill(OPSStyle.Colors.primaryAccent.opacity(0.1))
                             )
                         }
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.bottom, 120)
                 }
                 
@@ -217,7 +217,7 @@ struct CompanyCodeDisplayView: View {
                         }
                     )
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.bottom, 34)
                 .background(
                     Rectangle()

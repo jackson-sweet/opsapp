@@ -94,7 +94,7 @@ struct EmailView: View {
                         .padding(.bottom, 16)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content area - top-justified alignment
                 VStack(spacing: 0) {
@@ -313,8 +313,8 @@ struct EmailView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
                 .background(backgroundColor.opacity(0.7))
             }
         }

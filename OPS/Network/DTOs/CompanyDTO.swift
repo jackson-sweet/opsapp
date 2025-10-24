@@ -128,7 +128,7 @@ struct CompanyDTO: Codable {
         case lateProjects = "Late Projects"
         
         // Calendar and Tasks
-        case calendarEventsList = "Calendar EventsList"
+        case calendarEventsList = "Calendar.EventsList"
         case defaultProjectColor = "defaultProjectColor"
         case taskTypes = "Task Types"
         
@@ -417,8 +417,8 @@ struct CompanyDTO: Codable {
             company.subscriptionPeriod = nil
         }
         
-        // Handle max seats
-        company.maxSeats = maxSeats ?? 10
+        // Handle max seats - use exactly what Bubble sends, default to 0 if nil
+        company.maxSeats = maxSeats ?? 0
         let seatedCount = seatedEmployees?.count ?? 0
         print("[SUBSCRIPTION] From Bubble: Seats=\(seatedCount)/\(company.maxSeats)")
         

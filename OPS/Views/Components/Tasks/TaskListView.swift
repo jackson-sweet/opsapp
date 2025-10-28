@@ -145,7 +145,7 @@ struct TaskListView: View {
                         .transition(.opacity.combined(with: .move(edge: .trailing)))
                     }
                 }
-                .animation(.easeInOut(duration: 0.3), value: project.tasks.count)
+                // Animation removed - was causing parent sheet to dismiss when tasks were deleted
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -421,10 +421,13 @@ struct TaskRow: View {
                     guard let modelContext = dataController.modelContext else { return }
 
                     // Delete task from local database (cascade will handle calendar event)
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    // Wrap in transaction with animations disabled to prevent parent sheet from dismissing
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
                         modelContext.delete(task)
+                        try? modelContext.save()
                     }
-                    try? modelContext.save()
                 }
 
                 // Delete calendar event from Bubble if it exists
@@ -446,8 +449,13 @@ struct TaskRow: View {
                     print("[DELETE_TASK] Remaining tasks: \(project.tasks.count)")
 
                     await MainActor.run {
-                        project.updateDatesFromTasks()
-                        try? dataController.modelContext?.save()
+                        // Wrap in transaction with animations disabled to prevent parent sheet from dismissing
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            project.updateDatesFromTasks()
+                            try? dataController.modelContext?.save()
+                        }
                     }
 
                     // Sync updated dates to Bubble

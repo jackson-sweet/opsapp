@@ -871,7 +871,7 @@ struct PlanSelectionView: View {
                                 withAnimation(.easeInOut(duration: 0.3)) {
                                     // Get specific error message
                                     let errorMessage = responseData["error"] as? String ?? "Invalid promo code"
-                                    
+
                                     // Provide user-friendly error messages
                                     switch errorMessage.lowercased() {
                                     case let msg where msg.contains("maximum redemptions"):
@@ -885,7 +885,7 @@ struct PlanSelectionView: View {
                                     default:
                                         self.promoValidationError = errorMessage
                                     }
-                                    
+
                                     self.validatedPromoCode = nil
                                     self.promoDiscount = nil
                                 }

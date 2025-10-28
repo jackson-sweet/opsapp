@@ -16,6 +16,7 @@ struct DataStorageSettingsView: View {
     @AppStorage("backgroundSyncEnabled") private var backgroundSyncEnabled = true
     @AppStorage("imageCacheEnabled") private var imageCacheEnabled = true
     @AppStorage("maxStorageSize") private var maxStorageSize = 500 // MB
+    @AppStorage("historicalDataMonths") private var historicalDataMonths = 6 // Months of historical data to sync
     
     @State private var estimatedStorageUsed: Double = 0
     @State private var isCalculatingStorage = false
@@ -40,22 +41,98 @@ struct DataStorageSettingsView: View {
                         SettingsSectionHeader(title: "SYNCHRONIZATION")
                         
                         SettingsCard(title: "", showTitle: false) {
-                            VStack(spacing: 0) {
+                                    VStack(spacing: 0) {
                                 SettingsToggle(
                                     title: "Sync on App Launch",
                                     description: "Get data from online when app starts",
                                     isOn: $syncOnLaunch
                                 )
-                                
+
                                 Divider()
                                     .background(OPSStyle.Colors.cardBackgroundDark)
                                     .padding(.vertical, 8)
-                                
+
                                 SettingsToggle(
                                     title: "Background Sync",
                                     description: "Get data from online when app is not open",
                                     isOn: $backgroundSyncEnabled
                                 )
+
+                                Divider()
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .padding(.vertical, 8)
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Historical Data Range")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(.white)
+
+                                    Text("Sync projects and tasks from the past \(historicalDataMonths) months")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    VStack(spacing: 8) {
+                                        let monthOptions = [1, 3, 6, 12, 24, 36, -1]
+                                        let sliderSteps = Double(monthOptions.count - 1)
+
+                                        Slider(value: Binding(
+                                            get: {
+                                                if let index = monthOptions.firstIndex(of: historicalDataMonths) {
+                                                    return Double(index)
+                                                }
+                                                return 2.0
+                                            },
+                                            set: { newValue in
+                                                let index = Int(round(newValue))
+                                                if index >= 0 && index < monthOptions.count {
+                                                    historicalDataMonths = monthOptions[index]
+                                                }
+                                            }
+                                        ), in: 0...sliderSteps, step: 1)
+                                        .accentColor(OPSStyle.Colors.primaryAccent)
+
+                                        HStack(alignment: .center, spacing: 0) {
+                                            ForEach(0..<monthOptions.count, id: \.self) { index in
+                                                if index > 0 {
+                                                    Spacer(minLength: 0)
+                                                }
+
+                                                Text(formatMonthsLabel(monthOptions[index]))
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                    .frame(width: index == 0 || index == monthOptions.count - 1 ? 20 : 40)
+                                                    .lineLimit(1)
+                                                    .minimumScaleFactor(0.8)
+
+                                                if index == 0 {
+                                                    Spacer(minLength: 0)
+                                                }
+                                            }
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .frame(height: 20)
+                                    }
+
+                                    HStack {
+                                        Spacer()
+                                        Text(formatMonthsRange(historicalDataMonths))
+                                            .font(OPSStyle.Typography.smallBody)
+                                            .foregroundColor(.white)
+                                    }
+
+                                    if historicalDataMonths == -1 {
+                                        Text("Sync all historical data. This may take longer on first sync.")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                            .padding(.top, 4)
+                                    } else if historicalDataMonths == 1 {
+                                        Text("Only sync data from the past month. Reduces data usage.")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                            .padding(.top, 4)
+                                    }
+                                }
+                                .padding(16)
                             }
                             .padding(.horizontal, -16) // Counteract card padding
                         }
@@ -268,6 +345,38 @@ struct DataStorageSettingsView: View {
         }
     }
     
+    private func formatMonthsLabel(_ months: Int) -> String {
+        if months == -1 {
+            return "All"
+        } else if months == 1 {
+            return "1m"
+        } else if months == 12 {
+            return "1y"
+        } else if months == 24 {
+            return "2y"
+        } else if months == 36 {
+            return "3y"
+        } else {
+            return "\(months)m"
+        }
+    }
+
+    private func formatMonthsRange(_ months: Int) -> String {
+        if months == -1 {
+            return "All Data"
+        } else if months == 1 {
+            return "1 Month"
+        } else if months == 12 {
+            return "1 Year"
+        } else if months == 24 {
+            return "2 Years"
+        } else if months == 36 {
+            return "3 Years"
+        } else {
+            return "\(months) Months"
+        }
+    }
+
     private func formatStorageSize(_ size: Int) -> String {
         if size == -1 {
             return "∞"

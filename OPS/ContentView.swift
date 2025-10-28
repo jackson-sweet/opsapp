@@ -138,7 +138,7 @@ struct PINGatedView: View {
                     }
                     .opacity(pinManager.requiresPIN && !pinManager.isAuthenticated ? 0 : 1)
                     .animation(.easeInOut(duration: 0.3), value: pinManager.isAuthenticated)
-                
+
                 // PIN overlay
                 if pinManager.requiresPIN && !pinManager.isAuthenticated {
                     SimplePINEntryView(pinManager: pinManager)
@@ -150,6 +150,14 @@ struct PINGatedView: View {
                         .onReceive(pinManager.objectWillChange) { _ in
                         }
                 }
+
+                // Sync restored alert overlay
+                SyncRestoredAlert(isPresented: Binding(
+                    get: { dataController.showSyncRestoredAlert },
+                    set: { dataController.showSyncRestoredAlert = $0 }
+                ))
+                .environmentObject(dataController)
+                .zIndex(2)
             }
         }
     }

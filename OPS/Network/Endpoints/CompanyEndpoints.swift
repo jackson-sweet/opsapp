@@ -32,19 +32,33 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of project DTOs
     func fetchCompanyProjects(companyId: String) async throws -> [ProjectDTO] {
-        
-        // Create constraint for company using array format
-        let constraints: [[String: Any]] = [
+        let historicalMonths = UserDefaults.standard.integer(forKey: "historicalDataMonths")
+        let months = historicalMonths == 0 ? 6 : historicalMonths
+
+        var constraints: [[String: Any]] = [
             [
                 "key": BubbleFields.Project.company,
                 "constraint_type": "equals",
                 "value": companyId
             ]
         ]
-        
+
+        if months != -1 {
+            let calendar = Calendar.current
+            let cutoffDate = calendar.date(byAdding: .month, value: -months, to: Date()) ?? Date()
+            let formatter = ISO8601DateFormatter()
+
+            constraints.append([
+                "key": "Created Date",  // Built-in Bubble field - CANNOT change
+                "constraint_type": "greater than",
+                "value": formatter.string(from: cutoffDate)
+            ])
+        }
+
         return try await fetchBubbleObjectsWithArrayConstraints(
             objectType: BubbleFields.Types.project,
             constraints: constraints,
+            limit: 500,
             sortField: BubbleFields.Project.startDate
         )
     }
@@ -75,7 +89,7 @@ extension APIService {
             taskTypeIds.append(taskTypeId)
         }
 
-        let updateData: [String: Any] = ["Task Types": taskTypeIds]
+        let updateData: [String: Any] = [BubbleFields.Company.taskTypes: taskTypeIds]
         try await updateCompany(id: companyId, data: updateData)
     }
 }

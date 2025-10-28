@@ -30,7 +30,7 @@ struct ProjectMarkerPopup: View {
                     .lineLimit(1)
                 
                 // Client
-                Text(project.clientName)
+                Text(project.effectiveClientName)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineLimit(1)

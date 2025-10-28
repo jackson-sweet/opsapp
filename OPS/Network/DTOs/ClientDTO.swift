@@ -41,24 +41,24 @@ struct ClientDTO: Codable {
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case address = "Address"
-        case emailAddress = "Email Address"
-        case name = "Name"
-        case phoneNumber = "Phone Number"
-        case balance = "Balance"
-        case clientIdNo = "Client ID No"
-        case isCompany = "Is Company"
-        case parentCompany = "Parent Company"
-        case status = "Status"
-        case thumbnail = "Thumbnail"
-        case clientsList = "Clients List"
-        case estimatesList = "Estimates List"
-        case invoices = "Invoices"
-        case projectsList = "Projects List"
-        case createdDate = "_created_date"
-        case modifiedDate = "_modified_date"
-        case slug = "Slug"
-        case subClientIds = "Sub Clients"
+        case address = "address"
+        case emailAddress = "emailAddress"
+        case name = "name"
+        case phoneNumber = "phoneNumber"
+        case balance = "balance"
+        case clientIdNo = "clientIdNo"
+        case isCompany = "isCompany"
+        case parentCompany = "parentCompany"
+        case status = "status"
+        case thumbnail = "avatar"  // Renamed from 'thumbnail' to 'avatar' in Bubble
+        case clientsList = "clientsList"  // Not used - may be deleted in future
+        case estimatesList = "estimates"  // Changed from 'estimatesList' to 'estimates' in Bubble
+        case invoices = "invoices"
+        case projectsList = "projectsList"
+        case createdDate = "Created Date"  // Bubble default field
+        case modifiedDate = "Modified Date"  // Bubble default field
+        case slug = "Slug"  // Bubble default field
+        case subClientIds = "subClients"  // Changed from 'Sub Clients' to 'subClients'
     }
     
     /// Convert DTO to SwiftData model

@@ -180,39 +180,30 @@ struct TaskCompletionChecklistSheet: View {
     private func completeAllTasksAndProject() {
         let incompleteTasks = project.tasks.filter { $0.status != .completed }
 
-        for task in incompleteTasks {
-            if taskStates[task.id] == true {
-                task.status = .completed
-                task.needsSync = true
-
-                if let calendarEvent = task.calendarEvent {
-                    calendarEvent.endDate = Date()
-                }
-            }
-        }
-
-        try? dataController.modelContext?.save()
-
         Task {
             for task in incompleteTasks where taskStates[task.id] == true {
-                await syncTaskStatusToAPI(task)
+                do {
+                    // Update calendar event end date first
+                    await MainActor.run {
+                        if let calendarEvent = task.calendarEvent {
+                            calendarEvent.endDate = Date()
+                        }
+                    }
+
+                    // Use centralized status update function
+                    try await dataController.updateTaskStatus(task: task, to: .completed)
+                } catch {
+                    print("[TASK] Failed to sync task status: \(error)")
+                }
             }
-        }
 
-        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
-        impactFeedback.impactOccurred()
+            await MainActor.run {
+                let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+                impactFeedback.impactOccurred()
 
-        dismiss()
-        onComplete()
-    }
-
-    private func syncTaskStatusToAPI(_ task: ProjectTask) async {
-        guard let syncManager = dataController.syncManager else { return }
-
-        do {
-            try await syncManager.updateTaskStatus(id: task.id, status: task.status.rawValue)
-        } catch {
-            print("[TASK] Failed to sync task status: \(error)")
+                dismiss()
+                onComplete()
+            }
         }
     }
 

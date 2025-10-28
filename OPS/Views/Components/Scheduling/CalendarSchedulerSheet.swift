@@ -16,6 +16,7 @@ struct CalendarSchedulerSheet: View {
     let currentStartDate: Date?
     let currentEndDate: Date?
     let onScheduleUpdate: (Date, Date) -> Void
+    let onClearDates: (() -> Void)?
 
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
@@ -42,13 +43,15 @@ struct CalendarSchedulerSheet: View {
          itemType: ScheduleItemType,
          currentStartDate: Date?,
          currentEndDate: Date?,
-         onScheduleUpdate: @escaping (Date, Date) -> Void) {
+         onScheduleUpdate: @escaping (Date, Date) -> Void,
+         onClearDates: (() -> Void)? = nil) {
 
         self._isPresented = isPresented
         self.itemType = itemType
         self.currentStartDate = currentStartDate
         self.currentEndDate = currentEndDate
         self.onScheduleUpdate = onScheduleUpdate
+        self.onClearDates = onClearDates
 
         // Initialize with current dates or today
         let startDate = currentStartDate ?? Date()
@@ -145,10 +148,21 @@ struct CalendarSchedulerSheet: View {
 
                     Spacer()
 
-                    // Invisible spacer for balance
-                    Text("Cancel")
-                        .font(OPSStyle.Typography.body)
-                        .opacity(0)
+                    // Clear dates button (only if callback is provided and dates exist)
+                    if onClearDates != nil && (currentStartDate != nil || currentEndDate != nil) {
+                        Button {
+                            handleClearDates()
+                        } label: {
+                            Text("Clear")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.errorStatus)
+                        }
+                    } else {
+                        // Invisible spacer for balance
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.body)
+                            .opacity(0)
+                    }
                 }
                 .padding()
             }
@@ -772,6 +786,15 @@ struct CalendarSchedulerSheet: View {
         generator.notificationOccurred(.success)
 
         onScheduleUpdate(selectedStartDate, selectedEndDate)
+        isPresented = false
+    }
+
+    private func handleClearDates() {
+        // Apply haptic feedback for destructive action
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.warning)
+
+        onClearDates?()
         isPresented = false
     }
 

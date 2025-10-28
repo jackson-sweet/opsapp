@@ -103,7 +103,7 @@ struct ProjectSearchSheet: View {
                 }
                 
                 // Search in client name
-                if project.clientName.localizedCaseInsensitiveContains(searchText) {
+                if project.effectiveClientName.localizedCaseInsensitiveContains(searchText) {
                     return true
                 }
                 
@@ -786,8 +786,8 @@ struct ProjectSearchRow: View {
                             .lineLimit(1)
                         
                         // Client name
-                        if !project.clientName.isEmpty {
-                            Text(project.clientName)
+                        if !project.effectiveClientName.isEmpty {
+                            Text(project.effectiveClientName)
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .lineLimit(1)

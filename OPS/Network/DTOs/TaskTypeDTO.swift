@@ -23,27 +23,33 @@ struct TaskTypeDTO: Codable {
     // Note: Bubble uses "id" for POST responses and "_id" for GET responses
     enum CodingKeys: String, CodingKey {
         case id
-        case color = "Color"
-        case display = "Display"
+        case color = "color"
+        case display = "display"
         case isDefault = "isDefault"
-        case createdDate = "Created Date"
-        case modifiedDate = "Modified Date"
+        case createdDate = "Created Date"  // Bubble default field
+        case modifiedDate = "Modified Date"  // Bubble default field
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let dynamicContainer = try decoder.container(keyedBy: DynamicCodingKey.self)
 
         // Try "id" first (POST response), fall back to "_id" (GET response)
         if let idValue = try? container.decode(String.self, forKey: .id) {
             self.id = idValue
         } else {
-            // Try "_id" as fallback
-            let dynamicContainer = try decoder.container(keyedBy: DynamicCodingKey.self)
             self.id = try dynamicContainer.decode(String.self, forKey: DynamicCodingKey(stringValue: "_id")!)
         }
 
         self.color = try container.decode(String.self, forKey: .color)
-        self.display = try container.decode(String.self, forKey: .display)
+
+        // Try lowercase "display" first, fall back to capitalized "Display" (for older Bubble data)
+        if let displayValue = try? container.decode(String.self, forKey: .display) {
+            self.display = displayValue
+        } else {
+            self.display = try dynamicContainer.decode(String.self, forKey: DynamicCodingKey(stringValue: "Display")!)
+        }
+
         self.isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault)
         self.createdDate = try container.decodeIfPresent(String.self, forKey: .createdDate)
         self.modifiedDate = try container.decodeIfPresent(String.self, forKey: .modifiedDate)

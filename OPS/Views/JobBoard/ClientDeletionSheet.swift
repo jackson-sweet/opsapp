@@ -255,10 +255,9 @@ struct ClientDeletionSheet: View {
                 // Step 1: Handle projects (reassign or delete via API)
                 if reassignmentMode == .bulk {
                     if bulkDeleteAll {
-                        // Delete all projects via API first
+                        // Delete all projects using centralized method
                         for project in clientProjects {
-                            try await dataController.apiService.deleteProject(id: project.id)
-                            modelContext.delete(project)
+                            try await dataController.deleteProject(project)
                         }
                     } else if let newClientId = bulkSelectedClient,
                        let newClient = availableClients.first(where: { $0.id == newClientId }) {
@@ -322,8 +321,8 @@ struct ClientDeletionSheet: View {
 
                     for project in clientProjects {
                         if projectsToDelete.contains(project.id) {
-                            try await dataController.apiService.deleteProject(id: project.id)
-                            modelContext.delete(project)
+                            // Delete using centralized method
+                            try await dataController.deleteProject(project)
                         } else if let newClientId = reassignments[project.id],
                            let newClient = availableClients.first(where: { $0.id == newClientId }) {
                             print("  📋 Individual: Updating project \(project.title) to client \(newClient.name)")
@@ -388,14 +387,10 @@ struct ClientDeletionSheet: View {
                 // Step 2: Save project changes locally
                 try modelContext.save()
 
-                // Step 3: Delete the client via API
-                try await dataController.apiService.deleteClient(id: client.id)
+                // Step 3: Delete the client using centralized method
+                try await dataController.deleteClient(client)
 
-                // Step 4: Delete the client locally
-                modelContext.delete(client)
-                try modelContext.save()
-
-                // Step 5: Trigger a sync to refresh data from Bubble
+                // Step 4: Trigger a sync to refresh data from Bubble
                 print("🔄 Triggering sync to refresh client/project relationships from Bubble")
                 await dataController.syncManager.forceSyncProjects()
                 print("✅ Sync completed")

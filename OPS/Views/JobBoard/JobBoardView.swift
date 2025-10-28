@@ -71,6 +71,7 @@ struct JobBoardView: View {
                         .onChange(of: selectedSection) { oldValue, newValue in
                             previousSection = oldValue
                         }
+                        .padding(.horizontal, 16)
 
                     // Universal search bar
                     if selectedSection != .dashboard {
@@ -90,6 +91,7 @@ struct JobBoardView: View {
                             }
                         )
                         .padding(.top, 12)
+                        .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                     }
 
@@ -577,23 +579,35 @@ struct JobBoardTasksView: View {
     }
 
     private var filteredTasks: [ProjectTask] {
+        // PERFORMANCE FIX: Cache lookups to avoid O(n*m) complexity
+        let allProjects = dataController.getAllProjects()
+        let projectsById = Dictionary(uniqueKeysWithValues: allProjects.map { ($0.id, $0) })
+
+        guard let companyId = dataController.currentUser?.companyId else { return [] }
+        let allTaskTypes = dataController.getAllTaskTypes(for: companyId)
+        let taskTypesById = Dictionary(uniqueKeysWithValues: allTaskTypes.map { ($0.id, $0) })
+
         var filtered = allTasks
 
+        // Filter by project eventType
         filtered = filtered.filter { task in
-            guard let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) else {
+            guard let project = projectsById[task.projectId] else {
                 return false
             }
             return project.eventType == .task
         }
 
+        // Filter by status
         if !selectedStatuses.isEmpty {
             filtered = filtered.filter { selectedStatuses.contains($0.status) }
         }
 
+        // Filter by task type
         if !selectedTaskTypeIds.isEmpty {
             filtered = filtered.filter { selectedTaskTypeIds.contains($0.taskTypeId) }
         }
 
+        // Filter by team members
         if !selectedTeamMemberIds.isEmpty {
             filtered = filtered.filter { task in
                 let taskTeamMemberIds = Set(task.getTeamMemberIds())
@@ -601,11 +615,11 @@ struct JobBoardTasksView: View {
             }
         }
 
+        // Filter by search text
         if !searchText.isEmpty {
             filtered = filtered.filter { task in
-                let taskType = dataController.getAllTaskTypes(for: task.companyId).first(where: { $0.id == task.taskTypeId })
-                let taskTypeName = taskType?.display ?? ""
-                let projectName = dataController.getAllProjects().first(where: { $0.id == task.projectId })?.title ?? ""
+                let taskTypeName = taskTypesById[task.taskTypeId]?.display ?? ""
+                let projectName = projectsById[task.projectId]?.title ?? ""
 
                 return taskTypeName.localizedCaseInsensitiveContains(searchText) ||
                        projectName.localizedCaseInsensitiveContains(searchText) ||
@@ -613,6 +627,7 @@ struct JobBoardTasksView: View {
             }
         }
 
+        // Sort
         switch sortOption {
         case .createdDateDescending:
             return filtered.sorted(by: { ($0.scheduledDate ?? Date.distantPast) > ($1.scheduledDate ?? Date.distantPast) })
@@ -691,7 +706,6 @@ struct JobBoardTasksView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, 120)
                 }

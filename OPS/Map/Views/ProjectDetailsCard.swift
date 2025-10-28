@@ -61,7 +61,7 @@ struct ProjectDetailsCard: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .lineLimit(1)
                         
-                        Text(project.clientName)
+                        Text(project.effectiveClientName)
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .lineLimit(1)

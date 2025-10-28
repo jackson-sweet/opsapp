@@ -167,7 +167,7 @@ struct ProjectCardView: View {
                                 .lineLimit(1)
 
                             // Client name
-                            Text(project.clientName)
+                            Text(project.effectiveClientName)
                                 .font(OPSStyle.Typography.cardBody)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .lineLimit(1)

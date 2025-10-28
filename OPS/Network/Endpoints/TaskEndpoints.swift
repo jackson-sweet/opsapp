@@ -19,7 +19,7 @@ extension APIService {
         
         let constraints: [[String: Any]] = [
             [
-                "key": BubbleFields.Task.projectID,
+                "key": BubbleFields.Task.projectId,
                 "constraint_type": "equals",
                 "value": projectId
             ]
@@ -36,33 +36,48 @@ extension APIService {
     /// - Parameter companyId: The company ID
     /// - Returns: Array of task DTOs
     func fetchCompanyTasks(companyId: String) async throws -> [TaskDTO] {
-        
-        let constraints: [[String: Any]] = [
+        let historicalMonths = UserDefaults.standard.integer(forKey: "historicalDataMonths")
+        let months = historicalMonths == 0 ? 6 : historicalMonths
+
+        var constraints: [[String: Any]] = [
             [
                 "key": BubbleFields.Task.companyId,
                 "constraint_type": "equals",
                 "value": companyId
             ]
         ]
-        
+
+        if months != -1 {
+            let calendar = Calendar.current
+            let cutoffDate = calendar.date(byAdding: .month, value: -months, to: Date()) ?? Date()
+            let formatter = ISO8601DateFormatter()
+
+            constraints.append([
+                "key": "Created Date",  // Built-in Bubble field - CANNOT change
+                "constraint_type": "greater than",
+                "value": formatter.string(from: cutoffDate)
+            ])
+        }
+
         let tasks: [TaskDTO] = try await fetchBubbleObjectsWithArrayConstraints(
             objectType: BubbleFields.Types.task,
             constraints: constraints,
+            limit: 500,
             sortField: BubbleFields.Task.taskIndex
         )
-        
-        
+
+
         // Group by status
         let scheduled = tasks.filter { $0.status == "Scheduled" }
         let inProgress = tasks.filter { $0.status == "In Progress" }
         let completed = tasks.filter { $0.status == "Completed" }
         let cancelled = tasks.filter { $0.status == "Cancelled" }
-        
-        
+
+
         // Group by project
         let projectIds = Set(tasks.compactMap { $0.projectId })
-        
-        
+
+
         return tasks
     }
     
@@ -154,17 +169,42 @@ extension APIService {
     ///   - id: The task ID
     ///   - teamMemberIds: Array of user IDs assigned to the task
     func updateTaskTeamMembers(id: String, teamMemberIds: [String]) async throws {
+        print("[UPDATE_TASK_TEAM] 🔄 Updating task team members in Bubble...")
+        print("[UPDATE_TASK_TEAM] Task ID: \(id)")
+        print("[UPDATE_TASK_TEAM] Team Members: \(teamMemberIds)")
 
         let updateData = [BubbleFields.Task.teamMembers: teamMemberIds]
         let bodyData = try JSONSerialization.data(withJSONObject: updateData)
 
+        print("[UPDATE_TASK_TEAM] 📡 Sending PATCH request to Bubble...")
         let _: EmptyResponse = try await executeRequest(
             endpoint: "api/1.1/obj/\(BubbleFields.Types.task)/\(id)",
             method: "PATCH",
             body: bodyData,
             requiresAuth: false
         )
+        print("[UPDATE_TASK_TEAM] ✅ Task team members successfully updated in Bubble")
 
+        // Also update the task's calendar event team members
+        print("[UPDATE_TASK_TEAM] 🔄 Updating associated calendar event team members...")
+        do {
+            // Fetch the task to get its calendar event
+            let taskDTO = try await fetchTask(id: id)
+
+            if let calendarEventId = taskDTO.calendarEventId {
+                print("[UPDATE_TASK_TEAM] Found calendar event: \(calendarEventId)")
+                try await updateCalendarEventTeamMembers(
+                    id: calendarEventId,
+                    teamMemberIds: teamMemberIds
+                )
+                print("[UPDATE_TASK_TEAM] ✅ Calendar event team members updated")
+            } else {
+                print("[UPDATE_TASK_TEAM] ℹ️ No calendar event associated with this task")
+            }
+        } catch {
+            print("[UPDATE_TASK_TEAM] ⚠️ Failed to update calendar event team members: \(error)")
+            // Don't throw - task update succeeded, calendar event update is secondary
+        }
     }
 
     /// Update task type
@@ -210,7 +250,7 @@ extension APIService {
 
         // Add required and optional fields
         if let projectId = task.projectId {
-            taskData[BubbleFields.Task.projectID] = projectId
+            taskData[BubbleFields.Task.projectId] = projectId
         }
         if let companyId = task.companyId {
             taskData[BubbleFields.Task.companyId] = companyId
@@ -316,7 +356,7 @@ extension APIService {
             print("[LINK_TASK_TO_PROJECT] ℹ️ Task already in project tasks list")
         }
 
-        let updateData: [String: Any] = ["Tasks": taskIds]
+        let updateData: [String: Any] = [BubbleFields.Project.tasks: taskIds]
         let bodyData = try JSONSerialization.data(withJSONObject: updateData)
 
         if let jsonString = String(data: bodyData, encoding: .utf8) {
@@ -359,7 +399,7 @@ extension APIService {
 
         let constraints: [[String: Any]] = [
             [
-                "key": "Company",
+                "key": BubbleFields.TaskStatusOption.company,
                 "constraint_type": "equals",
                 "value": companyId
             ]
@@ -368,7 +408,7 @@ extension APIService {
         return try await fetchBubbleObjectsWithArrayConstraints(
             objectType: "task_status",
             constraints: constraints,
-            sortField: "Index"
+            sortField: BubbleFields.TaskStatusOption.index
         )
     }
 }

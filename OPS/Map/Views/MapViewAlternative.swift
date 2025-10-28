@@ -243,7 +243,7 @@ struct ProjectSelectionSheet: View {
                     .lineLimit(1)
                 
                 // Client
-                Text(project.clientName)
+                Text(project.effectiveClientName)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineLimit(1)

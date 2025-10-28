@@ -110,16 +110,53 @@ extension APIService {
     /// This is the universal method that should be used for all calendar event creation
     /// - Parameter event: The calendar event DTO to create
     /// - Returns: The created calendar event DTO with server-assigned ID
-    /// - Note: Automatically links the event to the company's Calendar.EventsList
+    /// - Note: Automatically links the event based on its type:
+    ///   - If type is "Project", links to project.calendarEvent field
+    ///   - If type is "Task", links to task.calendarEventId field
+    ///   - Always links to company.calendarEventsList
     func createAndLinkCalendarEvent(_ event: CalendarEventDTO) async throws -> CalendarEventDTO {
         print("[CREATE_AND_LINK_EVENT] 🆕 Creating and linking calendar event")
         print("[CREATE_AND_LINK_EVENT] Title: \(event.title ?? "Untitled")")
         print("[CREATE_AND_LINK_EVENT] Type: \(event.type ?? "Unknown")")
         print("[CREATE_AND_LINK_EVENT] Company ID: \(event.companyId ?? "Unknown")")
+        print("[CREATE_AND_LINK_EVENT] Project ID: \(event.projectId ?? "Unknown")")
+        print("[CREATE_AND_LINK_EVENT] Task ID: \(event.taskId ?? "Unknown")")
 
         let createdEvent = try await createCalendarEvent(event)
         print("[CREATE_AND_LINK_EVENT] ✅ Event created with ID: \(createdEvent.id)")
 
+        // Auto-detect type and link appropriately
+        let eventType = event.type?.lowercased() ?? ""
+
+        if eventType == "project" {
+            // Link to project's calendarEvent field
+            if let projectId = event.projectId, !projectId.isEmpty {
+                print("[CREATE_AND_LINK_EVENT] 🔗 Type is 'Project' - linking to project...")
+                try await self.linkCalendarEventToProject(
+                    projectId: projectId,
+                    calendarEventId: createdEvent.id
+                )
+                print("[CREATE_AND_LINK_EVENT] ✅ Event linked to project")
+            } else {
+                print("[CREATE_AND_LINK_EVENT] ⚠️ Type is 'Project' but no project ID provided")
+            }
+        } else if eventType == "task" {
+            // Link to task's calendarEventId field
+            if let taskId = event.taskId, !taskId.isEmpty {
+                print("[CREATE_AND_LINK_EVENT] 🔗 Type is 'Task' - linking to task...")
+                try await self.linkCalendarEventToTask(
+                    taskId: taskId,
+                    calendarEventId: createdEvent.id
+                )
+                print("[CREATE_AND_LINK_EVENT] ✅ Event linked to task")
+            } else {
+                print("[CREATE_AND_LINK_EVENT] ⚠️ Type is 'Task' but no task ID provided")
+            }
+        } else {
+            print("[CREATE_AND_LINK_EVENT] ⚠️ Unknown event type '\(eventType)' - skipping project/task linking")
+        }
+
+        // Always link to company (done last to ensure event exists)
         guard let companyId = event.companyId else {
             print("[CREATE_AND_LINK_EVENT] ⚠️ No company ID provided - skipping company link")
             return createdEvent
@@ -149,7 +186,7 @@ extension APIService {
             BubbleFields.CalendarEvent.companyId: event.companyId ?? "",
             BubbleFields.CalendarEvent.duration: event.duration ?? 1,
             BubbleFields.CalendarEvent.color: event.color ?? "#59779F",
-            BubbleFields.CalendarEvent.type: event.type ?? "Project"
+            BubbleFields.CalendarEvent.eventType: event.type ?? "Project"
         ]
 
         // Add dates if provided
@@ -214,16 +251,27 @@ extension APIService {
     ///   - id: The calendar event ID
     ///   - updates: Dictionary of fields to update
     func updateCalendarEvent(id: String, updates: [String: Any]) async throws {
+        print("[UPDATE_CALENDAR_EVENT] 📅 Updating calendar event in Bubble...")
+        print("[UPDATE_CALENDAR_EVENT] Event ID: \(id)")
+        print("[UPDATE_CALENDAR_EVENT] Updates: \(updates)")
 
         let bodyData = try JSONSerialization.data(withJSONObject: updates)
 
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[UPDATE_CALENDAR_EVENT] 📤 Request Body JSON: \(jsonString)")
+        }
+
+        let endpoint = "api/1.1/obj/\(BubbleFields.Types.calendarEvent)/\(id)"
+        print("[UPDATE_CALENDAR_EVENT] 📡 PATCH to: \(endpoint)")
+
         let _: EmptyResponse = try await executeRequest(
-            endpoint: "api/1.1/obj/\(BubbleFields.Types.calendarEvent)/\(id)",
+            endpoint: endpoint,
             method: "PATCH",
             body: bodyData,
             requiresAuth: false
         )
 
+        print("[UPDATE_CALENDAR_EVENT] ✅ Calendar event successfully updated in Bubble")
     }
 
     /// Update calendar event team members
@@ -269,47 +317,84 @@ extension APIService {
     ///   - companyId: The company ID
     ///   - calendarEventId: The calendar event ID to link
     func linkCalendarEventToCompany(companyId: String, calendarEventId: String) async throws {
-        print("[LINK_EVENT_TO_COMPANY] 🔵 Linking calendar event to company")
+        print("[LINK_EVENT_TO_COMPANY] 🔵 Linking calendar event to company via workflow endpoint")
         print("[LINK_EVENT_TO_COMPANY] Event ID: \(calendarEventId)")
         print("[LINK_EVENT_TO_COMPANY] Company ID: \(companyId)")
 
-        // Fetch company to get existing calendar events
-        let company = try await fetchCompany(id: companyId)
-        print("[LINK_EVENT_TO_COMPANY] ✅ Company fetched")
+        // Use workflow endpoint to add event to company list server-side
+        let parameters: [String: Any] = [
+            "calendarEvent": calendarEventId,
+            "company": companyId
+        ]
 
-        // Get existing event IDs
-        var eventIds: [String] = []
-        if let events = company.calendarEventsList {
-            eventIds = events.compactMap { $0.stringValue }
-            print("[LINK_EVENT_TO_COMPANY] 📋 Existing events in company: \(eventIds.count)")
-        } else {
-            print("[LINK_EVENT_TO_COMPANY] ⚠️ Company has no calendar events")
+        let bodyData = try JSONSerialization.data(withJSONObject: parameters)
+
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[LINK_EVENT_TO_COMPANY] 📤 Workflow parameters: \(jsonString)")
         }
 
-        // Add new event if not already present
-        if !eventIds.contains(calendarEventId) {
-            eventIds.append(calendarEventId)
-            print("[LINK_EVENT_TO_COMPANY] ➕ Adding event to company events list")
-        } else {
-            print("[LINK_EVENT_TO_COMPANY] ℹ️ Event already in company events list")
-            return
-        }
+        print("[LINK_EVENT_TO_COMPANY] 📡 Calling workflow endpoint...")
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/wf/add-calendar-event-to-company",
+            method: "POST",
+            body: bodyData,
+            requiresAuth: false
+        )
+        print("[LINK_EVENT_TO_COMPANY] ✅ Calendar event successfully added to company list")
+    }
 
-        // Update company with new events list
-        let updateData: [String: Any] = ["Calendar.EventsList": eventIds]
+    /// Link a calendar event to a task
+    /// - Parameters:
+    ///   - taskId: The task ID
+    ///   - calendarEventId: The calendar event ID to link
+    func linkCalendarEventToTask(taskId: String, calendarEventId: String) async throws {
+        print("[LINK_EVENT_TO_TASK] 🔗 Linking calendar event to task")
+        print("[LINK_EVENT_TO_TASK] Task ID: \(taskId)")
+        print("[LINK_EVENT_TO_TASK] Event ID: \(calendarEventId)")
+        print("[LINK_EVENT_TO_TASK] Field name in Bubble: '\(BubbleFields.Task.calendarEventId)'")
+
+        let updateData: [String: Any] = [BubbleFields.Task.calendarEventId: calendarEventId]
         let bodyData = try JSONSerialization.data(withJSONObject: updateData)
 
         if let jsonString = String(data: bodyData, encoding: .utf8) {
-            print("[LINK_EVENT_TO_COMPANY] 📤 Update payload: \(jsonString)")
+            print("[LINK_EVENT_TO_TASK] 📤 Request Body JSON: \(jsonString)")
         }
 
-        print("[LINK_EVENT_TO_COMPANY] 📡 Sending PATCH request to Bubble...")
+        let endpoint = "api/1.1/obj/\(BubbleFields.Types.task)/\(taskId)"
+        print("[LINK_EVENT_TO_TASK] 📡 PATCH to: \(endpoint)")
+
         let _: EmptyResponse = try await executeRequest(
-            endpoint: "api/1.1/obj/\(BubbleFields.Types.company)/\(companyId)",
+            endpoint: endpoint,
             method: "PATCH",
             body: bodyData,
             requiresAuth: false
         )
-        print("[LINK_EVENT_TO_COMPANY] ✅ Calendar event successfully linked to company")
+
+        print("[LINK_EVENT_TO_TASK] ✅ Calendar event successfully linked to task")
+
+        // Verify the update by fetching the task back
+        print("[LINK_EVENT_TO_TASK] 🔍 Verifying task was updated...")
+        let verifyEndpoint = "api/1.1/obj/\(BubbleFields.Types.task)/\(taskId)"
+
+        struct TaskVerification: Codable {
+            let calendarEventId: String?
+
+            enum CodingKeys: String, CodingKey {
+                case calendarEventId = "calendarEventId"
+            }
+        }
+
+        let verifiedTask: TaskVerification = try await executeRequest(
+            endpoint: verifyEndpoint,
+            method: "GET",
+            body: nil,
+            requiresAuth: false
+        )
+
+        if let linkedEventId = verifiedTask.calendarEventId {
+            print("[LINK_EVENT_TO_TASK] ✅ VERIFIED: Task.calendarEventId = \(linkedEventId)")
+        } else {
+            print("[LINK_EVENT_TO_TASK] ⚠️ WARNING: Task.calendarEventId is still empty!")
+        }
     }
 }

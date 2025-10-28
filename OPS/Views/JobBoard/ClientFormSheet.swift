@@ -375,11 +375,10 @@ struct ClientFormSheet: View {
             client.phoneNumber = phone.isEmpty ? nil : phone
             client.address = address.isEmpty ? nil : address
             client.notes = notes.isEmpty ? nil : notes
-            client.needsSync = true
         }
-        
-        // Trigger sync
-        dataController.syncManager?.triggerBackgroundSync()
+
+        // Use centralized function for immediate sync
+        try await dataController.updateClient(client: client)
     }
 }
 

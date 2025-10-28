@@ -183,8 +183,102 @@ class APIService {
         }
     }
     
+    /// Update user fields in Bubble
+    /// - Parameters:
+    ///   - userId: The user's unique ID
+    ///   - fields: Dictionary of field names and values to update
+    /// - Returns: Updated UserDTO from the API response
+    func updateUser(userId: String, fields: [String: Any]) async throws {
+        print("🔵 API REQUEST: Updating user \(userId)")
+        print("📤 Fields to update: \(fields.keys.joined(separator: ", "))")
+
+        let jsonData = try JSONSerialization.data(withJSONObject: fields)
+
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("📤 Request body: \(jsonString)")
+        }
+
+        // Use PATCH to update the user object
+        let endpoint = "api/1.1/obj/user/\(userId)"
+
+        print("🔵 Executing PATCH request to: \(endpoint)")
+
+        // Create the full URL
+        let fullURL = baseURL.appendingPathComponent(endpoint)
+        var request = URLRequest(url: fullURL)
+        request.httpMethod = "PATCH"
+        request.httpBody = jsonData
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Execute the raw request - we only care about success, not the response body
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        print("🔵 PATCH response status: \(httpResponse.statusCode)")
+
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Response body: \(responseString)")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(statusCode: httpResponse.statusCode)
+        }
+
+        print("✅ Successfully updated user")
+    }
+
+    /// Update company fields in Bubble
+    /// - Parameters:
+    ///   - companyId: The company's unique ID
+    ///   - fields: Dictionary of field names and values to update
+    /// - Returns: Updated CompanyDTO from the API response
+    func updateCompanyFields(companyId: String, fields: [String: Any]) async throws {
+        print("🔵 API REQUEST: Updating company \(companyId)")
+        print("📤 Fields to update: \(fields.keys.joined(separator: ", "))")
+
+        let jsonData = try JSONSerialization.data(withJSONObject: fields)
+
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("📤 Request body: \(jsonString)")
+        }
+
+        // Use PATCH to update the company object
+        let endpoint = "api/1.1/obj/company/\(companyId)"
+
+        print("🔵 Executing PATCH request to: \(endpoint)")
+
+        // Create the full URL
+        let fullURL = baseURL.appendingPathComponent(endpoint)
+        var request = URLRequest(url: fullURL)
+        request.httpMethod = "PATCH"
+        request.httpBody = jsonData
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Execute the raw request - we only care about success, not the response body
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        print("🔵 PATCH response status: \(httpResponse.statusCode)")
+
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Response body: \(responseString)")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(statusCode: httpResponse.statusCode)
+        }
+
+        print("✅ Successfully updated company")
+    }
+
     // MARK: - Sub-Client Methods
-    
+
     func createSubClient(clientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws -> SubClientDTO {
         
         // Create request body

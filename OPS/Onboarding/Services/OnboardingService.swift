@@ -443,16 +443,16 @@ struct CompanyResponseData: Codable {
     private enum CodingKeys: String, CodingKey {
         case _id
         case id
-        case companyId = "company id"
-        case companyName = "Company Name"
+        case companyId = "companyId"  // Changed from "company id"
+        case companyName = "companyName"  // Changed from "Company Name"
         case name
-        case officeEmail = "office_email"
+        case officeEmail = "officeEmail"  // Changed from "office_email"
         case email
         case phone
-        case industry = "Industry"
-        case companySize = "company_size"
+        case industry = "industry"  // Changed from "Industry"
+        case companySize = "companySize"  // Changed from "company_size"
         case size
-        case companyAge = "company_age"
+        case companyAge = "companyAge"  // Changed from "company_age"
         case age
         case address
         case code

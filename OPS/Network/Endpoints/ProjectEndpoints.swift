@@ -115,15 +115,14 @@ extension APIService {
     /// - Parameter userId: The user ID to filter for
     /// - Returns: Array of project DTOs where user is a team member
     func fetchUserProjects(userId: String) async throws -> [ProjectDTO] {
-        // Create constraint in array format exactly as shown in the example URL
         let constraints: [[String: Any]] = [
             [
-                "key": "Team Members",
+                "key": BubbleFields.Project.teamMembers,
                 "constraint_type": "contains",
                 "value": userId
             ]
         ]
-        
+
         return try await fetchBubbleObjectsWithArrayConstraints(
             objectType: BubbleFields.Types.project,
             constraints: constraints,
@@ -298,17 +297,17 @@ extension APIService {
         if let startDate = project.startDate {
             let startDateString = DateFormatter.bubbleFormatter.string(from: startDate)
             projectData[BubbleFields.Project.startDate] = startDateString
-            print("[CREATE_PROJECT] Start date: \(startDateString)")
+            print("[CREATE_PROJECT] 📅 Start date: \(startDate) → formatted: \(startDateString) (field: '\(BubbleFields.Project.startDate)')")
         } else {
-            print("[CREATE_PROJECT] No start date - project is unscheduled")
+            print("[CREATE_PROJECT] ⚠️ No start date - project is unscheduled")
         }
 
         if let endDate = project.endDate {
             let dateString = DateFormatter.bubbleFormatter.string(from: endDate)
             projectData[BubbleFields.Project.completion] = dateString
-            print("[CREATE_PROJECT] End date: \(dateString)")
+            print("[CREATE_PROJECT] 📅 End date: \(endDate) → formatted: \(dateString) (field: '\(BubbleFields.Project.completion)')")
         } else {
-            print("[CREATE_PROJECT] No end date")
+            print("[CREATE_PROJECT] ⚠️ No end date")
         }
 
         if !project.teamMembers.isEmpty {
@@ -419,44 +418,28 @@ extension APIService {
     ///   - companyId: The company ID
     ///   - projectId: The project ID to link
     func linkProjectToCompany(companyId: String, projectId: String) async throws {
-        print("[LINK_PROJECT_TO_COMPANY] 🔵 Linking project to company")
+        print("[LINK_PROJECT_TO_COMPANY] 🔵 Linking project to company via workflow endpoint")
         print("[LINK_PROJECT_TO_COMPANY] Project ID: \(projectId)")
         print("[LINK_PROJECT_TO_COMPANY] Company ID: \(companyId)")
 
-        let company = try await fetchCompany(id: companyId)
-        print("[LINK_PROJECT_TO_COMPANY] ✅ Company fetched")
-
-        var projectIds: [String] = []
-        if let projects = company.projects {
-            projectIds = projects.compactMap { $0.stringValue }
-            print("[LINK_PROJECT_TO_COMPANY] 📋 Existing projects in company: \(projectIds.count)")
-        } else {
-            print("[LINK_PROJECT_TO_COMPANY] ⚠️ Company has no projects")
-        }
-
-        if !projectIds.contains(projectId) {
-            projectIds.append(projectId)
-            print("[LINK_PROJECT_TO_COMPANY] ➕ Adding project to company projects list")
-        } else {
-            print("[LINK_PROJECT_TO_COMPANY] ℹ️ Project already in company projects list")
-            return
-        }
-
-        let updateData: [String: Any] = [BubbleFields.Company.projects: projectIds]
-        let bodyData = try JSONSerialization.data(withJSONObject: updateData)
+        let parameters: [String: Any] = [
+            "project": projectId,
+            "company": companyId
+        ]
+        let bodyData = try JSONSerialization.data(withJSONObject: parameters)
 
         if let jsonString = String(data: bodyData, encoding: .utf8) {
-            print("[LINK_PROJECT_TO_COMPANY] 📤 Update payload: \(jsonString)")
+            print("[LINK_PROJECT_TO_COMPANY] 📤 Workflow parameters: \(jsonString)")
         }
 
-        print("[LINK_PROJECT_TO_COMPANY] 📡 Sending PATCH request to Bubble...")
+        print("[LINK_PROJECT_TO_COMPANY] 📡 Calling workflow endpoint...")
         let _: EmptyResponse = try await executeRequest(
-            endpoint: "api/1.1/obj/\(BubbleFields.Types.company)/\(companyId)",
-            method: "PATCH",
+            endpoint: "api/1.1/wf/add-project-to-company",
+            method: "POST",
             body: bodyData,
             requiresAuth: false
         )
-        print("[LINK_PROJECT_TO_COMPANY] ✅ Project successfully linked to company")
+        print("[LINK_PROJECT_TO_COMPANY] ✅ Project successfully added to company list")
     }
 
     func updateProjectTeamMembers(projectId: String, teamMemberIds: [String]) async throws {
@@ -478,11 +461,37 @@ extension APIService {
             requiresAuth: false
         )
         print("[UPDATE_PROJECT_TEAM] ✅ Team members successfully updated in Bubble")
+
+        // Also update the project's calendar event team members
+        print("[UPDATE_PROJECT_TEAM] 🔄 Updating associated calendar event team members...")
+        do {
+            // Fetch calendar events for this project
+            let calendarEvents = try await fetchProjectCalendarEvents(projectId: projectId)
+
+            if !calendarEvents.isEmpty {
+                print("[UPDATE_PROJECT_TEAM] Found \(calendarEvents.count) calendar event(s)")
+
+                // Update team members for each calendar event
+                for event in calendarEvents {
+                    try await updateCalendarEventTeamMembers(
+                        id: event.id,
+                        teamMemberIds: teamMemberIds
+                    )
+                    print("[UPDATE_PROJECT_TEAM] ✅ Updated calendar event: \(event.id)")
+                }
+            } else {
+                print("[UPDATE_PROJECT_TEAM] ℹ️ No calendar events found for this project")
+            }
+        } catch {
+            print("[UPDATE_PROJECT_TEAM] ⚠️ Failed to update calendar event team members: \(error)")
+            // Don't throw - project update succeeded, calendar event update is secondary
+        }
     }
 
-    func updateProjectDates(projectId: String, startDate: Date?, endDate: Date?) async throws {
+    func updateProjectDates(projectId: String, startDate: Date?, endDate: Date?, clearDates: Bool = false) async throws {
         print("[UPDATE_PROJECT_DATES] 🔄 Updating project dates in Bubble...")
         print("[UPDATE_PROJECT_DATES] Project ID: \(projectId)")
+        print("[UPDATE_PROJECT_DATES] Clear dates: \(clearDates)")
         print("[UPDATE_PROJECT_DATES] Start: \(startDate?.description ?? "nil"), End: \(endDate?.description ?? "nil")")
 
         let dateFormatter = ISO8601DateFormatter()
@@ -490,12 +499,23 @@ extension APIService {
 
         var updateData: [String: Any] = [:]
 
-        if let start = startDate {
-            updateData[BubbleFields.Project.startDate] = dateFormatter.string(from: start)
-        }
+        if clearDates {
+            // Clear dates by sending null to Bubble
+            updateData[BubbleFields.Project.startDate] = NSNull()
+            updateData[BubbleFields.Project.completion] = NSNull()
+            print("[UPDATE_PROJECT_DATES] 🗑️ Clearing both start and end dates")
+        } else {
+            if let start = startDate {
+                let startDateString = dateFormatter.string(from: start)
+                updateData[BubbleFields.Project.startDate] = startDateString
+                print("[UPDATE_PROJECT_DATES] 📅 Start date formatted: \(startDateString) (field: '\(BubbleFields.Project.startDate)')")
+            }
 
-        if let end = endDate {
-            updateData[BubbleFields.Project.completion] = dateFormatter.string(from: end)
+            if let end = endDate {
+                let endDateString = dateFormatter.string(from: end)
+                updateData[BubbleFields.Project.completion] = endDateString
+                print("[UPDATE_PROJECT_DATES] 📅 End date formatted: \(endDateString) (field: '\(BubbleFields.Project.completion)')")
+            }
         }
 
         guard !updateData.isEmpty else {
@@ -505,14 +525,77 @@ extension APIService {
 
         let bodyData = try JSONSerialization.data(withJSONObject: updateData)
 
-        print("[UPDATE_PROJECT_DATES] 📡 Sending PATCH request to Bubble...")
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[UPDATE_PROJECT_DATES] 📤 Request Body JSON: \(jsonString)")
+        }
+
+        let endpoint = "api/1.1/obj/\(BubbleFields.Types.project)/\(projectId)"
+        print("[UPDATE_PROJECT_DATES] 📡 PATCH to: \(endpoint)")
+
         let _: EmptyResponse = try await executeRequest(
-            endpoint: "api/1.1/obj/\(BubbleFields.Types.project)/\(projectId)",
+            endpoint: endpoint,
             method: "PATCH",
             body: bodyData,
             requiresAuth: false
         )
         print("[UPDATE_PROJECT_DATES] ✅ Dates successfully updated in Bubble")
+    }
+
+    /// Link a calendar event to a project
+    /// - Parameters:
+    ///   - projectId: The project ID
+    ///   - calendarEventId: The calendar event ID to link
+    func linkCalendarEventToProject(projectId: String, calendarEventId: String) async throws {
+        print("[LINK_EVENT_TO_PROJECT] 🔗 Linking calendar event to project")
+        print("[LINK_EVENT_TO_PROJECT] Project ID: \(projectId)")
+        print("[LINK_EVENT_TO_PROJECT] Calendar Event ID: \(calendarEventId)")
+        print("[LINK_EVENT_TO_PROJECT] Field name in Bubble: '\(BubbleFields.Project.calendarEvent)'")
+
+        let updateData: [String: Any] = [
+            BubbleFields.Project.calendarEvent: calendarEventId
+        ]
+
+        let bodyData = try JSONSerialization.data(withJSONObject: updateData)
+
+        if let jsonString = String(data: bodyData, encoding: .utf8) {
+            print("[LINK_EVENT_TO_PROJECT] 📤 Request Body JSON: \(jsonString)")
+        }
+
+        let endpoint = "api/1.1/obj/\(BubbleFields.Types.project)/\(projectId)"
+        print("[LINK_EVENT_TO_PROJECT] 📡 PATCH to: \(endpoint)")
+        print("[LINK_EVENT_TO_PROJECT] Full URL: https://opsapp.co/\(endpoint)")
+
+        // Get response to check for errors
+        do {
+            let response = try await executeRequest(
+                endpoint: endpoint,
+                method: "PATCH",
+                body: bodyData,
+                requiresAuth: false
+            ) as EmptyResponse
+
+            print("[LINK_EVENT_TO_PROJECT] ✅ Response received successfully")
+            print("[LINK_EVENT_TO_PROJECT] ✅ Calendar event should be linked to project")
+
+            // Verify by fetching the project back
+            let verifyEndpoint = "api/1.1/obj/\(BubbleFields.Types.project)/\(projectId)"
+            print("[LINK_EVENT_TO_PROJECT] 🔍 Verifying - fetching project to check field...")
+
+            let project: ProjectDTO = try await executeRequest(
+                endpoint: verifyEndpoint,
+                method: "GET",
+                body: nil,
+                requiresAuth: false
+            )
+
+            print("[LINK_EVENT_TO_PROJECT] 🔍 Verification - Project fetched")
+            // Note: ProjectDTO doesn't have calendarEvent field, so we can't verify here
+            // But the PATCH succeeded, so it should be set in Bubble
+
+        } catch {
+            print("[LINK_EVENT_TO_PROJECT] ❌ Error: \(error)")
+            throw error
+        }
     }
 
 }

@@ -33,16 +33,16 @@ struct TaskDTO: Codable {
         case calendarEventId = "calendarEventId"
         case companyId = "companyId"
         case completionDate = "completionDate"
-        case projectId = "projectID"  // Note: capital ID
+        case projectId = "projectId"  // Changed from "projectID" to "projectId" (lowercase 'Id')
         case scheduledDate = "scheduledDate"
         case status = "status"
         case taskColor = "taskColor"
         case taskIndex = "taskIndex"
         case taskNotes = "taskNotes"
-        case teamMembers = "Team Members"
+        case teamMembers = "teamMembers"  // Changed from "Team Members" to "teamMembers"
         case type = "type"
-        case createdDate = "Created Date"
-        case modifiedDate = "Modified Date"
+        case createdDate = "Created Date"  // Bubble default field
+        case modifiedDate = "Modified Date"  // Bubble default field
     }
     
     /// Convert DTO to SwiftData model

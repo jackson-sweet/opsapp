@@ -38,11 +38,17 @@ extension String {
     /// Example: "123 Main Street, Vancouver, BC" -> "Vancouver"
     func extractArea() -> String {
         let components = self.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        
+
         if components.count >= 2 {
             return components[1]
         }
-        
+
         return ""
+    }
+
+    /// Capitalizes each word in the string
+    /// Example: "john doe plumbing" -> "John Doe Plumbing"
+    func capitalizedWords() -> String {
+        return self.capitalized
     }
 }

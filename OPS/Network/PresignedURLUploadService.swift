@@ -25,11 +25,19 @@ class PresignedURLUploadService {
         let fields: [String: String]?
     }
     
-    /// Request to Lambda for presigned URL
+    /// Request to Lambda for presigned URL (project images)
     struct PresignedURLRequest: Codable {
         let filename: String
         let contentType: String
         let projectId: String
+        let companyId: String
+    }
+
+    /// Request to Lambda for presigned URL (profile/logo images)
+    struct ProfilePresignedURLRequest: Codable {
+        let filename: String
+        let contentType: String
+        let imageType: String  // "profile" or "logo"
         let companyId: String
     }
     
@@ -112,10 +120,84 @@ class PresignedURLUploadService {
             }
         }
         
-        
+
         return uploadedImages
     }
-    
+
+    /// Upload a user profile image using presigned URL
+    func uploadProfileImage(_ image: UIImage, userId: String, companyId: String) async throws -> String {
+        print("[PRESIGNED_UPLOAD] Starting profile image upload for user: \(userId)")
+
+        // Resize to maximum 800x800
+        let maxSize: CGFloat = 800
+        let resizedImage = resizeImageToSquare(image, maxSize: maxSize)
+
+        // Compress to JPEG
+        guard let imageData = resizedImage.jpegData(compressionQuality: 0.8) else {
+            throw UploadError.invalidResponse
+        }
+
+        let sizeInMB = Double(imageData.count) / (1024 * 1024)
+        print("[PRESIGNED_UPLOAD] Image size: \(String(format: "%.2f", sizeInMB))MB")
+
+        // Generate filename
+        let timestamp = Date().timeIntervalSince1970
+        let filename = "profile_\(userId)_\(timestamp).jpg"
+
+        // Get presigned URL
+        let presignedResponse = try await getPresignedURLForProfile(
+            filename: filename,
+            imageType: "profile",
+            companyId: companyId
+        )
+
+        // Upload to S3
+        try await uploadToPresignedURL(
+            presignedResponse: presignedResponse,
+            imageData: imageData
+        )
+
+        print("[PRESIGNED_UPLOAD] ✅ Profile image uploaded successfully: \(presignedResponse.fileUrl)")
+        return presignedResponse.fileUrl
+    }
+
+    /// Upload a company logo using presigned URL
+    func uploadCompanyLogo(_ image: UIImage, companyId: String) async throws -> String {
+        print("[PRESIGNED_UPLOAD] Starting logo upload for company: \(companyId)")
+
+        // Resize to maximum 1000x1000
+        let maxSize: CGFloat = 1000
+        let resizedImage = resizeImageToSquare(image, maxSize: maxSize)
+
+        // Compress to JPEG
+        guard let imageData = resizedImage.jpegData(compressionQuality: 0.85) else {
+            throw UploadError.invalidResponse
+        }
+
+        let sizeInMB = Double(imageData.count) / (1024 * 1024)
+        print("[PRESIGNED_UPLOAD] Logo size: \(String(format: "%.2f", sizeInMB))MB")
+
+        // Generate filename
+        let timestamp = Date().timeIntervalSince1970
+        let filename = "logo_\(companyId)_\(timestamp).jpg"
+
+        // Get presigned URL
+        let presignedResponse = try await getPresignedURLForProfile(
+            filename: filename,
+            imageType: "logo",
+            companyId: companyId
+        )
+
+        // Upload to S3
+        try await uploadToPresignedURL(
+            presignedResponse: presignedResponse,
+            imageData: imageData
+        )
+
+        print("[PRESIGNED_UPLOAD] ✅ Logo uploaded successfully: \(presignedResponse.fileUrl)")
+        return presignedResponse.fileUrl
+    }
+
     // MARK: - Private Methods
     
     /// Get presigned URL from Lambda function
@@ -161,7 +243,54 @@ class PresignedURLUploadService {
         
         return presignedResponse
     }
-    
+
+    /// Get presigned URL for profile or logo image
+    private func getPresignedURLForProfile(filename: String, imageType: String, companyId: String) async throws -> PresignedURLResponse {
+        print("[PRESIGNED_UPLOAD] Requesting presigned URL for \(imageType): \(filename)")
+
+        // Create request to Lambda
+        let lambdaRequest = ProfilePresignedURLRequest(
+            filename: filename,
+            contentType: "image/jpeg",
+            imageType: imageType,
+            companyId: companyId
+        )
+
+        // Lambda endpoint for getting presigned URLs
+        let lambdaURL = URL(string: "\(AppConfiguration.bubbleBaseURL)/api/1.1/wf/get_presigned_url_profile")!
+
+        var request = URLRequest(url: lambdaURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let requestData = try JSONEncoder().encode(lambdaRequest)
+        request.httpBody = requestData
+
+        if let bodyString = String(data: requestData, encoding: .utf8) {
+            print("[PRESIGNED_UPLOAD] Request body: \(bodyString)")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw UploadError.invalidResponse
+        }
+
+        print("[PRESIGNED_UPLOAD] Response status: \(httpResponse.statusCode)")
+
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("[PRESIGNED_UPLOAD] Response body: \(responseString)")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw UploadError.lambdaError(statusCode: httpResponse.statusCode)
+        }
+
+        let presignedResponse = try JSONDecoder().decode(PresignedURLResponse.self, from: data)
+
+        return presignedResponse
+    }
+
     /// Upload image data to S3 using presigned URL
     private func uploadToPresignedURL(presignedResponse: PresignedURLResponse, imageData: Data) async throws {
         
@@ -286,7 +415,7 @@ class PresignedURLUploadService {
     /// Get adaptive compression quality based on image size
     private func getAdaptiveCompressionQuality(for image: UIImage) -> CGFloat {
         let pixelCount = image.size.width * image.size.height
-        
+
         // Higher resolution images get more compression
         if pixelCount > 4_000_000 { // > 4MP
             return 0.5
@@ -297,6 +426,41 @@ class PresignedURLUploadService {
         } else {
             return 0.8
         }
+    }
+
+    /// Resize image to square with maximum dimension
+    private func resizeImageToSquare(_ image: UIImage, maxSize: CGFloat) -> UIImage {
+        // If already smaller than maxSize, return as-is
+        guard image.size.width > maxSize || image.size.height > maxSize else {
+            return image
+        }
+
+        // Calculate target size (square, centered crop)
+        let dimension = min(image.size.width, image.size.height)
+        let scale = maxSize / dimension
+
+        // Calculate target size
+        let targetSize = CGSize(width: dimension * scale, height: dimension * scale)
+
+        // Calculate crop rect (center crop)
+        let xOffset = (image.size.width - dimension) / 2
+        let yOffset = (image.size.height - dimension) / 2
+        let cropRect = CGRect(x: xOffset, y: yOffset, width: dimension, height: dimension)
+
+        // Crop and resize
+        guard let cgImage = image.cgImage?.cropping(to: cropRect) else {
+            return image
+        }
+
+        UIGraphicsBeginImageContextWithOptions(targetSize, false, 1.0)
+        let context = UIGraphicsGetCurrentContext()
+        context?.interpolationQuality = .high
+
+        UIImage(cgImage: cgImage).draw(in: CGRect(origin: .zero, size: targetSize))
+        let resizedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
+        UIGraphicsEndImageContext()
+
+        return resizedImage
     }
 }
 

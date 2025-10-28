@@ -228,6 +228,9 @@ struct TaskDetailsView: View {
                 currentEndDate: task.completionDate,
                 onScheduleUpdate: { startDate, endDate in
                     handleScheduleUpdate(startDate: startDate, endDate: endDate)
+                },
+                onClearDates: {
+                    handleClearDates()
                 }
             )
             .environmentObject(dataController)
@@ -861,6 +864,103 @@ struct TaskDetailsView: View {
         // Don't show notification - haptic feedback is enough
     }
 
+    private func handleClearDates() {
+        print("🗑️ handleClearDates called - Clearing task dates")
+
+        // Capture IDs and data before async work to avoid holding references
+        guard let calendarEvent = task.calendarEvent else {
+            print("ℹ️ No calendar event to clear for this task")
+            return
+        }
+
+        let calendarEventId = calendarEvent.id
+        let projectId = task.project?.id
+
+        print("🗑️ Clearing calendar event dates: \(calendarEventId)")
+
+        // Clear dates locally
+        calendarEvent.startDate = nil
+        calendarEvent.endDate = nil
+        calendarEvent.duration = 0
+        calendarEvent.needsSync = true
+        task.needsSync = true
+
+        // Capture scheduled task data for recalculation
+        let scheduledTaskDates: [(start: Date, end: Date)]? = task.project?.tasks.compactMap { projectTask in
+            guard let event = projectTask.calendarEvent,
+                  projectTask.id != task.id, // Exclude current task
+                  let start = event.startDate,
+                  let end = event.endDate else {
+                return nil
+            }
+            return (start, end)
+        }
+
+        // Save to database
+        do {
+            try modelContext.save()
+            print("✅ Successfully cleared calendar event dates")
+
+            // Sync to Bubble
+            Task {
+                do {
+                    // STEP 1: Clear calendar event dates in Bubble
+                    print("📡 Clearing calendar event dates in Bubble...")
+                    let updates: [String: Any] = [
+                        BubbleFields.CalendarEvent.startDate: NSNull(),
+                        BubbleFields.CalendarEvent.endDate: NSNull(),
+                        BubbleFields.CalendarEvent.duration: 0
+                    ]
+
+                    try await dataController.apiService.updateCalendarEvent(
+                        id: calendarEventId,
+                        updates: updates
+                    )
+                    print("✅ Calendar event dates cleared in Bubble")
+
+                    // STEP 2: Recalculate parent project dates
+                    if let projId = projectId {
+                        print("🔄 Recalculating parent project dates...")
+
+                        if let dates = scheduledTaskDates, !dates.isEmpty {
+                            // Recalculate from remaining scheduled tasks
+                            let earliestStart = dates.map { $0.start }.min()
+                            let latestEnd = dates.map { $0.end }.max()
+
+                            print("📅 New project dates: \(earliestStart?.description ?? "nil") to \(latestEnd?.description ?? "nil")")
+
+                            // Update in Bubble
+                            if let start = earliestStart, let end = latestEnd {
+                                try await dataController.apiService.updateProjectDates(
+                                    projectId: projId,
+                                    startDate: start,
+                                    endDate: end
+                                )
+                                print("✅ Project dates updated in Bubble")
+                            }
+                        } else {
+                            // No tasks have dates - clear project dates
+                            print("🗑️ No scheduled tasks - clearing project dates")
+
+                            // Clear in Bubble
+                            try await dataController.apiService.updateProjectDates(
+                                projectId: projId,
+                                startDate: nil,
+                                endDate: nil,
+                                clearDates: true
+                            )
+                            print("✅ Project dates cleared")
+                        }
+                    }
+                } catch {
+                    print("❌ Failed to clear dates in Bubble: \(error)")
+                }
+            }
+        } catch {
+            print("❌ Failed to save cleared task dates: \(error)")
+        }
+    }
+
     private func syncCalendarEventToServer(_ calendarEvent: CalendarEvent) async {
         print("🔄 Syncing task calendar event to server: \(calendarEvent.id)")
 
@@ -875,9 +975,9 @@ struct TaskDetailsView: View {
             print("📅 Formatted dates - Start: \(startDateString), End: \(endDateString)")
 
             let updates: [String: Any] = [
-                "Start Date": startDateString,
-                "End Date": endDateString,
-                "Duration": calendarEvent.duration
+                BubbleFields.CalendarEvent.startDate: startDateString,
+                BubbleFields.CalendarEvent.endDate: endDateString,
+                BubbleFields.CalendarEvent.duration: calendarEvent.duration
             ]
 
             try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
@@ -1036,15 +1136,11 @@ struct TaskDetailsView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
 
-        task.status = newStatus
-        task.needsSync = true
-        project.needsSync = true
-
-        if newStatus == .completed {
-            checkIfAllTasksComplete()
-        } else if newStatus == .inProgress {
+        // Handle project status updates before task status update
+        if newStatus == .inProgress {
             if project.status == .completed {
                 project.status = .inProgress
+                project.needsSync = true
                 dataController.syncManager.updateProjectStatus(
                     projectId: project.id,
                     status: .inProgress,
@@ -1053,25 +1149,20 @@ struct TaskDetailsView: View {
             }
         }
 
-        try? dataController.modelContext?.save()
-
+        // Use centralized status update function - handles local update AND Bubble sync
         Task {
-            await syncTaskStatusToAPI()
-        }
-    }
-    
-    @MainActor
-    private func syncTaskStatusToAPI() async {
-        guard let syncManager = dataController.syncManager else { return }
-        
-        do {
-            print("📤 Syncing task status to API: \(task.status.rawValue)")
-            try await syncManager.updateTaskStatus(id: task.id, status: task.status.rawValue)
-            print("✅ Task status synced successfully")
-            task.needsSync = false
-            try? dataController.modelContext?.save()
-        } catch {
-            print("❌ Failed to sync task status: \(error)")
+            do {
+                try await dataController.updateTaskStatus(task: task, to: newStatus)
+
+                // Check if all tasks are complete after successful update
+                if newStatus == .completed {
+                    await MainActor.run {
+                        checkIfAllTasksComplete()
+                    }
+                }
+            } catch {
+                print("[TASK_DETAILS] ❌ Failed to update task status: \(error)")
+            }
         }
     }
     

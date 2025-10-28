@@ -59,10 +59,8 @@ extension APIService {
     /// - Returns: Array of SubClient DTOs
     func fetchSubClientsForClient(clientId: String) async throws -> [SubClientDTO] {
         
-        // Create constraint for parent client
-        // Try "Parent Client" field name as indicated by the error
         let clientConstraint: [String: Any] = [
-            "key": "Parent Client",  // Changed from "Client" based on error message
+            "key": BubbleFields.SubClient.parentClient,
             "constraint_type": "equals",
             "value": clientId
         ]
@@ -71,7 +69,7 @@ extension APIService {
             objectType: BubbleFields.Types.subClient,
             constraints: clientConstraint,
             limit: 100,
-            sortField: "Name",
+            sortField: BubbleFields.SubClient.name,
             sortOrder: "asc"
         )
         
@@ -205,7 +203,7 @@ extension APIService {
         }
 
         if let notes = client.notes, !notes.isEmpty {
-            clientData["Notes"] = notes
+            clientData[BubbleFields.Client.notes] = notes
             print("[CREATE_CLIENT] Notes: \(notes)")
         }
 
@@ -257,43 +255,27 @@ extension APIService {
     ///   - companyId: The company ID
     ///   - clientId: The client ID to link
     func linkClientToCompany(companyId: String, clientId: String) async throws {
-        print("[LINK_CLIENT_TO_COMPANY] 🔵 Linking client to company")
+        print("[LINK_CLIENT_TO_COMPANY] 🔵 Linking client to company via workflow endpoint")
         print("[LINK_CLIENT_TO_COMPANY] Client ID: \(clientId)")
         print("[LINK_CLIENT_TO_COMPANY] Company ID: \(companyId)")
 
-        let company = try await fetchCompany(id: companyId)
-        print("[LINK_CLIENT_TO_COMPANY] ✅ Company fetched")
-
-        var clientIds: [String] = []
-        if let clients = company.clients {
-            clientIds = clients.compactMap { $0.stringValue }
-            print("[LINK_CLIENT_TO_COMPANY] 📋 Existing clients in company: \(clientIds.count)")
-        } else {
-            print("[LINK_CLIENT_TO_COMPANY] ⚠️ Company has no clients")
-        }
-
-        if !clientIds.contains(clientId) {
-            clientIds.append(clientId)
-            print("[LINK_CLIENT_TO_COMPANY] ➕ Adding client to company clients list")
-        } else {
-            print("[LINK_CLIENT_TO_COMPANY] ℹ️ Client already in company clients list")
-            return
-        }
-
-        let updateData: [String: Any] = ["Client": clientIds]
-        let bodyData = try JSONSerialization.data(withJSONObject: updateData)
+        let parameters: [String: Any] = [
+            "client": clientId,
+            "company": companyId
+        ]
+        let bodyData = try JSONSerialization.data(withJSONObject: parameters)
 
         if let jsonString = String(data: bodyData, encoding: .utf8) {
-            print("[LINK_CLIENT_TO_COMPANY] 📤 Update payload: \(jsonString)")
+            print("[LINK_CLIENT_TO_COMPANY] 📤 Workflow parameters: \(jsonString)")
         }
 
-        print("[LINK_CLIENT_TO_COMPANY] 📡 Sending PATCH request to Bubble...")
+        print("[LINK_CLIENT_TO_COMPANY] 📡 Calling workflow endpoint...")
         let _: EmptyResponse = try await executeRequest(
-            endpoint: "api/1.1/obj/\(BubbleFields.Types.company)/\(companyId)",
-            method: "PATCH",
+            endpoint: "api/1.1/wf/add-client-to-company",
+            method: "POST",
             body: bodyData,
             requiresAuth: false
         )
-        print("[LINK_CLIENT_TO_COMPANY] ✅ Client successfully linked to company")
+        print("[LINK_CLIENT_TO_COMPANY] ✅ Client successfully added to company list")
     }
 }

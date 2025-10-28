@@ -40,18 +40,18 @@ struct UserDTO: Codable {
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
         case id = "_id" // Unique id assigned by bubble. This is known colloquially as user ID.
-        case nameFirst = "Name First" // User first name. String
-        case nameLast = "Name Last" // Last name, string.
-        case employeeType = "Employee Type" // Employee type. This is type Employee Type, which is a string, either "Office Crew", or "Field Crew".
-        case userType = "User Type" // User type, which is of type User Type, which is a string, either Company, Employee, Client or Admin. Admin in this context refers to an OPS admin. in version X (some later version) we will allow users to register as clients to track their project progress etc.
-        case avatar = "Avatar" // User's avatar or profile picture. type Image.
-        case company = "Company" // The user's company. Type Company.
+        case nameFirst = "nameFirst" // User first name. String
+        case nameLast = "nameLast" // Last name, string.
+        case employeeType = "employeeType" // Employee type. This is type Employee Type, which is a string, either "Office Crew", or "Field Crew".
+        case userType = "userType" // User type, which is of type User Type, which is a string, either Company, Employee, Client or Admin. Admin in this context refers to an OPS admin. in version X (some later version) we will allow users to register as clients to track their project progress etc.
+        case avatar = "avatar" // User's avatar or profile picture. type Image.
+        case company = "company" // The user's company. Type Company.
         case authentication // this is not a bubble field.
         case email // the user's email address, which is what they registered with. It is used for contact purposes, and also as a login field.
-        case homeAddress = "Home Address" // The user's home address, of type 'geographic address'.
+        case homeAddress = "homeAddress" // The user's home address, of type 'geographic address'.
         case phone = "phone" // The user's contact phone number.
-        case userColor = "User Color" // The user's unique color in HEX.
-        case devPermission = "Dev Permission" // Bool indicating if user has dev permission for testing features.
+        case userColor = "userColor" // The user's unique color in HEX.
+        case devPermission = "devPermission" // Bool indicating if user has dev permission for testing features.
         case hasCompletedAppOnboarding = "hasCompletedAppOnboarding" // Bool indicating if user has completed app onboarding.
         case stripeCustomerId = "stripeCustomerId" // User's Stripe customer ID
     }

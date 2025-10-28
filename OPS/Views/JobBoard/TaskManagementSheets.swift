@@ -134,14 +134,17 @@ struct TaskStatusChangeSheet: View {
         isSaving = true
 
         Task {
-            await MainActor.run {
-                task.status = selectedStatus
-                task.needsSync = true
+            do {
+                // Use the centralized, reusable status update function
+                // This ensures ONLY the status field is updated in Bubble
+                // and prevents duplicate task references in project.tasks
+                try await dataController.updateTaskStatus(task: task, to: selectedStatus)
 
-                do {
-                    try modelContext.save()
+                await MainActor.run {
                     dismiss()
-                } catch {
+                }
+            } catch {
+                await MainActor.run {
                     isSaving = false
                 }
             }
@@ -406,14 +409,13 @@ struct TaskTeamChangeSheet: View {
     private func saveTeam() {
         isSaving = true
         Task {
-            await MainActor.run {
-                task.setTeamMemberIds(Array(selectedMemberIds))
-                task.needsSync = true
-
-                do {
-                    try modelContext.save()
+            do {
+                try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedMemberIds))
+                await MainActor.run {
                     dismiss()
-                } catch {
+                }
+            } catch {
+                await MainActor.run {
                     isSaving = false
                 }
             }

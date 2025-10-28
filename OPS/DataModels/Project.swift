@@ -11,9 +11,8 @@ import CoreLocation
 /// Project model - central entity for field crew
 @Model
 final class Project: Identifiable {
-    var id: String    
+    var id: String
     var title: String
-    var clientName: String // Keep for backward compatibility and quick access
     var clientEmail: String? // Keep for backward compatibility
     var clientPhone: String? // Keep for backward compatibility
     var address: String?
@@ -27,7 +26,7 @@ final class Project: Identifiable {
     var companyId: String
     var clientId: String? // Store the client's Bubble ID
     var allDay: Bool
-    var eventType: CalendarEventType? // Optional to handle migration - defaults to .pr   oject when nil
+    var eventType: CalendarEventType? // Optional to handle migration - defaults to .pr      oject when nil
     
     // Relationship to Client object
     @Relationship(deleteRule: .nullify)
@@ -69,7 +68,6 @@ final class Project: Identifiable {
         self.title = title
         self.status = status
         self.address = nil
-        self.clientName = ""
         self.clientEmail = nil
         self.clientPhone = nil
         self.companyId = ""
@@ -84,7 +82,7 @@ final class Project: Identifiable {
     
     // Computed properties to get client info from Client object if available
     var effectiveClientName: String {
-        return client?.name ?? clientName
+        return client?.name ?? ""
     }
     
     var effectiveClientEmail: String? {
@@ -483,6 +481,47 @@ final class Project: Identifiable {
         }
 
         print("[PROJECT_DATES] ✅ Updated start: \(startDate?.description ?? "nil"), end: \(endDate?.description ?? "nil")")
+    }
+
+    /// Update project team members based on all task team members
+    /// Collects unique team members from all tasks and updates project's team members
+    /// Should be called after task creation, update, or deletion
+    func updateTeamMembersFromTasks(in context: ModelContext) {
+        print("[PROJECT_TEAM] 🔄 Updating project team members from tasks...")
+        print("[PROJECT_TEAM] Project: \(title)")
+        print("[PROJECT_TEAM] Current team member count: \(teamMembers.count)")
+
+        // Collect all unique team member IDs from all tasks
+        var allTeamMemberIds = Set<String>()
+
+        for task in tasks {
+            let taskTeamMemberIds = task.getTeamMemberIds()
+            print("[PROJECT_TEAM] Task has \(taskTeamMemberIds.count) team members")
+            allTeamMemberIds.formUnion(taskTeamMemberIds)
+        }
+
+        print("[PROJECT_TEAM] Total unique team member IDs: \(allTeamMemberIds.count)")
+
+        // Fetch User objects for all team member IDs
+        let teamMemberIdArray = Array(allTeamMemberIds)
+        let predicate = #Predicate<User> { user in
+            teamMemberIdArray.contains(user.id)
+        }
+
+        let fetchDescriptor = FetchDescriptor<User>(predicate: predicate)
+
+        do {
+            let fetchedUsers = try context.fetch(fetchDescriptor)
+            print("[PROJECT_TEAM] Fetched \(fetchedUsers.count) users from context")
+
+            // Update project's team members
+            self.teamMembers = fetchedUsers
+            self.setTeamMemberIds(Array(allTeamMemberIds))
+
+            print("[PROJECT_TEAM] ✅ Updated project team members: \(fetchedUsers.count) members")
+        } catch {
+            print("[PROJECT_TEAM] ❌ Error fetching users: \(error)")
+        }
     }
 }
 

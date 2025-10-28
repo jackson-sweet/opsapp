@@ -65,12 +65,12 @@ struct CompanyData: Codable {
     let name: String?
     let companyID: String?
     
-    // Using CodingKeys to map "Company Name" to our name property
+    // Using CodingKeys to map "companyName" to our name property
     private enum CodingKeys: String, CodingKey {
         case id
         case _id
         case companyID
-        case name = "Company Name"
+        case name = "companyName"  // Changed from "Company Name"
     }
     
     // Add computed properties to handle different field naming conventions
@@ -98,7 +98,7 @@ struct JoinCompanyResponse: Codable {
     private let _id: String?
     private let companyID: String?
     
-    // Using CodingKeys to map "Company Name" to our rootCompanyName property
+    // Using CodingKeys to map "companyName" to our rootCompanyName property
     private enum CodingKeys: String, CodingKey {
         case company_joined
         case user_id
@@ -108,7 +108,7 @@ struct JoinCompanyResponse: Codable {
         case id
         case _id
         case companyID
-        case rootCompanyName = "Company Name"
+        case rootCompanyName = "companyName"  // Changed from "Company Name"
     }
     
     var wasSuccessful: Bool {
@@ -165,11 +165,11 @@ struct JoinCompanyResponseData: Codable {
     let company_id: String?
     let companyName: String?
     
-    // Using CodingKeys to map "Company Name" to our companyName property
+    // Using CodingKeys to map "companyName" to our companyName property
     private enum CodingKeys: String, CodingKey {
         case company
         case company_id
-        case companyName = "Company Name"
+        case companyName = "companyName"  // Already camelCase
     }
     
     var wasSuccessful: Bool {

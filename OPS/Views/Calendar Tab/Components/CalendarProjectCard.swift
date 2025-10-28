@@ -31,7 +31,7 @@ struct CalendarProjectCard: View {
                         .textCase(.uppercase)
                     
                     // Client name
-                    Text(project.clientName)
+                    Text(project.effectiveClientName)
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(1)

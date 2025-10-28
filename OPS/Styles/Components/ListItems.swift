@@ -163,8 +163,8 @@ struct ProjectListItem: View {
                 }
                 
                 // Description
-                if !project.clientName.isEmpty {
-                    Text(project.clientName)
+                if !project.effectiveClientName.isEmpty {
+                    Text(project.effectiveClientName)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }

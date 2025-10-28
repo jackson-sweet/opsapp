@@ -17,6 +17,7 @@ struct CalendarFilterView: View {
     @State private var selectedTeamMemberIds: Set<String> = []
     @State private var selectedTaskTypeIds: Set<String> = []
     @State private var selectedClientIds: Set<String> = []
+    @State private var selectedStatuses: Set<Status> = []
     
     // Available options
     @State private var availableTeamMembers: [TeamMember] = []
@@ -34,7 +35,10 @@ struct CalendarFilterView: View {
                 
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Team Members Section
+                        if hasActiveFilters {
+                            clearAllFiltersBanner
+                        }
+
                         if !availableTeamMembers.isEmpty {
                             filterSection(
                                 title: "TEAM MEMBERS",
@@ -53,7 +57,15 @@ struct CalendarFilterView: View {
                                 taskTypesContent
                             }
                         }
-                        
+
+                        // Status Section
+                        filterSection(
+                            title: "STATUS",
+                            icon: "flag.fill"
+                        ) {
+                            statusContent
+                        }
+
                         // Clients Section
                         if !availableClients.isEmpty {
                             filterSection(
@@ -183,10 +195,10 @@ struct CalendarFilterView: View {
             ) {
                 selectedTaskTypeIds.removeAll()
             }
-            
+
             Divider()
                 .background(Color.white.opacity(0.1))
-            
+
             // Individual task types
             ForEach(availableTaskTypes, id: \.id) { taskType in
                 HStack(spacing: 12) {
@@ -194,7 +206,7 @@ struct CalendarFilterView: View {
                     Circle()
                         .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
                         .frame(width: 10, height: 10)
-                    
+
                     // Task type icon
                     if let icon = taskType.icon {
                         Image(systemName: icon)
@@ -202,13 +214,13 @@ struct CalendarFilterView: View {
                             .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
                             .frame(width: 20)
                     }
-                    
+
                     Text(taskType.display)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                    
+
                     Spacer()
-                    
+
                     // Selection checkmark
                     if selectedTaskTypeIds.contains(taskType.id) {
                         Image(systemName: "checkmark")
@@ -222,8 +234,61 @@ struct CalendarFilterView: View {
                 .onTapGesture {
                     toggleSelection(taskType.id, in: &selectedTaskTypeIds)
                 }
-                
+
                 if taskType.id != availableTaskTypes.last?.id {
+                    Divider()
+                        .background(Color.white.opacity(0.05))
+                        .padding(.leading, 16)
+                }
+            }
+        }
+    }
+
+    // MARK: - Status Content
+
+    private var statusContent: some View {
+        VStack(spacing: 0) {
+            filterRow(
+                title: "All Statuses",
+                isSelected: selectedStatuses.isEmpty,
+                isSpecial: true
+            ) {
+                selectedStatuses.removeAll()
+            }
+
+            Divider()
+                .background(Color.white.opacity(0.1))
+
+            ForEach(Status.allCases, id: \.self) { status in
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(status.color)
+                        .frame(width: 10, height: 10)
+
+                    Text(status.displayName)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    if selectedStatuses.contains(status) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if selectedStatuses.contains(status) {
+                        selectedStatuses.remove(status)
+                    } else {
+                        selectedStatuses.insert(status)
+                    }
+                }
+
+                if status != Status.allCases.last {
                     Divider()
                         .background(Color.white.opacity(0.05))
                         .padding(.leading, 16)
@@ -356,8 +421,44 @@ struct CalendarFilterView: View {
         .onTapGesture(perform: action)
     }
     
+    // MARK: - Clear All Filters Banner
+
+    private var clearAllFiltersBanner: some View {
+        let filterCount = [
+            selectedTeamMemberIds.isEmpty ? 0 : 1,
+            selectedTaskTypeIds.isEmpty ? 0 : 1,
+            selectedClientIds.isEmpty ? 0 : 1,
+            selectedStatuses.isEmpty ? 0 : 1
+        ].reduce(0, +)
+
+        return Button(action: resetFilters) {
+            HStack {
+                Text("\(filterCount) ACTIVE FILTER\(filterCount == 1 ? "" : "S")")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Spacer()
+
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
     // MARK: - Active Filters Summary
-    
+
     private var activeFiltersSummary: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("ACTIVE FILTERS")
@@ -395,8 +496,20 @@ struct CalendarFilterView: View {
                             Image(systemName: "building.2.fill")
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            
+
                             Text("\(selectedClientIds.count) client\(selectedClientIds.count == 1 ? "" : "s") selected")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                    }
+
+                    if !selectedStatuses.isEmpty {
+                        HStack {
+                            Image(systemName: "flag.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            Text("\(selectedStatuses.count) status\(selectedStatuses.count == 1 ? "" : "es") selected")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
@@ -418,7 +531,7 @@ struct CalendarFilterView: View {
     // MARK: - Helper Properties
     
     private var hasActiveFilters: Bool {
-        !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty
+        !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty || !selectedStatuses.isEmpty
     }
     
     // MARK: - Helper Methods
@@ -446,18 +559,18 @@ struct CalendarFilterView: View {
     }
     
     private func loadCurrentFilters() {
-        // Load current filters from view model
         selectedTeamMemberIds = viewModel.selectedTeamMemberIds
         selectedTaskTypeIds = viewModel.selectedTaskTypeIds
         selectedClientIds = viewModel.selectedClientIds
+        selectedStatuses = viewModel.selectedStatuses
     }
     
     private func applyFilters() {
-        // Apply filters to view model
         viewModel.applyFilters(
             teamMemberIds: selectedTeamMemberIds,
             taskTypeIds: selectedTaskTypeIds,
-            clientIds: selectedClientIds
+            clientIds: selectedClientIds,
+            statuses: selectedStatuses
         )
     }
     
@@ -465,5 +578,6 @@ struct CalendarFilterView: View {
         selectedTeamMemberIds.removeAll()
         selectedTaskTypeIds.removeAll()
         selectedClientIds.removeAll()
+        selectedStatuses.removeAll()
     }
 }

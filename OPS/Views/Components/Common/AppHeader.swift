@@ -15,15 +15,8 @@ struct AppHeader: View {
         case jobBoard
     }
     
-    // Tab selection for settings screen
-    enum SettingsTab {
-        case settings
-        case data
-    }
-    
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
-    @State private var selectedTab: SettingsTab = .settings
     @State private var showingProfileSettings = false
     var headerType: HeaderType
     var onSearchTapped: (() -> Void)? = nil
@@ -312,130 +305,6 @@ struct AppHeader: View {
         }
     }
     
-    // MARK: - Settings Components
-    
-    // Settings tab selector component
-    private struct SettingsTabSelector: View {
-        @Binding var selectedTab: SettingsTab
-        
-        var body: some View {
-            SegmentedControl(
-                selection: $selectedTab,
-                options: [
-                    (SettingsTab.settings, "Settings"),
-                    (SettingsTab.data, "Data")
-                ]
-            )
-            .padding(.horizontal, 20)
-        }
-    }
-    
-    // Settings content view
-    private var settingsContentView: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Settings categories - using the same ones from SettingsView
-                ForEach(SettingsCategory.allCases) { category in
-                    NavigationLink(destination: destinationFor(category)) {
-                        CategoryCard(
-                            title: category.rawValue,
-                            description: category.description,
-                            iconName: category.iconName
-                        )
-                    }
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-        }
-    }
-    
-    // Data content view
-    private var dataContentView: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Data categories - using the same ones from SettingsView
-                // Team Members - active
-                NavigationLink(destination: TeamMembersView()) {
-                    CategoryCard(
-                        title: "Team Members",
-                        description: "Manage team members and access",
-                        iconName: "person.3"
-                    )
-                }
-                
-                // Project History - active
-                NavigationLink(destination: ProjectHistorySettingsView()) {
-                    CategoryCard(
-                        title: "Project History",
-                        description: "View past and completed projects",
-                        iconName: "clock.arrow.circlepath"
-                    )
-                }
-                
-                // Expenses - coming soon, grayed out
-                NavigationLink(destination: EmptyView()) {
-                    CategoryCard(
-                        title: "Expense History",
-                        description: "Track expenses and materials costs",
-                        iconName: "dollarsign.circle",
-                        isDisabled: true,
-                        comingSoon: true
-                    )
-                }
-                .disabled(true) // Disable navigation
-                
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-        }
-    }
-    
-    // Settings categories
-    enum SettingsCategory: String, Identifiable, CaseIterable {
-        case profile = "Profile Settings"
-        case organization = "Organization Settings"
-        case appSettings = "App Settings"
-        
-        var id: String { self.rawValue }
-        
-        var iconName: String {
-            switch self {
-            case .profile:
-                return "person"
-            case .organization:
-                return "building.2"
-            case .appSettings:
-                return "gear"
-            }
-        }
-        
-        var description: String {
-            switch self {
-            case .profile:
-                return "Personal information, contact details"
-            case .organization:
-                return "Company information, team members"
-            case .appSettings:
-                return "Map, notifications, data, security"
-            }
-        }
-    }
-    
-    // Return appropriate destination view based on selected category
-    @ViewBuilder
-    private func destinationFor(_ category: SettingsCategory) -> some View {
-        switch category {
-        case .profile:
-            ProfileSettingsView()
-        case .organization:
-            OrganizationSettingsView()
-        case .appSettings:
-            AppSettingsView()
-        }
-    }
     
     // Version and actions view at the bottom
     private var versionAndActionsView: some View {

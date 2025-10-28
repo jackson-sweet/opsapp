@@ -39,6 +39,7 @@ class CalendarViewModel: ObservableObject {
     @Published var selectedTeamMemberIds: Set<String> = []
     @Published var selectedTaskTypeIds: Set<String> = []
     @Published var selectedClientIds: Set<String> = []
+    @Published var selectedStatuses: Set<Status> = []
     
     // MARK: - Private Properties
     var dataController: DataController?
@@ -263,30 +264,28 @@ class CalendarViewModel: ObservableObject {
         loadProjectsForDate(selectedDate)
     }
     
-    // Apply comprehensive filters
-    func applyFilters(teamMemberIds: Set<String>, taskTypeIds: Set<String>, clientIds: Set<String>) {
+    func applyFilters(teamMemberIds: Set<String>, taskTypeIds: Set<String>, clientIds: Set<String>, statuses: Set<Status>) {
         selectedTeamMemberIds = teamMemberIds
         selectedTaskTypeIds = taskTypeIds
         selectedClientIds = clientIds
-        
-        // Update legacy single selection for compatibility
+        selectedStatuses = statuses
+
         selectedTeamMemberId = teamMemberIds.first
-        
+
         clearProjectCountCache()
         loadProjectsForDate(selectedDate)
     }
     
-    // Check if any filters are active
     var hasActiveFilters: Bool {
-        !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty
+        !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty || !selectedStatuses.isEmpty
     }
     
-    // Count of active filters
     var activeFilterCount: Int {
         var count = 0
         if !selectedTeamMemberIds.isEmpty { count += 1 }
         if !selectedTaskTypeIds.isEmpty { count += 1 }
         if !selectedClientIds.isEmpty { count += 1 }
+        if !selectedStatuses.isEmpty { count += 1 }
         return count
     }
     
@@ -329,21 +328,28 @@ class CalendarViewModel: ObservableObject {
         // Apply client filter
         if !selectedClientIds.isEmpty {
             filteredEvents = filteredEvents.filter { event in
-                // Check if event's project has a matching client
                 if let clientId = event.project?.clientId {
                     return selectedClientIds.contains(clientId)
                 }
                 return false
             }
         }
-        
+
+        if !selectedStatuses.isEmpty {
+            filteredEvents = filteredEvents.filter { event in
+                if let projectStatus = event.project?.status {
+                    return selectedStatuses.contains(projectStatus)
+                }
+                return false
+            }
+        }
+
         return filteredEvents
     }
     
-    // Get filter summary text
     var filterSummaryText: String {
         var components: [String] = []
-        
+
         if !selectedTeamMemberIds.isEmpty {
             components.append("\(selectedTeamMemberIds.count) team member\(selectedTeamMemberIds.count == 1 ? "" : "s")")
         }
@@ -353,7 +359,10 @@ class CalendarViewModel: ObservableObject {
         if !selectedClientIds.isEmpty {
             components.append("\(selectedClientIds.count) client\(selectedClientIds.count == 1 ? "" : "s")")
         }
-        
+        if !selectedStatuses.isEmpty {
+            components.append("\(selectedStatuses.count) status\(selectedStatuses.count == 1 ? "" : "es")")
+        }
+
         if components.isEmpty {
             return "No Filters"
         } else {

@@ -2,235 +2,249 @@
 
 This document contains the exact field names and types for all Bubble.io data objects used in the OPS app.
 
+**IMPORTANT UPDATES**: All Bubble fields have been updated to use camelCase naming conventions.
+- Built-in Bubble fields CANNOT be changed: `_id`, `Creator`, `Modified Date`, `Created Date`, `Slug`
+- Option Set `Display` attribute is built-in and CANNOT be changed (must remain capitalized)
+- All other fields now use camelCase
+
 ## Company
 
 | Bubble Field Name | Type | Swift Property | Notes |
 |-------------------|------|----------------|-------|
 | _id | text | id | Bubble's internal ID |
-| AccountHolder | User | accountHolder | |
-| Active Projects | List of Projects | activeProjects | |
-| Admin | List of Users | admin | |
-| billingPeriodEnd | date | billingPeriodEnd | |
-| Calendar.EventsList | List of CalendarEvents | calendarEventsList | Uses dot notation |
-| Client | List of Clients | clients | |
-| Close Hour | text | closeHour | |
-| Company Description | text | companyDescription | |
-| company id | text | companyID | Unique code for employees to join |
-| Company Name | text | companyName | |
-| company_age | text | companyAge | Note underscore |
-| company_size | text | companySize | Note underscore |
-| Completed Projects | List of Projects | completedProjects | |
-| dataSetupCompleted | yes/no | dataSetupCompleted | |
-| dataSetupPurchased | yes/no | dataSetupPurchased | |
-| dataSetupScheduledDate | date | dataSetupScheduledDate | |
-| defaultProjectColor | text | defaultProjectColor | Hex color |
-| Employees | List of Users | employees | |
-| Estimates | List of Estimates | estimates | |
-| hasPrioritySupport | yes/no | hasPrioritySupport | |
-| hasWebsite | yes/no | hasWebsite | |
-| Industry | List of Industries | industry | |
-| Invoice | List of Invoices | invoices | |
-| Late Projects | List of Projects | lateProjects | |
-| Location | geographic address | location | |
-| Logo | image | logo | |
-| maxSeats | number | maxSeats | Default: 0 |
-| Office Email | text | officeEmail | |
-| Open Hour | text | openHour | Default: 08:00:00 |
-| phone | text | phone | Note: lowercase |
-| prioritySupportPurchDate | date | prioritySupportPurchaseDate | |
-| Projects | List of Projects | projects | |
-| QB Connected | yes/no | qbConnected | Default: no |
-| qb.accesstoken | text | qbAccessToken | |
-| qb.authbasic | text | qbAuthBasic | |
-| qb.code | text | qbCode | |
-| qb.companyid | text | qbCompanyId | |
-| qb.idtoken | text | qbIdToken | |
-| qb.refreshtoken | text | qbRefreshToken | |
-| reactivatedSubscription | yes/no | reactivatedSubscription | Default: no |
-| Receivables | number | receivables | |
-| Referral Method | Referral Method | referralMethod | |
-| Referral Method Other | text | referralMethodOther | |
-| Registered | number | registered | Default: 0 |
-| seatedEmployees | List of Users | seatedEmployees | |
-| seatGraceEndDate | date | seatGraceEndDate | |
-| seatGraceStartDate | date | seatGraceStartDate | |
-| Security Clearances | List of Security Clearances | securityClearances | |
-| stripeCustomerId | text | stripeCustomerId | |
-| subscriptionEnd | date | subscriptionEnd | |
-| subscriptionEndls | List of subscriptionEndls | subscriptionEndls | |
-| subscriptionPeriod | PaymentSchedule | subscriptionPeriod | Options: Monthly, Annual |
-| subscriptionPlan | subscriptionPlan | subscriptionPlan | Options: trial, starter, team, business |
-| subscriptionStatus | subscriptionStatus | subscriptionStatus | Options: trial, active, grace, expired, cancelled |
-| Task Types | List of Task Types | taskTypes | |
-| Teams | List of Teams | teams | |
-| trialEndDate | date | trialEndDate | |
-| trialStartDate | date | trialStartDate | |
-| Visit | number | visit | Default: 1 |
-| website | text | website | |
-| Creator | User | creator | Built-in field |
-| Modified Date | date | modifiedDate | Built-in field |
-| Created Date | date | createdDate | Built-in field |
-| Slug | text | slug | Built-in field |
+| accountHolder | User | accountHolder | Changed from "AccountHolder" |
+| activeProjects | List of Projects | activeProjects | Changed from "Active Projects" |
+| admin | List of Users | admin | Already lowercase |
+| billingPeriodEnd | date | billingPeriodEnd | Already camelCase |
+| calendarEventsList | List of CalendarEvents | calendarEventsList | Changed from "Calendar.EventsList" |
+| clients | List of Clients | clients | Changed from "Client" |
+| closeHour | text | closeHour | Changed from "Close Hour" |
+| companyDescription | text | companyDescription | Changed from "Company Description" |
+| companyId | text | companyId | Changed from "company id" - unique code for employees to join |
+| companyName | text | companyName | Changed from "Company Name" |
+| companyAge | text | companyAge | Changed from "company_age" |
+| companySize | text | companySize | Changed from "company_size" |
+| completedProjects | List of Projects | completedProjects | Changed from "Completed Projects" |
+| dataSetupCompleted | yes/no | dataSetupCompleted | Already camelCase |
+| dataSetupPurchased | yes/no | dataSetupPurchased | Already camelCase |
+| dataSetupScheduledDate | date | dataSetupScheduledDate | Already camelCase |
+| defaultProjectColor | text | defaultProjectColor | Already camelCase - Hex color |
+| employees | List of Users | employees | Already lowercase |
+| estimates | List of Estimates | estimates | Changed from "Estimates" |
+| hasPrioritySupport | yes/no | hasPrioritySupport | Already camelCase |
+| hasWebsite | yes/no | hasWebsite | Already camelCase |
+| industry | List of Industries | industry | Already lowercase |
+| invoices | List of Invoices | invoices | Changed from "Invoice" |
+| lateProjects | List of Projects | lateProjects | Changed from "Late Projects" |
+| location | geographic address | location | Already lowercase |
+| logo | image | logo | Already lowercase |
+| maxSeats | number | maxSeats | Already camelCase - Default: 0 |
+| officeEmail | text | officeEmail | Changed from "Office Email" |
+| openHour | text | openHour | Changed from "Open Hour" - Default: 08:00:00 |
+| phone | text | phone | Keep as-is |
+| prioritySupportPurchDate | date | prioritySupportPurchaseDate | Already camelCase |
+| projects | List of Projects | projects | Already lowercase |
+| qbConnected | yes/no | qbConnected | Changed from "QB Connected" - Default: no |
+| qbAccessToken | text | qbAccessToken | Changed from "qb.accesstoken" |
+| qbAuthBasic | text | qbAuthBasic | Changed from "qb.authbasic" |
+| qbCode | text | qbCode | Changed from "qb.code" |
+| qbCompanyId | text | qbCompanyId | Changed from "qb.companyid" |
+| qbIdToken | text | qbIdToken | Changed from "qb.idtoken" |
+| qbRefreshToken | text | qbRefreshToken | Changed from "qb.refreshtoken" |
+| reactivatedSubscription | yes/no | reactivatedSubscription | Already camelCase - Default: no |
+| receivables | number | receivables | Already lowercase |
+| referralMethod | Referral Method | referralMethod | Changed from "Referral Method" |
+| referralMethodOther | text | referralMethodOther | Changed from "Referral Method Other" |
+| registered | number | registered | Already lowercase - Default: 0 |
+| seatedEmployees | List of Users | seatedEmployees | Keep as-is |
+| seatGraceEndDate | date | seatGraceEndDate | Already camelCase |
+| seatGraceStartDate | date | seatGraceStartDate | Already camelCase |
+| securityClearances | List of Security Clearances | securityClearances | Changed from "Security Clearances" |
+| stripeCustomerId | text | stripeCustomerId | Already camelCase |
+| subscriptionEnd | date | subscriptionEnd | Already camelCase |
+| subscriptionEndls | List of subscriptionEndls | subscriptionEndls | Already camelCase |
+| subscriptionPeriod | PaymentSchedule | subscriptionPeriod | Already camelCase - Options: Monthly, Annual |
+| subscriptionPlan | SubscriptionPlan | subscriptionPlan | Already camelCase - Options: trial, starter, team, business |
+| subscriptionStatus | SubscriptionStatus | subscriptionStatus | Already camelCase - Options: trial, active, grace, expired, cancelled |
+| taskTypes | List of TaskTypes | taskTypes | Changed from "Task Types" |
+| teams | List of Teams | teams | Already lowercase |
+| trialEndDate | date | trialEndDate | Already camelCase |
+| trialStartDate | date | trialStartDate | Already camelCase |
+| visit | number | visit | Already lowercase - Default: 1 |
+| website | text | website | Keep as-is |
+| Creator | User | creator | Built-in field - CANNOT CHANGE |
+| Modified Date | date | modifiedDate | Built-in field - CANNOT CHANGE |
+| Created Date | date | createdDate | Built-in field - CANNOT CHANGE |
+| Slug | text | slug | Built-in field - CANNOT CHANGE |
 
 ## Project
 
 | Bubble Field Name | Type | Swift Property | Notes |
 |-------------------|------|----------------|-------|
 | _id | text | id | Bubble's internal ID |
-| Address | geographic address | address | |
-| All Day | yes/no | allDay | |
-| Balance | number | balance | |
-| Client | Client | client | Reference to Client object |
-| Client Email | text | clientEmail | Deprecated - use Client reference |
-| Client Name | text | clientName | Deprecated - use Client reference |
-| Client Phone | text | clientPhone | Deprecated - use Client reference |
-| Company | Company | company | Reference |
-| Completion | date | completion | End date |
-| Description | text | description | |
-| Duration | number | duration | Days |
-| eventType | CalendarEventType | eventType | Options: task, project |
-| Project Gross Cost | number | projectGrossCost | |
-| Project Images | List of images | projectImages | |
-| Project Name | text | projectName | |
-| Project Value | number | projectValue | |
-| Slug | text | slug | |
-| Start Date | date | startDate | |
-| Status | Job Status | status | Option set |
-| Team Members | List of Users | teamMembers | Note space |
-| Team Notes | text | teamNotes | |
-| Thumbnail | image | thumbnail | |
-| Creator | User | creator | Built-in field |
-| Modified Date | date | modifiedDate | Built-in field |
-| Created Date | date | createdDate | Built-in field |
+| address | geographic address | address | Already lowercase |
+| allDay | yes/no | allDay | Changed from "All Day" |
+| balance | number | balance | Already lowercase |
+| client | Client | client | Already lowercase - Reference to Client object |
+| clientEmail | text | clientEmail | Changed from "Client Email" - Deprecated - use Client reference |
+| clientName | text | clientName | Changed from "Client Name" - Deprecated - use Client reference |
+| clientPhone | text | clientPhone | Changed from "Client Phone" - Deprecated - use Client reference |
+| company | Company | company | Already lowercase - Reference |
+| completion | date | completion | Already lowercase - End date |
+| description | text | description | Already lowercase |
+| duration | number | duration | Already lowercase - Days |
+| eventType | CalendarEventType | eventType | Already camelCase - Options: task, project |
+| projectGrossCost | number | projectGrossCost | Changed from "Project Gross Cost" |
+| projectImages | List of images | projectImages | Changed from "Project Images" |
+| projectName | text | projectName | Changed from "Project Name" |
+| projectValue | number | projectValue | Changed from "Project Value" |
+| slug | text | slug | Already lowercase |
+| startDate | date | startDate | Changed from "Start Date" |
+| status | JobStatus | status | Already lowercase - Option set |
+| teamMembers | List of Users | teamMembers | Changed from "Team Members" |
+| teamNotes | text | teamNotes | Changed from "Team Notes" |
+| thumbnail | image | thumbnail | Already lowercase |
+| tasks | List of Tasks | tasks | Already lowercase |
+| Creator | User | creator | Built-in field - CANNOT CHANGE |
+| Modified Date | date | modifiedDate | Built-in field - CANNOT CHANGE |
+| Created Date | date | createdDate | Built-in field - CANNOT CHANGE |
 
 ## User
 
 | Bubble Field Name | Type | Swift Property | Notes |
 |-------------------|------|----------------|-------|
 | _id | text | id | Bubble's internal ID |
-| Address | text | address | |
-| Avatar | image | avatar | Profile image |
-| City | text | city | |
-| Company | Company | company | Reference |
-| Company Description | text | companyDescription | |
-| Company Name | text | companyName | |
-| companyID | text | companyID | |
-| Country | text | country | |
-| dateAdded | date | dateAdded | |
-| Email | text | email | User's email (built-in) |
-| Employee Type | Employee Type | employeeType | |
-| First Name | text | firstName | |
-| Full Name | text | fullName | |
-| hasProfileImageUploaded | yes/no | hasProfileImageUploaded | |
-| Home Address | geographic address | homeAddress | |
-| isPlanHolder | yes/no | isPlanHolder | |
-| isProfileCompleted | yes/no | isProfileCompleted | |
-| Last Name | text | lastName | |
-| Phone | text | phone | |
-| Profile Completed Date | date | profileCompletedDate | |
-| referredBy | text | referredBy | |
-| Registered | number | registered | |
-| requiresPIN | yes/no | requiresPIN | |
-| Role | text | role | Options: Field Crew, Office Crew, Admin |
-| State | text | state | |
-| user PIN | text | userPIN | |
-| Zip | text | zip | |
-| Creator | User | creator | Built-in field |
-| Modified Date | date | modifiedDate | Built-in field |
-| Created Date | date | createdDate | Built-in field |
-| Slug | text | slug | Built-in field |
+| address | text | address | Already lowercase |
+| avatar | image | avatar | Already lowercase - Profile image |
+| city | text | city | Already lowercase |
+| company | Company | company | Already lowercase - Reference |
+| companyDescription | text | companyDescription | Changed from "Company Description" |
+| companyName | text | companyName | Changed from "Company Name" |
+| companyID | text | companyID | Already camelCase |
+| country | text | country | Already lowercase |
+| dateAdded | date | dateAdded | Already camelCase |
+| email | text | email | Already lowercase - User's email (built-in) |
+| employeeType | EmployeeType | employeeType | Changed from "Employee Type" - determines role |
+| nameFirst | text | nameFirst | Changed from "First Name" |
+| fullName | text | fullName | Changed from "Full Name" |
+| hasProfileImageUploaded | yes/no | hasProfileImageUploaded | Already camelCase |
+| homeAddress | geographic address | homeAddress | Changed from "Home Address" |
+| isPlanHolder | yes/no | isPlanHolder | Already camelCase |
+| isProfileCompleted | yes/no | isProfileCompleted | Already camelCase |
+| nameLast | text | nameLast | Changed from "Last Name" |
+| phone | text | phone | Keep as-is |
+| profileCompletedDate | date | profileCompletedDate | NOT BUBBLE FIELD - local only |
+| referredBy | text | referredBy | Already camelCase |
+| registered | number | registered | Already lowercase |
+| requiresPIN | yes/no | requiresPIN | Already camelCase |
+| role | text | role | NOT BUBBLE FIELD - local only |
+| state | text | state | NOT BUBBLE FIELD - local only |
+| userPin | text | userPin | NOT BUBBLE FIELD - local only |
+| userType | UserType | userType | Changed from "User Type" |
+| userColor | text | userColor | Changed from "User Color" |
+| devPermission | yes/no | devPermission | Changed from "Dev Permission" |
+| zip | text | zip | NOT BUBBLE FIELD - local only |
+| Creator | User | creator | Built-in field - CANNOT CHANGE |
+| Modified Date | date | modifiedDate | Built-in field - CANNOT CHANGE |
+| Created Date | date | createdDate | Built-in field - CANNOT CHANGE |
+| Slug | text | slug | Built-in field - CANNOT CHANGE |
 
 ## CalendarEvent
 
 | Bubble Field Name | Type | Swift Property | Notes |
 |-------------------|------|----------------|-------|
 | _id | text | id | Bubble's internal ID |
-| Color | text | color | Hex color value |
-| companyId | Company | companyId | **lowercase 'c'** |
-| Duration | number | duration | Duration in days |
-| End Date | date | endDate | |
-| projectId | Project | projectId | **lowercase 'p'** |
-| Start Date | date | startDate | |
-| taskId | Task | taskId | **lowercase 't'** |
-| Team Members | List of Users | teamMembers | Note space |
-| Title | text | title | Event title |
-| Type | CalendarEventType | type | Options: Task, Project |
-| Creator | User | creator | Built-in field |
-| Modified Date | date | modifiedDate | Built-in field |
-| Created Date | date | createdDate | Built-in field |
+| color | text | color | Changed from "Color" - Hex color value |
+| companyId | Company | companyId | Keep as-is - lowercase 'c' |
+| duration | number | duration | Changed from "Duration" - Duration in days |
+| endDate | date | endDate | Changed from "End Date" |
+| projectId | Project | projectId | Keep as-is - lowercase 'p' |
+| startDate | date | startDate | Changed from "Start Date" |
+| taskId | Task | taskId | Keep as-is - lowercase 't' |
+| teamMembers | List of Users | teamMembers | Changed from "Team Members" |
+| title | text | title | Changed from "Title" - Event title |
+| eventType | CalendarEventType | eventType | Changed from "Type" to "eventType" - Options: task, project |
+| Creator | User | creator | Built-in field - CANNOT CHANGE |
+| Modified Date | date | modifiedDate | Built-in field - CANNOT CHANGE |
+| Created Date | date | createdDate | Built-in field - CANNOT CHANGE |
 
 ## Task
 
 | Bubble Field Name | Type | Swift Property | Notes |
 |-------------------|------|----------------|-------|
 | _id | text | id | Bubble's internal ID |
-| calendarEventId | CalendarEvent | calendarEventId | Reference |
-| companyId | Company | companyId | Reference |
-| completionDate | date | completionDate | |
-| projectID | Project | projectID | **Note: capital ID** |
-| scheduledDate | date | scheduledDate | |
-| status | Task Status | status | Option set |
-| taskColor | text | taskColor | Hex color |
-| taskIndex | number | taskIndex | Display order |
-| taskNotes | text | taskNotes | |
-| Team Members | List of Users | teamMembers | Note space |
-| type | Task Type | type | Reference to TaskType |
-| Creator | User | creator | Built-in field |
-| Modified Date | date | modifiedDate | Built-in field |
-| Created Date | date | createdDate | Built-in field |
+| calendarEventId | CalendarEvent | calendarEventId | Already camelCase - Reference |
+| companyId | Company | companyId | Already camelCase - Reference |
+| completionDate | date | completionDate | Already camelCase |
+| projectId | Project | projectId | Changed from "projectID" - now lowercase 'd' |
+| scheduledDate | date | scheduledDate | Already camelCase |
+| status | TaskStatus | status | Already lowercase - Option set |
+| taskColor | text | taskColor | Already camelCase - Hex color |
+| taskIndex | number | taskIndex | Already camelCase - Display order |
+| taskNotes | text | taskNotes | Already camelCase |
+| teamMembers | List of Users | teamMembers | Changed from "Team Members" |
+| type | TaskType | type | Already lowercase - Reference to TaskType |
+| Creator | User | creator | Built-in field - CANNOT CHANGE |
+| Modified Date | date | modifiedDate | Built-in field - CANNOT CHANGE |
+| Created Date | date | createdDate | Built-in field - CANNOT CHANGE |
 
 ## Client
 
 | Bubble Field Name | Type | Swift Property | Notes |
 |-------------------|------|----------------|-------|
 | _id | text | id | Bubble's internal ID |
-| Address | geographic address | address | |
-| Balance | text | balance | |
-| Client ID No | text | clientIdNo | |
-| Clients List | List of Clients | clientsList | Sub-clients |
-| Email Address | text | emailAddress | |
-| Estimates List | List of Estimates | estimatesList | |
-| Invoices | List of Invoices | invoices | |
-| Is Company | yes/no | isCompany | Default: no |
-| Name | text | name | |
-| Parent Company | Company | parentCompany | |
-| Phone Number | text | phoneNumber | |
-| Projects List | List of Projects | projectsList | |
-| Status | Client Status | status | Default: No Balance |
-| Thumbnail | image | thumbnail | |
-| Unit | number | unit | Default: 1 |
-| User ID | User | userId | Associated user |
-| Creator | User | creator | Built-in field |
-| Modified Date | date | modifiedDate | Built-in field |
-| Created Date | date | createdDate | Built-in field |
+| address | geographic address | address | Changed from "Address" |
+| balance | text | balance | Changed from "Balance" |
+| clientIdNo | text | clientIdNo | Changed from "Client ID No" |
+| emailAddress | text | emailAddress | Changed from "Email Address" |
+| estimates | List of Estimates | estimates | Changed from "Estimates List" to "estimates" (NOT estimatesList) |
+| invoices | List of Invoices | invoices | Changed from "Invoices" |
+| isCompany | yes/no | isCompany | Changed from "Is Company" - Default: no |
+| name | text | name | Changed from "Name" |
+| parentCompany | Company | parentCompany | Changed from "Parent Company" |
+| phoneNumber | text | phoneNumber | Changed from "Phone Number" |
+| projectsList | List of Projects | projectsList | Changed from "Projects List" |
+| status | ClientStatus | status | Changed from "Status" - Default: No Balance |
+| avatar | image | avatar | Changed from "Thumbnail" to "avatar" (NOT thumbnail) |
+| unit | number | unit | Changed from "Unit" - Default: 1 |
+| userId | User | userId | Changed from "User ID" - Associated user |
+| subClients | List of Clients | subClients | Changed from "Clients List" and "Sub Clients" |
+| Creator | User | creator | Built-in field - CANNOT CHANGE |
+| Modified Date | date | modifiedDate | Built-in field - CANNOT CHANGE |
+| Created Date | date | createdDate | Built-in field - CANNOT CHANGE |
+| Slug | text | slug | Built-in field - CANNOT CHANGE |
 
 ## TaskType (Data Type)
 
 | Bubble Field Name | Type | Swift Property | Notes |
 |-------------------|------|----------------|-------|
 | _id | text | id | Bubble's internal ID |
-| Color | text | color | Hex color value |
-| Display | text | display | Display name |
-| isDefault | yes/no | isDefault | Default: no |
-| Creator | User | creator | Built-in field |
-| Modified Date | date | modifiedDate | Built-in field |
-| Created Date | date | createdDate | Built-in field |
+| color | text | color | Changed from "Color" - Hex color value |
+| display | text | display | Changed from "Display" - Display name |
+| isDefault | yes/no | isDefault | Already camelCase - Default: no |
+| Creator | User | creator | Built-in field - CANNOT CHANGE |
+| Modified Date | date | modifiedDate | Built-in field - CANNOT CHANGE |
+| Created Date | date | createdDate | Built-in field - CANNOT CHANGE |
 
 ## Option Sets
 
-### subscriptionPlan
+**IMPORTANT**: Option Set names have been changed to remove spaces and capitalize all words (e.g., "Task Status" → "TaskStatus").
+The `Display` attribute is a built-in Bubble field and CANNOT be changed - it must remain capitalized.
+**Option Set Display VALUES remain unchanged** (e.g., "In Progress", "RFQ", "Scheduled").
+
+### SubscriptionPlan
 **Attributes:**
 - annualPrice (number)
-- Features (List of texts)
+- features (List of texts) - Changed from "Features"
 - maxSeats (number)
 - monthlyPrice (number)
 - onetimePrice (number)
 - priceId.annual (text)
 - priceId.monthly (text)
 - priceId.once (text)
-- Display (text) - Built-in attribute
+- Display (text) - Built-in attribute - CANNOT CHANGE
 
-**Options:**
+**Options (using camelCase):**
 - trial
 - starter
 - team
@@ -238,49 +252,49 @@ This document contains the exact field names and types for all Bubble.io data ob
 - priority
 - setup
 
-### subscriptionStatus
+### SubscriptionStatus
 **Attributes:**
-- Display (text) - Built-in attribute
+- Display (text) - Built-in attribute - CANNOT CHANGE
 
-**Options:**
-- trial
-- active
-- expired
-- cancelled
-- grace
+**Options (Display values - unchanged):**
+- Trial
+- Active
+- Expired
+- Cancelled
+- Grace
 
-### Ops Contacts
+### OpsContacts
 **Attributes:**
-- Email (text)
-- Name (text)
-- Phone (text)
-- Display (text) - Built-in attribute
+- email (text) - Changed from "Email"
+- name (text) - Changed from "Name"
+- phone (text) - Changed from "Phone"
+- Display (text) - Built-in attribute - CANNOT CHANGE
 
 **Options:**
 - jack
-- Priority Support
-- Data Setup
-- General Support
-- Web App Auto Send
+- prioritySupport
+- dataSetup
+- generalSupport
+- webAppAutoSend
 
-### Task Status
+### TaskStatus
 **Attributes:**
-- Color (text)
-- Index (number)
-- Display (text) - Built-in attribute
+- color (text) - Changed from "Color"
+- index (number) - Changed from "Index"
+- Display (text) - Built-in attribute - CANNOT CHANGE
 
-**Options:**
+**Options (Display values - unchanged):**
 - Scheduled
 - In Progress
 - Completed
 - Cancelled
 
-### Task Type (Option Set)
+### TaskType (Option Set)
 **Attributes:**
-- Color (text)
-- Display (text) - Built-in attribute
+- color (text) - Changed from "Color"
+- Display (text) - Built-in attribute - CANNOT CHANGE
 
-**Options:**
+**Options (Display values - unchanged):**
 - Quote
 - Work
 - Service Call
@@ -289,14 +303,19 @@ This document contains the exact field names and types for all Bubble.io data ob
 
 ### CalendarEventType
 **Attributes:**
-- Display (text) - Built-in attribute
+- Display (text) - Built-in attribute - CANNOT CHANGE
 
-**Options:**
+**Options (Display values - unchanged):**
 - Task
 - Project
 
-### Job Status
-**Options:**
+### JobStatus
+**Attributes:**
+- color (text) - Changed from "Color" - hex
+- index (number) - Changed from "Index"
+- Display (text) - Built-in attribute - CANNOT CHANGE
+
+**Options (Display values - unchanged):**
 - RFQ
 - Estimated
 - Accepted
@@ -305,67 +324,93 @@ This document contains the exact field names and types for all Bubble.io data ob
 - Closed
 - Archived
 
-**Attributes:**
-- Display (text)
-- Index (number)
-- Color (text - hex)
-
 ### PaymentSchedule
-**Options:**
+**Attributes:**
+- Display (text) - Built-in attribute - CANNOT CHANGE
+
+**Options (Display values - unchanged):**
 - Monthly
 - Annual
 
-### Employee Type
-**Options:**
+### EmployeeType
+**Attributes:**
+- Display (text) - Built-in attribute - CANNOT CHANGE
+
+**Options (Display values - unchanged):**
 - Foreman
 - Crew
 - Admin
 - Office
 
-### Referral Method
-**Options:**
+### CompanySize
+**Attributes:**
+- Display (text) - Built-in attribute - CANNOT CHANGE
+
+**Options (Display values - unchanged):**
+(Options use Display attribute)
+
+### CompanyAge
+**Attributes:**
+- Display (text) - Built-in attribute - CANNOT CHANGE
+
+**Options (Display values - unchanged):**
+(Options use Display attribute)
+
+### UserType
+**Attributes:**
+- Display (text) - Built-in attribute - CANNOT CHANGE
+
+**Options (Display values - unchanged):**
+- Company
+- Employee
+- Client
+- Admin
+
+### ReferralMethod
+**Attributes:**
+- Display (text) - Built-in attribute - CANNOT CHANGE
+
+**Options (Display values - unchanged):**
 - Google Search
 - Social Media
 - Word of Mouth
 - Trade Show
 - Other
 
-## Important Field Naming Patterns
+## Important Field Naming Changes
 
-1. **Inconsistent Capitalization**: Some fields use camelCase (`companyId`), others use spaces (`Company Name`), and some use underscores (`company_size`)
+**ALL BUBBLE FIELDS NOW USE camelCase** (except built-in fields which CANNOT be changed)
 
-2. **Reference Fields in CalendarEvent**: All use lowercase first letter:
+1. **Built-in Fields (CANNOT CHANGE)**:
+   - `_id` - Object's unique ID
+   - `Creator` - User reference
+   - `Modified Date` - Timestamp (with space)
+   - `Created Date` - Timestamp (with space)
+   - `Slug` - Text (lowercase)
+
+2. **Option Set Changes**:
+   - Option Set names: Remove spaces, capitalize words (e.g., "Task Status" → "TaskStatus")
+   - Option Set attributes: Now use camelCase (except `Display` which is built-in)
+   - Option Set Display values: **UNCHANGED** - remain capitalized (e.g., "In Progress", "RFQ")
+
+3. **Special Field Renames**:
+   - CalendarEvent: `Type` → `eventType` (not just `type`)
+   - Client: `Estimates List` → `estimates` (not `estimatesList`)
+   - Client: `Thumbnail` → `avatar` (not `thumbnail`)
+   - Client: `Clients List` / `Sub Clients` → `subClients`
+   - Task: `projectID` → `projectId` (lowercase 'd')
+
+4. **Reference Fields**: All use camelCase:
    - `companyId` (not `CompanyId`)
-   - `projectId` (not `ProjectId`) 
+   - `projectId` (not `ProjectId`)
    - `taskId` (not `TaskId`)
 
-3. **Task Exception**: Uses `projectID` with capital ID (not `projectId`)
+## Critical Points
 
-4. **Fields with Spaces**: Many Bubble fields have spaces that must be exact:
-   - `Team Members` (not `TeamMembers`)
-   - `Start Date` (not `StartDate`)
-   - `End Date` (not `EndDate`)
-   - `Seated Employees` (not `seatedEmployees`)
-   - `Company Name` (not `CompanyName`)
-
-5. **Lowercase Fields in Company**:
-   - `phone` (not `Phone`)
-   - `website` (not `Website`)
-   - `company_age` (with underscore)
-   - `company_size` (with underscore)
-
-6. **Built-in Fields**: Always have specific formats:
-   - `Modified Date` (with space)
-   - `Created Date` (with space)
-   - `Creator` (reference to User)
-   - `Slug` (text)
-
-## Critical Issues to Watch
-
-1. **Seated Employees**: The field name is `Seated Employees` with a space, not `seatedEmployees`
-2. **Project ID in Task**: Uses `projectID` with capital ID, different from other references
-3. **Company Fields**: Mix of naming conventions - some lowercase (`phone`), some with spaces (`Company Name`), some with underscores (`company_size`)
-4. **Date Fields**: Most use spaces (`Start Date`, `End Date`, `Modified Date`)
+1. **Task.projectId**: Now uses lowercase 'd' (changed from `projectID`)
+2. **Built-in fields**: CANNOT be changed - keep original format
+3. **Option Set Display**: Built-in attribute - must stay capitalized
+4. **All other fields**: Now use camelCase consistently
 
 ## API Endpoint Patterns
 

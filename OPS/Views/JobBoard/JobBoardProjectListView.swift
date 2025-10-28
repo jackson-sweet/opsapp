@@ -130,7 +130,7 @@ struct JobBoardProjectListView: View {
                             ForEach(activeProjects) { project in
                                 UniversalJobBoardCard(cardType: .project(project))
                                     .environmentObject(dataController)
-                                    .id("\(project.id)-\(project.teamMemberIdsString)-\(project.tasks.count)")
+                                    .id("\(project.id)-\(project.teamMemberIdsString)")
                             }
 
                             if !closedProjects.isEmpty {
@@ -142,7 +142,7 @@ struct JobBoardProjectListView: View {
                                     ForEach(closedProjects) { project in
                                         UniversalJobBoardCard(cardType: .project(project))
                                             .environmentObject(dataController)
-                                            .id("\(project.id)-\(project.teamMemberIdsString)-\(project.tasks.count)")
+                                            .id("\(project.id)-\(project.teamMemberIdsString)")
                                     }
                                 }
                             }
@@ -156,7 +156,7 @@ struct JobBoardProjectListView: View {
                                     ForEach(archivedProjects) { project in
                                         UniversalJobBoardCard(cardType: .project(project))
                                             .environmentObject(dataController)
-                                            .id("\(project.id)-\(project.teamMemberIdsString)-\(project.tasks.count)")
+                                            .id("\(project.id)-\(project.teamMemberIdsString)")
                                     }
                                 }
                             }
@@ -379,171 +379,3 @@ struct CollapsibleSection<Content: View>: View {
         }
     }
 }
-
-// MARK: - Project Management Row
-struct ProjectManagementRow: View {
-    let project: Project
-    @State private var showingActions = false
-    @State private var showingEdit = false
-    @State private var showingStatusChange = false
-    @State private var showingTeamChange = false
-    @State private var showingSchedulingConversion = false
-    @State private var showingDelete = false
-    @State private var showingProjectDetails = false
-    @EnvironmentObject private var dataController: DataController
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .top) {
-                if project.usesTaskBasedScheduling {
-                    let taskCount = project.tasks.count
-                    Text(taskCount == 1 ? "1 TASK" : "\(taskCount) TASKS")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(OPSStyle.Colors.secondaryAccent.opacity(0.1))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.secondaryAccent.opacity(0.3), lineWidth: 1)
-                        )
-                } else {
-                    Text("PROJECT")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(project.status.color)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.1))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                        )
-                }
-
-                Spacer()
-
-                Text(project.status.displayName.uppercased())
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(project.status.color)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(project.status.color.opacity(0.1))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(project.status.color, lineWidth: 1)
-                    )
-            }
-
-            Text(project.title.uppercased())
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .lineLimit(1)
-
-            Text(project.effectiveClientName)
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            HStack(spacing: 12) {
-                if let startDate = project.startDate {
-                    Label(
-                        DateHelper.fullDateString(from: startDate),
-                        systemImage: "calendar"
-                    )
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-
-                if !project.teamMembers.isEmpty {
-                    Label(
-                        "\(project.teamMembers.count)",
-                        systemImage: "person.2"
-                    )
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-
-                if !project.tasks.isEmpty {
-                    Label(
-                        "\(project.tasks.count)",
-                        systemImage: "checklist"
-                    )
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-
-                Spacer()
-
-                Menu {
-                Button(action: { showingEdit = true }) {
-                    Label("Edit", systemImage: "pencil")
-                }
-
-                Button(action: { showingStatusChange = true }) {
-                    Label("Change Status", systemImage: "arrow.triangle.2.circlepath")
-                }
-
-                Button(action: { showingTeamChange = true }) {
-                    Label("Change Team", systemImage: "person.2")
-                }
-
-                Button(action: { showingSchedulingConversion = true }) {
-                    Label("Convert Scheduling", systemImage: "calendar.badge.clock")
-                }
-
-                Divider()
-
-                Button(role: .destructive, action: { showingDelete = true }) {
-                    Label("Delete", systemImage: "trash")
-                }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 16))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-            }
-        }
-        .padding(.vertical, OPSStyle.Layout.spacing3)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            showingProjectDetails = true
-        }
-        .sheet(isPresented: $showingProjectDetails) {
-            NavigationView {
-                ProjectDetailsView(project: project)
-            }
-        }
-        .sheet(isPresented: $showingEdit) {
-            ProjectFormSheet(mode: .edit(project)) { _ in
-                // Refresh will happen through SwiftData
-            }
-        }
-        .sheet(isPresented: $showingStatusChange) {
-            ProjectStatusChangeSheet(project: project)
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingTeamChange) {
-            ProjectTeamChangeSheet(project: project)
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingSchedulingConversion) {
-            SchedulingModeConversionSheet(project: project)
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingDelete) {
-            ProjectDeletionConfirmation(project: project)
-                .environmentObject(dataController)
-        }
-    }
-}
-

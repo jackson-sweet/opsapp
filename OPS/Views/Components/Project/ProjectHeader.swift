@@ -72,7 +72,7 @@ struct ProjectHeader: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
                     // Client Name
-                    Text(project.clientName)
+                    Text(project.effectiveClientName)
                         .font(OPSStyle.Typography.cardSubtitle)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(1)

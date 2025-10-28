@@ -271,30 +271,28 @@ struct CalendarEventCard: View {
     private func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date) {
         guard let calendarEvent = task.calendarEvent else { return }
 
-        calendarEvent.startDate = startDate
-        calendarEvent.endDate = endDate
-        calendarEvent.needsSync = true
-
-        do {
-            try dataController.modelContext?.save()
-        } catch {
-            print("Error updating task schedule: \(error)")
+        Task {
+            do {
+                try await dataController.updateCalendarEvent(event: calendarEvent, startDate: startDate, endDate: endDate)
+            } catch {
+                print("Error updating task schedule: \(error)")
+            }
         }
     }
 
     private func updateProjectSchedule(project: Project, startDate: Date, endDate: Date) {
-        event.startDate = startDate
-        event.endDate = endDate
-        event.needsSync = true
-
-        project.startDate = startDate
-        project.endDate = endDate
-        project.needsSync = true
-
-        do {
-            try dataController.modelContext?.save()
-        } catch {
-            print("Error updating project schedule: \(error)")
+        Task {
+            do {
+                try await dataController.rescheduleProject(
+                    project,
+                    startDate: startDate,
+                    endDate: endDate,
+                    calendarEvent: event
+                )
+                print("[CALENDAR_EVENT_CARD] ✅ Project rescheduled successfully")
+            } catch {
+                print("[CALENDAR_EVENT_CARD] ❌ Error rescheduling project: \(error)")
+            }
         }
     }
 }

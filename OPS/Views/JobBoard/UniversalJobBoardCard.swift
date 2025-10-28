@@ -1169,8 +1169,8 @@ struct UniversalJobBoardCard: View {
                 // Show success feedback
                 await MainActor.run {
                     customAlert = CustomAlertConfig(
-                        title: "DELETION SUCCESS",
-                        message: "\(itemName) has been deleted",
+                        title: "DELETED",
+                        message: itemName,
                         color: OPSStyle.Colors.successStatus
                     )
                     scheduleDeletionNotification(itemType: itemType, itemName: itemName)
@@ -1183,8 +1183,8 @@ struct UniversalJobBoardCard: View {
 
     private func scheduleDeletionNotification(itemType: String, itemName: String) {
         let content = UNMutableNotificationContent()
-        content.title = "OPS DATABASE"
-        content.body = "Deletion of \(itemName) successful"
+        content.title = "OPS"
+        content.body = "\(itemName) deleted"
         content.sound = .default
 
         let request = UNNotificationRequest(

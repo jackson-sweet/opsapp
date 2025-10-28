@@ -551,18 +551,124 @@ struct EditTaskTypeSheet: View {
     }
 
     private func saveChanges() {
+        print("[TASK_TYPE_SAVE] 💾 Saving task type changes...")
+        print("[TASK_TYPE_SAVE] Task Type: \(taskType.display)")
+
+        // Track what changed
+        let colorChanged = taskType.color != taskTypeColorHex
+        let iconChanged = taskType.icon != selectedIcon
+
+        print("[TASK_TYPE_SAVE] Color changed: \(colorChanged) (old: \(taskType.color), new: \(taskTypeColorHex))")
+        print("[TASK_TYPE_SAVE] Icon changed: \(iconChanged) (old: \(taskType.icon ?? "nil"), new: \(selectedIcon))")
+
+        // Update local values
         taskType.icon = selectedIcon
         taskType.color = taskTypeColorHex
-        taskType.needsSync = true
 
         do {
             try modelContext.save()
+            print("[TASK_TYPE_SAVE] ✅ Saved to local database")
+
+            // Sync to Bubble immediately
+            Task {
+                do {
+                    // Update task type in Bubble
+                    print("[TASK_TYPE_SAVE] 📡 Updating task type in Bubble...")
+                    try await dataController.apiService.updateTaskType(
+                        id: taskType.id,
+                        display: nil,  // Don't change display name
+                        color: taskTypeColorHex,
+                        icon: nil  // Icon doesn't exist in Bubble
+                    )
+                    print("[TASK_TYPE_SAVE] ✅ Task type updated in Bubble")
+
+                    // If color changed, cascade update to all calendar events
+                    if colorChanged {
+                        print("[TASK_TYPE_SAVE] 🎨 Color changed - updating all task calendar events...")
+                        try await updateCalendarEventsForTaskTypeColor(
+                            taskTypeId: taskType.id,
+                            newColor: taskTypeColorHex
+                        )
+                        print("[TASK_TYPE_SAVE] ✅ All calendar events updated")
+                    }
+
+                    await MainActor.run {
+                        taskType.needsSync = false
+                        try? modelContext.save()
+                        print("[TASK_TYPE_SAVE] ✅ Sync complete")
+                    }
+                } catch {
+                    print("[TASK_TYPE_SAVE] ❌ Failed to sync: \(error)")
+                    await MainActor.run {
+                        taskType.needsSync = true
+                        try? modelContext.save()
+                    }
+                }
+            }
+
             onSave()
             dismiss()
         } catch {
+            print("[TASK_TYPE_SAVE] ❌ Failed to save locally: \(error)")
+        }
+    }
+
+    private func updateCalendarEventsForTaskTypeColor(taskTypeId: String, newColor: String) async throws {
+        print("[TASK_TYPE_COLOR_CASCADE] 🔍 Finding all tasks with task type: \(taskTypeId)")
+
+        // Find all tasks that use this task type
+        let taskDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { task in
+                task.taskType?.id == taskTypeId
+            }
+        )
+
+        let tasks = try modelContext.fetch(taskDescriptor)
+        print("[TASK_TYPE_COLOR_CASCADE] Found \(tasks.count) tasks using this task type")
+
+        // Collect all calendar event IDs that need updating
+        var calendarEventIds: [String] = []
+        var calendarEventsToUpdate: [CalendarEvent] = []
+
+        for task in tasks {
+            if let calendarEvent = task.calendarEvent {
+                calendarEventIds.append(calendarEvent.id)
+                calendarEventsToUpdate.append(calendarEvent)
+                print("[TASK_TYPE_COLOR_CASCADE] - Task '\(task.taskType?.display ?? "Unknown")' has calendar event: \(calendarEvent.id)")
+            }
         }
 
-        dataController.syncManager?.triggerBackgroundSync()
+        guard !calendarEventIds.isEmpty else {
+            print("[TASK_TYPE_COLOR_CASCADE] No calendar events to update")
+            return
+        }
+
+        print("[TASK_TYPE_COLOR_CASCADE] 📡 Updating \(calendarEventIds.count) calendar events in Bubble...")
+
+        // Update each calendar event in Bubble
+        for eventId in calendarEventIds {
+            do {
+                let colorWithHash = newColor.hasPrefix("#") ? newColor : "#\(newColor)"
+
+                try await dataController.apiService.updateCalendarEvent(
+                    id: eventId,
+                    updates: [BubbleFields.CalendarEvent.color: colorWithHash]
+                )
+                print("[TASK_TYPE_COLOR_CASCADE] ✅ Updated calendar event: \(eventId)")
+            } catch {
+                print("[TASK_TYPE_COLOR_CASCADE] ⚠️ Failed to update calendar event \(eventId): \(error)")
+            }
+        }
+
+        // Update local calendar events
+        await MainActor.run {
+            for calendarEvent in calendarEventsToUpdate {
+                calendarEvent.color = newColor
+                calendarEvent.needsSync = false
+            }
+            try? modelContext.save()
+            print("[TASK_TYPE_COLOR_CASCADE] ✅ Updated \(calendarEventsToUpdate.count) local calendar events")
+        }
     }
 }
 

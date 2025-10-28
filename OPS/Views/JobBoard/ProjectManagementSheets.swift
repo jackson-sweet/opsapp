@@ -116,33 +116,40 @@ struct ProjectStatusChangeSheet: View {
         isSaving = true
 
         Task {
-            await MainActor.run {
-                project.status = selectedStatus
-                project.needsSync = true
+            do {
+                // Update project status using centralized function
+                try await dataController.updateProjectStatus(project: project, to: selectedStatus)
 
+                // Update task statuses using centralized function
                 if project.eventType == .task {
                     for task in project.tasks {
+                        var newTaskStatus: TaskStatus? = nil
+
                         switch selectedStatus {
                         case .completed, .closed:
                             if task.status != .completed && task.status != .cancelled {
-                                task.status = .completed
-                                task.needsSync = true
+                                newTaskStatus = .completed
                             }
                         case .inProgress:
                             if task.status == .scheduled {
-                                task.status = .inProgress
-                                task.needsSync = true
+                                newTaskStatus = .inProgress
                             }
                         default:
                             break
                         }
+
+                        // Use centralized function for each task status change
+                        if let newStatus = newTaskStatus {
+                            try await dataController.updateTaskStatus(task: task, to: newStatus)
+                        }
                     }
                 }
 
-                do {
-                    try modelContext.save()
+                await MainActor.run {
                     dismiss()
-                } catch {
+                }
+            } catch {
+                await MainActor.run {
                     isSaving = false
                 }
             }
@@ -373,6 +380,10 @@ struct SchedulingModeConversionSheet: View {
                     projectEvent.updateProjectEventTypeCache(from: project)
                 } else {
                     // Create new calendar event if needed
+                    // Get company's default project color
+                    let company = dataController.getCompany(id: project.companyId)
+                    let projectColor = company?.defaultProjectColor ?? "#9CA3AF"  // Light grey fallback
+
                     let newEvent = CalendarEvent(
                         id: UUID().uuidString,
                         projectId: project.id,
@@ -380,7 +391,7 @@ struct SchedulingModeConversionSheet: View {
                         title: project.title,
                         startDate: project.startDate ?? Date(),
                         endDate: project.endDate ?? Date().addingTimeInterval(86400),
-                        color: "#59779F", // Default project color
+                        color: projectColor,
                         type: .project,
                         active: true
                     )
@@ -741,33 +752,18 @@ struct ProjectTeamChangeView: View {
 
         Task {
             do {
-                await MainActor.run {
-                    project.setTeamMemberIds(Array(selectedMemberIds))
-                    project.needsSync = true
+                // Update project team using centralized function
+                try await dataController.updateProjectTeamMembers(project: project, memberIds: Array(selectedMemberIds))
 
-                    if project.eventType == .task {
-                        for task in project.tasks {
-                            task.setTeamMemberIds(Array(selectedMemberIds))
-                            task.needsSync = true
-                        }
+                // If task-based scheduling, update all task teams
+                if project.eventType == .task {
+                    for task in project.tasks {
+                        try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedMemberIds))
                     }
                 }
 
-                try await dataController.apiService.updateProjectTeamMembers(
-                    projectId: project.id,
-                    teamMemberIds: Array(selectedMemberIds)
-                )
-
                 await MainActor.run {
-                    project.needsSync = false
-                    project.lastSyncedAt = Date()
-
-                    do {
-                        try modelContext.save()
-                        dismiss()
-                    } catch {
-                        isSaving = false
-                    }
+                    dismiss()
                 }
             } catch {
                 await MainActor.run {
@@ -1015,210 +1011,41 @@ struct TaskTeamChangeView: View {
 
         Task {
             do {
-                let currentTaskId = task.id
-                let calendarEventId = task.calendarEvent?.id
-                var projectTeamIds: [String] = []
+                // Update task team using centralized function
+                try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedMemberIds))
 
-                await MainActor.run {
-                    task.setTeamMemberIds(Array(selectedMemberIds))
-
-                    let userDescriptor = FetchDescriptor<User>(
-                        predicate: #Predicate<User> { user in
-                            selectedMemberIds.contains(user.id)
-                        }
-                    )
-
-                    if let users = try? modelContext.fetch(userDescriptor) {
-                        task.teamMembers = users
-                    }
-
-                    task.needsSync = true
-
-                    if let calendarEvent = task.calendarEvent {
-                        calendarEvent.setTeamMemberIds(Array(selectedMemberIds))
-                        if let users = try? modelContext.fetch(userDescriptor) {
-                            calendarEvent.teamMembers = users
-                        }
-                        calendarEvent.needsSync = true
-                    }
-
-                    updateProjectTeamFromAllTasks()
-                    projectTeamIds = project.getTeamMemberIds()
-
-                    do {
-                        try modelContext.save()
-                    } catch {
-                        print("[TASK_TEAM_CHANGE] ❌ Error saving: \(error)")
-                    }
+                // Update calendar event team if exists
+                if let calendarEvent = task.calendarEvent {
+                    try await dataController.updateCalendarEventTeamMembers(event: calendarEvent, memberIds: Array(selectedMemberIds))
                 }
 
-                try await dataController.apiService.updateTaskTeamMembers(
-                    id: currentTaskId,
-                    teamMemberIds: Array(selectedMemberIds)
-                )
-
-                if let eventId = calendarEventId {
-                    try await dataController.apiService.updateCalendarEventTeamMembers(
-                        id: eventId,
-                        teamMemberIds: Array(selectedMemberIds)
-                    )
-                }
-
-                try await dataController.apiService.updateProjectTeamMembers(
-                    projectId: project.id,
-                    teamMemberIds: projectTeamIds
-                )
-
+                // Calculate project team from all tasks
                 await MainActor.run {
-                    onComplete()
+                    var allTeamMemberIds = Set<String>()
+                    for projectTask in project.tasks {
+                        allTeamMemberIds.formUnion(projectTask.getTeamMemberIds())
+                    }
+                    let projectTeamIds = Array(allTeamMemberIds)
+
+                    // Update project team using centralized function
+                    Task {
+                        do {
+                            try await dataController.updateProjectTeamMembers(project: project, memberIds: projectTeamIds)
+                            await MainActor.run {
+                                onComplete()
+                            }
+                        } catch {
+                            await MainActor.run {
+                                isSaving = false
+                            }
+                        }
+                    }
                 }
             } catch {
                 await MainActor.run {
                     isSaving = false
                 }
             }
-        }
-    }
-
-    private func updateProjectTeamFromAllTasks() {
-        var allTeamMemberIds = Set<String>()
-
-        for task in project.tasks {
-            allTeamMemberIds.formUnion(task.getTeamMemberIds())
-        }
-
-        project.setTeamMemberIds(Array(allTeamMemberIds))
-        project.needsSync = true
-    }
-}
-
-// MARK: - Project Deletion Confirmation
-struct ProjectDeletionConfirmation: View {
-    let project: Project
-    @State private var isDeleting = false
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var dataController: DataController
-
-    var body: some View {
-        NavigationView {
-            ZStack {
-                OPSStyle.Colors.background.ignoresSafeArea()
-
-                VStack(spacing: OPSStyle.Layout.spacing4) {
-                    // Warning Icon
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(OPSStyle.Colors.errorStatus)
-
-                    // Title
-                    Text("DELETE PROJECT")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    // Project Info
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(project.title)
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        Text(project.effectiveClientName)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-
-                    // Warning Message
-                    if !project.tasks.isEmpty {
-                        HStack {
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(OPSStyle.Colors.warningStatus)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("WARNING")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.warningStatus)
-
-                                Text("This will permanently delete \(project.tasks.count) task\(project.tasks.count == 1 ? "" : "s") associated with this project")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-
-                            Spacer()
-                        }
-                        .padding(16)
-                        .background(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
-                                .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
-                        )
-                    }
-
-                    Spacer()
-
-                    // Buttons
-                    HStack(spacing: 16) {
-                        Button("CANCEL") {
-                            dismiss()
-                        }
-                        .buttonStyle(JBSecondaryButtonStyle())
-
-                        Button(action: deleteProject) {
-                            if isDeleting {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
-                                Text("DELETE")
-                            }
-                        }
-                        .buttonStyle(DestructiveButtonStyle())
-                        .disabled(isDeleting)
-                    }
-                }
-                .padding(OPSStyle.Layout.spacing3)
-            }
-            .navigationTitle("CONFIRM DELETION")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-
-    func deleteProject() {
-        isDeleting = true
-
-        Task {
-            await MainActor.run {
-                // Delete associated calendar event
-                if let event = project.primaryCalendarEvent {
-                    modelContext.delete(event)
-                }
-
-                // Delete associated tasks
-                for task in project.tasks {
-                    // Delete task calendar events
-                    if let event = task.calendarEvent {
-                        modelContext.delete(event)
-                    }
-                    modelContext.delete(task)
-                }
-
-                // Delete project
-                modelContext.delete(project)
-
-                do {
-                    try modelContext.save()
-                } catch {
-                    print("Error deleting project: \(error)")
-                }
-
-                dismiss()
-            }
-
-            // Trigger sync to update backend
-            dataController.syncManager?.triggerBackgroundSync()
         }
     }
 }

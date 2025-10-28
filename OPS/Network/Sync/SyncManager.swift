@@ -1410,10 +1410,11 @@ class SyncManager {
         
         // Get IDs of all remote projects
         let remoteProjectIds = Set(remoteProjects.map { $0.id })
-        
-        // Remove local projects that are no longer in the remote list
-        // This handles when users are unassigned from projects
-        await removeUnassignedProjects(keepingIds: remoteProjectIds, for: currentUser)
+
+        // NOTE: We don't remove unassigned projects when using date-range filtering
+        // because old projects outside the date range won't be returned by the API
+        // but they should still exist locally for historical reference
+        // await removeUnassignedProjects(keepingIds: remoteProjectIds, for: currentUser)
         
         // Process batches to avoid memory pressure
         for batch in remoteProjects.chunked(into: 20) {
@@ -1459,9 +1460,24 @@ class SyncManager {
             
             if !projectsToRemove.isEmpty {
                 for project in projectsToRemove {
+                    // IMPORTANT: Delete related calendar events first to avoid orphaned references
+                    // Delete the project's primary calendar event
+                    if let event = project.primaryCalendarEvent {
+                        modelContext.delete(event)
+                    }
+
+                    // Delete all task calendar events
+                    for task in project.tasks {
+                        if let event = task.calendarEvent {
+                            modelContext.delete(event)
+                        }
+                        modelContext.delete(task)
+                    }
+
+                    // Now delete the project
                     modelContext.delete(project)
                 }
-                
+
                 // Save the deletions
                 try modelContext.save()
             } else {
@@ -1726,9 +1742,8 @@ class SyncManager {
         // Update project title and basic info
         localProject.title = remoteDTO.projectName
         
-        // Update client name directly
-        localProject.clientName = remoteDTO.clientName ?? "Unknown Client"
-        
+        // Client name comes from client relationship
+
         // Update address and location
         if let bubbleAddress = remoteDTO.address {
             localProject.address = bubbleAddress.formattedAddress
@@ -1857,7 +1872,7 @@ class SyncManager {
         let companyDescriptor = FetchDescriptor<Company>(
             predicate: #Predicate<Company> { $0.id == companyId }
         )
-        let defaultColor = try modelContext.fetch(companyDescriptor).first?.defaultProjectColor ?? "#59779F"
+        let defaultColor = try modelContext.fetch(companyDescriptor).first?.defaultProjectColor ?? "#9CA3AF"  // Light grey fallback
         
         // Get local tasks
         let descriptor = FetchDescriptor<ProjectTask>(
@@ -2005,7 +2020,7 @@ class SyncManager {
         let companyDescriptor = FetchDescriptor<Company>(
             predicate: #Predicate<Company> { $0.id == companyId }
         )
-        let defaultColor = try modelContext.fetch(companyDescriptor).first?.defaultProjectColor ?? "#59779F"
+        let defaultColor = try modelContext.fetch(companyDescriptor).first?.defaultProjectColor ?? "#9CA3AF"  // Light grey fallback
         
         // Get local tasks
         let descriptor = FetchDescriptor<ProjectTask>(
@@ -3307,7 +3322,7 @@ class SyncManager {
         let companyDescriptor = FetchDescriptor<Company>(
             predicate: #Predicate<Company> { $0.id == companyId }
         )
-        let defaultColor = try modelContext.fetch(companyDescriptor).first?.defaultProjectColor ?? "#59779F"
+        let defaultColor = try modelContext.fetch(companyDescriptor).first?.defaultProjectColor ?? "#9CA3AF"  // Light grey fallback
 
         let dateFormatter = ISO8601DateFormatter()
         dateFormatter.formatOptions = [.withInternetDateTime]
@@ -3324,7 +3339,7 @@ class SyncManager {
             endDate: dateFormatter.string(from: endDate),
             startDate: dateFormatter.string(from: startDate),
             teamMembers: project.teamMembers.map { $0.id },
-            title: project.clientName,
+            title: project.effectiveClientName.capitalizedWords(),
             type: "Project",
             active: true,
             createdDate: nil,
@@ -3339,7 +3354,7 @@ class SyncManager {
                 id: createdEvent.id,
                 projectId: project.id,
                 companyId: project.companyId,
-                title: project.clientName,
+                title: project.effectiveClientName,
                 startDate: startDate,
                 endDate: endDate,
                 color: defaultColor,

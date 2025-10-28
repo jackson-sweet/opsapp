@@ -235,7 +235,7 @@ struct TaskTestView: View {
             status: .accepted
         )
         project.companyId = companyId
-        project.clientName = "Test Client"
+        // Client name will be set via Client relationship
         project.address = "123 Test Street"
         project.startDate = Date()
         project.endDate = Calendar.current.date(byAdding: .day, value: 7, to: Date())

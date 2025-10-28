@@ -109,7 +109,7 @@ final class CalendarEvent {
     /// Get subtitle for display
     var subtitle: String {
         if let project = project {
-            return project.clientName
+            return project.effectiveClientName
         }
         return ""
     }

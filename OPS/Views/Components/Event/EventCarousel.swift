@@ -314,25 +314,17 @@ struct EventCardView: View {
     }
     
     private func startTask(_ task: ProjectTask, project: Project) {
-        // Update task status to in progress
+        // Update task status to in progress using centralized function
         if task.status != .inProgress {
-            task.status = .inProgress
-            task.needsSync = true
-            
-            // Save to model context
-            if let modelContext = dataController.modelContext {
-                try? modelContext.save()
-            }
-            
-            // Sync to API
             Task {
                 do {
-                    try await dataController.syncManager?.updateTaskStatus(id: task.id, status: "in_progress")
+                    try await dataController.updateTaskStatus(task: task, to: .inProgress)
                 } catch {
+                    print("[EVENT_CAROUSEL] ❌ Failed to update task status: \(error)")
                 }
             }
         }
-        
+
         // Post notification to start routing to task location
         NotificationCenter.default.post(
             name: Notification.Name("StartTaskNavigation"),

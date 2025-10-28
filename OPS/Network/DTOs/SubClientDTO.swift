@@ -53,11 +53,11 @@ struct SubClientDTO: Codable {
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case name = "Name"
-        case title = "Title"
-        case emailAddress = "Email Address"
-        case phoneNumber = "Phone Number"
-        case address = "Address"
+        case name = "name"
+        case title = "title"
+        case emailAddress = "emailAddress"
+        case phoneNumber = "phoneNumber"
+        case address = "address"
     }
     
     /// Convert DTO to SubClient model

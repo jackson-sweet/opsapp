@@ -526,7 +526,6 @@ struct TaskFormSheet: View {
             }
 
             var savedOffline = false
-            let networkStartTime = Date()
 
             do {
                 try await Task.timeout(seconds: 5) {
@@ -582,19 +581,13 @@ struct TaskFormSheet: View {
                             modifiedDate: nil
                         )
 
+                        // Create and link calendar event (automatically links to task based on type)
                         let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
                         calendarEvent.id = createdEvent.id
                         task.calendarEventId = createdEvent.id
                         calendarEvent.needsSync = false
                         calendarEvent.lastSyncedAt = Date()
-                        print("[TASK_FORM] ✅ Calendar event created with ID: \(createdEvent.id)")
-
-                        print("[TASK_FORM] 🔗 Linking calendar event to task on Bubble...")
-                        try await dataController.apiService.updateTask(
-                            id: task.id,
-                            updates: [BubbleFields.Task.calendarEventId: createdEvent.id]
-                        )
-                        print("[TASK_FORM] ✅ Task updated with calendar event ID on Bubble")
+                        print("[TASK_FORM] ✅ Calendar event created and linked with ID: \(createdEvent.id)")
                     }
 
                     try modelContext.save()
@@ -615,25 +608,50 @@ struct TaskFormSheet: View {
                             endDate: project.endDate
                         )
                         print("[TASK_FORM] ✅ Project dates update complete")
+
+                        print("[TASK_FORM] 👥 Updating project team members from tasks...")
+                        await MainActor.run {
+                            project.updateTeamMembersFromTasks(in: modelContext)
+                            try? modelContext.save()
+                        }
+
+                        let teamMemberIds = project.getTeamMemberIds()
+                        print("[TASK_FORM] 🔄 Syncing project team members to Bubble...")
+                        print("[TASK_FORM] Team member IDs: \(teamMemberIds)")
+                        try await dataController.apiService.updateProjectTeamMembers(
+                            projectId: project.id,
+                            teamMemberIds: teamMemberIds
+                        )
+                        print("[TASK_FORM] ✅ Project team members update complete")
                     }
                 }
 
             } catch is CancellationError {
-                let timeElapsed = Date().timeIntervalSince(networkStartTime)
-                if timeElapsed >= 4.5 {
-                    savedOffline = true
-                    print("[TASK_FORM] ⏱️ Network timeout - task saved offline")
-                } else {
-                    print("[TASK_FORM] ❌ Network failed quickly (\(String(format: "%.1f", timeElapsed))s) - treating as error")
+                // Timeout error - network is slow or unavailable
+                savedOffline = true
+                print("[TASK_FORM] ⏱️ Network timeout - task saved offline")
+            } catch let error as URLError {
+                // Network-related errors (no connection, timeout, etc.)
+                savedOffline = true
+                print("[TASK_FORM] ❌ Network error - task saved offline: \(error)")
+            } catch let error as APIError {
+                // API errors (validation, limits, server errors) - show actual error message
+                print("[TASK_FORM] ❌ API error during task creation: \(error)")
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    showingError = true
+                    isSaving = false
                 }
+                return
             } catch {
-                let timeElapsed = Date().timeIntervalSince(networkStartTime)
-                if timeElapsed >= 4.5 {
-                    savedOffline = true
-                    print("[TASK_FORM] ❌ Network timeout error - task saved offline: \(error)")
-                } else {
-                    print("[TASK_FORM] ❌ Network error (\(String(format: "%.1f", timeElapsed))s): \(error)")
+                // Other unexpected errors
+                print("[TASK_FORM] ❌ Unexpected error during task creation: \(error)")
+                await MainActor.run {
+                    errorMessage = "Failed to create task: \(error.localizedDescription)"
+                    showingError = true
+                    isSaving = false
                 }
+                return
             }
 
             await MainActor.run {

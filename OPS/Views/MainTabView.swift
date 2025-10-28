@@ -117,9 +117,18 @@ struct MainTabView: View {
             .transition(slideTransition)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
             
-            // Image sync progress bar at top
-            VStack {
+            // Image sync progress bar and sync status at top
+            VStack(spacing: 8) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
+
+                // Sync status indicator
+                HStack {
+                    Spacer()
+                    SyncStatusIndicator()
+                        .environmentObject(dataController)
+                        .padding(.trailing, 16)
+                }
+
                 Spacer()
             }
             .ignoresSafeArea(.all, edges: .bottom)

@@ -104,63 +104,63 @@ struct CompanyDTO: Codable {
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case companyName = "Company Name"
-        case companyID = "company id"
-        case companyDescription = "Company Description"
-        case location = "Location"
-        case logo = "Logo"
-        case projects = "Projects"
-        case teams = "Teams"
-        case openHour = "Open Hour"
-        case closeHour = "Close Hour"
+        case companyName = "companyName"
+        case companyID = "companyId"
+        case companyDescription = "companyDescription"
+        case location = "location"
+        case logo = "logo"
+        case projects = "projects"
+        case teams = "teams"
+        case openHour = "openHour"
+        case closeHour = "closeHour"
         case phone = "phone"
-        case officeEmail = "Office Email"
-        case industry = "Industry"
-        case companySize = "company_size"
-        case companyAge = "company_age"
-        case employees = "Employees"
-        case admin = "Admin"
+        case officeEmail = "officeEmail"
+        case industry = "industry"
+        case companySize = "companySize"
+        case companyAge = "companyAge"
+        case employees = "employees"
+        case admin = "admin"
         case website = "website"
-        
+
         // Project collections
-        case activeProjects = "Active Projects"
-        case completedProjects = "Completed Projects"
-        case lateProjects = "Late Projects"
-        
+        case activeProjects = "activeProjects"
+        case completedProjects = "completedProjects"
+        case lateProjects = "lateProjects"
+
         // Calendar and Tasks
-        case calendarEventsList = "Calendar.EventsList"
+        case calendarEventsList = "calendarEventsList"
         case defaultProjectColor = "defaultProjectColor"
-        case taskTypes = "Task Types"
-        
+        case taskTypes = "taskTypes"
+
         // Client management
-        case clients = "Client"
-        case estimates = "Estimates"
-        case invoices = "Invoice"
-        
+        case clients = "clients"
+        case estimates = "estimates"
+        case invoices = "invoices"
+
         // Financial
-        case receivables = "Receivables"
+        case receivables = "receivables"
         case billingPeriodEnd = "billingPeriodEnd"
-        
+
         // QuickBooks integration
-        case qbConnected = "QB Connected"
-        case qbAccessToken = "qb.accesstoken"
-        case qbAuthBasic = "qb.authbasic"
-        case qbCode = "qb.code"
-        case qbCompanyId = "qb.companyid"
-        case qbIdToken = "qb.idtoken"
-        case qbRefreshToken = "qb.refreshtoken"
-        
+        case qbConnected = "qbConnected"
+        case qbAccessToken = "qbAccessToken"
+        case qbAuthBasic = "qbAuthBasic"
+        case qbCode = "qbCode"
+        case qbCompanyId = "qbCompanyId"
+        case qbIdToken = "qbIdToken"
+        case qbRefreshToken = "qbRefreshToken"
+
         // Security
-        case securityClearances = "Security Clearances"
-        
+        case securityClearances = "securityClearances"
+
         // Referral tracking
-        case referralMethod = "Referral Method"
-        case referralMethodOther = "Referral Method Other"
-        
+        case referralMethod = "referralMethod"
+        case referralMethodOther = "referralMethodOther"
+
         // User management
-        case accountHolder = "AccountHolder"
-        case registered = "Registered"
-        case visit = "Visit"
+        case accountHolder = "accountHolder"
+        case registered = "registered"
+        case visit = "visit"
         
         // Website
         case hasWebsite = "hasWebsite"

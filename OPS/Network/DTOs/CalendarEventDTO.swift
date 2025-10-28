@@ -30,19 +30,19 @@ struct CalendarEventDTO: Codable {
     // Coding keys to match Bubble field names
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case color = "Color"
+        case color = "color"
         case companyId = "companyId"  // lowercase 'c'
         case projectId = "projectId"  // lowercase 'p'
         case taskId = "taskId"  // lowercase 't'
-        case duration = "Duration"
-        case endDate = "End Date"
-        case startDate = "Start Date"
-        case teamMembers = "Team Members"
-        case title = "Title"
-        case type = "Type"
+        case duration = "duration"
+        case endDate = "endDate"
+        case startDate = "startDate"
+        case teamMembers = "teamMembers"
+        case title = "title"
+        case type = "eventType"  // Renamed from 'type' to 'eventType' in Bubble
         case active = "active"
-        case createdDate = "Created Date"
-        case modifiedDate = "Modified Date"
+        case createdDate = "Created Date"  // Bubble default field
+        case modifiedDate = "Modified Date"  // Bubble default field
     }
     
     /// Convert DTO to SwiftData model

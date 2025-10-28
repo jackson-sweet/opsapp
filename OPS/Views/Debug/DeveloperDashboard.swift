@@ -15,10 +15,12 @@ struct DeveloperDashboard: View {
     
     enum DeveloperTool: String, CaseIterable, Identifiable {
         var id: String { self.rawValue }
-        
+
         case taskTest = "Task Test"
         case taskList = "Task List"
         case calendarEvents = "Calendar Events"
+        case relinkCalendarEvents = "Re-link Events"
+        case relinkTasksToProjects = "Re-link Tasks"
         case apiCalls = "API Calls"
         case clearData = "Clear Data"
         case taskTypes = "Task Types"
@@ -28,6 +30,8 @@ struct DeveloperDashboard: View {
             case .taskTest: return "hammer.circle"
             case .taskList: return "list.bullet.rectangle"
             case .calendarEvents: return "calendar.badge.clock"
+            case .relinkCalendarEvents: return "link.circle"
+            case .relinkTasksToProjects: return "arrow.triangle.branch"
             case .apiCalls: return "network"
             case .clearData: return "trash.circle"
             case .taskTypes: return "square.grid.2x2"
@@ -39,6 +43,8 @@ struct DeveloperDashboard: View {
             case .taskTest: return "Test task-based scheduling models"
             case .taskList: return "View all tasks with full details"
             case .calendarEvents: return "View and sync calendar events"
+            case .relinkCalendarEvents: return "Re-link all calendar events to tasks/projects"
+            case .relinkTasksToProjects: return "Re-link all tasks to their parent projects"
             case .apiCalls: return "Test API endpoints and responses"
             case .clearData: return "Clear local database data"
             case .taskTypes: return "Manage task type definitions"
@@ -50,6 +56,8 @@ struct DeveloperDashboard: View {
             case .taskTest: return OPSStyle.Colors.primaryAccent
             case .taskList: return OPSStyle.Colors.successStatus
             case .calendarEvents: return OPSStyle.Colors.warningStatus
+            case .relinkCalendarEvents: return Color.cyan
+            case .relinkTasksToProjects: return Color.green
             case .apiCalls: return Color.purple
             case .clearData: return OPSStyle.Colors.errorStatus
             case .taskTypes: return Color.orange
@@ -120,15 +128,23 @@ struct DeveloperDashboard: View {
                                 ToolCard(tool: .taskList) {
                                     selectedTool = .taskList
                                 }
-                                
+
                                 ToolCard(tool: .calendarEvents) {
                                     selectedTool = .calendarEvents
                                 }
-                                
+
+                                ToolCard(tool: .relinkCalendarEvents) {
+                                    selectedTool = .relinkCalendarEvents
+                                }
+
+                                ToolCard(tool: .relinkTasksToProjects) {
+                                    selectedTool = .relinkTasksToProjects
+                                }
+
                                 ToolCard(tool: .taskTypes) {
                                     selectedTool = .taskTypes
                                 }
-                                
+
                                 ToolCard(tool: .clearData) {
                                     selectedTool = .clearData
                                 }
@@ -171,6 +187,12 @@ struct DeveloperDashboard: View {
                         .environmentObject(dataController)
                 case .calendarEvents:
                     CalendarEventsDebugView()
+                        .environmentObject(dataController)
+                case .relinkCalendarEvents:
+                    RelinkCalendarEventsView()
+                        .environmentObject(dataController)
+                case .relinkTasksToProjects:
+                    RelinkTasksToProjectsView()
                         .environmentObject(dataController)
                 case .apiCalls:
                     APICallsDebugView()

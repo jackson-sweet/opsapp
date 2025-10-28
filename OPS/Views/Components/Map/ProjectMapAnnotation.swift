@@ -19,7 +19,7 @@ struct OldProjectMarkerPopup: View {
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
             
-            Text(project.clientName)
+            Text(project.effectiveClientName)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             

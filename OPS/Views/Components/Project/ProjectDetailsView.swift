@@ -12,7 +12,7 @@ import CoreLocation
 // Import team member components
 
 struct ProjectDetailsView: View {
-    let project: Project
+    @Bindable var project: Project
     var isEditMode: Bool = false
     @Environment(\.dismiss) var dismiss
     @State private var noteText: String
@@ -45,7 +45,7 @@ struct ProjectDetailsView: View {
 
     // Initialize with project's existing notes
     init(project: Project, isEditMode: Bool = false) {
-        self.project = project
+        self._project = Bindable(wrappedValue: project)
         self.isEditMode = isEditMode
         let notes = project.notes ?? ""
         self._noteText = State(initialValue: notes)
@@ -64,7 +64,7 @@ struct ProjectDetailsView: View {
             let projectDict: [String: Any] = [
                 "id": project.id,
                 "title": project.title,
-                "clientName": project.clientName,
+                "clientName": project.effectiveClientName,
                 "address": project.address ?? "",
                 "status": project.status.rawValue,
                 "teamMemberIdsString": project.teamMemberIdsString,
@@ -119,6 +119,9 @@ struct ProjectDetailsView: View {
                     currentEndDate: project.endDate,
                     onScheduleUpdate: { startDate, endDate in
                         handleScheduleUpdate(startDate: startDate, endDate: endDate)
+                    },
+                    onClearDates: {
+                        handleClearDates()
                     }
                 )
                 .environmentObject(dataController)
@@ -347,34 +350,63 @@ struct ProjectDetailsView: View {
 
     private func handleScheduleUpdate(startDate: Date, endDate: Date) {
         print("🔄 handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
-        print("🔄 Project before update - startDate: \(project.startDate), endDate: \(project.endDate)")
 
-        // Update the project dates
-        project.startDate = startDate
-        project.endDate = endDate
-        project.needsSync = true
+        // Update project dates using centralized function
+        Task {
+            do {
+                try await dataController.updateProjectDates(project: project, startDate: startDate, endDate: endDate)
+                print("✅ Project dates updated and synced")
 
-        print("🔄 Project after update - startDate: \(project.startDate), endDate: \(project.endDate)")
-
-        // Update associated calendar events
-        updateCalendarEventsForProject(startDate: startDate, endDate: endDate)
-
-        // Save to database
-        do {
-            try dataController.modelContext?.save()
-            print("✅ Successfully saved schedule update to modelContext")
-
-            // Immediately sync calendar event to server to prevent reversion
-            if let projectEvent = project.primaryCalendarEvent {
-                Task {
-                    await syncCalendarEventToServer(projectEvent)
+                // Update associated calendar event if exists
+                if let projectEvent = project.primaryCalendarEvent {
+                    try await dataController.updateCalendarEvent(event: projectEvent, startDate: startDate, endDate: endDate)
+                    print("✅ Calendar event updated and synced")
                 }
+            } catch {
+                print("❌ Failed to sync schedule update: \(error)")
             }
-        } catch {
-            print("❌ Failed to save schedule update: \(error)")
         }
+    }
 
-        // Don't show notification - haptic feedback is enough
+    private func handleClearDates() {
+        print("🗑️ handleClearDates called - Clearing project dates")
+
+        Task {
+            do {
+                // Clear project dates using centralized function
+                try await dataController.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
+                print("✅ Project dates cleared and synced")
+
+                // Clear calendar event dates if exists
+                if let projectEvent = project.primaryCalendarEvent {
+                    // Use performSyncedOperation for calendar event clearing
+                    try await dataController.performSyncedOperation(
+                        item: projectEvent,
+                        operationName: "CLEAR_CALENDAR_EVENT_DATES",
+                        itemDescription: "Clearing calendar event \(projectEvent.id) dates",
+                        localUpdate: {
+                            projectEvent.startDate = nil
+                            projectEvent.endDate = nil
+                            projectEvent.duration = 0
+                            projectEvent.needsSync = true
+                        },
+                        syncToAPI: {
+                            let updates: [String: Any] = [
+                                BubbleFields.CalendarEvent.startDate: NSNull(),
+                                BubbleFields.CalendarEvent.endDate: NSNull(),
+                                BubbleFields.CalendarEvent.duration: 0
+                            ]
+                            try await self.dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: updates)
+                            projectEvent.needsSync = false
+                            projectEvent.lastSyncedAt = Date()
+                        }
+                    )
+                    print("✅ Calendar event dates cleared and synced")
+                }
+            } catch {
+                print("❌ Failed to clear dates: \(error)")
+            }
+        }
     }
 
     private func updateCalendarEventsForProject(startDate: Date, endDate: Date) {
@@ -416,9 +448,9 @@ struct ProjectDetailsView: View {
             print("📅 Formatted dates - Start: \(startDateString), End: \(endDateString)")
 
             let updates: [String: Any] = [
-                "Start Date": startDateString,
-                "End Date": endDateString,
-                "Duration": calendarEvent.duration
+                BubbleFields.CalendarEvent.startDate: startDateString,
+                BubbleFields.CalendarEvent.endDate: endDateString,
+                BubbleFields.CalendarEvent.duration: calendarEvent.duration
             ]
 
             try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
@@ -443,9 +475,14 @@ struct ProjectDetailsView: View {
 
         let duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
 
+        // Get company's default project color
+        let company = dataController.getCompany(id: project.companyId)
+        let projectColor = company?.defaultProjectColor ?? "#9CA3AF"  // Light grey fallback
+        print("[CREATE_CALENDAR_EVENT] Using project color: \(projectColor)")
+
         let eventDTO = CalendarEventDTO(
             id: UUID().uuidString,
-            color: "#59779F",
+            color: projectColor,
             companyId: project.companyId,
             projectId: project.id,
             taskId: nil,
@@ -453,7 +490,7 @@ struct ProjectDetailsView: View {
             endDate: dateFormatter.string(from: endDate),
             startDate: dateFormatter.string(from: startDate),
             teamMembers: project.teamMembers.map { $0.id },
-            title: project.title,
+            title: project.effectiveClientName.capitalizedWords(),
             type: "Project",
             active: true,
             createdDate: nil,
@@ -461,7 +498,9 @@ struct ProjectDetailsView: View {
         )
 
         do {
+            // Create event and link to project and company automatically based on type
             let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
+            print("[CREATE_CALENDAR_EVENT] ✅ Calendar event created with ID: \(createdEvent.id)")
 
             await MainActor.run {
                 if let calendarEvent = createdEvent.toModel() {
@@ -472,11 +511,20 @@ struct ProjectDetailsView: View {
                     project.primaryCalendarEvent = calendarEvent
 
                     try? dataController.modelContext?.save()
-                    print("[CREATE_CALENDAR_EVENT] ✅ Calendar event created and linked to project")
+                    print("[CREATE_CALENDAR_EVENT] ✅ Calendar event linked to project locally")
                 }
             }
+
+            // Update project dates in Bubble
+            print("[CREATE_CALENDAR_EVENT] 📡 Updating project dates in Bubble...")
+            try await dataController.apiService.updateProjectDates(
+                projectId: project.id,
+                startDate: startDate,
+                endDate: endDate
+            )
+            print("[CREATE_CALENDAR_EVENT] ✅ Project dates updated in Bubble")
         } catch {
-            print("[CREATE_CALENDAR_EVENT] ❌ Failed to create calendar event: \(error)")
+            print("[CREATE_CALENDAR_EVENT] ❌ Failed to create calendar event or update project: \(error)")
         }
     }
 
@@ -1274,17 +1322,9 @@ struct ProjectDetailsView: View {
             let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
 
             for task in incompleteTasks {
-                await MainActor.run {
-                    task.status = .completed
-                    task.needsSync = true
-                }
-
                 do {
-                    try await dataController.apiService.updateTaskStatus(id: task.id, status: "Completed")
-                    await MainActor.run {
-                        task.needsSync = false
-                        task.lastSyncedAt = Date()
-                    }
+                    // Use centralized status update function
+                    try await dataController.updateTaskStatus(task: task, to: .completed)
                     print("[PROJECT_COMPLETE] ✅ Task \(task.id) marked complete")
                 } catch {
                     print("[PROJECT_COMPLETE] ❌ Failed to sync task \(task.id): \(error)")
@@ -1307,24 +1347,32 @@ struct ProjectDetailsView: View {
     }
 
     private func deleteProject() {
-        Task {
+        // Capture values needed for deletion to avoid accessing the object after it's deleted
+        let projectId = project.id
+        let projectTitle = project.title
+        let controller = dataController
+
+        // Dismiss immediately to prevent view from accessing deleted object
+        dismiss()
+
+        // Perform deletion in detached task to avoid SwiftData invalidation issues
+        Task.detached {
             do {
-                try await dataController.apiService.deleteProject(id: project.id)
+                print("[PROJECT_DETAILS] 🗑️ Starting project deletion for: \(projectTitle)")
 
+                // We need to get a fresh reference to the project on the main actor
                 await MainActor.run {
-                    if let modelContext = dataController.modelContext {
-                        modelContext.delete(project)
-                        try? modelContext.save()
+                    Task {
+                        do {
+                            // Fetch the project again to ensure we have a valid reference
+                            if let projectToDelete = controller.getProject(id: projectId) {
+                                try await controller.deleteProject(projectToDelete)
+                                print("[PROJECT_DETAILS] ✅ Project deleted successfully")
+                            }
+                        } catch {
+                            print("[PROJECT_DETAILS] ❌ Failed to delete project: \(error)")
+                        }
                     }
-                    dismiss()
-                }
-
-                print("[PROJECT_DETAILS] ✅ Project deleted successfully")
-            } catch {
-                print("[PROJECT_DETAILS] ❌ Failed to delete project: \(error)")
-                await MainActor.run {
-                    networkErrorMessage = "Failed to delete project. Please try again."
-                    showingNetworkError = true
                 }
             }
         }
@@ -1341,57 +1389,15 @@ struct ProjectDetailsView: View {
     @State private var notificationTimer: Timer?
     
     private func saveNotes() {
-        // Use the SyncManager to handle both local saving and API synchronization
-        if let syncManager = dataController.syncManager {
-            let success = syncManager.updateProjectNotes(projectId: project.id, notes: noteText)
-            
-            if success {
-                showSaveNotification()
-            } else {
-                
-                // Fallback approach if SyncManager method fails
-                project.notes = noteText
-                project.needsSync = true
-                
-                if let modelContext = dataController.modelContext {
-                    do {
-                        try modelContext.save()
-                        showSaveNotification()
-                    } catch {
-                    }
+        // Use centralized function for immediate sync
+        Task {
+            do {
+                try await dataController.updateProjectNotes(project: project, notes: noteText)
+                await MainActor.run {
+                    showSaveNotification()
                 }
-            }
-        } else {
-            // Fallback if SyncManager is not available
-            project.notes = noteText
-            project.needsSync = true
-            
-            if let modelContext = dataController.modelContext {
-                try? modelContext.save()
-                showSaveNotification()
-                
-                // Also post notes to API if we're online
-                if dataController.isConnected {
-                    Task {
-                        do {
-                            // Call the API endpoint to update notes
-                            try await dataController.apiService.updateProjectNotes(
-                                id: project.id,
-                                notes: noteText
-                            )
-                            
-                            // If successful, mark as synced
-                            await MainActor.run {
-                                project.needsSync = false
-                                project.lastSyncedAt = Date()
-                                try? modelContext.save()
-                            }
-                            
-                        } catch {
-                            // Leave needsSync = true so it will be tried again later
-                        }
-                    }
-                }
+            } catch {
+                print("❌ Failed to save notes: \(error)")
             }
         }
     }
@@ -1570,17 +1576,19 @@ struct ProjectDetailsView: View {
     }
 
     private func saveAddress() {
-        project.address = editedAddress
-        project.needsSync = true
-
-        if let modelContext = dataController.modelContext {
-            try? modelContext.save()
-        }
-
         showingAddressEditor = false
 
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
+
+        // Use centralized function for immediate sync
+        Task {
+            do {
+                try await dataController.updateProjectAddress(project: project, address: editedAddress)
+            } catch {
+                print("❌ Failed to save address: \(error)")
+            }
+        }
     }
 }
 
@@ -1829,7 +1837,7 @@ struct ProjectDetailsView_Previews: PreviewProvider {
         let sampleProject = Project(id: "preview-123", title: "Sample Construction Project", status: .inProgress)
 
         // Set additional properties
-        sampleProject.clientName = "ABC Construction"
+        // Client name comes from client relationship
         sampleProject.address = "123 Main Street, Springfield, IL"
         sampleProject.startDate = Date()
         sampleProject.endDate = Date().addingTimeInterval(60*60*24*30) // 30 days later

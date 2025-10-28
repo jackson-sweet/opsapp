@@ -778,43 +778,85 @@ struct ProjectFormSheet: View {
         var savedOffline = false
 
         do {
-            try await Task.timeout(seconds: 5) {
-                print("[PROJECT_CREATE] Creating project in Bubble...")
-                let bubbleProjectId = try await dataController.apiService.createProject(project)
-                print("[PROJECT_CREATE] ✅ Project created in Bubble with ID: \(bubbleProjectId)")
+            // Create project in Bubble with 5 second timeout
+            // If connection is good, this completes in 1-2 seconds (dialogue shows briefly)
+            // If connection is bad, timeout shows dialogue for full 5 seconds before error
+            print("[PROJECT_CREATE] Creating project in Bubble...")
+            let bubbleProjectId = try await Task.timeout(seconds: 5) {
+                try await dataController.apiService.createProject(project)
+            }
+            print("[PROJECT_CREATE] ✅ Project created in Bubble with ID: \(bubbleProjectId)")
 
-                project.id = bubbleProjectId
-                project.needsSync = false
-                project.lastSyncedAt = Date()
+            project.id = bubbleProjectId
+            project.needsSync = false
+            project.lastSyncedAt = Date()
 
-                print("[PROJECT_CREATE] Linking project to client...")
-                try await dataController.apiService.linkProjectToClient(clientId: client.id, projectId: bubbleProjectId)
-                print("[PROJECT_CREATE] ✅ Project linked to client")
+            await MainActor.run {
+                try? modelContext.save()
+            }
 
-                print("[PROJECT_CREATE] Linking project to company...")
-                try await dataController.apiService.linkProjectToCompany(companyId: companyId, projectId: bubbleProjectId)
-                print("[PROJECT_CREATE] ✅ Project linked to company")
+            // Continue with linking and other operations in background (non-blocking)
+            // Capture values for background task
+            let capturedDataController = dataController
+            let capturedModelContext = modelContext
+            let capturedClientId = client.id
+            let capturedCompanyId = companyId
+            let capturedImages = projectImages
 
-                if !projectImages.isEmpty {
-                    print("[PROJECT_CREATE] Uploading \(projectImages.count) project images...")
-                    let imageUrls = await dataController.imageSyncManager.saveImages(projectImages, for: project)
-                    print("[PROJECT_CREATE] ✅ Uploaded \(imageUrls.count) images")
-                }
+            Task.detached {
+                do {
+                    print("[PROJECT_CREATE] Linking project to client...")
+                    try await capturedDataController.apiService.linkProjectToClient(clientId: capturedClientId, projectId: bubbleProjectId)
+                    print("[PROJECT_CREATE] ✅ Project linked to client")
 
-                print("[PROJECT_CREATE] Creating calendar event for project...")
-                try await createCalendarEventForProject(project)
-                print("[PROJECT_CREATE] ✅ Calendar event created")
+                    print("[PROJECT_CREATE] Linking project to company...")
+                    try await capturedDataController.apiService.linkProjectToCompany(companyId: capturedCompanyId, projectId: bubbleProjectId)
+                    print("[PROJECT_CREATE] ✅ Project linked to company")
 
-                await MainActor.run {
-                    try? modelContext.save()
+                    if !capturedImages.isEmpty {
+                        print("[PROJECT_CREATE] Uploading \(capturedImages.count) project images...")
+                        let imageUrls = await capturedDataController.imageSyncManager.saveImages(capturedImages, for: project)
+                        print("[PROJECT_CREATE] ✅ Uploaded \(imageUrls.count) images")
+                    }
+
+                    print("[PROJECT_CREATE] Creating calendar event for project...")
+                    try await createCalendarEventForProject(project)
+                    print("[PROJECT_CREATE] ✅ Calendar event created")
+                } catch {
+                    print("[PROJECT_CREATE] ⚠️ Background operation failed: \(error)")
+                    // Mark project as needing sync so it will be completed later
+                    await MainActor.run {
+                        project.needsSync = true
+                        try? capturedModelContext.save()
+                    }
                 }
             }
         } catch is CancellationError {
+            // Timeout error - network is slow or unavailable
             savedOffline = true
             print("[PROJECT_CREATE] ⏱️ Network timeout - project saved offline")
-        } catch {
+        } catch let error as URLError {
+            // Network-related errors (no connection, timeout, etc.)
             savedOffline = true
             print("[PROJECT_CREATE] ❌ Network error - project saved offline: \(error)")
+        } catch let error as APIError {
+            // API errors (validation, limits, server errors) - show actual error message
+            print("[PROJECT_CREATE] ❌ API error during project creation: \(error)")
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+                isSaving = false
+            }
+            return project
+        } catch {
+            // Other unexpected errors
+            print("[PROJECT_CREATE] ❌ Unexpected error during project creation: \(error)")
+            await MainActor.run {
+                errorMessage = "Failed to create project: \(error.localizedDescription)"
+                showingError = true
+                isSaving = false
+            }
+            return project
         }
 
         await MainActor.run {
@@ -827,11 +869,7 @@ struct ProjectFormSheet: View {
             }
         }
 
-        if savedOffline {
-            try await Task.sleep(nanoseconds: 2_000_000_000)
-        }
-
-        print("[PROJECT_CREATE] ✅ Project creation complete")
+        print("[PROJECT_CREATE] ✅ Project creation complete (background operations continuing)")
         return project
     }
 
@@ -889,9 +927,14 @@ struct ProjectFormSheet: View {
             print("[CREATE_CALENDAR_EVENT] Project has no dates - creating unscheduled calendar event")
         }
 
+        // Get company's default project color
+        let company = dataController.getCompany(id: project.companyId)
+        let projectColor = company?.defaultProjectColor ?? "#9CA3AF"  // Light grey fallback
+        print("[CREATE_CALENDAR_EVENT] Using project color: \(projectColor)")
+
         let eventDTO = CalendarEventDTO(
             id: UUID().uuidString,
-            color: "#59779F",
+            color: projectColor,
             companyId: project.companyId,
             projectId: project.id,
             taskId: nil,
@@ -899,7 +942,7 @@ struct ProjectFormSheet: View {
             endDate: endDateString,
             startDate: startDateString,
             teamMembers: project.teamMembers.map { $0.id },
-            title: project.clientName,
+            title: project.effectiveClientName.capitalizedWords(),
             type: "Project",
             active: true,
             createdDate: nil,
@@ -913,8 +956,12 @@ struct ProjectFormSheet: View {
                 calendarEvent.needsSync = false
                 calendarEvent.lastSyncedAt = Date()
                 modelContext.insert(calendarEvent)
+
+                // Link calendar event to project
+                project.primaryCalendarEvent = calendarEvent
+
                 try? modelContext.save()
-                print("[CREATE_CALENDAR_EVENT] ✅ Calendar event saved to database")
+                print("[CREATE_CALENDAR_EVENT] ✅ Calendar event saved to database and linked to project")
             } else {
                 print("[CREATE_CALENDAR_EVENT] ⚠️ Failed to convert DTO to model")
             }

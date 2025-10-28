@@ -72,31 +72,53 @@ struct OrganizationSettingsView: View {
                             if let company = organization {
                                 VStack(alignment: .leading, spacing: 16) {
                                     HStack(alignment: .top, spacing: 16) {
-                                        // Company logo - using unified CompanyAvatar component
-                                        CompanyAvatar(company: company, size: 60)
-                                        
+                                        // Company logo uploader (only editable for admins)
+                                        if isCompanyAdmin {
+                                            ProfileImageUploader(
+                                                config: ImageUploaderConfig(
+                                                    currentImageURL: company.logoURL,
+                                                    currentImageData: company.logoData,
+                                                    placeholderText: String(company.name.prefix(1)),
+                                                    size: 80,
+                                                    shape: .roundedSquare(cornerRadius: 12),
+                                                    allowDelete: true,
+                                                    backgroundColor: OPSStyle.Colors.primaryAccent,
+                                                    uploadButtonText: "UPLOAD LOGO"
+                                                ),
+                                                onUpload: { image in
+                                                    try await dataController.uploadCompanyLogo(image, for: company)
+                                                },
+                                                onDelete: {
+                                                    try await dataController.deleteCompanyLogo(for: company)
+                                                }
+                                            )
+                                        } else {
+                                            // Read-only logo for non-admins
+                                            CompanyAvatar(company: company, size: 80)
+                                        }
+
                                         VStack(alignment: .leading, spacing: 6) {
                                             // Company name
                                             Text(company.name)
                                                 .font(OPSStyle.Typography.bodyBold)
                                                 .foregroundColor(.white)
-                                            
+
                                             // Company description - always show
-                                            Text((company.companyDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                            Text((company.companyDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ?
                                                  company.companyDescription! : "NO DESCRIPTION")
                                                 .font(OPSStyle.Typography.smallCaption)
-                                                .foregroundColor((company.companyDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                                .foregroundColor((company.companyDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ?
                                                                 OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
                                                 .lineLimit(2)
-                                            
+
                                             // Company address - always show
-                                            Text((company.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                            Text((company.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ?
                                                  company.address! : "NO ADDRESS")
                                                 .font(OPSStyle.Typography.smallCaption)
-                                                .foregroundColor((company.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? 
+                                                .foregroundColor((company.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ?
                                                                 OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
                                         }
-                                        
+
                                         Spacer()
                                     }
                                 }

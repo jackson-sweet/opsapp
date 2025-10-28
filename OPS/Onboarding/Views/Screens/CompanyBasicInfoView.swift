@@ -13,6 +13,7 @@ struct CompanyBasicInfoView: View {
     
     enum CompanyInfoPhase: Int, CaseIterable {
         case companyName = 0
+        case companyLogo = 1
     }
     
     // Calculate the current step number based on user type
@@ -34,7 +35,13 @@ struct CompanyBasicInfoView: View {
                 // Navigation header with step indicator
                 HStack {
                     Button(action: {
-                        onboardingViewModel.moveToPreviousStep()
+                        if currentPhase == .companyName {
+                            onboardingViewModel.moveToPreviousStep()
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentPhase = CompanyInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .companyName
+                            }
+                        }
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -81,6 +88,20 @@ struct CompanyBasicInfoView: View {
                                 companyName: $onboardingViewModel.companyName,
                                 viewModel: onboardingViewModel,
                                 onContinue: {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentPhase = .companyLogo
+                                    }
+                                }
+                            )
+                        case .companyLogo:
+                            CompanyLogoPhaseView(
+                                companyLogo: $onboardingViewModel.companyLogo,
+                                viewModel: onboardingViewModel,
+                                onContinue: {
+                                    onboardingViewModel.moveToNextStep()
+                                },
+                                onSkip: {
+                                    onboardingViewModel.companyLogo = nil
                                     onboardingViewModel.moveToNextStep()
                                 }
                             )
@@ -150,6 +171,79 @@ struct CompanyNamePhaseView: View {
     }
 }
 
+struct CompanyLogoPhaseView: View {
+    @Binding var companyLogo: UIImage?
+    @ObservedObject var viewModel: OnboardingViewModel
+    let onContinue: () -> Void
+    let onSkip: () -> Void
+
+    @State private var logoData: Data?
+
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ADD YOUR")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(.white)
+
+                Text("COMPANY LOGO")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(.white)
+                    .padding(.bottom, 12)
+
+                Text("Your logo will appear on projects and help your team recognize your company. You can add or change this later.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 20)
+
+            // Use ProfileImageUploader
+            ProfileImageUploader(
+                config: ImageUploaderConfig(
+                    currentImageURL: nil,
+                    currentImageData: logoData,
+                    placeholderText: String(viewModel.companyName.prefix(1)),
+                    size: 120,
+                    shape: .roundedSquare(cornerRadius: 12),
+                    allowDelete: false,
+                    backgroundColor: OPSStyle.Colors.primaryAccent,
+                    uploadButtonText: "UPLOAD LOGO"
+                ),
+                onUpload: { image in
+                    // Store the logo locally for upload during completion
+                    companyLogo = image
+                    if let data = image.jpegData(compressionQuality: 0.85) {
+                        logoData = data
+                    }
+                    return "" // Return empty string since we're not uploading yet
+                },
+                onDelete: nil
+            )
+        }
+
+        Spacer()
+
+        // Continue/Skip buttons
+        VStack(spacing: 12) {
+            StandardContinueButton(
+                isDisabled: companyLogo == nil,
+                onTap: onContinue
+            )
+
+            Button(action: onSkip) {
+                Text("Skip for now")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+            }
+        }
+    }
+}
 
 #Preview {
     let dataController = OnboardingPreviewHelpers.createPreviewDataController()

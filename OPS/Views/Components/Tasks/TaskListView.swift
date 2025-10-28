@@ -16,7 +16,6 @@ struct TaskListView: View {
     @State private var selectedTask: ProjectTask? = nil
     @State private var showingTaskForm = false
     @State private var showingSchedulingModeAlert = false
-    @State private var customAlert: CustomAlertConfig?
 
     private var canModify: Bool {
         guard let user = dataController.currentUser else { return false }
@@ -132,13 +131,6 @@ struct TaskListView: View {
                             isLast: task.id == project.tasks.sorted { $0.displayOrder < $1.displayOrder }.last?.id,
                             onTap: {
                                 selectedTask = task
-                            },
-                            onDeleteSuccess: { taskName in
-                                customAlert = CustomAlertConfig(
-                                    title: "DELETION SUCCESS",
-                                    message: "\(taskName) has been deleted",
-                                    color: OPSStyle.Colors.successStatus
-                                )
                             }
                         )
                         .environmentObject(dataController)
@@ -172,7 +164,6 @@ struct TaskListView: View {
         } message: {
             Text("By adding tasks, this project will switch to task-based scheduling. Project dates will be determined by individual task schedules.")
         }
-        .customAlert($customAlert)
     }
 }
 
@@ -182,7 +173,6 @@ struct TaskRow: View {
     let isFirst: Bool
     let isLast: Bool
     let onTap: () -> Void
-    let onDeleteSuccess: (String) -> Void
     @EnvironmentObject private var dataController: DataController
     @Query private var users: [User]
     @State private var showingActions = false
@@ -470,9 +460,8 @@ struct TaskRow: View {
                     print("[DELETE_TASK] ⚠️ No project found - skipping date update")
                 }
 
-                // Show success feedback
+                // Schedule deletion notification
                 await MainActor.run {
-                    onDeleteSuccess(taskName)
                     scheduleDeletionNotification(itemType: "TASK", itemName: taskName)
                 }
             } catch {
@@ -483,8 +472,8 @@ struct TaskRow: View {
 
     private func scheduleDeletionNotification(itemType: String, itemName: String) {
         let content = UNMutableNotificationContent()
-        content.title = "OPS DATABASE"
-        content.body = "Deletion of \(itemName) successful"
+        content.title = "OPS"
+        content.body = "\(itemName) deleted"
         content.sound = .default
 
         let request = UNNotificationRequest(

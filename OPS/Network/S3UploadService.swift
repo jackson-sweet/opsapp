@@ -101,77 +101,135 @@ class S3UploadService {
     }
     
     /// Delete an image from S3
+    /// For backward compatibility, still accepts companyId and projectId but will use URL if it's a full S3 URL
     func deleteImageFromS3(url: String, companyId: String, projectId: String) async throws {
-        // Extract filename from URL
-        guard let filename = URL(string: url)?.lastPathComponent else {
+        // Extract object key from the URL
+        // URL format: https://bucket.s3.region.amazonaws.com/objectKey
+        guard let urlComponents = URL(string: url) else {
             throw S3Error.invalidURL
         }
-        
-        let objectKey = "company-\(companyId)/\(projectId)/photos/\(filename)"
+
+        let objectKey: String
+
+        // Check if this is a full S3 URL
+        if url.contains("s3.") && url.contains(".amazonaws.com/") {
+            // Extract the object key from the full URL
+            // Remove the leading "/" from the path
+            objectKey = String(urlComponents.path.dropFirst())
+        } else {
+            // Legacy path construction for project photos
+            let filename = urlComponents.lastPathComponent
+            objectKey = "company-\(companyId)/\(projectId)/photos/\(filename)"
+        }
+
+        print("[S3_DELETE] Deleting object: \(objectKey)")
+
         let endpoint = "https://\(bucketName).s3.\(region).amazonaws.com/\(objectKey)"
-        
+
         var request = URLRequest(url: URL(string: endpoint)!)
         request.httpMethod = "DELETE"
-        
+
         // Add AWS authentication headers
         addAWSAuthHeaders(to: &request, method: "DELETE", path: "/\(objectKey)")
-        
+
         let (_, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            print("[S3_DELETE] ❌ Delete failed with status: \(statusCode)")
             throw S3Error.deleteFailed
         }
-        
+
+        print("[S3_DELETE] ✅ Successfully deleted from S3")
     }
-    
+
+    /// Upload a user profile image to S3
+    func uploadProfileImage(_ image: UIImage, userId: String, companyId: String) async throws -> String {
+        print("[S3_UPLOAD] Starting profile image upload for user: \(userId)")
+
+        // Resize to square and compress
+        let maxSize: CGFloat = 800
+        let resizedImage = resizeImageToSquare(image, maxSize: maxSize)
+
+        guard let imageData = resizedImage.jpegData(compressionQuality: 0.8) else {
+            print("[S3_UPLOAD] ❌ Failed to compress profile image")
+            throw S3Error.imageConversionFailed
+        }
+
+        let sizeInMB = Double(imageData.count) / (1024 * 1024)
+        print("[S3_UPLOAD] Profile image size: \(String(format: "%.2f", sizeInMB))MB")
+
+        // Generate filename
+        let timestamp = Date().timeIntervalSince1970
+        let filename = "profile_\(userId)_\(timestamp).jpg"
+
+        // Upload to S3 at: company-{companyId}/profiles/{filename}
+        let objectKey = "company-\(companyId)/profiles/\(filename)"
+        let s3URL = try await uploadToS3(imageData: imageData, objectKey: objectKey)
+
+        print("[S3_UPLOAD] ✅ Profile image uploaded: \(s3URL)")
+        return s3URL
+    }
+
+    /// Upload a company logo to S3
+    func uploadCompanyLogo(_ image: UIImage, companyId: String) async throws -> String {
+        print("[S3_UPLOAD] Starting logo upload for company: \(companyId)")
+
+        // Resize to square and compress
+        let maxSize: CGFloat = 1000
+        let resizedImage = resizeImageToSquare(image, maxSize: maxSize)
+
+        guard let imageData = resizedImage.jpegData(compressionQuality: 0.85) else {
+            print("[S3_UPLOAD] ❌ Failed to compress logo")
+            throw S3Error.imageConversionFailed
+        }
+
+        let sizeInMB = Double(imageData.count) / (1024 * 1024)
+        print("[S3_UPLOAD] Logo size: \(String(format: "%.2f", sizeInMB))MB")
+
+        // Generate filename
+        let timestamp = Date().timeIntervalSince1970
+        let filename = "logo_\(companyId)_\(timestamp).jpg"
+
+        // Upload to S3 at: company-{companyId}/logos/{filename}
+        let objectKey = "company-\(companyId)/logos/\(filename)"
+        let s3URL = try await uploadToS3(imageData: imageData, objectKey: objectKey)
+
+        print("[S3_UPLOAD] ✅ Logo uploaded: \(s3URL)")
+        return s3URL
+    }
+
     // MARK: - Private Methods
-    
-    private func uploadImageToS3(imageData: Data, filename: String, companyId: String, projectId: String) async throws -> String {
-        let objectKey = "company-\(companyId)/\(projectId)/photos/\(filename)"
+
+    /// Generic S3 upload method
+    private func uploadToS3(imageData: Data, objectKey: String) async throws -> String {
         let endpoint = "https://\(bucketName).s3.\(region).amazonaws.com/\(objectKey)"
-        
-        
+
         var request = URLRequest(url: URL(string: endpoint)!)
         request.httpMethod = "PUT"
         request.httpBody = imageData
         request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
         request.setValue("\(imageData.count)", forHTTPHeaderField: "Content-Length")
-        
+
         // Add AWS authentication headers
         addAWSAuthHeaders(to: &request, method: "PUT", path: "/\(objectKey)", payload: imageData)
-        
-        // Log all headers for debugging
-        request.allHTTPHeaderFields?.forEach { key, value in
-            if key.lowercased().contains("authorization") {
-                // Partially mask sensitive auth header
-                let masked = value.prefix(30) + "..." + value.suffix(10)
-            } else {
-            }
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            print("[S3_UPLOAD] ❌ Upload failed with status: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+            throw S3Error.uploadFailed
         }
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw S3Error.uploadFailed
-            }
-            
-            
-            if let responseString = String(data: data, encoding: .utf8), !responseString.isEmpty {
-            }
-            
-            guard (200...299).contains(httpResponse.statusCode) else {
-                if let errorBody = String(data: data, encoding: .utf8) {
-                }
-                throw S3Error.uploadFailed
-            }
-            
-            return endpoint
-            
-        } catch {
-            throw error
-        }
+
+        // Return the full S3 URL
+        return endpoint
+    }
+
+    private func uploadImageToS3(imageData: Data, filename: String, companyId: String, projectId: String) async throws -> String {
+        let objectKey = "company-\(companyId)/\(projectId)/photos/\(filename)"
+        return try await uploadToS3(imageData: imageData, objectKey: objectKey)
     }
     
     private func addAWSAuthHeaders(to request: inout URLRequest, method: String, path: String, payload: Data? = nil) {
@@ -320,7 +378,7 @@ class S3UploadService {
     /// Get adaptive compression quality based on image size
     private func getAdaptiveCompressionQuality(for image: UIImage) -> CGFloat {
         let pixelCount = image.size.width * image.size.height
-        
+
         // Higher resolution images get more compression
         if pixelCount > 4_000_000 { // > 4MP
             return 0.5
@@ -331,6 +389,41 @@ class S3UploadService {
         } else {
             return 0.8
         }
+    }
+
+    /// Resize image to square with maximum dimension (centered crop)
+    private func resizeImageToSquare(_ image: UIImage, maxSize: CGFloat) -> UIImage {
+        // If already smaller than maxSize, return as-is
+        guard image.size.width > maxSize || image.size.height > maxSize else {
+            return image
+        }
+
+        // Calculate target size (square, centered crop)
+        let dimension = min(image.size.width, image.size.height)
+        let scale = maxSize / dimension
+
+        // Calculate target size
+        let targetSize = CGSize(width: dimension * scale, height: dimension * scale)
+
+        // Calculate crop rect (center crop)
+        let xOffset = (image.size.width - dimension) / 2
+        let yOffset = (image.size.height - dimension) / 2
+        let cropRect = CGRect(x: xOffset, y: yOffset, width: dimension, height: dimension)
+
+        // Crop and resize
+        guard let cgImage = image.cgImage?.cropping(to: cropRect) else {
+            return image
+        }
+
+        UIGraphicsBeginImageContextWithOptions(targetSize, false, 1.0)
+        let context = UIGraphicsGetCurrentContext()
+        context?.interpolationQuality = .high
+
+        UIImage(cgImage: cgImage).draw(in: CGRect(origin: .zero, size: targetSize))
+        let resizedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
+        UIGraphicsEndImageContext()
+
+        return resizedImage
     }
 }
 

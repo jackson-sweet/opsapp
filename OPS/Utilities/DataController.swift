@@ -24,7 +24,13 @@ class DataController: ObservableObject {
     @Published var isSyncing = false
     @Published var connectionType: ConnectivityMonitor.ConnectionType = .none
     @Published var lastSyncTime: Date?
-    
+
+    // Sync status tracking
+    @Published var hasPendingSyncs = false
+    @Published var pendingSyncCount = 0
+    @Published var showSyncRestoredAlert = false
+    private var hasCompletedInitialConnectionCheck = false // Track if we've done initial setup
+
     // Global app state for external views to access
     var appState: AppState?
     
@@ -35,7 +41,11 @@ class DataController: ObservableObject {
     private let connectivityMonitor: ConnectivityMonitor
     var modelContext: ModelContext?
     private var cancellables = Set<AnyCancellable>()
-    
+
+    // Periodic sync retry timer
+    private var pendingSyncRetryTimer: Timer?
+    private let syncRetryInterval: TimeInterval = 180 // 3 minutes
+
     // MARK: - Public Access
     var syncManager: SyncManager!
     var imageSyncManager: ImageSyncManager!
@@ -71,16 +81,56 @@ class DataController: ObservableObject {
         // Set initial state
         isConnected = connectivityMonitor.isConnected
         connectionType = connectivityMonitor.connectionType
-        
+
+        print("[SYNC] 📱 Initial connection state: \(isConnected ? "Connected" : "Disconnected")")
+
+        // Check for pending syncs on startup
+        Task { @MainActor in
+            await checkPendingSyncs()
+
+            // Start retry timer if we have pending syncs
+            if hasPendingSyncs {
+                startPendingSyncRetryTimer()
+
+                // If we have pending syncs AND we're connected, trigger immediate sync
+                // (but don't show the alert - this is initial load, not a reconnection)
+                if isConnected && isAuthenticated {
+                    print("[SYNC] 🚀 App startup with \(pendingSyncCount) pending items - triggering sync")
+                    syncManager?.triggerBackgroundSync()
+                }
+            }
+
+            // Mark that we've completed initial setup
+            hasCompletedInitialConnectionCheck = true
+        }
+
         // Handle connection changes
         connectivityMonitor.onConnectionTypeChanged = { [weak self] connectionType in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                let wasDisconnected = !self.isConnected
                 self.isConnected = connectionType != .none
                 self.connectionType = connectionType
-                
+
+                print("[SYNC] 🔌 Network state changed: \(self.isConnected ? "Connected" : "Disconnected")")
+
                 if connectionType != .none, self.isAuthenticated {
-                    Task {
+                    Task { @MainActor in
+                        // Check if we have pending syncs before triggering sync
+                        await self.checkPendingSyncs()
+
+                        // ONLY show alert if:
+                        // 1. We've completed initial setup (not first load)
+                        // 2. We were actually disconnected before
+                        // 3. We have pending syncs
+                        if self.hasCompletedInitialConnectionCheck && wasDisconnected && self.hasPendingSyncs {
+                            print("[SYNC] 🔄 Connection restored with \(self.pendingSyncCount) pending items - showing alert")
+                            self.showSyncRestoredAlert = true
+                        } else {
+                            print("[SYNC] 🔄 Connection active - triggering background sync (no alert)")
+                        }
+
+                        // Trigger background sync
                         self.syncManager?.triggerBackgroundSync()
                     }
                 }
@@ -2015,15 +2065,15 @@ class DataController: ObservableObject {
 
                 if let option = existing.first {
                     option.display = dto.Display
-                    option.color = dto.Color
-                    option.index = Int(dto.Index)
+                    option.color = dto.color
+                    option.index = Int(dto.index)
                     option.lastSyncedAt = Date()
                 } else {
                     let newOption = TaskStatusOption(
                         id: dto._id,
                         display: dto.Display,
-                        color: dto.Color,
-                        index: Int(dto.Index),
+                        color: dto.color,
+                        index: Int(dto.index),
                         companyId: companyId
                     )
                     context.insert(newOption)
@@ -2300,7 +2350,7 @@ class DataController: ObservableObject {
         let project = Project(id: id, title: title, status: status)
         project.startDate = startDate
         project.endDate = endDate
-        project.clientName = ["Acme Corp", "TechStart Inc", "Smith Family", "City Hospital"].randomElement()!
+        // Client name will be set via Client relationship in production
         project.address = [
             "123 Main St, San Francisco, CA",
             "456 Park Ave, New York, NY",
@@ -2360,23 +2410,211 @@ class DataController: ObservableObject {
     }
     
     /// Delete the current user's account
-    /// - Parameter userId: The ID of the user to delete  
+    /// - Parameter userId: The ID of the user to delete
     /// - Returns: Success boolean
     @MainActor
     func deleteUserAccount(userId: String) async -> Bool {
         do {
             // Call the API to delete the user account
             let response = try await apiService.deleteUser(id: userId)
-            
+
             // If successful, clean up local data and log out
             logout()
-            
+
             return true
         } catch {
             return false
         }
     }
-    
+
+    // MARK: - Data Deletion Methods
+
+    /// Delete a project and all related data from both Bubble API and local storage
+    /// - Parameter project: The project to delete
+    /// - Throws: API or database errors
+    @MainActor
+    func deleteProject(_ project: Project) async throws {
+        guard let modelContext = modelContext else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+
+        // Capture all necessary IDs before any deletion to avoid accessing invalidated objects
+        let projectId = project.id
+        let taskIds = project.tasks.map { $0.id }
+        let taskCalendarEventIds = project.tasks.compactMap { $0.calendarEvent?.id }
+        let projectCalendarEventId = project.primaryCalendarEvent?.id
+
+        // Get references to all SwiftData objects we'll need to delete
+        let projectCalendarEvent = project.primaryCalendarEvent
+        let tasksToDelete = Array(project.tasks) // Create array copy to avoid relationship issues
+        let taskCalendarEvents = tasksToDelete.compactMap { $0.calendarEvent }
+
+        // STEP 1: Delete all task calendar events from Bubble
+        for eventId in taskCalendarEventIds {
+            try await apiService.deleteCalendarEvent(id: eventId)
+        }
+
+        // STEP 2: Delete all tasks from Bubble
+        for taskId in taskIds {
+            try await apiService.deleteTask(id: taskId)
+        }
+
+        // STEP 3: Delete project's primary calendar event from Bubble
+        if let eventId = projectCalendarEventId {
+            try await apiService.deleteCalendarEvent(id: eventId)
+        }
+
+        // STEP 4: Delete project from Bubble
+        try await apiService.deleteProject(id: projectId)
+
+        // STEP 5: Delete everything from local SwiftData
+        // Delete the project's primary calendar event
+        if let event = projectCalendarEvent {
+            modelContext.delete(event)
+        }
+
+        // Delete all task calendar events
+        for event in taskCalendarEvents {
+            modelContext.delete(event)
+        }
+
+        // Delete all tasks
+        for task in tasksToDelete {
+            modelContext.delete(task)
+        }
+
+        // Delete the project
+        modelContext.delete(project)
+
+        // Save changes
+        try modelContext.save()
+    }
+
+    /// Delete a task and its calendar event from both Bubble API and local storage
+    /// - Parameters:
+    ///   - task: The task to delete
+    ///   - updateProject: Whether to update parent project dates (default: true)
+    /// - Throws: API or database errors
+    @MainActor
+    func deleteTask(_ task: ProjectTask, updateProject: Bool = true) async throws {
+        guard let modelContext = modelContext else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+
+        let taskId = task.id
+        let calendarEventId = task.calendarEvent?.id
+        let project = task.project
+
+        // STEP 1: Delete calendar event from Bubble if it exists
+        if let eventId = calendarEventId {
+            try await apiService.deleteCalendarEvent(id: eventId)
+        }
+
+        // STEP 2: Delete task from Bubble
+        try await apiService.deleteTask(id: taskId)
+
+        // STEP 3: Delete from local SwiftData
+        modelContext.delete(task)
+        try modelContext.save()
+
+        // STEP 4: Update project dates if using task-based scheduling
+        if updateProject, let project = project, project.usesTaskBasedScheduling {
+            project.updateDatesFromTasks()
+            try modelContext.save()
+
+            // Sync updated dates to Bubble
+            try await apiService.updateProjectDates(
+                projectId: project.id,
+                startDate: project.startDate,
+                endDate: project.endDate
+            )
+        }
+    }
+
+    /// Delete a client from both Bubble API and local storage
+    /// - Parameter client: The client to delete
+    /// - Throws: API or database errors
+    /// - Note: Caller is responsible for handling associated projects (reassignment or deletion)
+    @MainActor
+    func deleteClient(_ client: Client) async throws {
+        guard let modelContext = modelContext else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+
+        // STEP 1: Delete client from Bubble
+        try await apiService.deleteClient(id: client.id)
+
+        // STEP 2: Delete client from local SwiftData
+        modelContext.delete(client)
+        try modelContext.save()
+    }
+
+    /// Reschedule a project to new dates
+    /// - Parameters:
+    ///   - project: The project to reschedule
+    ///   - startDate: New start date
+    ///   - endDate: New end date
+    ///   - calendarEvent: The project's calendar event (optional, will be found if not provided)
+    /// - Throws: API or database errors
+    @MainActor
+    func rescheduleProject(_ project: Project, startDate: Date, endDate: Date, calendarEvent: CalendarEvent? = nil) async throws {
+        guard let modelContext = modelContext else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+
+        print("[RESCHEDULE_PROJECT] 📅 Rescheduling project: \(project.title)")
+        print("[RESCHEDULE_PROJECT] Old dates: \(project.startDate?.description ?? "nil") - \(project.endDate?.description ?? "nil")")
+        print("[RESCHEDULE_PROJECT] New dates: \(startDate.description) - \(endDate.description)")
+
+        // STEP 1: Update calendar event if provided or find it
+        let event = calendarEvent ?? project.primaryCalendarEvent
+        if let event = event {
+            event.startDate = startDate
+            event.endDate = endDate
+            event.needsSync = true
+            print("[RESCHEDULE_PROJECT] ✅ Calendar event updated locally")
+        } else {
+            print("[RESCHEDULE_PROJECT] ⚠️ No calendar event found")
+        }
+
+        // STEP 2: Update project dates
+        project.startDate = startDate
+        project.endDate = endDate
+        project.needsSync = true
+
+        // STEP 3: Save locally
+        try modelContext.save()
+        print("[RESCHEDULE_PROJECT] ✅ Changes saved locally")
+
+        // STEP 4: Update dates in Bubble
+        try await apiService.updateProjectDates(
+            projectId: project.id,
+            startDate: startDate,
+            endDate: endDate
+        )
+        print("[RESCHEDULE_PROJECT] ✅ Project dates updated in Bubble")
+
+        // STEP 5: Update calendar event in Bubble if it exists
+        if let event = event {
+            let formatter = ISO8601DateFormatter()
+            let startDateString = formatter.string(from: startDate)
+            let endDateString = formatter.string(from: endDate)
+
+            print("[RESCHEDULE_PROJECT] 📅 Updating calendar event dates:")
+            print("[RESCHEDULE_PROJECT]   - Start: \(startDate) → \(startDateString)")
+            print("[RESCHEDULE_PROJECT]   - End: \(endDate) → \(endDateString)")
+
+            try await apiService.updateCalendarEvent(
+                id: event.id,
+                updates: [
+                    "startDate": startDateString,
+                    "endDate": endDateString
+                ]
+            )
+            print("[RESCHEDULE_PROJECT] ✅ Calendar event updated in Bubble")
+        }
+    }
+
     // We're removing the ability to update profile images for now
     // Instead we'll rely on the API to provide profile images
     
@@ -2635,5 +2873,687 @@ class DataController: ObservableObject {
     /// Get general support contact
     func getGeneralSupportContact() -> OpsContact? {
         return getOpsContact(for: .generalSupport)
+    }
+
+    // MARK: - Sync Management
+
+    /// Check for pending syncs and update published properties
+    @MainActor
+    func checkPendingSyncs() async {
+        guard let context = modelContext else {
+            hasPendingSyncs = false
+            pendingSyncCount = 0
+            stopPendingSyncRetryTimer()
+            return
+        }
+
+        var count = 0
+
+        // Count pending projects
+        do {
+            let projectDescriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.needsSync == true }
+            )
+            count += try context.fetchCount(projectDescriptor)
+        } catch {
+            print("[SYNC] ⚠️ Failed to count pending projects: \(error)")
+        }
+
+        // Count pending tasks
+        do {
+            let taskDescriptor = FetchDescriptor<ProjectTask>(
+                predicate: #Predicate<ProjectTask> { $0.needsSync == true }
+            )
+            count += try context.fetchCount(taskDescriptor)
+        } catch {
+            print("[SYNC] ⚠️ Failed to count pending tasks: \(error)")
+        }
+
+        // Count pending calendar events
+        do {
+            let eventDescriptor = FetchDescriptor<CalendarEvent>(
+                predicate: #Predicate<CalendarEvent> { $0.needsSync == true }
+            )
+            count += try context.fetchCount(eventDescriptor)
+        } catch {
+            print("[SYNC] ⚠️ Failed to count pending events: \(error)")
+        }
+
+        // Count pending users
+        do {
+            let userDescriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { $0.needsSync == true }
+            )
+            count += try context.fetchCount(userDescriptor)
+        } catch {
+            print("[SYNC] ⚠️ Failed to count pending users: \(error)")
+        }
+
+        pendingSyncCount = count
+        hasPendingSyncs = count > 0
+
+        if count > 0 {
+            print("[SYNC] 📊 Found \(count) items pending sync")
+            // Start retry timer if we have pending syncs
+            startPendingSyncRetryTimer()
+        } else {
+            // Stop retry timer if no pending syncs
+            stopPendingSyncRetryTimer()
+        }
+    }
+
+    /// Start the periodic retry timer for pending syncs
+    @MainActor
+    private func startPendingSyncRetryTimer() {
+        // Don't create multiple timers
+        guard pendingSyncRetryTimer == nil else { return }
+
+        print("[SYNC] ⏱️ Starting periodic sync retry timer (every \(Int(syncRetryInterval/60)) minutes)")
+
+        pendingSyncRetryTimer = Timer.scheduledTimer(withTimeInterval: syncRetryInterval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+
+            Task { @MainActor in
+                if self.hasPendingSyncs && self.isConnected && self.isAuthenticated {
+                    print("[SYNC] ⏱️ Retry timer triggered - attempting to sync \(self.pendingSyncCount) pending items")
+                    self.syncManager?.triggerBackgroundSync()
+                } else if !self.hasPendingSyncs {
+                    // Stop timer if no pending syncs
+                    self.stopPendingSyncRetryTimer()
+                }
+            }
+        }
+    }
+
+    /// Stop the periodic retry timer
+    @MainActor
+    private func stopPendingSyncRetryTimer() {
+        if pendingSyncRetryTimer != nil {
+            print("[SYNC] ⏱️ Stopping periodic sync retry timer")
+            pendingSyncRetryTimer?.invalidate()
+            pendingSyncRetryTimer = nil
+        }
+    }
+
+    deinit {
+        pendingSyncRetryTimer?.invalidate()
+    }
+
+    /// Trigger an immediate sync attempt if connected
+    @MainActor
+    func triggerImmediateSyncIfConnected() {
+        Task {
+            await checkPendingSyncs()
+        }
+
+        guard isConnected, isAuthenticated else {
+            print("[SYNC] ⚠️ Cannot sync - not connected or not authenticated")
+            print("[SYNC] 📊 Items will sync when connection is restored")
+            return
+        }
+
+        print("[SYNC] 🚀 Item added to queue - triggering immediate sync attempt...")
+        syncManager?.triggerBackgroundSync()
+    }
+
+    /// Mark an item for sync and immediately attempt to sync if connected
+    /// This is a helper function to ensure consistent behavior across the app
+    @MainActor
+    func markForSyncAndAttemptImmediate<T: PersistentModel>(_ item: T) where T: AnyObject {
+        // Note: The item should already have needsSync = true before calling this
+        // This function just triggers the sync attempt
+
+        Task {
+            await checkPendingSyncs()
+        }
+
+        // Immediately attempt sync if connected
+        if isConnected && isAuthenticated {
+            print("[SYNC] 🚀 Item marked for sync - attempting immediate sync...")
+            syncManager?.triggerBackgroundSync()
+        } else {
+            print("[SYNC] ⚠️ Item marked for sync - will sync when connection is restored")
+        }
+    }
+
+    // MARK: - Task Status Updates
+
+    // MARK: - Generic Sync Wrapper
+
+    /// Generic wrapper for any operation that needs triple-layer sync
+    /// This centralizes the immediate sync logic for ALL operations, not just task status
+    /// Uses triple-layer sync approach:
+    ///   1. Immediate sync if connected (this function)
+    ///   2. Event-driven on network change
+    ///   3. Periodic 3-minute retry timer
+    /// - Parameters:
+    ///   - item: The item being updated (must have needsSync and lastSyncedAt properties)
+    ///   - operationName: Name for logging (e.g., "UPDATE_TASK_STATUS", "UPDATE_PROJECT", etc.)
+    ///   - itemDescription: Brief description of the item (e.g., "task abc123 to Completed")
+    ///   - localUpdate: Closure that performs the local database update
+    ///   - syncToAPI: Closure that syncs to Bubble API (called only if connected)
+    @MainActor
+    func performSyncedOperation<T>(
+        item: T,
+        operationName: String,
+        itemDescription: String,
+        localUpdate: () throws -> Void,
+        syncToAPI: () async throws -> Void
+    ) async throws where T: AnyObject {
+        print("[\(operationName)] 🔵 \(itemDescription)")
+        print("[\(operationName)] 📊 Current state - Connected: \(isConnected), Authenticated: \(isAuthenticated)")
+
+        // Perform local update
+        try localUpdate()
+        try? modelContext?.save()
+        print("[\(operationName)] ✅ Updated locally and marked for sync")
+
+        // Update pending sync count
+        await checkPendingSyncs()
+
+        // LAYER 1: Immediate sync attempt if connected
+        if isConnected && isAuthenticated {
+            do {
+                print("[\(operationName)] 🚀 [LAYER 1] Connected & Authenticated - attempting immediate sync to Bubble...")
+                try await syncToAPI()
+
+                // syncToAPI closure is responsible for marking item as synced
+                try? modelContext?.save()
+                print("[\(operationName)] ✅ [LAYER 1] Immediate sync successful - item synced to Bubble")
+
+                await checkPendingSyncs()
+            } catch {
+                print("[\(operationName)] ❌ [LAYER 1] Immediate sync failed: \(error)")
+                print("[\(operationName)] 🔄 [LAYER 2] Will retry on network change")
+                print("[\(operationName)] ⏱️ [LAYER 3] Will retry via 3-minute timer")
+                throw error
+            }
+        } else {
+            if !isConnected {
+                print("[\(operationName)] 📴 [LAYER 1] SKIPPED - No connection (isConnected: false)")
+            } else if !isAuthenticated {
+                print("[\(operationName)] 🔒 [LAYER 1] SKIPPED - Not authenticated (isAuthenticated: false)")
+            }
+            print("[\(operationName)] 🔄 [LAYER 2] Will sync when connection is restored")
+            print("[\(operationName)] ⏱️ [LAYER 3] Periodic retry timer active")
+            print("[\(operationName)] 📊 Total pending syncs: \(pendingSyncCount)")
+        }
+    }
+
+    /// Update a task's status - SINGLE SOURCE OF TRUTH for task status updates
+    /// This function ensures we only update the task's status field and NEVER manipulate project.tasks
+    /// - Parameters:
+    ///   - task: The task to update
+    ///   - newStatus: The new status to set
+    @MainActor
+    func updateTaskStatus(task: ProjectTask, to newStatus: TaskStatus) async throws {
+        try await performSyncedOperation(
+            item: task,
+            operationName: "UPDATE_TASK_STATUS",
+            itemDescription: "Updating task \(task.id) to status: \(newStatus.rawValue)",
+            localUpdate: {
+                task.status = newStatus
+                task.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateTaskStatus(id: task.id, status: newStatus.rawValue)
+                task.needsSync = false
+                task.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    /// Update a project's status - SINGLE SOURCE OF TRUTH for project status updates
+    /// - Parameters:
+    ///   - project: The project to update
+    ///   - newStatus: The new status to set
+    @MainActor
+    func updateProjectStatus(project: Project, to newStatus: Status) async throws {
+        try await performSyncedOperation(
+            item: project,
+            operationName: "UPDATE_PROJECT_STATUS",
+            itemDescription: "Updating project \(project.id) to status: \(newStatus.rawValue)",
+            localUpdate: {
+                project.status = newStatus
+                project.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateProjectStatus(id: project.id, status: newStatus.rawValue)
+                project.needsSync = false
+                project.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    // MARK: - Calendar Event Operations
+
+    /// Update calendar event dates - SINGLE SOURCE OF TRUTH for calendar event updates
+    @MainActor
+    func updateCalendarEvent(event: CalendarEvent, startDate: Date, endDate: Date) async throws {
+        try await performSyncedOperation(
+            item: event,
+            operationName: "UPDATE_CALENDAR_EVENT",
+            itemDescription: "Updating calendar event \(event.id)",
+            localUpdate: {
+                event.startDate = startDate
+                event.endDate = endDate
+                let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+                event.duration = daysDiff + 1
+                event.needsSync = true
+            },
+            syncToAPI: {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime]
+
+                let updates: [String: Any] = [
+                    BubbleFields.CalendarEvent.startDate: formatter.string(from: startDate),
+                    BubbleFields.CalendarEvent.endDate: formatter.string(from: endDate),
+                    BubbleFields.CalendarEvent.duration: event.duration
+                ]
+
+                try await self.apiService.updateCalendarEvent(id: event.id, updates: updates)
+                event.needsSync = false
+                event.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    // MARK: - Team Member Operations
+
+    /// Update task team members - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func updateTaskTeamMembers(task: ProjectTask, memberIds: [String]) async throws {
+        try await performSyncedOperation(
+            item: task,
+            operationName: "UPDATE_TASK_TEAM",
+            itemDescription: "Updating task \(task.id) team members",
+            localUpdate: {
+                task.setTeamMemberIds(memberIds)
+                task.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateTaskTeamMembers(id: task.id, teamMemberIds: memberIds)
+                task.needsSync = false
+                task.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    /// Update project team members - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func updateProjectTeamMembers(project: Project, memberIds: [String]) async throws {
+        try await performSyncedOperation(
+            item: project,
+            operationName: "UPDATE_PROJECT_TEAM",
+            itemDescription: "Updating project \(project.id) team members",
+            localUpdate: {
+                project.setTeamMemberIds(memberIds)
+                project.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateProjectTeamMembers(projectId: project.id, teamMemberIds: memberIds)
+                project.needsSync = false
+                project.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    /// Update calendar event team members - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func updateCalendarEventTeamMembers(event: CalendarEvent, memberIds: [String]) async throws {
+        try await performSyncedOperation(
+            item: event,
+            operationName: "UPDATE_EVENT_TEAM",
+            itemDescription: "Updating calendar event \(event.id) team members",
+            localUpdate: {
+                event.setTeamMemberIds(memberIds)
+                event.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateCalendarEventTeamMembers(id: event.id, teamMemberIds: memberIds)
+                event.needsSync = false
+                event.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    // MARK: - Client Operations
+
+    /// Update client - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func updateClient(client: Client) async throws {
+        try await performSyncedOperation(
+            item: client,
+            operationName: "UPDATE_CLIENT",
+            itemDescription: "Updating client \(client.id)",
+            localUpdate: {
+                client.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateClient(
+                    id: client.id,
+                    name: client.name,
+                    email: client.email,
+                    phone: client.phoneNumber,
+                    address: client.address
+                )
+                client.needsSync = false
+                client.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    // MARK: - Project Details Operations
+
+    /// Update project notes - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func updateProjectNotes(project: Project, notes: String) async throws {
+        try await performSyncedOperation(
+            item: project,
+            operationName: "UPDATE_PROJECT_NOTES",
+            itemDescription: "Updating project \(project.id) notes",
+            localUpdate: {
+                project.notes = notes
+                project.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateProjectNotes(id: project.id, notes: notes)
+                project.needsSync = false
+                project.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    /// Update project dates - SINGLE SOURCE OF TRUTH
+    /// Supports both setting dates (when non-nil) and clearing dates (when nil)
+    @MainActor
+    func updateProjectDates(project: Project, startDate: Date?, endDate: Date?, clearDates: Bool = false) async throws {
+        try await performSyncedOperation(
+            item: project,
+            operationName: "UPDATE_PROJECT_DATES",
+            itemDescription: startDate == nil ? "Clearing project \(project.id) dates" : "Updating project \(project.id) dates",
+            localUpdate: {
+                project.startDate = startDate
+                project.endDate = endDate
+                project.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateProjectDates(
+                    projectId: project.id,
+                    startDate: startDate,
+                    endDate: endDate,
+                    clearDates: clearDates || (startDate == nil && endDate == nil)
+                )
+                project.needsSync = false
+                project.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    /// Update project address - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func updateProjectAddress(project: Project, address: String) async throws {
+        try await performSyncedOperation(
+            item: project,
+            operationName: "UPDATE_PROJECT_ADDRESS",
+            itemDescription: "Updating project \(project.id) address",
+            localUpdate: {
+                project.address = address
+                project.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateProject(id: project.id, updates: ["address": address])
+                project.needsSync = false
+                project.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    // MARK: - Task Operations
+
+    /// Create task - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func createTask(task: ProjectTask) async throws {
+        try await performSyncedOperation(
+            item: task,
+            operationName: "CREATE_TASK",
+            itemDescription: "Creating task for project \(task.projectId)",
+            localUpdate: {
+                self.modelContext?.insert(task)
+                task.needsSync = true
+            },
+            syncToAPI: {
+                let dto = TaskDTO.from(task)
+                _ = try await self.apiService.createTask(dto)
+                task.needsSync = false
+                task.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    /// Update task - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func updateTask(task: ProjectTask) async throws {
+        try await performSyncedOperation(
+            item: task,
+            operationName: "UPDATE_TASK",
+            itemDescription: "Updating task \(task.id)",
+            localUpdate: {
+                task.needsSync = true
+            },
+            syncToAPI: {
+                // Convert task properties to update dictionary
+                var updates: [String: Any] = [:]
+                if let notes = task.taskNotes {
+                    updates[BubbleFields.Task.taskNotes] = notes
+                }
+                updates[BubbleFields.Task.teamMembers] = task.getTeamMemberIds()
+                updates[BubbleFields.Task.status] = task.status.rawValue
+
+                try await self.apiService.updateTask(id: task.id, updates: updates)
+                task.needsSync = false
+                task.lastSyncedAt = Date()
+            }
+        )
+    }
+
+    // MARK: - Profile Image Upload
+
+    /// Upload a profile image for a user
+    @MainActor
+    func uploadUserProfileImage(_ image: UIImage, for user: User) async throws -> String {
+        print("[PROFILE_IMAGE] Starting upload for user: \(user.id)")
+
+        guard let companyId = user.companyId else {
+            print("[PROFILE_IMAGE] ❌ User has no company")
+            throw ImageUploadError.uploadFailed
+        }
+
+        // 1. Compress and store locally immediately for instant UI update
+        let targetSize = CGSize(width: min(image.size.width, 800), height: min(image.size.height, 800))
+        let resizedImage = image.resized(to: targetSize)
+
+        guard let imageData = resizedImage.jpegData(compressionQuality: 0.8) else {
+            print("[PROFILE_IMAGE] ❌ Failed to compress image")
+            throw ImageUploadError.compressionFailed
+        }
+
+        print("[PROFILE_IMAGE] Image compressed to \(imageData.count) bytes")
+
+        // Store locally for instant UI
+        user.profileImageData = imageData
+        try? modelContext?.save()
+
+        // 2. Delete old image from S3 if exists
+        if let oldURL = user.profileImageURL, !oldURL.isEmpty {
+            print("[PROFILE_IMAGE] Deleting old image from S3")
+            do {
+                try await S3UploadService.shared.deleteImageFromS3(
+                    url: oldURL,
+                    companyId: companyId,
+                    projectId: user.id  // Using userId as the path segment
+                )
+                print("[PROFILE_IMAGE] ✅ Old image deleted from S3")
+            } catch {
+                print("[PROFILE_IMAGE] ⚠️ Failed to delete old image: \(error)")
+                // Continue with upload even if delete fails
+            }
+        }
+
+        // 3. Upload new image to S3
+        do {
+            let s3URL = try await S3UploadService.shared.uploadProfileImage(
+                image,
+                userId: user.id,
+                companyId: companyId
+            )
+
+            print("[PROFILE_IMAGE] ✅ Uploaded to S3: \(s3URL)")
+
+            // 3. Update local model with S3 URL
+            user.profileImageURL = s3URL
+            try? modelContext?.save()
+
+            // 4. Update Bubble with S3 URL
+            try await apiService.updateUser(userId: user.id, fields: [
+                BubbleFields.User.avatar: s3URL
+            ])
+
+            print("[PROFILE_IMAGE] ✅ Updated Bubble with S3 URL")
+            return s3URL
+
+        } catch {
+            print("[PROFILE_IMAGE] ⚠️ S3 upload failed: \(error), keeping local copy")
+            // Keep the local image data, will retry on next sync
+            throw ImageUploadError.uploadFailed
+        }
+    }
+
+    /// Delete a user's profile image
+    @MainActor
+    func deleteUserProfileImage(for user: User) async throws {
+        print("[PROFILE_IMAGE] Deleting profile image for user: \(user.id)")
+
+        // Clear local data
+        user.profileImageURL = nil
+        user.profileImageData = nil
+        try? modelContext?.save()
+
+        // Clear from Bubble
+        do {
+            try await apiService.updateUser(userId: user.id, fields: [
+                BubbleFields.User.avatar: ""
+            ])
+            print("[PROFILE_IMAGE] ✅ Profile image deleted from Bubble")
+        } catch {
+            print("[PROFILE_IMAGE] ⚠️ Failed to delete from Bubble: \(error)")
+            // Local deletion succeeded, Bubble update will retry on next sync
+        }
+
+        print("[PROFILE_IMAGE] ✅ Profile image deleted")
+    }
+
+    /// Upload a logo for a company
+    @MainActor
+    func uploadCompanyLogo(_ image: UIImage, for company: Company) async throws -> String {
+        print("[COMPANY_LOGO] Starting upload for company: \(company.id)")
+
+        // 1. Compress and store locally immediately for instant UI update
+        let targetSize = CGSize(width: min(image.size.width, 1000), height: min(image.size.height, 1000))
+        let resizedImage = image.resized(to: targetSize)
+
+        guard let imageData = resizedImage.jpegData(compressionQuality: 0.85) else {
+            print("[COMPANY_LOGO] ❌ Failed to compress image")
+            throw ImageUploadError.compressionFailed
+        }
+
+        print("[COMPANY_LOGO] Image compressed to \(imageData.count) bytes")
+
+        // Store locally for instant UI
+        company.logoData = imageData
+        try? modelContext?.save()
+
+        // 2. Delete old logo from S3 if exists
+        if let oldURL = company.logoURL, !oldURL.isEmpty {
+            print("[COMPANY_LOGO] Deleting old logo from S3")
+            do {
+                try await S3UploadService.shared.deleteImageFromS3(
+                    url: oldURL,
+                    companyId: company.id,
+                    projectId: company.id  // Not used for S3 URLs, but required for signature
+                )
+                print("[COMPANY_LOGO] ✅ Old logo deleted from S3")
+            } catch {
+                print("[COMPANY_LOGO] ⚠️ Failed to delete old logo: \(error)")
+                // Continue with upload even if delete fails
+            }
+        }
+
+        // 3. Upload new logo to S3
+        do {
+            let s3URL = try await S3UploadService.shared.uploadCompanyLogo(
+                image,
+                companyId: company.id
+            )
+
+            print("[COMPANY_LOGO] ✅ Uploaded to S3: \(s3URL)")
+
+            // 3. Update local model with S3 URL
+            company.logoURL = s3URL
+            try? modelContext?.save()
+
+            // 4. Update Bubble with S3 URL
+            try await apiService.updateCompanyFields(companyId: company.id, fields: [
+                BubbleFields.Company.logo: s3URL
+            ])
+
+            print("[COMPANY_LOGO] ✅ Updated Bubble with S3 URL")
+            return s3URL
+
+        } catch {
+            print("[COMPANY_LOGO] ⚠️ S3 upload failed: \(error), keeping local copy")
+            // Keep the local image data, will retry on next sync
+            throw ImageUploadError.uploadFailed
+        }
+    }
+
+    /// Delete a company's logo
+    @MainActor
+    func deleteCompanyLogo(for company: Company) async throws {
+        print("[COMPANY_LOGO] Deleting logo for company: \(company.id)")
+
+        // Clear local data
+        company.logoURL = nil
+        company.logoData = nil
+        try? modelContext?.save()
+
+        // Clear from Bubble
+        do {
+            try await apiService.updateCompanyFields(companyId: company.id, fields: [
+                BubbleFields.Company.logo: ""
+            ])
+            print("[COMPANY_LOGO] ✅ Logo deleted from Bubble")
+        } catch {
+            print("[COMPANY_LOGO] ⚠️ Failed to delete from Bubble: \(error)")
+            // Local deletion succeeded, Bubble update will retry on next sync
+        }
+
+        print("[COMPANY_LOGO] ✅ Company logo deleted")
+    }
+}
+
+// MARK: - Image Upload Errors
+
+enum ImageUploadError: LocalizedError {
+    case compressionFailed
+    case invalidURL
+    case uploadFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .compressionFailed: return "Failed to compress image"
+        case .invalidURL: return "Invalid upload URL"
+        case .uploadFailed: return "Upload failed"
+        }
     }
 }

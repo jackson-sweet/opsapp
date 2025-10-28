@@ -24,6 +24,7 @@ struct BubbleFields {
     }
     
     /// Job status values (from your Job Status custom type)
+    /// NOTE: Display values remain unchanged (capitalized)
     struct JobStatus {
         static let rfq = "RFQ"
         static let estimated = "Estimated"
@@ -32,7 +33,7 @@ struct BubbleFields {
         static let completed = "Completed"
         static let closed = "Closed"
         static let archived = "Archived"
-        
+
         static func toSwiftEnum(_ bubbleStatus: String) -> Status {
             switch bubbleStatus {
             case rfq: return .rfq
@@ -48,14 +49,19 @@ struct BubbleFields {
     }
     
     /// Employee Type values (from your Employee Type custom type)
+    /// NOTE: Display values remain unchanged (capitalized)
     struct EmployeeType {
-        static let officeCrew = "Office Crew"
-        static let fieldCrew = "Field Crew"
-        
+        static let foreman = "Foreman"
+        static let crew = "Crew"
+        static let admin = "Admin"
+        static let office = "Office"
+
         static func toSwiftEnum(_ bubbleType: String) -> UserRole {
             switch bubbleType {
-            case officeCrew: return .officeCrew
-            case fieldCrew: return .fieldCrew
+            case office: return .officeCrew
+            case crew: return .fieldCrew
+            case foreman: return .fieldCrew // Foreman is a type of field crew
+            case admin: return .officeCrew // Admin is office-level
             default: return .fieldCrew // Default to field crew if unknown
             }
         }
@@ -71,78 +77,95 @@ struct BubbleFields {
     
     /// Project entity fields (match your Bubble field names exactly)
     struct Project {
-        static let id = "_id" // Bubble uses _id for internal ID
-        static let address = "Address"
-        static let allDay = "All Day"
-        static let client = "Client"
-        static let company = "Company"
-        static let completion = "Completion"
-        static let description = "Description"
-        static let projectName = "Project Name"
-        static let startDate = "Start Date"
-        static let status = "Status"
-        static let teamMembers = "Team Members"
-        static let teamNotes = "Team Notes"
-        static let clientName = "Client Name"
+        static let id = "_id"
+        static let address = "address"
+        static let allDay = "allDay"
+        static let calendarEvent = "calendarEvent"
+        static let client = "client"
+        static let company = "company"
+        static let completion = "completion"
+        static let description = "description"
+        static let eventType = "eventType"
+        static let projectName = "projectName"
+        static let startDate = "startDate"
+        static let status = "status"
+        static let teamMembers = "teamMembers"
+        static let teamNotes = "teamNotes"
+        static let clientName = "clientName"
+        static let tasks = "tasks"
     }
     
     /// User entity fields (match your Bubble field names exactly)
     struct User {
-        static let id = "_id" // Bubble uses _id for internal ID
-        static let clientID = "Client ID"
-        static let company = "Company"
-        static let currentLocation = "Current Location"
-        static let employeeType = "Employee Type"
-        static let nameFirst = "Name First"
-        static let nameLast = "Name Last"
-        static let userType = "User Type"
-        static let avatar = "Avatar"
-        static let email = "email" // Bubble's built-in field
-        static let phone = "Phone"
-        static let homeAddress = "Home Address"
+        static let id = "_id"
+        static let clientID = "clientId"
+        static let company = "company"
+        static let currentLocation = "currentLocation"
+        static let employeeType = "employeeType"
+        static let nameFirst = "nameFirst"
+        static let nameLast = "nameLast"
+        static let userType = "userType"
+        static let avatar = "avatar"
+        static let profileImageURL = "profileImageURL"
+        static let email = "email"
+        static let phone = "phone"
+        static let homeAddress = "homeAddress"
     }
     
     /// Company entity fields (match your Bubble field names exactly)
     struct Company {
-        static let id = "_id" // Bubble uses _id for internal ID
-        static let companyName = "Company Name"
-        static let companyID = "companyID"
-        static let location = "Location"
-        static let logo = "Logo"
-        static let projects = "Projects"
-        static let teams = "Teams"
+        static let id = "_id"
+        static let companyName = "companyName"
+        static let companyID = "companyId"
+        static let location = "location"
+        static let logo = "logo"  // Company logo image URL (actual Bubble field name)
+        static let logoURL = "logoURL"  // Legacy/alternative field
+        static let projects = "projects"
+        static let teams = "teams"
+        static let clients = "clients"
+        static let taskTypes = "taskTypes"
+        static let calendarEventsList = "calendarEventsList"
     }
     
     /// Client entity fields (match your Bubble field names exactly)
     struct Client {
-        static let id = "_id" // Bubble uses _id for internal ID
-        static let address = "Address"
-        static let balance = "Balance"
-        static let clientIdNo = "Client ID No"
-        static let clientsList = "Clients List"
-        static let emailAddress = "Email Address"
-        static let estimatesList = "Estimates List"
-        static let invoices = "Invoices"
-        static let isCompany = "Is Company"
-        static let name = "Name"
-        static let parentCompany = "Parent Company"
-        static let phoneNumber = "Phone Number"
-        static let projectsList = "Projects List"
-        static let status = "Status"
-        static let thumbnail = "Thumbnail"
-        static let unit = "Unit"
-        static let userId = "User ID"
+        static let id = "_id"
+        static let address = "address"
+        static let balance = "balance"
+        static let clientIdNo = "clientIdNo"
+        static let subClients = "subClients"  // Changed from "clientsList"
+        static let emailAddress = "emailAddress"
+        static let estimates = "estimates"  // Changed from "Estimates List" to "estimates"
+        static let invoices = "invoices"
+        static let isCompany = "isCompany"
+        static let name = "name"
+        static let parentCompany = "parentCompany"
+        static let phoneNumber = "phoneNumber"
+        static let projectsList = "projectsList"
+        static let status = "status"
+        static let avatar = "avatar"  // Changed from "Thumbnail" to "avatar"
+        static let unit = "unit"
+        static let userId = "userId"
+        static let notes = "notes"
     }
     
     /// SubClient entity fields (match your Bubble field names exactly)
     struct SubClient {
         static let id = "_id"
-        static let address = "Address"
-        static let emailAddress = "Email Address"
-        static let name = "Name"
-        static let parentClient = "Parent Client"
-        static let phoneNumber = "Phone Number"
-        static let title = "Title"
+        static let address = "address"
+        static let emailAddress = "emailAddress"
+        static let name = "name"
+        static let parentClient = "parentClient"
+        static let phoneNumber = "phoneNumber"
+        static let title = "title"
+    }
+
+    struct TaskStatusOption {
+        static let id = "_id"
+        static let display = "Display"
+        static let company = "company"
+        static let color = "color"
+        static let index = "index"
     }
     
     /// Task entity fields (match your Bubble field names exactly)
@@ -151,21 +174,21 @@ struct BubbleFields {
         static let calendarEventId = "calendarEventId"
         static let companyId = "companyId"
         static let completionDate = "completionDate"
-        static let projectID = "projectID"
+        static let projectId = "projectId"
         static let scheduledDate = "scheduledDate"
         static let status = "status"
         static let taskColor = "taskColor"
         static let taskIndex = "taskIndex"
         static let taskNotes = "taskNotes"
-        static let teamMembers = "Team Members"
+        static let teamMembers = "teamMembers"
         static let type = "type"
     }
     
     /// TaskType entity fields (match your Bubble field names exactly)
     struct TaskType {
         static let id = "_id"
-        static let color = "Color"
-        static let display = "Display"
+        static let color = "color"
+        static let display = "display"
         static let isDefault = "isDefault"
     }
     
@@ -173,19 +196,20 @@ struct BubbleFields {
     struct CalendarEvent {
         static let id = "_id"
         static let active = "active"
-        static let color = "Color"
-        static let companyId = "companyId"  // lowercase 'c'
-        static let duration = "Duration"
-        static let endDate = "End Date"
-        static let projectId = "projectId"  // lowercase 'p'
-        static let startDate = "Start Date"
-        static let taskId = "taskId"  // lowercase 't'
-        static let teamMembers = "Team Members"
-        static let title = "Title"
-        static let type = "Type"
+        static let color = "color"
+        static let companyId = "companyId"
+        static let duration = "duration"
+        static let endDate = "endDate"
+        static let projectId = "projectId"
+        static let startDate = "startDate"
+        static let taskId = "taskId"
+        static let teamMembers = "teamMembers"
+        static let title = "title"
+        static let eventType = "eventType"
     }
     
     /// Task Status values
+    /// NOTE: Display values remain unchanged (capitalized)
     struct TaskStatus {
         static let scheduled = "Scheduled"
         static let inProgress = "In Progress"

@@ -39,6 +39,7 @@ struct UserInfoView: View {
         case firstName = 0
         case lastName = 1
         case phoneNumber = 2
+        case profilePicture = 3
     }
     
     // Calculate the current step number based on user type
@@ -144,6 +145,20 @@ struct UserInfoView: View {
                                 phoneNumber: $viewModel.phoneNumber,
                                 viewModel: viewModel,
                                 onContinue: {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentPhase = .profilePicture
+                                    }
+                                }
+                            )
+                        case .profilePicture:
+                            ProfilePicturePhaseView(
+                                profileImage: $viewModel.profileImage,
+                                viewModel: viewModel,
+                                onContinue: {
+                                    viewModel.moveToNextStep()
+                                },
+                                onSkip: {
+                                    viewModel.profileImage = nil
                                     viewModel.moveToNextStep()
                                 }
                             )
@@ -166,22 +181,17 @@ struct UserInfoView: View {
     private func checkAndSkipIfDataExists() {
         guard !hasCheckedExistingData else { return }
         hasCheckedExistingData = true
-        
-        // Check if all user info already exists
-        if !viewModel.firstName.isEmpty && !viewModel.lastName.isEmpty && !viewModel.phoneNumber.isEmpty {
-            // Automatically move to next step
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                viewModel.moveToNextStep()
-            }
+
+        // Set the phase to the first missing field
+        if viewModel.firstName.isEmpty {
+            currentPhase = .firstName
+        } else if viewModel.lastName.isEmpty {
+            currentPhase = .lastName
+        } else if viewModel.phoneNumber.isEmpty {
+            currentPhase = .phoneNumber
         } else {
-            // Set the phase to the first missing field
-            if viewModel.firstName.isEmpty {
-                currentPhase = .firstName
-            } else if viewModel.lastName.isEmpty {
-                currentPhase = .lastName
-            } else if viewModel.phoneNumber.isEmpty {
-                currentPhase = .phoneNumber
-            }
+            // Start at profile picture phase if all other info exists
+            currentPhase = .profilePicture
         }
     }
 }
@@ -359,6 +369,87 @@ struct PhoneNumberPhaseView: View {
                 isDisabled: !isPhoneValid,
                 onTap: onContinue
             )
+        }
+    }
+}
+
+struct ProfilePicturePhaseView: View {
+    @Binding var profileImage: UIImage?
+    @ObservedObject var viewModel: OnboardingViewModel
+    let onContinue: () -> Void
+    let onSkip: () -> Void
+
+    @State private var imageData: Data?
+
+    private var primaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+
+    private var secondaryTextColor: Color {
+        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ADD A")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(primaryTextColor)
+
+                Text("PROFILE PHOTO")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(primaryTextColor)
+                    .padding(.bottom, 12)
+
+                Text("Your photo helps your team recognize you. You can add or change this later.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(secondaryTextColor)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 20)
+
+            // Use ProfileImageUploader
+            ProfileImageUploader(
+                config: ImageUploaderConfig(
+                    currentImageURL: nil,
+                    currentImageData: imageData,
+                    placeholderText: "\(viewModel.firstName.prefix(1))\(viewModel.lastName.prefix(1))",
+                    size: 120,
+                    shape: .circle,
+                    allowDelete: false,
+                    backgroundColor: OPSStyle.Colors.primaryAccent
+                ),
+                onUpload: { image in
+                    // Store the image locally for upload during completion
+                    profileImage = image
+                    if let data = image.jpegData(compressionQuality: 0.8) {
+                        imageData = data
+                    }
+                    return "" // Return empty string since we're not uploading yet
+                },
+                onDelete: nil
+            )
+        }
+
+        Spacer()
+
+        // Continue/Skip buttons
+        VStack(spacing: 12) {
+            StandardContinueButton(
+                isDisabled: profileImage == nil,
+                onTap: onContinue
+            )
+
+            Button(action: onSkip) {
+                Text("Skip for now")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(secondaryTextColor)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+            }
         }
     }
 }

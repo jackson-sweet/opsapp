@@ -74,28 +74,40 @@ struct ProfileSettingsView: View {
                         if let user = dataController.currentUser {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack(alignment: .top, spacing: 16) {
-                                    // User avatar - using unified UserAvatar component
-                                    UserAvatar(user: user, size: 60)
-                                        .overlay(
-                                            Circle()
-                                                .stroke(Color.white, lineWidth: 2)
-                                        )
-                                    
+                                    // Profile image uploader
+                                    ProfileImageUploader(
+                                        config: ImageUploaderConfig(
+                                            currentImageURL: user.profileImageURL,
+                                            currentImageData: user.profileImageData,
+                                            placeholderText: "\(user.firstName.prefix(1))\(user.lastName.prefix(1))",
+                                            size: 80,
+                                            shape: .circle,
+                                            allowDelete: true,
+                                            backgroundColor: Color(hex: user.userColor ?? "#59779F") ?? OPSStyle.Colors.primaryAccent
+                                        ),
+                                        onUpload: { image in
+                                            try await dataController.uploadUserProfileImage(image, for: user)
+                                        },
+                                        onDelete: {
+                                            try await dataController.deleteUserProfileImage(for: user)
+                                        }
+                                    )
+
                                     VStack(alignment: .leading, spacing: 6) {
                                         // Name and role
                                         HStack(spacing: 8) {
                                             Text(user.fullName)
                                                 .font(OPSStyle.Typography.bodyBold)
                                                 .foregroundColor(.white)
-                                            
+
                                             Text("| \(user.role.displayName)")
                                                 .font(OPSStyle.Typography.body)
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                         }
-                                        
+
                                         // Show role only (email is now in form field)
                                         // Removed email display from header
-                                        
+
                                         // Phone
                                         if let userPhone = user.phone, !userPhone.isEmpty {
                                             Text(userPhone)
@@ -103,7 +115,7 @@ struct ProfileSettingsView: View {
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                         }
                                     }
-                                    
+
                                     Spacer()
                                 }
                             }

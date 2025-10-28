@@ -59,7 +59,11 @@ class OnboardingViewModel: ObservableObject {
     @Published var companySize: CompanySize? = nil
     @Published var companyAge: CompanyAge? = nil
     @Published var teamInviteEmails: [String] = []
-    
+
+    // Image data
+    @Published var profileImage: UIImage? = nil
+    @Published var companyLogo: UIImage? = nil
+
     // State management
     @Published var isLoading: Bool = false
     @Published var errorMessage: String = ""
@@ -1368,24 +1372,84 @@ class OnboardingViewModel: ObservableObject {
         }
     }
     
-    func completeOnboarding() {
-        // Mark onboarding as completed
-        UserDefaults.standard.set(true, forKey: "onboarding_completed")
-        UserDefaults.standard.set(false, forKey: "resume_onboarding")
-
-        // Store final user type
-        if let userType = selectedUserType {
-            UserDefaults.standard.set(userType.rawValue, forKey: "user_type")
+    /// Upload user profile picture if one was selected during onboarding
+    func uploadProfilePictureIfNeeded() async {
+        guard let profileImage = profileImage,
+              let user = dataController?.currentUser else {
+            print("[ONBOARDING] No profile picture to upload or user not found")
+            return
         }
 
-        // Set authentication flag to enter the app
-        UserDefaults.standard.set(true, forKey: "is_authenticated")
+        print("[ONBOARDING] Uploading profile picture...")
+        do {
+            let _ = try await dataController?.uploadUserProfileImage(profileImage, for: user)
+            print("[ONBOARDING] ✅ Profile picture uploaded successfully")
+        } catch {
+            print("[ONBOARDING] ⚠️ Failed to upload profile picture: \(error)")
+            // Don't block onboarding - user can upload later
+        }
+    }
 
+    /// Upload company logo if one was selected during onboarding
+    func uploadCompanyLogoIfNeeded() async {
+        guard let companyLogo = companyLogo,
+              let companyId = UserDefaults.standard.string(forKey: "company_id"),
+              let dataController = dataController else {
+            print("[ONBOARDING] No company logo to upload or company not found")
+            return
+        }
 
-        // Update the server with onboarding completion status
-        if let userId = UserDefaults.standard.string(forKey: "user_id"),
-           let dataController = dataController {
-            Task {
+        // Get company from SwiftData
+        guard let modelContext = dataController.modelContext else {
+            print("[ONBOARDING] ⚠️ ModelContext not available")
+            return
+        }
+
+        let descriptor = FetchDescriptor<Company>(
+            predicate: #Predicate<Company> { $0.id == companyId }
+        )
+
+        guard let company = try? modelContext.fetch(descriptor).first else {
+            print("[ONBOARDING] ⚠️ Company not found in SwiftData")
+            return
+        }
+
+        print("[ONBOARDING] Uploading company logo...")
+        do {
+            let _ = try await dataController.uploadCompanyLogo(companyLogo, for: company)
+            print("[ONBOARDING] ✅ Company logo uploaded successfully")
+        } catch {
+            print("[ONBOARDING] ⚠️ Failed to upload company logo: \(error)")
+            // Don't block onboarding - user can upload later
+        }
+    }
+
+    func completeOnboarding() {
+        // Upload images before completing onboarding
+        Task {
+            // Upload profile picture if available
+            await uploadProfilePictureIfNeeded()
+
+            // Upload company logo if available (for company owners)
+            await uploadCompanyLogoIfNeeded()
+
+            await MainActor.run {
+                // Mark onboarding as completed
+                UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                UserDefaults.standard.set(false, forKey: "resume_onboarding")
+
+                // Store final user type
+                if let userType = selectedUserType {
+                    UserDefaults.standard.set(userType.rawValue, forKey: "user_type")
+                }
+
+                // Set authentication flag to enter the app
+                UserDefaults.standard.set(true, forKey: "is_authenticated")
+            }
+
+            // Update the server with onboarding completion status
+            if let userId = UserDefaults.standard.string(forKey: "user_id"),
+               let dataController = dataController {
                 do {
                     let updateData = ["hasCompletedAppOnboarding": true]
                     try await dataController.apiService.updateUser(id: userId, userData: updateData)
@@ -1404,17 +1468,17 @@ class OnboardingViewModel: ObservableObject {
                 // No need to sync again here - all data is already loaded
                 print("[ONBOARDING] Onboarding complete, data already synced from createCompany()")
             }
-        }
 
-        // Update DataController if available
-        if let dataController = dataController {
-            DispatchQueue.main.async {
-                dataController.isAuthenticated = true
+            // Update DataController if available
+            await MainActor.run {
+                if let dataController = dataController {
+                    dataController.isAuthenticated = true
+                }
+
+                // Dismiss the onboarding overlay
+                NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
             }
         }
-
-        // Dismiss the onboarding overlay
-        NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
     }
     
     /// Reload the current user from SwiftData after sync completes

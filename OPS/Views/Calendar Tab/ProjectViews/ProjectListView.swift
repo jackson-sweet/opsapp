@@ -13,7 +13,8 @@ struct ProjectListView: View {
     @ObservedObject var viewModel: CalendarViewModel
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var dataController: DataController
-    
+    @State private var isAnimating = false
+
     // Separate new and ongoing events
     private var newEvents: [CalendarEvent] {
         viewModel.calendarEventsForSelectedDate.filter { event in
@@ -34,10 +35,14 @@ struct ProjectListView: View {
             // Only the content area should be in the ScrollView, not the header
             if viewModel.calendarEventsForSelectedDate.isEmpty {
                 emptyStateView
+                    .opacity(isAnimating ? 1 : 0)
+                    .offset(y: isAnimating ? 0 : 20)
             } else {
                 // Project list content in ScrollView
                 ScrollView {
                     projectListView
+                        .opacity(isAnimating ? 1 : 0)
+                        .offset(y: isAnimating ? 0 : 20)
                 }
             }
             
@@ -87,6 +92,24 @@ struct ProjectListView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
+        // Watch for calendar event changes and force refresh
+        .onChange(of: dataController.calendarEventsDidChange) { _, _ in
+            // Use objectWillChange instead of forcing full view recreation
+            viewModel.objectWillChange.send()
+        }
+        // Trigger animation when view appears
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.3)) {
+                isAnimating = true
+            }
+        }
+        // Reset animation state when date changes
+        .onChange(of: viewModel.selectedDate) { _, _ in
+            isAnimating = false
+            withAnimation(.easeOut(duration: 0.3)) {
+                isAnimating = true
+            }
+        }
     }
     
     // Split the date into components for better styling

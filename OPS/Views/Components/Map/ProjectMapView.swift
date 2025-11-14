@@ -37,6 +37,7 @@ struct ProjectMapView: View {
     @State private var userHasMovedMap = false
     @State private var lastUserInteraction = Date.distantPast
     @State private var autoZoomTimer: Timer?
+    @State private var hasIncludedUserLocationInInitialRegion = false
     
     // MARK: - Computed Properties
     
@@ -148,18 +149,20 @@ struct ProjectMapView: View {
             locationManager.requestPermissionIfNeeded()
             userHasMovedMap = false
             lastUserInteraction = Date.distantPast
+            hasIncludedUserLocationInInitialRegion = false
             
             // Check if we already have location data
-            if let userLoc = locationManager.userLocation {
-                // Immediately set region if we have location
+            if locationManager.userLocation != nil {
+                // Immediately set region if we have location (includes user + projects)
+                hasIncludedUserLocationInInitialRegion = true
                 let newRegion = idealMapRegion
                 region = newRegion
-            } else {
             }
-            
+
             // Also schedule a delayed check in case location comes in slightly later
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                if let userLoc = locationManager.userLocation {
+                if locationManager.userLocation != nil {
+                    hasIncludedUserLocationInInitialRegion = true
                 }
                 let newRegion = idealMapRegion
                 withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
@@ -190,9 +193,17 @@ struct ProjectMapView: View {
             updateRegionIfNeeded()
         }
         .onChange(of: projects.count) { _, newCount in
-            // When projects load for first time, immediately center (ignore timer for data loading)
+            // When projects load for first time, wait for user location then center
             if newCount > 0 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                // CRITICAL: Wait longer (2 seconds) to ensure user location is available
+                // This prevents centering on projects only without user location
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    if locationManager.userLocation != nil {
+                        print("[MAP] 📍 Projects loaded with user location available - centering on BOTH")
+                        hasIncludedUserLocationInInitialRegion = true
+                    } else {
+                        print("[MAP] ⚠️ Projects loaded but user location NOT available yet")
+                    }
                     let newRegion = idealMapRegion
                     withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
                         region = newRegion
@@ -203,22 +214,33 @@ struct ProjectMapView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .locationDidChange)) { _ in
-            if let userLoc = locationManager.userLocation {
-            }
-            
             // During routing, NO auto-zoom on location changes - user controls map
             if InProgressManager.shared.isRouting {
-                // Do nothing during routing - let user position map freely
-            } else {
-                // If this is the first location update (no projects loaded yet), immediately center on user
-                if projects.isEmpty && locationManager.userLocation != nil {
-                    let newRegion = idealMapRegion
-                    withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
-                        region = newRegion
-                    }
+                return
+            }
+
+            // CRITICAL FIX: When user location becomes available, REBUILD map to include it
+            if locationManager.userLocation != nil && !hasIncludedUserLocationInInitialRegion {
+                print("[MAP] 🎯 User location became available - REBUILDING map with user location")
+                hasIncludedUserLocationInInitialRegion = true
+
+                // Force recalculation by calling the appropriate region method directly
+                let newRegion: MKCoordinateRegion
+                if !projects.isEmpty {
+                    // We have projects - calculate region including BOTH user and projects
+                    newRegion = allProjectsRegion()
+                    print("[MAP] 📍 Rebuilt map with \(projects.count) projects + user location")
                 } else {
-                    updateRegionIfNeeded()
+                    // No projects yet - center on user only
+                    newRegion = userLocationRegion()
+                    print("[MAP] 📍 Rebuilt map with user location only")
                 }
+
+                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                    region = newRegion
+                }
+            } else {
+                updateRegionIfNeeded()
             }
         }
         .onChange(of: mapAutoCenter) { _, newValue in
@@ -388,24 +410,70 @@ struct ProjectMapView: View {
         guard let projectCoordinate = projects[safe: selectedIndex]?.coordinate else {
             return fallbackRegion()
         }
-        
-        let span = getSpanForZoomLevel()
-        return MKCoordinateRegion(center: projectCoordinate, span: span)
+
+        // If user location is available, create region that includes both user and project
+        if let userLocation = locationManager.userLocation {
+            // If they're the same location, just center on it
+            if userLocation.latitude == projectCoordinate.latitude &&
+               userLocation.longitude == projectCoordinate.longitude {
+                let span = getSpanForZoomLevel()
+                return MKCoordinateRegion(center: projectCoordinate, span: span)
+            }
+
+            // Calculate bounds
+            let minLat = min(userLocation.latitude, projectCoordinate.latitude)
+            let maxLat = max(userLocation.latitude, projectCoordinate.latitude)
+            let minLon = min(userLocation.longitude, projectCoordinate.longitude)
+            let maxLon = max(userLocation.longitude, projectCoordinate.longitude)
+
+            // Calculate padding based on zoom preference
+            let paddingMultiplier: Double
+            switch mapZoomLevel {
+            case "close": paddingMultiplier = 1.2
+            case "medium": paddingMultiplier = 1.4
+            case "far": paddingMultiplier = 1.8
+            default: paddingMultiplier = 1.4
+            }
+
+            let latDelta = max(0.01, (maxLat - minLat) * paddingMultiplier)
+            let lonDelta = max(0.01, (maxLon - minLon) * paddingMultiplier)
+
+            let centerLat = (minLat + maxLat) / 2
+            let centerLon = (minLon + maxLon) / 2
+
+            // Apply same UI adjustments as allProjectsRegion for focus area
+            let expandedLatDelta = latDelta * 2.5
+            let expandedLonDelta = lonDelta * 2.5
+            let centerAdjustment = expandedLatDelta * 0.05
+            let adjustedCenterLat = centerLat - centerAdjustment
+
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: adjustedCenterLat, longitude: centerLon),
+                span: MKCoordinateSpan(latitudeDelta: expandedLatDelta, longitudeDelta: expandedLonDelta)
+            )
+        } else {
+            // No user location, just center on project
+            let span = getSpanForZoomLevel()
+            return MKCoordinateRegion(center: projectCoordinate, span: span)
+        }
     }
     
     private func allProjectsRegion() -> MKCoordinateRegion {
         var coordinates: [CLLocationCoordinate2D] = []
-        
+
         // Add user location if available
         if let userLocation = locationManager.userLocation {
             coordinates.append(userLocation)
+            print("[MAP] ✅ allProjectsRegion: INCLUDING user location (\(userLocation.latitude), \(userLocation.longitude))")
         } else {
+            print("[MAP] ⚠️ allProjectsRegion: User location NOT available")
         }
-        
+
         // Add project coordinates
         for project in projects {
             if let coordinate = project.coordinate {
                 coordinates.append(coordinate)
+                print("[MAP] ✅ allProjectsRegion: INCLUDING project \(project.title)")
             }
         }
         
@@ -447,18 +515,22 @@ struct ProjectMapView: View {
         let centerLon = (minLon + maxLon) / 2
         
         // Adjust center to account for UI elements:
-        // - Top 40% is header area  
+        // - Top 40% is header area
         // - Bottom 30% is project carousel and tab bar
-        // Available viewing area is middle 30% of screen
-        // Need to expand the bounds to account for these blocked areas
-        // Increase the latitude span to ensure all content fits in the viewable middle area
-        let expandedLatDelta = latDelta * 1.6 // Expand to account for UI blocking 70% of screen
-        let expandedLonDelta = lonDelta * 1.6
-        
-        
-        // Move center up by 15% of the latitude span to better center in viewable area
-        let centerAdjustment = expandedLatDelta * 0.15 // Move up 15%
-        let adjustedCenterLat = centerLat + centerAdjustment
+        // Available viewing area is middle 30% of screen (from 40% to 70% of screen height)
+        // Focus area center is at 55% from top (40% + 15%)
+        // Map center normally renders at 50% from top
+        // To center content in focus area, shift map south by 5% of visible height
+
+        // Expand bounds to ensure all points fit within visible focus area
+        // Need to expand by more to account for blocked areas
+        let expandedLatDelta = latDelta * 2.5 // Expand significantly to account for 70% of screen being blocked
+        let expandedLonDelta = lonDelta * 2.5
+
+        // Shift map center south by 5% of visible height so content appears centered in focus area (at 55%)
+        // This moves the geographic bounding box center from screen center (50%) up to focus area center (55%)
+        let centerAdjustment = expandedLatDelta * 0.05 // 5% of visible map height
+        let adjustedCenterLat = centerLat - centerAdjustment // Subtract to pan south, shifting content up on screen
         
         
         return MKCoordinateRegion(
@@ -595,7 +667,6 @@ struct MapViewRepresentable: UIViewRepresentable {
         
         if latitudeChanged || longitudeChanged || spanChanged {
             mapView.setRegion(region, animated: true)
-            let isRouting = InProgressManager.shared.isRouting
         }
         
         applySettings(to: mapView)
@@ -714,7 +785,8 @@ struct MapViewRepresentable: UIViewRepresentable {
             // Let the hosting controller size itself naturally
             let size = hostingController.sizeThatFits(in: UIView.layoutFittingExpandedSize)
             hostingController.view.frame = CGRect(origin: .zero, size: size)
-            hostingController.view.isUserInteractionEnabled = true
+            // CRITICAL: Disable user interaction on SwiftUI view so taps reach the annotation view
+            hostingController.view.isUserInteractionEnabled = false
             hostingController.view.tag = 1000 + (customAnnotation.index % 1000)
             
             // Set the annotation view frame to match the content
@@ -724,10 +796,11 @@ struct MapViewRepresentable: UIViewRepresentable {
             // Set the anchor point to the bottom center of the pin
             // This ensures the pin tip stays at the coordinate during zoom/rotation
             annotationView.centerOffset = CGPoint(x: 0, y: -size.height / 2)
-            
-            annotationView.isEnabled = true
-            annotationView.isUserInteractionEnabled = true
-            annotationView.canShowCallout = false
+
+            // CRITICAL: Configure for proper tap handling through delegate
+            annotationView.isEnabled = true  // Allow annotation to be tapped
+            annotationView.isUserInteractionEnabled = true  // Allow user interaction
+            annotationView.canShowCallout = false  // No default callout (we handle selection via delegate)
             
             if customAnnotation.isSelected || customAnnotation.isActiveProject {
                 annotationView.displayPriority = .defaultHigh
@@ -740,6 +813,30 @@ struct MapViewRepresentable: UIViewRepresentable {
             return annotationView
         }
         
+        // CRITICAL: Handle annotation selection through native MKMapView delegate
+        // This is MUCH more reliable than SwiftUI tap gestures inside annotation views
+        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            // Ignore user location
+            guard let customAnnotation = view.annotation as? CustomAnnotation else { return }
+
+            print("[MAP] 📍 Annotation selected: \(customAnnotation.project?.title ?? "unknown")")
+
+            // Find and trigger the onTap handler
+            if let item = parent.annotations.first(where: { $0.id == customAnnotation.id }) {
+                // Deselect the annotation immediately to allow repeated taps
+                DispatchQueue.main.async {
+                    mapView.deselectAnnotation(customAnnotation, animated: false)
+                }
+
+                // Trigger the tap handler
+                item.onTap()
+
+                // Haptic feedback
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+            }
+        }
+
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)

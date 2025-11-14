@@ -240,7 +240,8 @@ extension APIService {
             type: event.type,
             active: event.active,
             createdDate: nil,
-            modifiedDate: nil
+            modifiedDate: nil,
+            deletedAt: nil
         )
     }
     

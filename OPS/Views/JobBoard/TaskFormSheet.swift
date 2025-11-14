@@ -145,14 +145,15 @@ struct TaskFormSheet: View {
                         projectId: project.id,
                         taskTypeId: selectedTaskTypeId ?? "",
                         companyId: dataController.currentUser?.companyId ?? "",
-                        status: .scheduled
+                        status: .booked
                     )),
                     currentStartDate: startDate,
                     currentEndDate: endDate,
                     onScheduleUpdate: { newStart, newEnd in
                         self.startDate = newStart
                         self.endDate = newEnd
-                    }
+                    },
+                    preselectedTeamMemberIds: selectedTeamMemberIds.isEmpty ? nil : selectedTeamMemberIds
                 )
                 .environmentObject(dataController)
             }
@@ -472,7 +473,7 @@ struct TaskFormSheet: View {
                         projectId: selectedProjectId!,
                         taskTypeId: selectedTaskTypeId!,
                         companyId: dataController.currentUser?.companyId ?? "",
-                        status: .scheduled,
+                        status: .booked,
                         taskColor: taskColor
                     )
 
@@ -578,7 +579,8 @@ struct TaskFormSheet: View {
                             type: "Task",
                             active: calendarEvent.active,
                             createdDate: nil,
-                            modifiedDate: nil
+                            modifiedDate: nil,
+                            deletedAt: nil
                         )
 
                         // Create and link calendar event (automatically links to task based on type)
@@ -656,6 +658,10 @@ struct TaskFormSheet: View {
 
             await MainActor.run {
                 if savedOffline {
+                    // Warning haptic feedback for offline save
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.warning)
+
                     errorMessage = "WEAK/NO CONNECTION, QUEUING FOR LATER SYNC. SAVED LOCALLY"
                     showingError = true
                     isSaving = false
@@ -664,9 +670,17 @@ struct TaskFormSheet: View {
                         dismiss()
                     }
                 } else {
+                    // Success haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+
                     isSaving = false
                     onSave(task)
-                    dismiss()
+
+                    // Brief delay for graceful dismissal
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
                 }
             }
         }

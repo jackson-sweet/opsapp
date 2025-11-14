@@ -1,7 +1,7 @@
 # OPS App - API Integration Guide
 
-**Last Updated**: September 2025  
-**Version**: 1.2.0
+**Last Updated**: November 2025
+**Version**: 2.0.2
 
 ## Bubble.io API Integration
 

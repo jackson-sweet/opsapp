@@ -11,10 +11,28 @@ import SwiftUI
 
 /// Status enum for tasks
 enum TaskStatus: String, Codable, CaseIterable {
-    case scheduled = "Scheduled"
+    case booked = "Booked"
     case inProgress = "In Progress"
     case completed = "Completed"
     case cancelled = "Cancelled"
+
+    // Custom decoder to handle migration from "Scheduled" to "Booked"
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+
+        // Handle legacy "Scheduled" status by mapping to "Booked"
+        if rawValue == "Scheduled" {
+            self = .booked
+        } else if let status = TaskStatus(rawValue: rawValue) {
+            self = status
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Cannot initialize TaskStatus from invalid String value \(rawValue)"
+            )
+        }
+    }
 
     var displayName: String {
         return self.rawValue
@@ -22,7 +40,7 @@ enum TaskStatus: String, Codable, CaseIterable {
 
     var color: Color {
         switch self {
-        case .scheduled:
+        case .booked:
             return Color("StatusAccepted")
         case .inProgress:
             return Color("StatusInProgress")
@@ -35,17 +53,17 @@ enum TaskStatus: String, Codable, CaseIterable {
 
     func nextStatus() -> TaskStatus? {
         switch self {
-        case .scheduled: return .inProgress
+        case .booked: return .inProgress
         case .inProgress: return .completed
         case .completed: return nil
-        case .cancelled: return .scheduled
+        case .cancelled: return .booked
         }
     }
 
     func previousStatus() -> TaskStatus? {
         switch self {
-        case .scheduled: return nil
-        case .inProgress: return .scheduled
+        case .booked: return nil
+        case .inProgress: return .booked
         case .completed: return .inProgress
         case .cancelled: return nil
         }
@@ -61,7 +79,7 @@ enum TaskStatus: String, Codable, CaseIterable {
 
     var sortOrder: Int {
         switch self {
-        case .scheduled: return 0
+        case .booked: return 0
         case .inProgress: return 1
         case .completed: return 2
         case .cancelled: return 3
@@ -102,6 +120,9 @@ final class ProjectTask {
     // MARK: - Sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
+
+    // Soft delete support
+    var deletedAt: Date?
     
     // MARK: - Initialization
     init(
@@ -109,7 +130,7 @@ final class ProjectTask {
         projectId: String,
         taskTypeId: String,
         companyId: String,
-        status: TaskStatus = .scheduled,
+        status: TaskStatus = .booked,
         taskColor: String = "#59779F"
     ) {
         self.id = id

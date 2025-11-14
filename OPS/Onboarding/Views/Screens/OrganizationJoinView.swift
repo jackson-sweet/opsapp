@@ -84,6 +84,11 @@ struct OrganizationJoinView: View {
         }
         .onAppear {
             startAnimations()
+
+            // Perform data health check when account created screen loads
+            Task {
+                await viewModel.performDataHealthCheck()
+            }
         }
     }
     

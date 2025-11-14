@@ -55,7 +55,8 @@ struct ProjectDTO: Codable {
         self.slug = try container.decodeIfPresent(String.self, forKey: .slug)
         self.eventType = try container.decodeIfPresent(String.self, forKey: .eventType)
         self.tasks = try container.decodeIfPresent([BubbleReference].self, forKey: .tasks)
-        
+        self.deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
+
         // Log eventType for debugging
         if let eventTypeValue = self.eventType {
         } else {
@@ -84,6 +85,9 @@ struct ProjectDTO: Codable {
     let projectGrossCost: Double?
     let balance: Double?
     let slug: String?
+
+    // Soft delete support
+    let deletedAt: String? // ISO 8601 date string
     
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
@@ -111,6 +115,7 @@ struct ProjectDTO: Codable {
         case duration = "duration" // Duration in days for the project. type number.
         case eventType = "eventType" // CalendarEventType - determines if project uses task-based or project scheduling
         case tasks = "tasks" // List of tasks associated with this project, type list of Task
+        case deletedAt = "deletedAt" // Soft delete timestamp
     }
     
     /// Convert DTO to SwiftData model
@@ -181,7 +186,13 @@ struct ProjectDTO: Codable {
         if let teamMemberIds = teamMembers {
             project.teamMemberIdsString = teamMemberIds.joined(separator: ",")
         }
-        
+
+        // Parse deletedAt if present
+        if let deletedAtString = deletedAt {
+            let formatter = ISO8601DateFormatter()
+            project.deletedAt = formatter.date(from: deletedAtString)
+        }
+
         return project
     }
 }

@@ -119,7 +119,7 @@ struct PINGatedView: View {
     }
     
     var body: some View {
-        
+
         // Check subscription lockout first
         if subscriptionManager.shouldShowLockout {
             SubscriptionLockoutView()

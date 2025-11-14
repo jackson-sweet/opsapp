@@ -20,6 +20,9 @@ struct OrganizationSettingsView: View {
     @State private var isRefreshing = false
     @State private var showSeatManagement = false
     @State private var showPlanSelection = false
+    @State private var showColorPicker = false
+    @State private var selectedColor: Color = Color(hex: "#9CA3AF") ?? .gray
+    @State private var isUpdatingColor = false
     
     // Computed property to check if current user is a company admin
     private var isCompanyAdmin: Bool {
@@ -172,7 +175,16 @@ struct OrganizationSettingsView: View {
                                     isMissing: organization?.website?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
                                 )
                             }
-                            
+
+                            // Project settings section (admin only)
+                            if isCompanyAdmin {
+                                VStack(spacing: 16) {
+                                    SettingsSectionHeader(title: "PROJECT SETTINGS")
+
+                                    defaultProjectColorPicker
+                                }
+                            }
+
                             // Team section
                             VStack(spacing: 16) {
                                 SettingsSectionHeader(title: "TEAM MEMBERS")
@@ -524,7 +536,7 @@ struct OrganizationSettingsView: View {
                         
                         // Also force sync projects when opening organization settings
                         // This ensures projects are loaded if they weren't during login
-                        await dataController.syncManager?.forceSyncProjects()
+                        try? await dataController.syncManager?.manualFullSync()
                     } catch {
                         // Continue with local data even if API refresh fails
                         await MainActor.run {
@@ -608,6 +620,211 @@ struct OrganizationSettingsView: View {
         }
         
         return nil
+    }
+
+    // MARK: - Default Project Color Picker
+
+    @ViewBuilder
+    private var defaultProjectColorPicker: some View {
+        Button(action: {
+            showColorPicker = true
+        }) {
+            HStack(spacing: 12) {
+                // Color preview circle
+                Circle()
+                    .fill(Color(hex: organization?.defaultProjectColor ?? "#9CA3AF") ?? .gray)
+                    .frame(width: 40, height: 40)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
+                    )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Default Project Color")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Text(organization?.defaultProjectColor ?? "#9CA3AF")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+
+                Spacer()
+
+                if isUpdatingColor {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+            }
+            .padding(16)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(isUpdatingColor)
+        .padding(.horizontal, 20)
+        .sheet(isPresented: $showColorPicker) {
+            colorPickerSheet
+        }
+    }
+
+    @ViewBuilder
+    private var colorPickerSheet: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.background
+                    .ignoresSafeArea()
+
+                VStack(spacing: 24) {
+                    // Color preview
+                    VStack(spacing: 12) {
+                        Text("Preview")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Circle()
+                            .fill(selectedColor)
+                            .frame(width: 80, height: 80)
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(Color.white.opacity(0.2), lineWidth: 2)
+                            )
+
+                        Text(selectedColor.toHex() ?? "#9CA3AF")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                    .padding(.top, 24)
+
+                    // Color picker
+                    ColorPicker("Select Color", selection: $selectedColor, supportsOpacity: false)
+                        .labelsHidden()
+                        .padding(.horizontal, 20)
+
+                    Spacer()
+
+                    // Save button
+                    Button(action: {
+                        Task {
+                            await updateDefaultProjectColor()
+                        }
+                    }) {
+                        if isUpdatingColor {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            Text("Update Project Color")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(OPSStyle.Colors.primaryAccent)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
+                    .disabled(isUpdatingColor)
+                }
+            }
+            .navigationTitle("Default Project Color")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        showColorPicker = false
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .disabled(isUpdatingColor)
+                }
+            }
+        }
+        .onAppear {
+            // Initialize color picker with current color
+            if let hexColor = organization?.defaultProjectColor,
+               let color = Color(hex: hexColor) {
+                selectedColor = color
+            }
+        }
+    }
+
+    // MARK: - Update Default Project Color
+
+    @MainActor
+    private func updateDefaultProjectColor() async {
+        guard let company = organization else { return }
+
+        isUpdatingColor = true
+
+        let newColorHex = selectedColor.toHex() ?? "#9CA3AF"
+
+        do {
+            // Update company's defaultProjectColor
+            company.defaultProjectColor = newColorHex
+
+            // Save to database
+            try dataController.modelContext?.save()
+
+            // Update all project calendar events to use new color
+            try await updateAllProjectEventColors(to: newColorHex)
+
+            // Sync to API
+            if dataController.isConnected {
+                try await dataController.updateCompanyDefaultProjectColor(
+                    companyId: company.id,
+                    color: newColorHex
+                )
+            }
+
+            // Close sheet
+            showColorPicker = false
+
+            print("[COLOR_UPDATE] ✅ Successfully updated default project color to \(newColorHex)")
+
+        } catch {
+            print("[COLOR_UPDATE] ❌ Failed to update color: \(error)")
+        }
+
+        isUpdatingColor = false
+    }
+
+    // Update all project-type calendar events to use the new color
+    private func updateAllProjectEventColors(to newColor: String) async throws {
+        guard let context = dataController.modelContext,
+              let companyId = organization?.id else { return }
+
+        print("[COLOR_UPDATE] 🎨 Updating all project event colors to: \(newColor)")
+
+        // Fetch all calendar events for this company
+        let descriptor = FetchDescriptor<CalendarEvent>(
+            predicate: #Predicate<CalendarEvent> { event in
+                event.companyId == companyId
+            }
+        )
+
+        let allEvents = try context.fetch(descriptor)
+        var updatedCount = 0
+
+        // Update project-type events
+        for event in allEvents where event.type == .project {
+            if event.color != newColor {
+                print("[COLOR_UPDATE] 🎨 Updating '\(event.title)' from \(event.color) to \(newColor)")
+                event.color = newColor
+                updatedCount += 1
+            }
+        }
+
+        if updatedCount > 0 {
+            try context.save()
+            print("[COLOR_UPDATE] ✅ Updated \(updatedCount) project event colors")
+        } else {
+            print("[COLOR_UPDATE] ℹ️ No project events needed color updates")
+        }
     }
 }
 

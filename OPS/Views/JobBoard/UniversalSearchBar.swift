@@ -32,7 +32,7 @@ enum ProjectFilterOption: String, CaseIterable {
 
 enum TaskFilterOption: String, CaseIterable {
     case all = "All"
-    case scheduled = "Scheduled"
+    case booked = "Booked"
     case inProgress = "In Progress"
     case completed = "Completed"
     case cancelled = "Cancelled"
@@ -40,7 +40,7 @@ enum TaskFilterOption: String, CaseIterable {
     var status: TaskStatus? {
         switch self {
         case .all: return nil
-        case .scheduled: return .scheduled
+        case .booked: return .booked
         case .inProgress: return .inProgress
         case .completed: return .completed
         case .cancelled: return .cancelled

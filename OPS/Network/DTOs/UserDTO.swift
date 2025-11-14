@@ -21,7 +21,10 @@ struct UserDTO: Codable {
     let hasCompletedAppOnboarding: Bool?
     let authentication: Authentication?
     let stripeCustomerId: String?
-    
+
+    // Soft delete support
+    let deletedAt: String?
+
     // Authentication information
     struct Authentication: Codable {
         let email: EmailAuth?
@@ -54,6 +57,7 @@ struct UserDTO: Codable {
         case devPermission = "devPermission" // Bool indicating if user has dev permission for testing features.
         case hasCompletedAppOnboarding = "hasCompletedAppOnboarding" // Bool indicating if user has completed app onboarding.
         case stripeCustomerId = "stripeCustomerId" // User's Stripe customer ID
+        case deletedAt = "deletedAt" // Soft delete timestamp
     }
     
     /// Convert DTO to SwiftData model
@@ -117,9 +121,15 @@ struct UserDTO: Codable {
             user.profileImageURL = avatarUrl
             // Note: Actual image data will need to be downloaded separately
         }
-        
+
+        // Parse deletedAt if present
+        if let deletedAtString = deletedAt {
+            let formatter = ISO8601DateFormatter()
+            user.deletedAt = formatter.date(from: deletedAtString)
+        }
+
         user.lastSyncedAt = Date()
-        
+
         return user
     }
 }

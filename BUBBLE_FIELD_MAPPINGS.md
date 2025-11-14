@@ -336,11 +336,10 @@ The `Display` attribute is a built-in Bubble field and CANNOT be changed - it mu
 **Attributes:**
 - Display (text) - Built-in attribute - CANNOT CHANGE
 
-**Options (Display values - unchanged):**
-- Foreman
-- Crew
+**Options (Display values - ACTUAL VALUES FROM BUBBLE):**
+- Office Crew
+- Field Crew
 - Admin
-- Office
 
 ### CompanySize
 **Attributes:**

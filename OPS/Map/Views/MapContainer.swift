@@ -20,19 +20,22 @@ struct MapContainer: View {
     // Projects passed from parent
     let projects: [Project]
     let selectedIndex: Int
-    
+    let selectedEvent: CalendarEvent?
+
     // Callbacks
     let onProjectSelected: (Project) -> Void
     let onNavigationStarted: (Project) -> Void
-    
+
     init(projects: [Project],
          selectedIndex: Int,
+         selectedEvent: CalendarEvent?,
          onProjectSelected: @escaping (Project) -> Void,
          onNavigationStarted: @escaping (Project) -> Void,
          appState: AppState,
          locationManager: LocationManager) {
         self.projects = projects
         self.selectedIndex = selectedIndex
+        self.selectedEvent = selectedEvent
         self.onProjectSelected = onProjectSelected
         self.onNavigationStarted = onNavigationStarted
         self.appState = appState
@@ -52,7 +55,7 @@ struct MapContainer: View {
         ZStack {
             // Base map
             GeometryReader { geometry in
-                MapView(coordinator: coordinator)
+                MapView(coordinator: coordinator, onProjectSelected: onProjectSelected)
                     .ignoresSafeArea()
                     .environmentObject(appState)
                     .environmentObject(navigationEngine)
@@ -98,17 +101,17 @@ struct MapContainer: View {
             */
             
             // Project details card (when project selected and not navigating)
-            // Also hide if project is already in progress or app is in project mode
+            // Hide ONLY if app is in project mode (active project uses popup instead)
             if !coordinator.isNavigating,
                coordinator.showingProjectDetails,
                let project = coordinator.selectedProject,
-               project.status != .inProgress,
                !appState.isInProjectMode {
                 VStack {
                     Spacer()
                     
                     ProjectDetailsCard(
                         project: project,
+                        selectedEvent: selectedEvent,
                         coordinator: coordinator,
                         onStartProject: { project in
                             onNavigationStarted(project)

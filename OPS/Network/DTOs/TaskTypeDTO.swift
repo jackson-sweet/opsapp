@@ -19,6 +19,9 @@ struct TaskTypeDTO: Codable {
     let createdDate: String?
     let modifiedDate: String?
 
+    // Soft delete support
+    let deletedAt: String?
+
     // Coding keys to match Bubble field names exactly
     // Note: Bubble uses "id" for POST responses and "_id" for GET responses
     enum CodingKeys: String, CodingKey {
@@ -28,6 +31,7 @@ struct TaskTypeDTO: Codable {
         case isDefault = "isDefault"
         case createdDate = "Created Date"  // Bubble default field
         case modifiedDate = "Modified Date"  // Bubble default field
+        case deletedAt = "deletedAt"  // Soft delete timestamp
     }
 
     init(from decoder: Decoder) throws {
@@ -53,15 +57,17 @@ struct TaskTypeDTO: Codable {
         self.isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault)
         self.createdDate = try container.decodeIfPresent(String.self, forKey: .createdDate)
         self.modifiedDate = try container.decodeIfPresent(String.self, forKey: .modifiedDate)
+        self.deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
     }
 
-    init(id: String, color: String, display: String, isDefault: Bool?, createdDate: String?, modifiedDate: String?) {
+    init(id: String, color: String, display: String, isDefault: Bool?, createdDate: String?, modifiedDate: String?, deletedAt: String? = nil) {
         self.id = id
         self.color = color
         self.display = display
         self.isDefault = isDefault
         self.createdDate = createdDate
         self.modifiedDate = modifiedDate
+        self.deletedAt = deletedAt
     }
 
     private struct DynamicCodingKey: CodingKey {
@@ -88,9 +94,15 @@ struct TaskTypeDTO: Codable {
             isDefault: isDefault ?? false,
             icon: nil  // Icon field doesn't exist in Bubble
         )
-        
+
         taskType.displayOrder = 0  // Display order field doesn't exist in Bubble
-        
+
+        // Parse deletedAt if present
+        if let deletedAtString = deletedAt {
+            let formatter = ISO8601DateFormatter()
+            taskType.deletedAt = formatter.date(from: deletedAtString)
+        }
+
         return taskType
     }
     
@@ -102,7 +114,8 @@ struct TaskTypeDTO: Codable {
             display: taskType.display,
             isDefault: taskType.isDefault,
             createdDate: nil,
-            modifiedDate: nil
+            modifiedDate: nil,
+            deletedAt: nil
         )
     }
 }

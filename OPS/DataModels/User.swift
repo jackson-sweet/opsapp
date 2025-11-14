@@ -44,7 +44,10 @@ final class User {
     // Offline/sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
-    
+
+    // Soft delete support
+    var deletedAt: Date?
+
     init(id: String, firstName: String, lastName: String, role: UserRole, companyId: String) {
          self.id = id
          self.firstName = firstName

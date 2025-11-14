@@ -75,13 +75,10 @@ struct OPSApp: App {
                     
                     // Check notification authorization status
                     notificationManager.getAuthorizationStatus()
-                    
-                    // Sync to Bubble on app launch
-                    dataController.performAppLaunchSync()
-                    
-                    // Check subscription status
+
+                    // Perform data health check before syncing
                     Task {
-                        await subscriptionManager.checkSubscriptionStatus()
+                        await performAppLaunchChecks()
                     }
                     
                     // Migrate images from UserDefaults to file system
@@ -113,9 +110,9 @@ struct OPSApp: App {
                     dataController.simplePINManager.resetAuthentication()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                    // App became active - check subscription status
+                    // App became active - check subscription status if data is healthy
                     Task {
-                        await subscriptionManager.checkSubscriptionStatus()
+                        await performActiveChecks()
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didRegisterForRemoteNotificationsWithDeviceTokenNotification)) { notification in
@@ -126,6 +123,69 @@ struct OPSApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    /// Performs health check when app becomes active
+    @MainActor
+    private func performActiveChecks() async {
+        print("[APP_ACTIVE] 🏥 App became active - checking data health...")
+
+        let healthManager = DataHealthManager(
+            dataController: dataController,
+            authManager: AuthManager()
+        )
+
+        // Quick check - just verify minimum data exists
+        let hasMinimumData = healthManager.hasMinimumRequiredData()
+
+        if !hasMinimumData {
+            print("[APP_ACTIVE] ⚠️ Minimum data requirements not met - skipping subscription check")
+            return
+        }
+
+        // Minimum data exists, check subscription
+        await subscriptionManager.checkSubscriptionStatus()
+    }
+
+    /// Performs data health checks and initiates sync operations if data is healthy
+    @MainActor
+    private func performAppLaunchChecks() async {
+        print("[APP_LAUNCH] 🏥 Performing data health check before app launch sync...")
+
+        // Create health manager
+        let healthManager = DataHealthManager(
+            dataController: dataController,
+            authManager: AuthManager()
+        )
+
+        // Check if we have minimum required data
+        let hasMinimumData = healthManager.hasMinimumRequiredData()
+
+        if !hasMinimumData {
+            print("[APP_LAUNCH] ⚠️ Minimum data requirements not met - skipping sync and subscription check")
+            print("[APP_LAUNCH] ℹ️ User is likely not authenticated or mid-onboarding")
+            return
+        }
+
+        // Perform full health check
+        let (healthState, recoveryAction) = await healthManager.performHealthCheck()
+
+        if !healthState.isHealthy {
+            print("[APP_LAUNCH] ❌ Data health check failed: \(healthState)")
+            print("[APP_LAUNCH] 🔧 Executing recovery action: \(recoveryAction)")
+            await healthManager.executeRecoveryAction(recoveryAction)
+            return
+        }
+
+        print("[APP_LAUNCH] ✅ Data health check passed - proceeding with sync and subscription check")
+
+        // Data is healthy, proceed with normal app launch operations
+        dataController.performAppLaunchSync()
+
+        // Check subscription status
+        Task {
+            await subscriptionManager.checkSubscriptionStatus()
+        }
     }
 }
 

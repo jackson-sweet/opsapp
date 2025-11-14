@@ -112,8 +112,16 @@ struct ScheduleView: View {
             // Initialize with proper data controller
             viewModel.setDataController(dataController)
         }
+        // Watch for calendar event changes and reload data
+        .onChange(of: dataController.calendarEventsDidChange) { _, _ in
+            viewModel.reloadCalendarData()
+        }
         // Show day project sheet
         .sheet(isPresented: $showDaySheet, onDismiss: {
+            // Deselect the day when sheet is dismissed (clear the outline)
+            viewModel.shouldShowDaySheet = false
+            viewModel.userInitiatedDateSelection = false
+
             // If we have a selected project ID, navigate to project details after day sheet is dismissed
             if selectedProjectID != nil {
                 // Significant delay to ensure complete dismissal BEFORE showing project details

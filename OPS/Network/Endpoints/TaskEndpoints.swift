@@ -68,7 +68,7 @@ extension APIService {
 
 
         // Group by status
-        let scheduled = tasks.filter { $0.status == "Scheduled" }
+        let scheduled = tasks.filter { $0.status == "Booked" }
         let inProgress = tasks.filter { $0.status == "In Progress" }
         let completed = tasks.filter { $0.status == "Completed" }
         let cancelled = tasks.filter { $0.status == "Cancelled" }
@@ -327,7 +327,8 @@ extension APIService {
             teamMembers: task.teamMembers,
             type: task.type,
             createdDate: nil,
-            modifiedDate: nil
+            modifiedDate: nil,
+            deletedAt: nil
         )
     }
 

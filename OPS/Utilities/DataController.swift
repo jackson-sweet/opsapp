@@ -29,6 +29,9 @@ class DataController: ObservableObject {
     @Published var hasPendingSyncs = false
     @Published var pendingSyncCount = 0
     @Published var showSyncRestoredAlert = false
+    @Published var isPerformingInitialSync = false // Track post-login initial sync
+    @Published var syncStatusMessage = "" // Console-style sync status messages
+    @Published var calendarEventsDidChange = false // Toggle to trigger calendar refresh
     private var hasCompletedInitialConnectionCheck = false // Track if we've done initial setup
 
     // Global app state for external views to access
@@ -47,7 +50,7 @@ class DataController: ObservableObject {
     private let syncRetryInterval: TimeInterval = 180 // 3 minutes
 
     // MARK: - Public Access
-    var syncManager: SyncManager!
+    var syncManager: CentralizedSyncManager!
     var imageSyncManager: ImageSyncManager!
     @Published var simplePINManager = SimplePINManager()
     
@@ -161,19 +164,12 @@ class DataController: ObservableObject {
     @MainActor
     private func initializeSyncManager() {
         guard let modelContext = modelContext else { return }
-        
-        // Create user ID provider closure that returns the current user's ID
-        let userIdProvider = { [weak self] in
-            let userId = self?.currentUser?.id
-            return userId
-        }
-        
-        // Initialize the standard sync manager
-        self.syncManager = SyncManager(
+
+        // Initialize the centralized sync manager
+        self.syncManager = CentralizedSyncManager(
             modelContext: modelContext,
             apiService: apiService,
-            connectivityMonitor: connectivityMonitor,
-            userIdProvider: userIdProvider
+            connectivityMonitor: connectivityMonitor
         )
         
         // Initialize the image sync manager
@@ -790,6 +786,26 @@ class DataController: ObservableObject {
             UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
         }
         
+        // Save important IDs to UserDefaults
+        if let companyId = user.companyId {
+            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+        } else {
+        }
+
+        // Set authentication flag for consistency with onboarding flow
+        UserDefaults.standard.set(true, forKey: "is_authenticated")
+
+        UserDefaults.standard.set(user.id, forKey: "currentUserId")
+
+        // Initialize sync managers first
+        initializeSyncManager()
+
+        // IMPORTANT: Set isPerformingInitialSync BEFORE isAuthenticated
+        // This ensures the loading screen is ready when HomeView first appears
+        await MainActor.run {
+            isPerformingInitialSync = true
+        }
+
         // Only set isAuthenticated if user has completed onboarding
         // This ensures LoginView can show onboarding overlay if needed
         if user.hasCompletedAppOnboarding {
@@ -797,42 +813,91 @@ class DataController: ObservableObject {
         } else {
             self.isAuthenticated = false
         }
-        
-        // Save important IDs to UserDefaults
-        if let companyId = user.companyId {
-            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
-        } else {
-        }
-        
-        // Set authentication flag for consistency with onboarding flow
-        UserDefaults.standard.set(true, forKey: "is_authenticated")
-        
-        UserDefaults.standard.set(user.id, forKey: "currentUserId")
-        
-        // Initialize sync managers first
-        initializeSyncManager()
-        
+
         // Fetch company data if needed
         if isConnected, let companyId = user.companyId, !companyId.isEmpty {
             do {
+                await MainActor.run {
+                    syncStatusMessage = "FETCHING COMPANY DATA... [\(companyId.prefix(8))]"
+                }
                 try await fetchCompanyData(companyId: companyId)
-                
+
                 // After fetching company data, the user's role may have been updated to admin
                 // Log the updated role
-                
+
+                await MainActor.run {
+                    syncStatusMessage = "LOADING TEAM MEMBERS..."
+                }
+
                 // Fetch OPS Contacts option set (only on initial login, not every sync)
                 await fetchOpsContacts()
-                
-                // Now that we have company data, trigger a full sync to get projects
-                // Force project sync on login to ensure user gets their projects
-                await syncManager?.triggerBackgroundSync(forceProjectSync: true)
+
+                // Now that we have company data, perform a full sync to get all data
+                // This ensures user sees their projects immediately after login
+                print("[LOGIN] 🔄 Starting full sync after login...")
+                await MainActor.run {
+                    syncStatusMessage = "SYNCING PROJECTS..."
+                }
+                do {
+                    try await syncManager?.syncAll()
+                    print("[LOGIN] ✅ Full sync completed successfully")
+                    await MainActor.run {
+                        syncStatusMessage = "SYNC COMPLETE ✓"
+                    }
+                } catch {
+                    print("[LOGIN] ⚠️ Full sync failed: \(error)")
+                    // Continue anyway - user is logged in even if sync fails
+                    await MainActor.run {
+                        syncStatusMessage = "SYNC COMPLETED WITH WARNINGS"
+                    }
+                }
+                // Wait a moment so user can see completion message
+                try? await Task.sleep(nanoseconds: 800_000_000) // 0.8 seconds
+                await MainActor.run {
+                    isPerformingInitialSync = false
+                    syncStatusMessage = ""
+                }
             } catch {
                 // Continue even if company data fetch fails - don't block authentication
-                // But still try to sync what we can, forcing project sync
-                await syncManager?.triggerBackgroundSync(forceProjectSync: true)
+                // But still try to sync what we can
+                print("[LOGIN] ⚠️ Company fetch failed, attempting sync anyway...")
+                await MainActor.run {
+                    syncStatusMessage = "SYNCING PROJECTS..."
+                }
+                do {
+                    try await syncManager?.syncAll()
+                    print("[LOGIN] ✅ Full sync completed after company fetch failure")
+                    await MainActor.run {
+                        syncStatusMessage = "SYNC COMPLETE ✓"
+                    }
+                } catch {
+                    print("[LOGIN] ⚠️ Full sync also failed: \(error)")
+                    // Continue anyway - user is logged in even if sync fails
+                    await MainActor.run {
+                        syncStatusMessage = "SYNC COMPLETED WITH WARNINGS"
+                    }
+                }
+                // Wait a moment so user can see completion message
+                try? await Task.sleep(nanoseconds: 800_000_000) // 0.8 seconds
+                await MainActor.run {
+                    isPerformingInitialSync = false
+                    syncStatusMessage = ""
+                }
             }
         } else if !isConnected {
+            // No internet connection - can't sync, so dismiss loading screen
+            print("[LOGIN] ⚠️ No internet connection, skipping sync")
+            await MainActor.run {
+                isPerformingInitialSync = false
+                syncStatusMessage = ""
+            }
         } else {
+            // No company ID - dismiss loading screen
+            print("[LOGIN] ⚠️ No company ID, skipping sync")
+            await MainActor.run {
+                isPerformingInitialSync = false
+                syncStatusMessage = ""
+            }
         }
     }
     
@@ -1631,12 +1696,48 @@ class DataController: ObservableObject {
 
         print("[MANUAL_SYNC] 🔄 Starting comprehensive manual sync...")
 
-        await syncManager.manualFullSync(companyId: companyId)
-
-        print("[MANUAL_SYNC] ✅ Manual sync completed")
+        do {
+            try await syncManager.manualFullSync(companyId: companyId)
+            print("[MANUAL_SYNC] ✅ Manual sync completed")
+        } catch {
+            print("[MANUAL_SYNC] ❌ Manual sync failed: \(error)")
+        }
     }
     
     // MARK: - CalendarEvent Methods
+
+    /// Get active calendar events that overlap with a date range (optimized for scheduler)
+    /// This method is much more efficient than calling getCalendarEvents(for:) in a loop
+    func getCalendarEvents(in dateRange: ClosedRange<Date>) -> [CalendarEvent] {
+        guard let context = modelContext else {
+            return []
+        }
+
+        do {
+            // Fetch all events once (much faster than multiple queries)
+            let allEvents = try context.fetch(FetchDescriptor<CalendarEvent>())
+
+            // Filter events that overlap with the date range
+            let filteredEvents = allEvents.filter { event in
+                // Skip inactive events
+                guard event.active else { return false }
+
+                // Check if event overlaps with the range
+                guard let eventStart = event.startDate else { return false }
+                let eventEnd = event.endDate ?? eventStart
+
+                // Event overlaps if:
+                // - Event starts before range ends AND
+                // - Event ends after range starts
+                return eventStart <= dateRange.upperBound && eventEnd >= dateRange.lowerBound
+            }
+
+            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+        } catch {
+            print("[CALENDAR] ❌ Failed to fetch events in range: \(error)")
+            return []
+        }
+    }
 
     /// Get calendar events for a specific date (simplified version for scheduler)
     func getCalendarEvents(for date: Date) -> [CalendarEvent] {
@@ -1708,10 +1809,9 @@ class DataController: ObservableObject {
                     return false
                 }
                 passedDateFilter += 1
-                
-                // Check if event should be displayed based on project scheduling mode
-                let shouldDisplay = event.shouldDisplay
-                if !shouldDisplay {
+
+                // Check if event is active (accounts for project scheduling mode)
+                if !event.active {
                     return false
                 }
                 passedShouldDisplayFilter += 1
@@ -1776,8 +1876,9 @@ class DataController: ObservableObject {
             let allEvents = try context.fetch(descriptor)
 
             let filteredEvents = allEvents.filter { event in
-                guard let eventEndDate = event.endDate else { return false }
-                if eventEndDate < startDate {
+                // Filter by startDate instead of endDate to include events without end dates
+                guard let eventStartDate = event.startDate else { return false }
+                if eventStartDate < startDate {
                     return false
                 }
 
@@ -3139,6 +3240,7 @@ class DataController: ObservableObject {
                 event.endDate = endDate
                 let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
                 event.duration = daysDiff + 1
+                event.active = true  // Mark as active when scheduled
                 event.needsSync = true
             },
             syncToAPI: {
@@ -3148,7 +3250,8 @@ class DataController: ObservableObject {
                 let updates: [String: Any] = [
                     BubbleFields.CalendarEvent.startDate: formatter.string(from: startDate),
                     BubbleFields.CalendarEvent.endDate: formatter.string(from: endDate),
-                    BubbleFields.CalendarEvent.duration: event.duration
+                    BubbleFields.CalendarEvent.duration: event.duration,
+                    BubbleFields.CalendarEvent.active: true
                 ]
 
                 try await self.apiService.updateCalendarEvent(id: event.id, updates: updates)
@@ -3156,6 +3259,11 @@ class DataController: ObservableObject {
                 event.lastSyncedAt = Date()
             }
         )
+
+        // Notify calendar views to refresh
+        await MainActor.run {
+            calendarEventsDidChange.toggle()
+        }
     }
 
     // MARK: - Team Member Operations
@@ -3539,6 +3647,26 @@ class DataController: ObservableObject {
         }
 
         print("[COMPANY_LOGO] ✅ Company logo deleted")
+    }
+
+    // MARK: - Company Default Project Color
+
+    /// Update the company's default project color in both local database and Bubble API
+    func updateCompanyDefaultProjectColor(companyId: String, color: String) async throws {
+        print("[COMPANY_COLOR] Updating default project color to: \(color)")
+
+        // Update in Bubble API
+        do {
+            try await apiService.updateCompanyFields(companyId: companyId, fields: [
+                BubbleFields.Company.defaultProjectColor: color
+            ])
+            print("[COMPANY_COLOR] ✅ Default project color updated in Bubble")
+        } catch {
+            print("[COMPANY_COLOR] ⚠️ Failed to update in Bubble: \(error)")
+            throw error
+        }
+
+        print("[COMPANY_COLOR] ✅ Default project color updated successfully")
     }
 }
 

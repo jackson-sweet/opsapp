@@ -29,9 +29,12 @@ struct TaskDetailsView: View {
     @State private var loadedTeamMembers: [User] = []
     @State private var selectedTeamMember: User? = nil
     @State private var showingTeamMemberDetails = false
-    @State private var showingTeamPicker = false
+    @State private var isEditingTeam = false
+    @State private var triggerTeamSave = false
     @State private var showingProjectCompletionAlert = false
     @State private var showingScheduler = false
+    @State private var refreshTrigger = false  // Toggle to force view refresh
+    @State private var isNotesExpanded = false
 
     init(task: ProjectTask, project: Project) {
         self._task = State(initialValue: task)
@@ -154,10 +157,6 @@ struct TaskDetailsView: View {
         .onAppear {
             loadTaskTeamMembers()
             logTaskTeamMemberData()
-        }
-        .sheet(isPresented: $showingTeamPicker) {
-            TaskTeamChangeSheet(task: task)
-                .environmentObject(dataController)
         }
         .sheet(isPresented: $showingTeamMemberDetails) {
             if let selectedMember = selectedTeamMember {
@@ -426,6 +425,7 @@ struct TaskDetailsView: View {
                     .background(OPSStyle.Colors.cardBackgroundDark)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .id(refreshTrigger)  // Force refresh when dates change
                 .disabled(!(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew))
                 
                 // Task notes section
@@ -434,15 +434,28 @@ struct TaskDetailsView: View {
                         Image(systemName: "note.text")
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 24)
-                        
+
                         Text("TASK NOTES")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Spacer()
+
+                        Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 14))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isNotesExpanded.toggle()
+                        }
+                    }
+
                     // Expandable notes view
                     ExpandableNotesView(
                         notes: task.taskNotes ?? "",
+                        isExpanded: $isNotesExpanded,
                         editedNotes: $taskNotes,
                         onSave: saveTaskNotes
                     )
@@ -475,116 +488,36 @@ struct TaskDetailsView: View {
 
                 Spacer()
 
-                let teamMembers = loadedTeamMembers.isEmpty ? Array(task.teamMembers) : loadedTeamMembers
-                if !teamMembers.isEmpty && canModify {
+                if canModify {
                     Button(action: {
-                        showingTeamPicker = true
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "pencil")
-                                .font(OPSStyle.Typography.smallCaption)
-                            Text("Edit")
-                                .font(OPSStyle.Typography.smallCaption)
+                        if isEditingTeam {
+                            // Trigger save when Done is pressed
+                            triggerTeamSave.toggle()
+                        } else {
+                            isEditingTeam.toggle()
                         }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                        )
+                    }) {
+                        Text(isEditingTeam ? "Done" : "Edit")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                            )
                     }
                 }
             }
             .padding(.horizontal)
 
-            // Team members content - matching ProjectTeamView style
-            teamMembersList
+            // Team members content - using TaskTeamView
+            TaskTeamView(task: task, isEditing: $isEditingTeam, triggerSave: $triggerTeamSave)
+                .environmentObject(dataController)
                 .padding(.horizontal)
         }
     }
-    
-    private var teamMembersList: some View {
-        let teamMembers = loadedTeamMembers.isEmpty ? Array(task.teamMembers) : loadedTeamMembers
 
-        return VStack(spacing: 1) {
-            if teamMembers.isEmpty {
-                // Empty state with add button
-                HStack {
-                    Text("No team members assigned")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                        .padding(.vertical, 16)
-                    Spacer()
-                    if canModify {
-                        Button("ADD") {
-                            showingTeamPicker = true
-                        }
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-                .padding(.horizontal)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-            } else {
-                // Team member rows
-                ForEach(teamMembers, id: \.id) { member in
-                    Button(action: {
-                        // Show team member details
-                        selectedTeamMember = member
-                        showingTeamMemberDetails = true
-                    }) {
-                        HStack(spacing: 12) {
-                            // Avatar
-                            UserAvatar(user: member, size: 40)
-                            
-                            // Name & role
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(member.fullName)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                
-                                Text(member.role.displayName)
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            
-                            Spacer()
-                            
-                            // Contact indicators
-                            HStack(spacing: 6) {
-                                if member.phone != nil {
-                                    Image(systemName: "phone.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                }
-                                if member.email != nil {
-                                    Image(systemName: "envelope.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                }
-                            }
-                            
-                            // Chevron
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 14))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-        }
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        )
-    }
-    
     // MARK: - Status Update Section
     
     private var statusUpdateSection: some View {
@@ -819,6 +752,7 @@ struct TaskDetailsView: View {
             calendarEvent.endDate = endDate
             let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
             calendarEvent.duration = daysDiff + 1
+            calendarEvent.active = true  // Mark as active when scheduled
             calendarEvent.needsSync = true
         } else {
             // Create new calendar event for the task
@@ -851,6 +785,12 @@ struct TaskDetailsView: View {
             try modelContext.save()
             print("✅ Successfully saved task schedule update")
 
+            // Force view refresh to show updated dates
+            refreshTrigger.toggle()
+
+            // Notify calendar views to refresh
+            dataController.calendarEventsDidChange.toggle()
+
             // Immediately sync calendar event to server to prevent reversion
             if let calendarEvent = task.calendarEvent {
                 Task {
@@ -882,6 +822,7 @@ struct TaskDetailsView: View {
         calendarEvent.startDate = nil
         calendarEvent.endDate = nil
         calendarEvent.duration = 0
+        calendarEvent.active = false  // Mark as inactive when unscheduled
         calendarEvent.needsSync = true
         task.needsSync = true
 
@@ -901,6 +842,12 @@ struct TaskDetailsView: View {
             try modelContext.save()
             print("✅ Successfully cleared calendar event dates")
 
+            // Force view refresh to show cleared dates
+            refreshTrigger.toggle()
+
+            // Notify calendar views to refresh
+            dataController.calendarEventsDidChange.toggle()
+
             // Sync to Bubble
             Task {
                 do {
@@ -909,7 +856,8 @@ struct TaskDetailsView: View {
                     let updates: [String: Any] = [
                         BubbleFields.CalendarEvent.startDate: NSNull(),
                         BubbleFields.CalendarEvent.endDate: NSNull(),
-                        BubbleFields.CalendarEvent.duration: 0
+                        BubbleFields.CalendarEvent.duration: 0,
+                        BubbleFields.CalendarEvent.active: false
                     ]
 
                     try await dataController.apiService.updateCalendarEvent(
@@ -966,21 +914,57 @@ struct TaskDetailsView: View {
 
         do {
             let formatter = ISO8601DateFormatter()
-            // Use standard ISO format without fractional seconds (matches createCalendarEvent)
             formatter.formatOptions = [.withInternetDateTime]
 
-            let startDateString = calendarEvent.startDate.map { formatter.string(from: $0) } ?? ""
-            let endDateString = calendarEvent.endDate.map { formatter.string(from: $0) } ?? ""
+            // Check if this is a new event that needs to be created on the server
+            let isNewEvent = calendarEvent.lastSyncedAt == nil
 
-            print("📅 Formatted dates - Start: \(startDateString), End: \(endDateString)")
+            if isNewEvent {
+                print("📅 Creating new calendar event on server for task")
 
-            let updates: [String: Any] = [
-                BubbleFields.CalendarEvent.startDate: startDateString,
-                BubbleFields.CalendarEvent.endDate: endDateString,
-                BubbleFields.CalendarEvent.duration: calendarEvent.duration
-            ]
+                // Get company's default project color
+                let company = dataController.getCompany(id: task.companyId)
+                let projectColor = company?.defaultProjectColor ?? "#9CA3AF"
 
-            try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
+                // Get task type display name for the title
+                let taskTypeName = task.taskType?.display ?? "Task"
+                let taskTitle = "\(taskTypeName) - \(project.title)"
+
+                let eventDTO = CalendarEventDTO(
+                    id: calendarEvent.id,
+                    color: task.taskColor,
+                    companyId: task.companyId,
+                    projectId: task.projectId,
+                    taskId: task.id,
+                    duration: Double(calendarEvent.duration),
+                    endDate: calendarEvent.endDate.map { formatter.string(from: $0) } ?? "",
+                    startDate: calendarEvent.startDate.map { formatter.string(from: $0) } ?? "",
+                    teamMembers: task.getTeamMemberIds(),
+                    title: taskTitle,
+                    type: "Task",
+                    active: true,
+                    createdDate: nil,
+                    modifiedDate: nil,
+                    deletedAt: nil
+                )
+
+                let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
+                print("✅ Task calendar event created on server with ID: \(createdEvent.id)")
+            } else {
+                print("📅 Updating existing calendar event on server")
+
+                let startDateString = calendarEvent.startDate.map { formatter.string(from: $0) } ?? ""
+                let endDateString = calendarEvent.endDate.map { formatter.string(from: $0) } ?? ""
+
+                let updates: [String: Any] = [
+                    BubbleFields.CalendarEvent.startDate: startDateString,
+                    BubbleFields.CalendarEvent.endDate: endDateString,
+                    BubbleFields.CalendarEvent.duration: calendarEvent.duration
+                ]
+
+                try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
+                print("✅ Task calendar event updated on server")
+            }
 
             await MainActor.run {
                 calendarEvent.needsSync = false
@@ -1057,13 +1041,13 @@ struct TaskDetailsView: View {
     private var availableStatuses: [TaskStatus] {
         // Only office crew and admins can cancel tasks
         guard let currentUser = dataController.currentUser else {
-            return [.scheduled, .inProgress, .completed]
+            return [.booked, .inProgress, .completed]
         }
         
         if currentUser.role == .admin || currentUser.role == .officeCrew {
             return TaskStatus.allCases
         } else {
-            return [.scheduled, .inProgress, .completed]
+            return [.booked, .inProgress, .completed]
         }
     }
     
@@ -1104,13 +1088,17 @@ struct TaskDetailsView: View {
     }
     
     private func saveTaskNotes() {
+        // Haptic feedback on save
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
         task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
         task.needsSync = true
         try? dataController.modelContext?.save()
-        
+
         originalTaskNotes = taskNotes
         showSaveNotification()
-        
+
         // Sync to API
         Task {
             await syncTaskNotesToAPI()
@@ -1123,7 +1111,7 @@ struct TaskDetailsView: View {
         
         do {
             print("📤 Syncing task notes to API")
-            try await syncManager.updateTaskNotes(id: task.id, notes: task.taskNotes ?? "")
+            try await syncManager.updateTaskNotes(taskId: task.id, notes: task.taskNotes ?? "")
             print("✅ Task notes synced successfully")
             task.needsSync = false
             try? dataController.modelContext?.save()
@@ -1141,11 +1129,13 @@ struct TaskDetailsView: View {
             if project.status == .completed {
                 project.status = .inProgress
                 project.needsSync = true
-                dataController.syncManager.updateProjectStatus(
-                    projectId: project.id,
-                    status: .inProgress,
-                    forceSync: true
-                )
+                Task {
+                    try? await dataController.syncManager.updateProjectStatus(
+                        projectId: project.id,
+                        status: .inProgress,
+                        forceSync: true
+                    )
+                }
             }
         }
 
@@ -1172,7 +1162,7 @@ struct TaskDetailsView: View {
     
     private func statusIcon(for status: TaskStatus) -> String {
         switch status {
-        case .scheduled:
+        case .booked:
             return "calendar"
         case .inProgress:
             return "hammer.fill"
@@ -1285,7 +1275,7 @@ struct TaskDetailsView: View {
         
         // Sync to API
         Task {
-            await dataController.syncManager?.updateProjectStatus(
+            try? await dataController.syncManager?.updateProjectStatus(
                 projectId: project.id,
                 status: .completed,
                 forceSync: true

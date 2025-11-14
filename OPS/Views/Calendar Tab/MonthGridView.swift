@@ -75,13 +75,15 @@ class MonthGridCache: ObservableObject {
             let oneYearAgo = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
 
             let allEvents = dataController.getAllCalendarEvents(from: oneYearAgo)
-                .filter { $0.shouldDisplay }
+                .filter { $0.active }
 
             let filteredEvents = viewModel.applyEventFilters(to: allEvents)
 
             for event in filteredEvents {
-                guard let startDate = event.startDate, let endDate = event.endDate else { continue }
+                guard let startDate = event.startDate else { continue }
                 let eventStart = calendar.startOfDay(for: startDate)
+                // If no end date, treat as single-day event
+                let endDate = event.endDate ?? startDate
                 let eventEnd = calendar.startOfDay(for: endDate)
 
                 let isMultiDay = !calendar.isDate(eventStart, inSameDayAs: eventEnd)
@@ -100,11 +102,27 @@ class MonthGridCache: ObservableObject {
                     let isMonday = (weekday == 2)
                     let isFirstInWeek = isFirst || isMonday
 
+                    // Determine color: use company defaultProjectColor for project events
+                    let displayColor: String
+                    if event.type == .project {
+                        // Get company's defaultProjectColor
+                        if let project = event.project,
+                           let company = dataController.getCompany(id: project.companyId),
+                           !company.defaultProjectColor.isEmpty {
+                            displayColor = company.defaultProjectColor
+                        } else {
+                            displayColor = "#9CA3AF"  // Grey fallback
+                        }
+                    } else {
+                        // For task events, use stored color
+                        displayColor = event.color
+                    }
+
                     let preview = CalendarEventPreview(
                         id: "\(event.id)_\(dayOffset)",
                         eventId: event.id,
                         title: event.title,
-                        color: event.color,
+                        color: displayColor,
                         startDate: eventStart,
                         endDate: eventEnd,
                         isMultiDay: isMultiDay,
@@ -157,6 +175,7 @@ struct MonthGridView: View {
     @State private var hasScrolledToCurrentMonth = false
     @State private var isProgrammaticScroll = false
     @State private var updateWorkItem: DispatchWorkItem?
+    @EnvironmentObject private var dataController: DataController
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     private let weekdayLabels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
@@ -543,6 +562,11 @@ struct MonthGridView: View {
                     cache.loadEvents(from: dataController, viewModel: viewModel)
                 }
             }
+            .onChange(of: dataController.calendarEventsDidChange) { _, _ in
+                if let dataController = viewModel.dataController {
+                    cache.loadEvents(from: dataController, viewModel: viewModel)
+                }
+            }
             .sheet(item: $sheetDate) { identifiableDate in
                 DayDetailsSheet(date: identifiableDate.date, viewModel: viewModel, cache: cache)
                     .presentationDetents([.medium, .large])
@@ -561,7 +585,8 @@ struct MonthDayCell: View {
     let onTap: () -> Void
 
     private var isSelected: Bool {
-        DateHelper.isSameDay(date, viewModel.selectedDate)
+        // Only show outline when day sheet is visible (shouldShowDaySheet == true)
+        viewModel.shouldShowDaySheet && DateHelper.isSameDay(date, viewModel.selectedDate)
     }
 
     private var isToday: Bool {
@@ -569,9 +594,10 @@ struct MonthDayCell: View {
     }
 
     private var textColor: Color {
-        if isSelected {
-            return OPSStyle.Colors.primaryText
-        } else if isToday {
+        if isToday {
+            // Today's date is black on white circle
+            return .black
+        } else if isSelected {
             return OPSStyle.Colors.primaryText
         } else {
             return OPSStyle.Colors.primaryText.opacity(0.8)
@@ -580,19 +606,38 @@ struct MonthDayCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(DateHelper.dayString(from: date))
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(textColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 4)
-                .padding(.top, 4)
+            if isToday {
+                // Today's date with white circle background
+                HStack {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 24, height: 24)
+
+                        Text(DateHelper.dayString(from: date))
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.black)
+                    }
+                    .padding(.leading, 4)
+                    .padding(.top, 4)
+
+                    Spacer()
+                }
+            } else {
+                Text(DateHelper.dayString(from: date))
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(textColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 4)
+                    .padding(.top, 4)
+            }
 
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
         .frame(height: cellHeight, alignment: .top)
         .contentShape(Rectangle())
-        .background(isToday ? OPSStyle.Colors.primaryText.opacity(0.4) : Color.clear)
+        .background(isToday ? OPSStyle.Colors.primaryAccent.opacity(0.5) : Color.clear)
         .cornerRadius(4)
         .overlay(
             RoundedRectangle(cornerRadius: 4)
@@ -841,16 +886,30 @@ struct DayDetailsSheet: View {
     @ObservedObject var cache: MonthGridCache
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataController: DataController
+    @EnvironmentObject var appState: AppState
 
     private var events: [CalendarEventPreview] {
         cache.events(for: date)
     }
 
-    private var uniqueEvents: [(String, CalendarEvent?)] {
+    private var calendarEvents: [CalendarEvent] {
         let eventIds = Set(events.map { $0.eventId })
         return eventIds.compactMap { id in
-            let calendarEvent = dataController.getCalendarEvent(id: id)
-            return (id, calendarEvent)
+            dataController.getCalendarEvent(id: id)
+        }
+    }
+
+    // Separate new and ongoing events (matching week view)
+    private var newEvents: [CalendarEvent] {
+        calendarEvents.filter { event in
+            Calendar.current.isDate(event.startDate ?? Date(), inSameDayAs: date)
+        }
+    }
+
+    private var ongoingEvents: [CalendarEvent] {
+        calendarEvents.filter { event in
+            let startDate = event.startDate ?? Date()
+            return !Calendar.current.isDate(startDate, inSameDayAs: date)
         }
     }
 
@@ -863,12 +922,12 @@ struct DayDetailsSheet: View {
                     .padding(.horizontal)
                     .padding(.top, 8)
 
-                Text("\(uniqueEvents.count) event\(uniqueEvents.count == 1 ? "" : "s")")
+                Text("\(calendarEvents.count) event\(calendarEvents.count == 1 ? "" : "s")")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .padding(.horizontal)
 
-                if uniqueEvents.isEmpty {
+                if calendarEvents.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "calendar")
                             .font(.system(size: 48))
@@ -881,10 +940,47 @@ struct DayDetailsSheet: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 60)
                 } else {
-                    ForEach(uniqueEvents, id: \.0) { eventId, calendarEvent in
-                        if let event = calendarEvent {
-                            EventDetailCard(event: event)
-                                .padding(.horizontal)
+                    // New events section (matching week view template)
+                    ForEach(Array(newEvents.enumerated()), id: \.element.id) { index, event in
+                        CalendarEventCard(
+                            event: event,
+                            isFirst: index == 0,
+                            isOngoing: false,
+                            onTap: {
+                                handleEventTap(event)
+                            }
+                        )
+                        .padding(.horizontal)
+                    }
+
+                    // Ongoing section divider and events (matching week view template)
+                    if !ongoingEvents.isEmpty {
+                        HStack(spacing: 8) {
+                            Text("ONGOING")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            Rectangle()
+                                .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
+                                .frame(height: 1)
+
+                            Text("[\(ongoingEvents.count)]")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 24)
+
+                        ForEach(Array(ongoingEvents.enumerated()), id: \.element.id) { index, event in
+                            CalendarEventCard(
+                                event: event,
+                                isFirst: false,
+                                isOngoing: true,
+                                onTap: {
+                                    handleEventTap(event)
+                                }
+                            )
+                            .padding(.horizontal)
                         }
                     }
                 }
@@ -893,6 +989,35 @@ struct DayDetailsSheet: View {
         }
         .background(OPSStyle.Colors.background)
         .presentationDetents([.fraction(0.3), .fraction(0.7), .large])
+    }
+
+    private func handleEventTap(_ event: CalendarEvent) {
+        // Check if this is a task event or project event
+        if event.type == .task, let task = event.task {
+            // For task events, send task ID and project ID
+            let userInfo: [String: String] = [
+                "taskID": task.id,
+                "projectID": task.projectId
+            ]
+
+            // Post notification for task details
+            NotificationCenter.default.post(
+                name: Notification.Name("ShowCalendarTaskDetails"),
+                object: nil,
+                userInfo: userInfo
+            )
+        } else {
+            // For project events, send just project ID
+            let userInfo: [String: String] = ["projectID": event.projectId]
+
+            // Post notification for project details
+            NotificationCenter.default.post(
+                name: Notification.Name("ShowCalendarProjectDetails"),
+                object: nil,
+                userInfo: userInfo
+            )
+        }
+        dismiss()
     }
 }
 

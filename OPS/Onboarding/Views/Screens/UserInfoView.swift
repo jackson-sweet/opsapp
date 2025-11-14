@@ -416,7 +416,7 @@ struct ProfilePicturePhaseView: View {
                 config: ImageUploaderConfig(
                     currentImageURL: nil,
                     currentImageData: imageData,
-                    placeholderText: "\(viewModel.firstName.prefix(1))\(viewModel.lastName.prefix(1))",
+                    placeholderText: "", // Empty - let camera icon show clearly during upload
                     size: 120,
                     shape: .circle,
                     allowDelete: false,

@@ -17,23 +17,23 @@ import Combine
 
 /// ViewModel for handling Project-related operations
 class ProjectsViewModel: ObservableObject {
-    private let syncManager: SyncManager
-    
+    private let syncManager: CentralizedSyncManager
+
     @Published var projects: [Project] = []
     @Published var isLoading = false
     @Published var error: String?
     @Published var syncStatus: SyncStatus = .idle
-    
+
     enum SyncStatus {
         case idle
         case syncing
         case completed
         case failed
     }
-    
+
     private var cancellables = Set<AnyCancellable>()
-    
-    init(syncManager: SyncManager) {
+
+    init(syncManager: CentralizedSyncManager) {
         self.syncManager = syncManager
     }
     

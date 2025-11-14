@@ -18,12 +18,34 @@ struct CalendarEventsDebugView: View {
     @State private var errorMessage: String?
     @State private var selectedEvent: CalendarEvent?
     @State private var filterType: CalendarEventType? = nil
+    @State private var searchText: String = ""
+    @State private var showDeleted: Bool = false
+    @State private var showingEventSearchSheet = false
     
     var filteredEvents: [CalendarEvent] {
-        if let filterType = filterType {
-            return events.filter { $0.type == filterType }
+        var filtered = events
+
+        // Filter by deleted status
+        if !showDeleted {
+            filtered = filtered.filter { $0.deletedAt == nil }
         }
-        return events
+
+        // Filter by type
+        if let filterType = filterType {
+            filtered = filtered.filter { $0.type == filterType }
+        }
+
+        // Filter by search text
+        if !searchText.isEmpty {
+            filtered = filtered.filter { event in
+                event.id.localizedCaseInsensitiveContains(searchText) ||
+                event.title.localizedCaseInsensitiveContains(searchText) ||
+                event.projectId.localizedCaseInsensitiveContains(searchText) ||
+                (event.taskId?.localizedCaseInsensitiveContains(searchText) ?? false)
+            }
+        }
+
+        return filtered
     }
     
     var body: some View {
@@ -57,6 +79,36 @@ struct CalendarEventsDebugView: View {
                 .padding()
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 
+                // Search bar
+                HStack {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        TextField("Search by ID, title, or project...", text: $searchText)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        if !searchText.isEmpty {
+                            Button(action: { searchText = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(8)
+
+                    Button(action: { showingEventSearchSheet = true }) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(8)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(8)
+                    }
+                }
+                .padding(.horizontal)
+
                 // Filter chips
                 HStack(spacing: 12) {
                     EventFilterChip(
@@ -64,20 +116,28 @@ struct CalendarEventsDebugView: View {
                         isSelected: filterType == nil,
                         action: { filterType = nil }
                     )
-                    
+
                     EventFilterChip(
                         title: "Projects",
                         isSelected: filterType == .project,
                         action: { filterType = .project }
                     )
-                    
+
                     EventFilterChip(
                         title: "Tasks",
                         isSelected: filterType == .task,
                         action: { filterType = .task }
                     )
+
+                    Spacer()
+
+                    EventFilterChip(
+                        title: showDeleted ? "Hide Deleted" : "Show Deleted",
+                        isSelected: showDeleted,
+                        action: { showDeleted.toggle() }
+                    )
                 }
-                .padding()
+                .padding(.horizontal)
                 
                 if isLoading {
                     Spacer()
@@ -168,6 +228,9 @@ struct CalendarEventsDebugView: View {
         }
         .sheet(item: $selectedEvent) { event in
             CalendarEventDetailSheet(event: event)
+        }
+        .sheet(isPresented: $showingEventSearchSheet) {
+            EventSearchSheet(dataController: dataController)
         }
     }
     
@@ -356,8 +419,11 @@ struct CalendarEventDetailCard: View {
                 FieldRow(label: "Multi-Day", value: event.isMultiDay ? "Yes" : "No")
                 FieldRow(label: "Spanned Days", value: "\(event.spannedDates.count)")
                 FieldRow(label: "Team Members", value: event.getTeamMemberIds().joined(separator: ", ").isEmpty ? "none" : event.getTeamMemberIds().joined(separator: ", "))
+                FieldRow(label: "Active", value: event.active ? "Yes" : "No")
+                FieldRow(label: "Should Display", value: event.shouldDisplay ? "Yes" : "No")
                 FieldRow(label: "Needs Sync", value: event.needsSync ? "Yes" : "No")
                 FieldRow(label: "Last Synced", value: event.lastSyncedAt?.formatted() ?? "Never")
+                FieldRow(label: "Deleted At", value: event.deletedAt?.formatted() ?? "Not deleted")
             }
             .font(OPSStyle.Typography.smallCaption)
         }
@@ -507,5 +573,248 @@ struct CalendarEventDetailSheet: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+// Event search sheet - search by ID and fetch from Bubble
+struct EventSearchSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    let dataController: DataController
+
+    @State private var eventId: String = ""
+    @State private var localEvent: CalendarEvent?
+    @State private var bubbleEventDTO: CalendarEventDTO?
+    @State private var isSearching = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient
+                    .edgesIgnoringSafeArea(.all)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Search input
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("EVENT ID")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            HStack {
+                                TextField("Enter event ID (e.g., 1762212616726x338849986229004860)", text: $eventId)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .padding(12)
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .cornerRadius(8)
+
+                                if !eventId.isEmpty {
+                                    Button(action: { eventId = "" }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    }
+                                }
+                            }
+
+                            Button(action: searchEvent) {
+                                HStack {
+                                    Image(systemName: "magnifyingglass")
+                                    Text("Search Local & Bubble")
+                                }
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(OPSStyle.Colors.primaryAccent)
+                                .cornerRadius(8)
+                            }
+                            .disabled(eventId.isEmpty || isSearching)
+                        }
+
+                        if let error = errorMessage {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                                Text(error)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                            }
+                            .padding()
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(8)
+                        }
+
+                        if isSearching {
+                            HStack {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                Text("Searching...")
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                        }
+
+                        // Local SwiftData result
+                        if let local = localEvent {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Label("LOCAL SWIFTDATA", systemImage: "cylinder.fill")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.successStatus)
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    FieldRow(label: "ID", value: local.id)
+                                    FieldRow(label: "Title", value: local.title)
+                                    FieldRow(label: "Type", value: local.type.rawValue)
+                                    FieldRow(label: "Project ID", value: local.projectId)
+                                    FieldRow(label: "Task ID", value: local.taskId ?? "nil")
+                                    FieldRow(label: "Company ID", value: local.companyId)
+                                    FieldRow(label: "Color", value: local.color)
+                                    FieldRow(label: "Start Date", value: local.startDate?.formatted() ?? "nil")
+                                    FieldRow(label: "End Date", value: local.endDate?.formatted() ?? "nil")
+                                    FieldRow(label: "Duration", value: "\(local.duration) days")
+                                    FieldRow(label: "Active", value: local.active ? "Yes" : "No")
+                                    FieldRow(label: "Should Display", value: local.shouldDisplay ? "Yes" : "No")
+                                    FieldRow(label: "Deleted At", value: local.deletedAt?.formatted() ?? "Not deleted")
+                                    FieldRow(label: "Last Synced", value: local.lastSyncedAt?.formatted() ?? "Never")
+                                    FieldRow(label: "Needs Sync", value: local.needsSync ? "Yes" : "No")
+                                }
+                                .font(OPSStyle.Typography.smallCaption)
+                            }
+                            .padding()
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(8)
+                        } else if !isSearching && !eventId.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("LOCAL SWIFTDATA", systemImage: "cylinder.fill")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                                Text("Event not found in local SwiftData")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            .padding()
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(8)
+                        }
+
+                        // Bubble API result
+                        if let bubble = bubbleEventDTO {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Label("BUBBLE API", systemImage: "cloud.fill")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    FieldRow(label: "ID", value: bubble.id)
+                                    FieldRow(label: "Title", value: bubble.title ?? "nil")
+                                    FieldRow(label: "Type", value: bubble.type ?? "nil")
+                                    FieldRow(label: "Project ID", value: bubble.projectId ?? "nil")
+                                    FieldRow(label: "Task ID", value: bubble.taskId ?? "nil")
+                                    FieldRow(label: "Company ID", value: bubble.companyId ?? "nil")
+                                    FieldRow(label: "Color", value: bubble.color ?? "nil")
+                                    FieldRow(label: "Start Date", value: bubble.startDate ?? "nil")
+                                    FieldRow(label: "End Date", value: bubble.endDate ?? "nil")
+                                    FieldRow(label: "Duration", value: bubble.duration.map { "\($0)" } ?? "nil")
+                                    FieldRow(label: "Active", value: bubble.active.map { $0 ? "Yes" : "No" } ?? "nil")
+                                    FieldRow(label: "Deleted At", value: bubble.deletedAt ?? "nil")
+                                    FieldRow(label: "Team Members", value: bubble.teamMembers?.joined(separator: ", ") ?? "nil")
+
+                                    Divider()
+                                        .background(OPSStyle.Colors.tertiaryText)
+
+                                    // DTO conversion test
+                                    if let modelFromDTO = bubble.toModel() {
+                                        Label("DTO Conversion: SUCCESS", systemImage: "checkmark.circle.fill")
+                                            .font(OPSStyle.Typography.captionBold)
+                                            .foregroundColor(OPSStyle.Colors.successStatus)
+                                    } else {
+                                        Label("DTO Conversion: FAILED", systemImage: "xmark.circle.fill")
+                                            .font(OPSStyle.Typography.captionBold)
+                                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                                        Text("This event will fail to sync because DTO cannot be converted to model.")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    }
+                                }
+                                .font(OPSStyle.Typography.smallCaption)
+                            }
+                            .padding()
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(8)
+                        } else if !isSearching && !eventId.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("BUBBLE API", systemImage: "cloud.fill")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                                Text("Event not found in Bubble API")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            .padding()
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(8)
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("Search Event by ID")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private func searchEvent() {
+        isSearching = true
+        errorMessage = nil
+        localEvent = nil
+        bubbleEventDTO = nil
+
+        Task {
+            // Search local SwiftData
+            let localDescriptor = FetchDescriptor<CalendarEvent>(
+                predicate: #Predicate { $0.id == eventId }
+            )
+            do {
+                let localResults = try modelContext.fetch(localDescriptor)
+                await MainActor.run {
+                    localEvent = localResults.first
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Local search error: \(error.localizedDescription)"
+                }
+            }
+
+            // Search Bubble API
+            do {
+                let bubbleDTO = try await dataController.apiService.fetchCalendarEvent(id: eventId)
+                await MainActor.run {
+                    bubbleEventDTO = bubbleDTO
+                }
+            } catch {
+                await MainActor.run {
+                    if errorMessage == nil {
+                        errorMessage = "Bubble API error: \(error.localizedDescription)"
+                    } else {
+                        errorMessage = (errorMessage ?? "") + "\nBubble API error: \(error.localizedDescription)"
+                    }
+                }
+            }
+
+            await MainActor.run {
+                isSearching = false
+            }
+        }
     }
 }

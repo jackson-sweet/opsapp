@@ -297,7 +297,7 @@ struct TaskTestView: View {
                 projectId: project.id,
                 taskTypeId: taskTypes[2].id,
                 companyId: companyId,
-                status: .scheduled,
+                status: .booked,
                 taskColor: taskTypes[2].color
             )
         ]
@@ -446,7 +446,7 @@ struct TaskTestView: View {
     
     private func statusColor(for status: TaskStatus) -> Color {
         switch status {
-        case .scheduled:
+        case .booked:
             return .blue
         case .inProgress:
             return .orange

@@ -252,13 +252,10 @@ final class MapCoordinator: ObservableObject {
     /// Select a project (from carousel or pin tap)
     func selectProject(_ project: Project) {
         selectedProjectId = project.id
-        
-        // Only show project details if the project is not already in progress
-        if project.status != .inProgress {
-            showingProjectDetails = true
-        } else {
-            showingProjectDetails = false
-        }
+
+        // ALWAYS show project details sheet when selected (not in project mode)
+        // This allows users to see details for ANY project regardless of status
+        showingProjectDetails = true
     }
     
     /// Start navigation to the selected project

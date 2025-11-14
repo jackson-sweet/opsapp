@@ -86,10 +86,12 @@ struct DayCell: View {
     
     private var background: some View {
         Group {
-            if isSelected {
-                OPSStyle.Colors.cardBackground
-            } else if isToday {
-                OPSStyle.Colors.cardBackground.opacity(0.3)
+            if isToday {
+                // Today gets a visible background fill
+                OPSStyle.Colors.cardBackground.opacity(0.6)
+            } else if isSelected {
+                // Selected gets transparent background (outline only)
+                Color.clear
             } else {
                 Color.clear
             }

@@ -343,32 +343,30 @@ struct CollapsibleSection<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Button(action: {
+            HStack(spacing: 8) {
+                Text("[ \(title) ]")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Rectangle()
+                    .fill(OPSStyle.Colors.secondaryText.opacity(0.3))
+                    .frame(height: 1)
+
+                Text("[ \(count) ]")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .onTapGesture {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     isExpanded.toggle()
                 }
-            }) {
-                HStack(spacing: 8) {
-                    Text("[ \(title) ]")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Rectangle()
-                        .fill(OPSStyle.Colors.secondaryText.opacity(0.3))
-                        .frame(height: 1)
-
-                    Text("[ \(count) ]")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
 
             if isExpanded {
                 VStack(spacing: 12) {

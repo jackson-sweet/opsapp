@@ -392,7 +392,7 @@ struct ClientDeletionSheet: View {
 
                 // Step 4: Trigger a sync to refresh data from Bubble
                 print("🔄 Triggering sync to refresh client/project relationships from Bubble")
-                await dataController.syncManager.forceSyncProjects()
+                try? await dataController.syncManager.manualFullSync()
                 print("✅ Sync completed")
 
                 await MainActor.run {

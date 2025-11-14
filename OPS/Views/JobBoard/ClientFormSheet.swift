@@ -300,26 +300,46 @@ struct ClientFormSheet: View {
     
     private func saveClient() {
         isSaving = true
-        
+
         Task {
             do {
                 if case .create = mode {
                     // Create new client
                     let newClient = try await createNewClient()
                     await MainActor.run {
+                        // Success haptic feedback
+                        let generator = UINotificationFeedbackGenerator()
+                        generator.notificationOccurred(.success)
+
                         onSave(newClient)
-                        dismiss()
+
+                        // Brief delay for graceful dismissal
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            dismiss()
+                        }
                     }
                 } else if case .edit(let client) = mode {
                     // Update existing client
                     try await updateExistingClient(client)
                     await MainActor.run {
+                        // Success haptic feedback
+                        let generator = UINotificationFeedbackGenerator()
+                        generator.notificationOccurred(.success)
+
                         onSave(client)
-                        dismiss()
+
+                        // Brief delay for graceful dismissal
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            dismiss()
+                        }
                     }
                 }
             } catch {
                 await MainActor.run {
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+
                     errorMessage = error.localizedDescription
                     showingError = true
                     isSaving = false

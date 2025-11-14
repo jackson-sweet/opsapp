@@ -96,10 +96,10 @@ struct WeekDayCell: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 60)
-            //.background(cellBackground)
+            .background(cellBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
-                // White border for selected day
+                // White border for selected day (outline only, no background)
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(Color.white, lineWidth: isSelected ? 1 : 0)
             )
@@ -138,12 +138,10 @@ struct WeekDayCell: View {
     private var cellBackground: some View {
         Group {
             if isToday {
-                OPSStyle.Colors.primaryAccent
-            } else if isSelected {
-                OPSStyle.Colors.cardBackground
-            } else if isCurrentWeek {
-                OPSStyle.Colors.cardBackground.opacity(0.3)
+                // Today gets primaryAccent background fill
+                OPSStyle.Colors.primaryAccent.opacity(0.5)
             } else {
+                // Selected and other days get transparent background
                 Color.clear
             }
         }

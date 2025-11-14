@@ -141,11 +141,22 @@ struct TaskStatusChangeSheet: View {
                 try await dataController.updateTaskStatus(task: task, to: selectedStatus)
 
                 await MainActor.run {
-                    dismiss()
+                    // Success haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+
+                    // Brief delay for graceful dismissal
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
                 }
             } catch {
                 await MainActor.run {
                     isSaving = false
+
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
                 }
             }
         }
@@ -412,11 +423,22 @@ struct TaskTeamChangeSheet: View {
             do {
                 try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedMemberIds))
                 await MainActor.run {
-                    dismiss()
+                    // Success haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+
+                    // Brief delay for graceful dismissal
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
                 }
             } catch {
                 await MainActor.run {
                     isSaving = false
+
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
                 }
             }
         }

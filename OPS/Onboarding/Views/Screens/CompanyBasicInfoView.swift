@@ -206,7 +206,7 @@ struct CompanyLogoPhaseView: View {
                 config: ImageUploaderConfig(
                     currentImageURL: nil,
                     currentImageData: logoData,
-                    placeholderText: String(viewModel.companyName.prefix(1)),
+                    placeholderText: "", // Empty - let camera icon show clearly during upload
                     size: 120,
                     shape: .roundedSquare(cornerRadius: 12),
                     allowDelete: false,

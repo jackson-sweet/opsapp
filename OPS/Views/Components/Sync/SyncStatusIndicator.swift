@@ -34,19 +34,30 @@ struct SyncStatusIndicator: View {
             )
         } else if dataController.isSyncing {
             HStack(spacing: 8) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                    .scaleEffect(0.7)
+                // Tactical loading bar instead of circular progress
+                TacticalLoadingBarAnimated(
+                    barCount: 6,
+                    barWidth: 2,
+                    barHeight: 6,
+                    spacing: 3,
+                    emptyColor: OPSStyle.Colors.primaryAccent.opacity(0.3),
+                    fillColor: OPSStyle.Colors.primaryAccent
+                )
 
-                Text("Syncing...")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                Text("SYNCING")
+                    .font(OPSStyle.Typography.smallCaption.weight(.bold))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .tracking(0.8)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
                 Capsule()
-                    .fill(OPSStyle.Colors.primaryAccent.opacity(0.15))
+                    .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.95))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: 1)
             )
         }
     }
@@ -168,7 +179,7 @@ struct SyncRestoredAlert: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea(edges: .bottom)
+        .ignoresSafeArea(edges: .top)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isPresented)
     }
 }

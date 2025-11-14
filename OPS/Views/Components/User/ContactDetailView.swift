@@ -1243,26 +1243,17 @@ struct ContactDetailView: View {
                 cleanedPhone = nil
             }
             
-            // Update the client via API and get the updated client back
-            let updatedClient = try await syncManager.updateClientContact(
+            // Update the client via API (client is updated in place)
+            try await syncManager.updateClientContact(
                 clientId: client.id,
                 name: name,
                 email: email,
                 phone: cleanedPhone,
                 address: address
             )
-            
-            // Update UI with the actual values from API response
-            await MainActor.run {
-                if let updatedClient = updatedClient {
-                    // Update the client object with actual API response values
-                    client.name = updatedClient.name
-                    client.email = updatedClient.email
-                    client.phoneNumber = updatedClient.phoneNumber
-                    client.address = updatedClient.address
-                        
-                }
-            }
+
+            // Client object is already updated by the sync manager
+            // No need to manually update UI as client is passed by reference
             
         } catch {
         }
@@ -1276,8 +1267,8 @@ struct ContactDetailView: View {
         
         do {
             if let editingSubClient = subClientToEdit, !editingSubClient.name.isEmpty {
-                // Edit existing sub-client
-                let subClientDTO = try await syncManager.editSubClient(
+                // Edit existing sub-client (updates local model automatically)
+                try await syncManager.editSubClient(
                     subClientId: editingSubClient.id,
                     name: name,
                     title: title,
@@ -1285,18 +1276,9 @@ struct ContactDetailView: View {
                     phone: phone,
                     address: address
                 )
-                
-                // Update the existing sub-client
+
+                // Refresh UI
                 await MainActor.run {
-                    if let index = client.subClients.firstIndex(where: { $0.id == editingSubClient.id }) {
-                        client.subClients[index].name = subClientDTO.name ?? name
-                        client.subClients[index].title = subClientDTO.title
-                        client.subClients[index].email = subClientDTO.emailAddress
-                        client.subClients[index].phoneNumber = subClientDTO.phoneNumber?.stringValue
-                        client.subClients[index].address = subClientDTO.address?.formattedAddress
-                        client.subClients[index].updatedAt = Date()
-                    }
-                    
                     // Force refresh of the sub-clients view
                     subClientsRefreshKey = UUID()
                     // Clear the editing state
@@ -1309,7 +1291,8 @@ struct ContactDetailView: View {
                 var syncSucceeded = false
 
                 do {
-                    let subClientDTO = try await syncManager.createSubClient(
+                    // createSubClient now returns SubClient model directly, not DTO
+                    newSubClient = try await syncManager.createSubClient(
                         clientId: client.id,
                         name: name,
                         title: title,
@@ -1318,8 +1301,6 @@ struct ContactDetailView: View {
                         address: address
                     )
 
-                    // Convert DTO to SubClient model
-                    newSubClient = subClientDTO.toSubClient()
                     syncSucceeded = true
                     print("✅ Sub-client created on server successfully")
                 } catch {
@@ -1359,12 +1340,12 @@ struct ContactDetailView: View {
                 modelContext.insert(newSubClient)
                 try modelContext.save()
 
-                // If sync succeeded and we have a project, refresh client
-                if syncSucceeded, let project = project {
+                // If sync succeeded, refresh client
+                if syncSucceeded {
                     await MainActor.run {
                         client.lastSyncedAt = nil
                     }
-                    await syncManager.refreshSingleClient(clientId: client.id, for: project, forceRefresh: true)
+                    try? await syncManager.refreshSingleClient(clientId: client.id)
                 }
             }
             

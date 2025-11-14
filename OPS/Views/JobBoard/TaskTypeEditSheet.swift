@@ -309,9 +309,22 @@ struct TaskTypeEditSheet: View {
 
                 do {
                     try modelContext.save()
+
+                    // Success haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+
                     onSave()
-                    dismiss()
+
+                    // Brief delay for graceful dismissal
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
                 } catch {
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+
                     errorMessage = error.localizedDescription
                     showingError = true
                     isSaving = false

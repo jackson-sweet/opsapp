@@ -419,7 +419,7 @@ struct JobBoardDashboardOld: View {
         let projects = dataController.getAllProjects()
         let allTasks = projects.flatMap { $0.tasks }
         return allTasks.filter { task in
-            task.status == .scheduled || task.status == .inProgress
+            task.status == .booked || task.status == .inProgress
         }.count
     }
     
@@ -562,9 +562,20 @@ struct JobBoardTasksView: View {
 
     private var allTasks: [ProjectTask] {
         let projects = dataController.getAllProjects()
-        return projects.flatMap { project -> [ProjectTask] in
+        let tasks = projects.flatMap { project -> [ProjectTask] in
             guard project.usesTaskBasedScheduling else { return [] }
             return project.tasks
+        }
+
+        // Deduplicate by ID to prevent duplicate cards
+        var seenIds = Set<String>()
+        return tasks.filter { task in
+            if seenIds.contains(task.id) {
+                print("[JOB_BOARD] ⚠️ Duplicate task detected: \(task.id)")
+                return false
+            }
+            seenIds.insert(task.id)
+            return true
         }
     }
 

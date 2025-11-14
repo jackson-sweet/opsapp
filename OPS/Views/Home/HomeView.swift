@@ -132,6 +132,14 @@ struct HomeView: View {
                 showLocationPermissionView = true
             }
         }
+        // Watch for initial sync completion to refresh projects
+        .onChange(of: dataController.isPerformingInitialSync) { oldValue, newValue in
+            if oldValue == true && newValue == false {
+                // Sync just completed, reload today's projects
+                print("[HOME] 🔄 Initial sync completed, reloading today's projects")
+                loadTodaysProjects()
+            }
+        }
         // Use onReceive with NotificationCenter for location changes
         .onReceive(NotificationCenter.default.publisher(for: .locationDidChange)) { _ in
             if inProgressManager.isRouting, 
@@ -288,11 +296,13 @@ struct HomeView: View {
                     }
                 } catch {
                     // If API call fails, fall back to local update via SyncManager
-                    dataController.syncManager.updateProjectStatus(
-                        projectId: project.id,
-                        status: .inProgress,
-                        forceSync: true
-                    )
+                    Task {
+                        try? await dataController.syncManager.updateProjectStatus(
+                            projectId: project.id,
+                            status: .inProgress,
+                            forceSync: true
+                        )
+                    }
                 }
             }
         }

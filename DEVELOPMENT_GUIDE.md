@@ -1,7 +1,7 @@
 # OPS App - Development Guide
 
-**Last Updated**: September 2025  
-**Version**: 1.2.0
+**Last Updated**: November 2025
+**Version**: 2.0.2
 
 ## Project Overview
 

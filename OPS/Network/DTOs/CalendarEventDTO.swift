@@ -26,7 +26,10 @@ struct CalendarEventDTO: Codable {
     // Metadata
     let createdDate: String?
     let modifiedDate: String?
-    
+
+    // Soft delete support
+    let deletedAt: String?
+
     // Coding keys to match Bubble field names
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -43,6 +46,7 @@ struct CalendarEventDTO: Codable {
         case active = "active"
         case createdDate = "Created Date"  // Bubble default field
         case modifiedDate = "Modified Date"  // Bubble default field
+        case deletedAt = "deletedAt"  // Soft delete timestamp
     }
     
     /// Convert DTO to SwiftData model
@@ -154,14 +158,20 @@ struct CalendarEventDTO: Codable {
         if let teamMembers = teamMembers {
             event.setTeamMemberIds(teamMembers)
         }
-        
+
+        // Parse deletedAt if present
+        if let deletedAtString = deletedAt {
+            let formatter = ISO8601DateFormatter()
+            event.deletedAt = formatter.date(from: deletedAtString)
+        }
+
         return event
     }
     
     /// Create DTO from SwiftData model
     static func from(_ event: CalendarEvent) -> CalendarEventDTO {
         let dateFormatter = ISO8601DateFormatter()
-        
+
         return CalendarEventDTO(
             id: event.id,
             color: event.color,
@@ -176,7 +186,8 @@ struct CalendarEventDTO: Codable {
             type: event.type.rawValue,
             active: event.active,
             createdDate: nil,
-            modifiedDate: nil
+            modifiedDate: nil,
+            deletedAt: event.deletedAt.map { dateFormatter.string(from: $0) }
         )
     }
 }

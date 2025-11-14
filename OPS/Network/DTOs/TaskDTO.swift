@@ -26,6 +26,9 @@ struct TaskDTO: Codable {
     // Metadata
     let createdDate: String?
     let modifiedDate: String?
+
+    // Soft delete support
+    let deletedAt: String?
     
     // Coding keys to match Bubble field names exactly
     enum CodingKeys: String, CodingKey {
@@ -43,6 +46,7 @@ struct TaskDTO: Codable {
         case type = "type"
         case createdDate = "Created Date"  // Bubble default field
         case modifiedDate = "Modified Date"  // Bubble default field
+        case deletedAt = "deletedAt"  // Soft delete timestamp
     }
     
     /// Convert DTO to SwiftData model
@@ -74,12 +78,25 @@ struct TaskDTO: Codable {
             validColor = defaultColor
         }
         
+        // Map status from Bubble - handle both "Scheduled" (old) and "Booked" (new)
+        let taskStatus: TaskStatus
+        if let statusValue = status {
+            if statusValue == "Scheduled" {
+                // Backward compatibility: map old "Scheduled" to new "Booked"
+                taskStatus = .booked
+            } else {
+                taskStatus = TaskStatus(rawValue: statusValue) ?? .booked
+            }
+        } else {
+            taskStatus = .booked
+        }
+
         let task = ProjectTask(
             id: id,
             projectId: projectIdValue,
             taskTypeId: type ?? "",  // 'type' field in Bubble is the task type ID
             companyId: companyIdValue,
-            status: TaskStatus(rawValue: status ?? "") ?? .scheduled,
+            status: taskStatus,
             taskColor: validColor
         )
         
@@ -90,7 +107,13 @@ struct TaskDTO: Codable {
         if let teamMembers = teamMembers {
             task.setTeamMemberIds(teamMembers)
         }
-        
+
+        // Parse deletedAt if present
+        if let deletedAtString = deletedAt {
+            let formatter = ISO8601DateFormatter()
+            task.deletedAt = formatter.date(from: deletedAtString)
+        }
+
         return task
     }
     
@@ -122,7 +145,8 @@ struct TaskDTO: Codable {
             teamMembers: task.getTeamMemberIds().isEmpty ? nil : task.getTeamMemberIds(),
             type: task.taskTypeId.isEmpty ? nil : task.taskTypeId,  // taskTypeId maps to 'type' in Bubble
             createdDate: nil,
-            modifiedDate: nil
+            modifiedDate: nil,
+            deletedAt: task.deletedAt.map { dateFormatter.string(from: $0) }
         )
     }
 }

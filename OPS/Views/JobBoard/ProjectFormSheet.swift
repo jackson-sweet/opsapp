@@ -39,6 +39,7 @@ struct ProjectFormSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allClients: [Client]
     @Query private var allTeamMembers: [TeamMember]
+    @Query private var allTaskTypes: [TaskType]
 
     private var uniqueTeamMembers: [TeamMember] {
         var seen = Set<String>()
@@ -60,6 +61,7 @@ struct ProjectFormSheet: View {
     @State private var endDate: Date? = nil
     @State private var selectedTeamMemberIds: Set<String> = []
     @State private var projectImages: [UIImage] = []
+    @State private var selectedTaskTypeId: String? = nil  // For task-based projects
 
     @AppStorage("defaultProjectStatus") private var defaultProjectStatusRaw: String = Status.rfq.rawValue
 
@@ -449,6 +451,7 @@ struct ProjectFormSheet: View {
         VStack(spacing: 16) {
             descriptionSection
             notesSection
+            taskTypeSection
             datesSection
             teamMembersSection
             photosSection
@@ -490,6 +493,76 @@ struct ProjectFormSheet: View {
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .scrollContentBackground(.hidden)
+        }
+    }
+
+    private var taskTypeSection: some View {
+        ExpandableSection(
+            title: "TASK TYPE (OPTIONAL)",
+            isExpanded: Binding(
+                get: { expandedSections.contains("taskType") || creationMode == .extended },
+                set: { if $0 { expandedSections.insert("taskType") } else { expandedSections.remove("taskType") } }
+            )
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Select a task type to schedule this project as a specific task.")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                // Active task types
+                let activeTaskTypes = allTaskTypes.filter { $0.deletedAt == nil }
+                    .sorted { $0.displayOrder < $1.displayOrder }
+
+                if activeTaskTypes.isEmpty {
+                    Text("No task types available. Contact your admin to add task types.")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .padding(.vertical, 8)
+                } else {
+                    ForEach(activeTaskTypes, id: \.id) { taskType in
+                        Button(action: {
+                            if selectedTaskTypeId == taskType.id {
+                                selectedTaskTypeId = nil  // Deselect if already selected
+                            } else {
+                                selectedTaskTypeId = taskType.id
+                            }
+                        }) {
+                            HStack(spacing: 12) {
+                                // Icon
+                                if let icon = taskType.icon {
+                                    Image(systemName: icon)
+                                        .font(.system(size: 18))
+                                        .foregroundColor(Color(hex: taskType.color))
+                                        .frame(width: 24)
+                                }
+
+                                // Task type name
+                                Text(taskType.display)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                Spacer()
+
+                                // Selection indicator
+                                if selectedTaskTypeId == taskType.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                } else {
+                                    Image(systemName: "circle")
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+                            }
+                            .padding(12)
+                            .background(
+                                selectedTaskTypeId == taskType.id
+                                    ? OPSStyle.Colors.primaryAccent.opacity(0.1)
+                                    : OPSStyle.Colors.cardBackgroundDark
+                            )
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -712,11 +785,23 @@ struct ProjectFormSheet: View {
                 }
 
                 await MainActor.run {
+                    // Success haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+
                     onSave(project)
-                    dismiss()
+
+                    // Brief delay for graceful dismissal
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
                 }
             } catch {
                 await MainActor.run {
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+
                     errorMessage = error.localizedDescription
                     showingError = true
                     isSaving = false
@@ -744,7 +829,7 @@ struct ProjectFormSheet: View {
         )
 
         project.companyId = companyId
-        project.eventType = .project
+        project.eventType = selectedTaskTypeId != nil ? .task : .project
         project.client = client
         project.clientId = client.id
         project.projectDescription = description.isEmpty ? nil : description
@@ -773,6 +858,12 @@ struct ProjectFormSheet: View {
             client.projects.append(project)
             try? modelContext.save()
             print("[PROJECT_CREATE] ✅ Project saved locally")
+        }
+
+        // Create initial task if a task type was selected
+        if let taskTypeId = selectedTaskTypeId {
+            print("[PROJECT_CREATE] Creating initial task with type: \(taskTypeId)")
+            await createInitialTask(for: project, taskTypeId: taskTypeId)
         }
 
         var savedOffline = false
@@ -861,6 +952,10 @@ struct ProjectFormSheet: View {
 
         await MainActor.run {
             if savedOffline {
+                // Warning haptic feedback for offline save
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.warning)
+
                 errorMessage = "WEAK/NO CONNECTION, QUEUING FOR LATER SYNC. SAVED LOCALLY"
                 showingError = true
                 isSaving = false
@@ -907,6 +1002,85 @@ struct ProjectFormSheet: View {
         dataController.syncManager?.triggerBackgroundSync()
     }
 
+    private func createInitialTask(for project: Project, taskTypeId: String) async {
+        guard let companyId = dataController.currentUser?.companyId else {
+            print("[TASK_CREATE] ❌ No company ID available")
+            return
+        }
+
+        // Find the selected task type
+        guard let taskType = allTaskTypes.first(where: { $0.id == taskTypeId }) else {
+            print("[TASK_CREATE] ❌ Task type not found: \(taskTypeId)")
+            return
+        }
+
+        let taskId = UUID().uuidString
+        print("[TASK_CREATE] Creating task with ID: \(taskId)")
+
+        // Create the task
+        let task = ProjectTask(
+            id: taskId,
+            projectId: project.id,
+            taskTypeId: taskTypeId,
+            companyId: companyId,
+            status: .booked,
+            taskColor: taskType.color
+        )
+
+        // Link task to project and task type
+        task.project = project
+        task.taskType = taskType
+
+        // Inherit team members from project
+        task.teamMembers = project.teamMembers
+        task.setTeamMemberIds(project.teamMembers.map { $0.id })
+
+        // Mark as needing sync
+        task.needsSync = true
+
+        await MainActor.run {
+            modelContext.insert(task)
+            try? modelContext.save()
+            print("[TASK_CREATE] ✅ Task saved locally")
+        }
+
+        // Create calendar event for the task if dates exist
+        if let startDate = project.startDate, let endDate = project.endDate {
+            let calendarEventId = UUID().uuidString
+            let calendarEvent = CalendarEvent(
+                id: calendarEventId,
+                projectId: project.id,
+                companyId: companyId,
+                title: taskType.display,
+                startDate: startDate,
+                endDate: endDate,
+                color: taskType.color,
+                type: .task,
+                active: true
+            )
+
+            calendarEvent.taskId = taskId
+            calendarEvent.needsSync = true
+
+            // Set team members
+            calendarEvent.setTeamMemberIds(project.teamMembers.map { $0.id })
+            calendarEvent.teamMembers = project.teamMembers
+
+            task.calendarEvent = calendarEvent
+            task.calendarEventId = calendarEventId
+
+            await MainActor.run {
+                modelContext.insert(calendarEvent)
+                try? modelContext.save()
+                print("[TASK_CREATE] ✅ Calendar event created for task")
+            }
+        }
+
+        // Task and calendar event will be synced to Bubble via background sync
+        // since needsSync = true for both
+        print("[TASK_CREATE] ✅ Task creation complete - will sync to Bubble via background sync")
+    }
+
     private func createCalendarEventForProject(_ project: Project) async throws {
         let dateFormatter = ISO8601DateFormatter()
 
@@ -946,7 +1120,8 @@ struct ProjectFormSheet: View {
             type: "Project",
             active: true,
             createdDate: nil,
-            modifiedDate: nil
+            modifiedDate: nil,
+            deletedAt: nil
         )
 
         let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)

@@ -11,11 +11,30 @@ import MapKit
 
 struct ProjectDetailsCard: View {
     let project: Project
+    let selectedEvent: CalendarEvent?
     let coordinator: MapCoordinator
     let onStartProject: ((Project) -> Void)?
     @State private var showFullDetails = false
     @State private var isStarting = false
     @State private var errorMessage: String?
+
+    private var taskTypeBadge: String? {
+        // For task events, return the task type
+        if selectedEvent?.type == .task, let task = selectedEvent?.task {
+            return task.taskType?.display
+        }
+        return nil
+    }
+
+    private var taskColor: Color {
+        // For task events, use task color
+        if selectedEvent?.type == .task, let task = selectedEvent?.task,
+           let color = Color(hex: task.effectiveColor) {
+            return color
+        }
+        // Fallback to secondary text
+        return OPSStyle.Colors.secondaryText
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -60,24 +79,43 @@ struct ProjectDetailsCard: View {
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .lineLimit(1)
-                        
+
                         Text(project.effectiveClientName)
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .lineLimit(1)
                     }
-                    
+
                     Spacer()
-                    
-                    StatusBadge.forJobStatus(project.status)
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        StatusBadge.forJobStatus(project.status)
+
+                        // Show task type badge if this is a task event
+                        if let taskType = taskTypeBadge {
+                            Text(taskType.uppercased())
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(taskColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(taskColor.opacity(0.1))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .stroke(taskColor.opacity(0.3), lineWidth: 1)
+                                        )
+                                )
+                        }
+                    }
                 }
                 
                 // Address
                 HStack(spacing: 8) {
                     Image(systemName: "mappin.circle.fill")
                         .font(.system(size: 16))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
                     Text(project.address ?? "No address")
                         .font(OPSStyle.Typography.smallBody)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -91,8 +129,8 @@ struct ProjectDetailsCard: View {
                     HStack(spacing: 8) {
                         Image(systemName: "location.fill")
                             .font(.system(size: 16))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
                         Text(formatDistance(distance))
                             .font(OPSStyle.Typography.smallBody)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -118,7 +156,7 @@ struct ProjectDetailsCard: View {
                         .foregroundColor(.black)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
-                        .background(OPSStyle.Colors.primaryAccent)
+                        .background(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
                         .onTapGesture {
                             guard !isStarting else { return }
@@ -156,12 +194,12 @@ struct ProjectDetailsCard: View {
                         Text("DETAILS")
                             .font(OPSStyle.Typography.button)
                     }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                            .stroke(OPSStyle.Colors.secondaryText, lineWidth: 2)
                     )
                     .onTapGesture { 
                         showFullDetails = true 

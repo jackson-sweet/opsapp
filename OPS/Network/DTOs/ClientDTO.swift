@@ -37,7 +37,10 @@ struct ClientDTO: Codable {
     let createdDate: String?
     let modifiedDate: String?
     let slug: String?
-    
+
+    // Soft delete support
+    let deletedAt: String?
+
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -59,6 +62,7 @@ struct ClientDTO: Codable {
         case modifiedDate = "Modified Date"  // Bubble default field
         case slug = "Slug"  // Bubble default field
         case subClientIds = "subClients"  // Changed from 'Sub Clients' to 'subClients'
+        case deletedAt = "deletedAt"  // Soft delete timestamp
     }
     
     /// Convert DTO to SwiftData model
@@ -100,9 +104,15 @@ struct ClientDTO: Codable {
         // The actual sub-clients will be fetched during the refresh process
         if let ids = subClientIds {
         }
-        
+
+        // Parse deletedAt if present
+        if let deletedAtString = deletedAt {
+            let formatter = ISO8601DateFormatter()
+            client.deletedAt = formatter.date(from: deletedAtString)
+        }
+
         client.lastSyncedAt = Date()
-        
+
         return client
     }
 }

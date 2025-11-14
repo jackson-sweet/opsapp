@@ -757,7 +757,40 @@ class OnboardingViewModel: ObservableObject {
                     UserDefaults.standard.set(lastName, forKey: "user_last_name")
                     UserDefaults.standard.set(formattedPhone, forKey: "user_phone_number")
                     UserDefaults.standard.set(companyCode, forKey: "company_code")
-                    
+
+                    // CRITICAL: Update the User model in SwiftData with companyId and other fields
+                    // This must happen BEFORE sync so that syncManager can access the user's company
+                    if let modelContext = dataController?.modelContext,
+                       let dataController = dataController,
+                       let companyData = response.extractedCompanyData {
+                        let descriptor = FetchDescriptor<User>(
+                            predicate: #Predicate<User> { $0.id == currentUserId }
+                        )
+                        if let users = try? modelContext.fetch(descriptor),
+                           let user = users.first {
+                            // Update user with company information and profile data
+                            user.companyId = companyData.id
+                            user.firstName = firstName
+                            user.lastName = lastName
+                            user.phone = formattedPhone
+                            user.lastSyncedAt = Date()
+
+                            // Save immediately so sync can access updated user
+                            try? modelContext.save()
+
+                            // Update DataController's currentUser reference
+                            dataController.currentUser = user
+
+                            print("[ONBOARDING] ✅ Updated user in SwiftData before sync")
+                            print("[ONBOARDING]    - User ID: \(user.id)")
+                            print("[ONBOARDING]    - Name: \(user.firstName) \(user.lastName)")
+                            print("[ONBOARDING]    - Company ID: \(user.companyId ?? "none")")
+                            print("[ONBOARDING]    - Phone: \(user.phone ?? "none")")
+                        } else {
+                            print("[ONBOARDING] ⚠️ Could not find user in SwiftData to update companyId")
+                        }
+                    }
+
                     // Log all stored user data for verification
                 } else {
                     isCompanyJoined = false
@@ -774,14 +807,51 @@ class OnboardingViewModel: ObservableObject {
             // is loaded BEFORE user enters the main app
             if isCompanyJoined {
                 print("[ONBOARDING] Employee joined company successfully, triggering full sync")
-                if let syncManager = dataController?.syncManager {
-                    await syncManager.performOnboardingSync()
-                    print("[ONBOARDING] Full sync completed after joining company")
 
-                    // CRITICAL: Reload currentUser from SwiftData after sync
-                    // This ensures DataController has the updated user with correct role
-                    await reloadCurrentUser()
+                // Verify data health before attempting sync
+                guard let dataController = dataController else {
+                    print("[ONBOARDING] ❌ DataController is nil - cannot sync")
+                    await MainActor.run {
+                        errorMessage = "App initialization error. Please restart and try again."
+                        isLoading = false
+                    }
+                    return false
                 }
+
+                let healthManager = await DataHealthManager(
+                    dataController: dataController,
+                    authManager: AuthManager()
+                )
+
+                let (healthState, recoveryAction) = await healthManager.performHealthCheck()
+
+                if !healthState.isHealthy {
+                    print("[ONBOARDING] ❌ Data health check failed after joining company: \(healthState)")
+                    await healthManager.executeRecoveryAction(recoveryAction)
+
+                    await MainActor.run {
+                        errorMessage = "Unable to complete setup. Please try again."
+                        isLoading = false
+                    }
+                    return false
+                }
+
+                // Data is healthy, proceed with sync
+                guard let syncManager = dataController.syncManager else {
+                    print("[ONBOARDING] ❌ SyncManager is nil - cannot sync")
+                    await MainActor.run {
+                        errorMessage = "Sync initialization error. Please restart and try again."
+                        isLoading = false
+                    }
+                    return false
+                }
+
+                await syncManager.performOnboardingSync()
+                print("[ONBOARDING] ✅ Full sync completed after joining company")
+
+                // CRITICAL: Reload currentUser from SwiftData after sync
+                // This ensures DataController has the updated user with correct role
+                await reloadCurrentUser()
             }
 
             return isCompanyJoined
@@ -1309,6 +1379,10 @@ class OnboardingViewModel: ObservableObject {
 
             guard let dataController = dataController else {
                 print("[ONBOARDING] ❌ DataController is nil, cannot sync")
+                await MainActor.run {
+                    errorMessage = "App initialization error. Please restart and try again."
+                    isLoading = false
+                }
                 return
             }
 
@@ -1325,8 +1399,32 @@ class OnboardingViewModel: ObservableObject {
                 print("[ONBOARDING] SyncManager already initialized")
             }
 
+            // Verify data health before attempting sync
+            let healthManager = await DataHealthManager(
+                dataController: dataController,
+                authManager: AuthManager()
+            )
+
+            let (healthState, recoveryAction) = await healthManager.performHealthCheck()
+
+            if !healthState.isHealthy {
+                print("[ONBOARDING] ❌ Data health check failed after company creation: \(healthState)")
+                await healthManager.executeRecoveryAction(recoveryAction)
+
+                await MainActor.run {
+                    errorMessage = "Unable to complete setup. Please try again."
+                    isLoading = false
+                }
+                return
+            }
+
+            // Data is healthy, proceed with sync
             guard let syncManager = dataController.syncManager else {
-                print("[ONBOARDING] ❌ SyncManager is still nil after initialization attempt, cannot sync")
+                print("[ONBOARDING] ❌ SyncManager is nil - cannot sync")
+                await MainActor.run {
+                    errorMessage = "Sync initialization error. Please restart and try again."
+                    isLoading = false
+                }
                 return
             }
 
@@ -1481,9 +1579,35 @@ class OnboardingViewModel: ObservableObject {
         }
     }
     
-    /// Reload the current user from SwiftData after sync completes
-    /// This ensures DataController has the latest user data with correct role
-    @MainActor
+    /// Performs a data health check when welcome pages load
+    /// This ensures all required data is present when returning to onboarding mid-flow
+    func performDataHealthCheck() async {
+        print("[ONBOARDING] 🏥 Performing data health check on welcome page load...")
+
+        guard let dataController = dataController else {
+            print("[ONBOARDING] ❌ DataController is nil")
+            await MainActor.run {
+                errorMessage = "App initialization error. Please restart."
+            }
+            return
+        }
+
+        let healthManager = await DataHealthManager(
+            dataController: dataController,
+            authManager: AuthManager()
+        )
+
+        let (healthState, recoveryAction) = await healthManager.performHealthCheck()
+
+        if !healthState.isHealthy {
+            print("[ONBOARDING] ❌ Data health check failed: \(healthState)")
+            print("[ONBOARDING] 🔧 Executing recovery action: \(recoveryAction)")
+            await healthManager.executeRecoveryAction(recoveryAction)
+        } else {
+            print("[ONBOARDING] ✅ Data health check passed")
+        }
+    }
+
     private func reloadCurrentUser() async {
         guard let userId = UserDefaults.standard.string(forKey: "user_id"),
               let modelContext = dataController?.modelContext,

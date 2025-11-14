@@ -99,8 +99,11 @@ struct CompanyDTO: Codable {
     
     // Stripe
     let stripeCustomerId: String?
-    
-    
+
+    // Soft delete support
+    let deletedAt: String?
+
+
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -190,6 +193,9 @@ struct CompanyDTO: Codable {
         
         // Stripe
         case stripeCustomerId = "stripeCustomerId"
+
+        // Soft delete
+        case deletedAt = "deletedAt"
     }
     
     // Custom decoder to handle both UNIX timestamps (from Stripe) and ISO8601 dates (from Bubble)
@@ -275,7 +281,10 @@ struct CompanyDTO: Codable {
         self.trialEndDate = Self.decodeFlexibleDate(from: container, forKey: .trialEndDate, isStripeField: true)
         self.dataSetupScheduledDate = Self.decodeFlexibleDate(from: container, forKey: .dataSetupScheduledDate, isStripeField: false)
         self.prioritySupportPurchaseDate = Self.decodeFlexibleDate(from: container, forKey: .prioritySupportPurchaseDate, isStripeField: true)
-        
+
+        // Soft delete
+        self.deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
+
         print("[CompanyDTO] Successfully decoded company with ID: \(id)")
     }
     
@@ -424,13 +433,17 @@ struct CompanyDTO: Codable {
         
         // Handle seated employees
         if let seatedRefs = seatedEmployees {
+            print("[SUBSCRIPTION] 🔍 Processing seated employees: \(seatedRefs.count) refs")
             let seatedIds = seatedRefs.compactMap { $0.stringValue }
+            print("[SUBSCRIPTION] 🔍 Extracted \(seatedIds.count) seated IDs: \(seatedIds)")
             company.setSeatedEmployeeIds(seatedIds)
+            print("[SUBSCRIPTION] ✅ Set seated employees on company: \(company.getSeatedEmployeeIds())")
             if seatedIds.isEmpty && !seatedRefs.isEmpty {
-                print("[SUBSCRIPTION] Warning: Seated employees present but no valid IDs extracted")
+                print("[SUBSCRIPTION] ⚠️ Warning: Seated employees present but no valid IDs extracted")
+                print("[SUBSCRIPTION] ⚠️ Raw refs: \(seatedRefs)")
             }
         } else {
-            print("[SUBSCRIPTION] Warning: seatedEmployees field is nil from Bubble")
+            print("[SUBSCRIPTION] ⚠️ Warning: seatedEmployees field is nil from Bubble")
         }
         
         // Handle grace period start
@@ -460,10 +473,16 @@ struct CompanyDTO: Codable {
         if let stripeId = stripeCustomerId {
             company.stripeCustomerId = stripeId
         }
-        
+
+        // Parse deletedAt if present
+        if let deletedAtString = deletedAt {
+            let formatter = ISO8601DateFormatter()
+            company.deletedAt = formatter.date(from: deletedAtString)
+        }
+
         company.lastSyncedAt = Date()
-        
-        
+
+
         return company
     }
 }

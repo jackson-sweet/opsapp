@@ -357,10 +357,24 @@ struct TaskTypeFormSheet: View {
                         try modelContext.save()
                         print("[TASK_TYPE_FORM] ✅ Local save successful")
                         print("[TASK_TYPE_FORM] 🎉 Task type created: \(createdTaskType.id)")
+
+                        // Success haptic feedback
+                        let generator = UINotificationFeedbackGenerator()
+                        generator.notificationOccurred(.success)
+
                         onSave(newTaskType)
-                        dismiss()
+
+                        // Brief delay for graceful dismissal
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            dismiss()
+                        }
                     } catch {
                         print("[TASK_TYPE_FORM] ❌ Local save failed: \(error)")
+
+                        // Error haptic feedback
+                        let generator = UINotificationFeedbackGenerator()
+                        generator.notificationOccurred(.error)
+
                         errorMessage = error.localizedDescription
                         showingError = true
                         isSaving = false
@@ -369,6 +383,10 @@ struct TaskTypeFormSheet: View {
             } catch {
                 print("[TASK_TYPE_FORM] ❌ API creation failed: \(error)")
                 await MainActor.run {
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+
                     errorMessage = "Failed to create task type: \(error.localizedDescription)"
                     showingError = true
                     isSaving = false

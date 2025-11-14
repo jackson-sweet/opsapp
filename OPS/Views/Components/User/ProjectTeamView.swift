@@ -35,7 +35,7 @@ struct ProjectTeamView: View {
 
             if !teamsRefreshed && activeProject.getTeamMemberIds().count > 0 && activeProject.teamMembers.isEmpty {
                 loadingStateView
-            } else if activeProject.teamMembers.isEmpty {
+            } else if activeProject.teamMembers.isEmpty && !isEditing {
                 emptyStateView(activeProject)
             } else {
                 teamMembersView(activeProject)
@@ -161,8 +161,14 @@ struct ProjectTeamView: View {
 
             if isEditing && !availableMembers.isEmpty {
                 availableMembersSection
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .top)),
+                        removal: .opacity.combined(with: .move(edge: .top))
+                    ))
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: isEditing)
+        .animation(.easeInOut(duration: 0.3), value: availableMembers.count)
     }
 
     private func currentTeamMembersSection(_ activeProject: Project) -> some View {
@@ -187,11 +193,22 @@ struct ProjectTeamView: View {
 
             Spacer()
 
-            if isEditing {
-                checkboxButton(member.id)
-            } else {
-                chevronIndicator
+            ZStack {
+                if isEditing {
+                    checkboxButton(member.id)
+                        .transition(.asymmetric(
+                            insertion: .scale.combined(with: .opacity),
+                            removal: .scale.combined(with: .opacity)
+                        ))
+                } else {
+                    chevronIndicator
+                        .transition(.asymmetric(
+                            insertion: .scale.combined(with: .opacity),
+                            removal: .scale.combined(with: .opacity)
+                        ))
+                }
             }
+            .animation(.easeInOut(duration: 0.25), value: isEditing)
         }
         .contentShape(Rectangle())
         .padding(.vertical, 6)
@@ -310,6 +327,10 @@ struct ProjectTeamView: View {
             isEditing = false
             return
         }
+
+        // Haptic feedback on save
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
 
         isSaving = true
 

@@ -34,6 +34,14 @@ struct ProjectDetailsView: View {
     @State private var showingScheduler = false
     @State private var showingAddressEditor = false
     @State private var editedAddress: String = ""
+    @State private var isEditingAddress = false  // Inline address editing mode
+    @State private var addressMapRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+    )
+    @State private var isGeocodingAddress = false
+    @State private var addressDebounceTask: Task<Void, Never>?
+    @StateObject private var addressSearchCompleter = AddressSearchCompleter()
     @State private var showingTaskBasedSchedulingAlert = false
     @State private var showingSwitchToTaskBasedAlert = false
     @State private var isEditingTeam = false
@@ -42,6 +50,10 @@ struct ProjectDetailsView: View {
     @State private var showingCompletionAlert = false
     @State private var showingDeleteAlert = false
     @State private var showingProjectBasedAlert = false
+    @State private var refreshTrigger = false  // Toggle to force view refresh
+    @State private var isNotesExpanded = false
+    @State private var isEditingTitle = false
+    @State private var editedTitle: String = ""
 
     // Initialize with project's existing notes
     init(project: Project, isEditMode: Bool = false) {
@@ -50,6 +62,14 @@ struct ProjectDetailsView: View {
         let notes = project.notes ?? ""
         self._noteText = State(initialValue: notes)
         self._originalNoteText = State(initialValue: notes)
+
+        // Initialize address map region to project's location
+        if let coordinate = project.coordinate {
+            self._addressMapRegion = State(initialValue: MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            ))
+        }
         
         // Debug output to help troubleshoot issues
         
@@ -130,6 +150,22 @@ struct ProjectDetailsView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text("This project uses task-based scheduling. Project dates are determined by the individual task schedules. To change dates, schedule the tasks instead.")
+            }
+            .alert("Switch to Task-Based Scheduling", isPresented: $showingSwitchToTaskBasedAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Switch") {
+                    switchToTaskBasedScheduling()
+                }
+            } message: {
+                Text("This will change the project to use task-based scheduling. You'll be able to create and manage individual tasks for this project.")
+            }
+            .alert("Switch to Project-Based Scheduling", isPresented: $showingProjectBasedAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Switch") {
+                    switchToProjectBasedScheduling()
+                }
+            } message: {
+                Text("This will change the project to use project-based scheduling. All tasks will remain but won't be used for scheduling.")
             }
             .sheet(isPresented: $showingCompletionSheet) {
                 if project.usesTaskBasedScheduling {
@@ -220,14 +256,54 @@ struct ProjectDetailsView: View {
     private var headerTitleRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(project.title.uppercased())
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                if isEditingTitle {
+                    TextField("Project Title", text: $editedTitle)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.white)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .submitLabel(.done)
+                        .onSubmit {
+                            saveTitle()
+                        }
+                } else {
+                    Text(project.title.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.white)
+                }
 
                 Spacer()
+
+                // Edit/Save/Cancel buttons
+                if canEditProjectSettings() {
+                    if isEditingTitle {
+                        HStack(spacing: 12) {
+                            Button("Cancel") {
+                                editedTitle = project.title
+                                isEditingTitle = false
+                            }
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            Button("Save") {
+                                saveTitle()
+                            }
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                    } else {
+                        Button(action: {
+                            editedTitle = project.title
+                            isEditingTitle = true
+                        }) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 14))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                    }
+                }
             }
 
-            if canEditProjectSettings() {
+            if canEditProjectSettings() && !isEditingTitle {
                 Text("tap on any field to edit")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -357,10 +433,19 @@ struct ProjectDetailsView: View {
                 try await dataController.updateProjectDates(project: project, startDate: startDate, endDate: endDate)
                 print("✅ Project dates updated and synced")
 
-                // Update associated calendar event if exists
+                // Update associated calendar event if exists, or create new one
                 if let projectEvent = project.primaryCalendarEvent {
                     try await dataController.updateCalendarEvent(event: projectEvent, startDate: startDate, endDate: endDate)
                     print("✅ Calendar event updated and synced")
+                } else {
+                    // No calendar event exists - create one now
+                    print("📅 No calendar event found - creating new one")
+                    await createCalendarEventForProject(startDate: startDate, endDate: endDate)
+                }
+
+                // Force view refresh to show updated dates
+                await MainActor.run {
+                    refreshTrigger.toggle()
                 }
             } catch {
                 print("❌ Failed to sync schedule update: \(error)")
@@ -388,13 +473,15 @@ struct ProjectDetailsView: View {
                             projectEvent.startDate = nil
                             projectEvent.endDate = nil
                             projectEvent.duration = 0
+                            projectEvent.active = false  // Mark as inactive when unscheduled
                             projectEvent.needsSync = true
                         },
                         syncToAPI: {
                             let updates: [String: Any] = [
                                 BubbleFields.CalendarEvent.startDate: NSNull(),
                                 BubbleFields.CalendarEvent.endDate: NSNull(),
-                                BubbleFields.CalendarEvent.duration: 0
+                                BubbleFields.CalendarEvent.duration: 0,
+                                BubbleFields.CalendarEvent.active: false
                             ]
                             try await self.dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: updates)
                             projectEvent.needsSync = false
@@ -402,6 +489,13 @@ struct ProjectDetailsView: View {
                         }
                     )
                     print("✅ Calendar event dates cleared and synced")
+                }
+
+                // Force view refresh to show cleared dates
+                await MainActor.run {
+                    refreshTrigger.toggle()
+                    // Notify calendar views to refresh
+                    dataController.calendarEventsDidChange.toggle()
                 }
             } catch {
                 print("❌ Failed to clear dates: \(error)")
@@ -494,7 +588,8 @@ struct ProjectDetailsView: View {
             type: "Project",
             active: true,
             createdDate: nil,
-            modifiedDate: nil
+            modifiedDate: nil,
+            deletedAt: nil
         )
 
         do {
@@ -595,39 +690,146 @@ struct ProjectDetailsView: View {
             }
             .padding(.horizontal)
 
-            // Address text - tappable for editing
-            Button(action: {
-                if canEditProjectSettings() {
-                    editedAddress = project.address ?? ""
-                    showingAddressEditor = true
-                }
-            }) {
+            // Address field
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(project.address ?? "No address")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                    Text("ADDRESS")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     Spacer()
 
-                    if canEditProjectSettings() {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 12))
+                    // Edit button for admin/office crew
+                    if canEditProjectSettings() && !isEditingAddress {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                editedAddress = project.address ?? ""
+                                isEditingAddress = true
+                            }
+                        }) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                    }
+
+                    // Save/Cancel buttons when editing
+                    if isEditingAddress {
+                        HStack(spacing: 12) {
+                            Button("Cancel") {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    editedAddress = project.address ?? ""
+                                    isEditingAddress = false
+                                }
+                                addressSearchCompleter.clear()
+                            }
+                            .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            Button("Save") {
+                                saveAddress()
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isEditingAddress = false
+                                }
+                                addressSearchCompleter.clear()
+                            }
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
                     }
                 }
+
+                if isEditingAddress {
+                    VStack(spacing: 0) {
+                        // Editable TextField with autocomplete
+                        TextField("Enter address", text: $editedAddress)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.9))
+                            .textContentType(.fullStreetAddress)
+                            .autocorrectionDisabled(true)
+                            .submitLabel(.done)
+                            .padding(12)
+                            .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .onSubmit {
+                                if editedAddress != project.address {
+                                    saveAddress()
+                                }
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isEditingAddress = false
+                                }
+                                addressSearchCompleter.clear()
+                            }
+                            .onChange(of: editedAddress) { oldValue, newValue in
+                                // Update search suggestions
+                                addressSearchCompleter.searchFragment = newValue
+
+                                // Debounce geocoding for map update
+                                addressDebounceTask?.cancel()
+                                addressDebounceTask = Task {
+                                    try? await Task.sleep(nanoseconds: 800_000_000)
+                                    if !Task.isCancelled && !newValue.isEmpty {
+                                        await geocodeAddressInline(newValue)
+                                    }
+                                }
+                            }
+
+                        // Address suggestions dropdown
+                        if !addressSearchCompleter.results.isEmpty {
+                            VStack(spacing: 0) {
+                                ForEach(addressSearchCompleter.results, id: \.self) { result in
+                                    Button(action: {
+                                        selectAddressSuggestion(result)
+                                    }) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(result.title)
+                                                .font(OPSStyle.Typography.body)
+                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                            if !result.subtitle.isEmpty {
+                                                Text(result.subtitle)
+                                                    .font(OPSStyle.Typography.caption)
+                                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 10)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+
+                                    if result != addressSearchCompleter.results.last {
+                                        Divider()
+                                            .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                    }
+                                }
+                            }
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .padding(.top, 4)
+                        }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                } else {
+                    // Read-only text
+                    Text(project.address ?? "No address")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.white)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
             }
-            .buttonStyle(PlainButtonStyle())
-            .disabled(!canEditProjectSettings())
             .padding(.horizontal)
-            .padding(.bottom, 8)
-            
+            .animation(.easeInOut(duration: 0.2), value: isEditingAddress)
+
             // Map view - larger and more prominent
             ZStack(alignment: .bottomTrailing) {
                 MiniMapView(
-                    coordinate: project.coordinate,
-                    address: project.address ?? ""
+                    coordinate: isEditingAddress ? addressMapRegion.center : project.coordinate,
+                    address: isEditingAddress ? editedAddress : (project.address ?? "")
                 ) {
-                    openInMaps(coordinate: project.coordinate, address: project.address ?? "")
+                    openInMaps(
+                        coordinate: isEditingAddress ? addressMapRegion.center : project.coordinate,
+                        address: isEditingAddress ? editedAddress : (project.address ?? "")
+                    )
                 }
                 .frame(height: 180)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -635,7 +837,10 @@ struct ProjectDetailsView: View {
                 
                 // Directions button on map
                 Button(action: {
-                    openInMaps(coordinate: project.coordinate, address: project.address ?? "")
+                    openInMaps(
+                        coordinate: isEditingAddress ? addressMapRegion.center : project.coordinate,
+                        address: isEditingAddress ? editedAddress : (project.address ?? "")
+                    )
                 }) {
                     HStack {
                         Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
@@ -762,6 +967,7 @@ struct ProjectDetailsView: View {
                     .background(OPSStyle.Colors.cardBackgroundDark)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .id(refreshTrigger)  // Force refresh when dates change
                 .disabled(!(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew))
                 
                 // Description card
@@ -793,15 +999,28 @@ struct ProjectDetailsView: View {
                         Image(systemName: "note.text")
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 24)
-                        
+
                         Text("PROJECT NOTES")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Spacer()
+
+                        Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 14))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isNotesExpanded.toggle()
+                        }
+                    }
+
                     // Expandable notes view
                     ExpandableNotesView(
                         notes: project.notes ?? "",
+                        isExpanded: $isNotesExpanded,
                         editedNotes: $noteText,
                         onSave: saveNotes
                     )
@@ -1150,14 +1369,6 @@ struct ProjectDetailsView: View {
                     }
                     .padding(.horizontal)
                 }
-                .alert("Switch to Task-Based Scheduling", isPresented: $showingSwitchToTaskBasedAlert) {
-                    Button("Cancel", role: .cancel) { }
-                    Button("Switch") {
-                        switchToTaskBasedScheduling()
-                    }
-                } message: {
-                    Text("This will change the project to use task-based scheduling. You'll be able to create and manage individual tasks for this project.")
-                }
             } else {
                 // Show task list
                 TaskListView(project: project, onSwitchToProjectBased: {
@@ -1165,14 +1376,6 @@ struct ProjectDetailsView: View {
                 })
                 .environmentObject(dataController)
                 .environmentObject(appState)
-                .alert("Switch to Project-Based Scheduling", isPresented: $showingProjectBasedAlert) {
-                    Button("Cancel", role: .cancel) { }
-                    Button("Switch") {
-                        switchToProjectBasedScheduling()
-                    }
-                } message: {
-                    Text("This will change the project to use project-based scheduling. All tasks will remain but won't be used for scheduling.")
-                }
             }
         }
     }
@@ -1189,11 +1392,45 @@ struct ProjectDetailsView: View {
                     project.lastSyncedAt = Date()
                 }
 
+                // Deactivate project calendar event
+                // First try primary calendar event
                 if let projectEvent = project.primaryCalendarEvent, projectEvent.type == .project {
                     projectEvent.active = false
                     try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": false])
                     projectEvent.needsSync = false
                     projectEvent.lastSyncedAt = Date()
+                    print("[PROJECT_DETAILS] ✅ Deactivated project calendar event via primaryCalendarEvent")
+                } else {
+                    // Fallback: search for project calendar event by project ID
+                    print("[PROJECT_DETAILS] ⚠️ primaryCalendarEvent not found, searching for project event...")
+                    // Get all calendar events from a year ago to now
+                    let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
+                    let allEvents = dataController.getAllCalendarEvents(from: oneYearAgo)
+                    let projectId = project.id
+                    let foundEvent = allEvents.first { event in
+                        event.projectId == projectId && event.type == .project
+                    }
+
+                    if let projectEvent = foundEvent {
+                        projectEvent.active = false
+                        try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": false])
+                        projectEvent.needsSync = false
+                        projectEvent.lastSyncedAt = Date()
+                        print("[PROJECT_DETAILS] ✅ Deactivated project calendar event via search")
+                    } else {
+                        print("[PROJECT_DETAILS] ⚠️ No project calendar event found to deactivate")
+                    }
+                }
+
+                // Activate all task calendar events
+                for task in project.tasks {
+                    if let taskEvent = task.calendarEvent, taskEvent.type == .task {
+                        taskEvent.active = true
+                        try await dataController.apiService.updateCalendarEvent(id: taskEvent.id, updates: ["active": true])
+                        taskEvent.needsSync = false
+                        taskEvent.lastSyncedAt = Date()
+                        print("[PROJECT_DETAILS] ✅ Activated task calendar event: \(taskEvent.id)")
+                    }
                 }
 
                 print("[PROJECT_DETAILS] ✅ Project switched to task-based scheduling")
@@ -1215,11 +1452,24 @@ struct ProjectDetailsView: View {
                     project.lastSyncedAt = Date()
                 }
 
+                // Activate project calendar event
                 if let projectEvent = project.primaryCalendarEvent, projectEvent.type == .project {
                     projectEvent.active = true
                     try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": true])
                     projectEvent.needsSync = false
                     projectEvent.lastSyncedAt = Date()
+                    print("[PROJECT_DETAILS] ✅ Activated project calendar event")
+                }
+
+                // Deactivate all task calendar events
+                for task in project.tasks {
+                    if let taskEvent = task.calendarEvent, taskEvent.type == .task {
+                        taskEvent.active = false
+                        try await dataController.apiService.updateCalendarEvent(id: taskEvent.id, updates: ["active": false])
+                        taskEvent.needsSync = false
+                        taskEvent.lastSyncedAt = Date()
+                        print("[PROJECT_DETAILS] ✅ Deactivated task calendar event: \(taskEvent.id)")
+                    }
                 }
 
                 print("[PROJECT_DETAILS] ✅ Project switched to project-based scheduling")
@@ -1303,11 +1553,13 @@ struct ProjectDetailsView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
         impactFeedback.impactOccurred()
 
-        dataController.syncManager?.updateProjectStatus(
-            projectId: project.id,
-            status: .completed,
-            forceSync: true
-        )
+        Task {
+            try? await dataController.syncManager?.updateProjectStatus(
+                projectId: project.id,
+                status: .completed,
+                forceSync: true
+            )
+        }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             dismiss()
@@ -1332,11 +1584,13 @@ struct ProjectDetailsView: View {
             }
 
             await MainActor.run {
-                dataController.syncManager?.updateProjectStatus(
-                    projectId: project.id,
-                    status: .completed,
-                    forceSync: true
-                )
+                Task {
+                    try? await dataController.syncManager?.updateProjectStatus(
+                        projectId: project.id,
+                        status: .completed,
+                        forceSync: true
+                    )
+                }
             }
 
             try? await Task.sleep(nanoseconds: 300_000_000)
@@ -1388,7 +1642,45 @@ struct ProjectDetailsView: View {
     @State private var showingSaveNotification = false
     @State private var notificationTimer: Timer?
     
+    private func saveTitle() {
+        guard !editedTitle.isEmpty, editedTitle != project.title else {
+            isEditingTitle = false
+            return
+        }
+
+        // Haptic feedback on save
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        // Update locally and sync to API
+        Task {
+            do {
+                project.title = editedTitle
+                project.needsSync = true
+                try dataController.modelContext?.save()
+
+                // Sync to API
+                let updates = ["title": editedTitle]
+                try await dataController.apiService.updateProject(id: project.id, updates: updates)
+
+                await MainActor.run {
+                    project.needsSync = false
+                    project.lastSyncedAt = Date()
+                    try? dataController.modelContext?.save()
+                    isEditingTitle = false
+                    showSaveNotification()
+                }
+            } catch {
+                print("❌ Failed to save title: \(error)")
+            }
+        }
+    }
+
     private func saveNotes() {
+        // Haptic feedback on save
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
         // Use centralized function for immediate sync
         Task {
             do {
@@ -1542,7 +1834,7 @@ struct ProjectDetailsView: View {
                 }
                 
                 // Refresh just this one client
-                await syncManager.refreshSingleClient(clientId: clientId, for: project, forceRefresh: forceRefresh)
+                try? await syncManager.refreshSingleClient(clientId: clientId)
                 
                 
                 // Update UI on main thread
@@ -1575,6 +1867,42 @@ struct ProjectDetailsView: View {
         }
     }
 
+    @MainActor
+    private func selectAddressSuggestion(_ suggestion: MKLocalSearchCompletion) {
+        // Build full address from suggestion
+        let fullAddress = "\(suggestion.title), \(suggestion.subtitle)"
+        editedAddress = fullAddress
+
+        // Clear suggestions
+        addressSearchCompleter.clear()
+
+        // Geocode the selected address
+        Task {
+            await geocodeAddressInline(fullAddress)
+        }
+    }
+
+    @MainActor
+    private func geocodeAddressInline(_ address: String) async {
+        isGeocodingAddress = true
+
+        let geocoder = CLGeocoder()
+        do {
+            let placemarks = try await geocoder.geocodeAddressString(address)
+
+            if let location = placemarks.first?.location {
+                addressMapRegion = MKCoordinateRegion(
+                    center: location.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                )
+            }
+        } catch {
+            print("❌ Geocoding failed: \(error.localizedDescription)")
+        }
+
+        isGeocodingAddress = false
+    }
+
     private func saveAddress() {
         showingAddressEditor = false
 
@@ -1591,6 +1919,46 @@ struct ProjectDetailsView: View {
         }
     }
 }
+
+// MARK: - AddressSearchCompleter
+
+class AddressSearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+    @Published var results: [MKLocalSearchCompletion] = []
+    private let completer = MKLocalSearchCompleter()
+
+    var searchFragment: String = "" {
+        didSet {
+            if searchFragment.isEmpty {
+                results = []
+            } else {
+                completer.queryFragment = searchFragment
+            }
+        }
+    }
+
+    override init() {
+        super.init()
+        completer.delegate = self
+        completer.resultTypes = .address
+    }
+
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        DispatchQueue.main.async {
+            self.results = completer.results
+        }
+    }
+
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        print("❌ Address search completer error: \(error.localizedDescription)")
+    }
+
+    func clear() {
+        searchFragment = ""
+        results = []
+    }
+}
+
+// MARK: - AddressEditorSheet (Legacy - kept for compatibility)
 
 struct AddressEditorSheet: View {
     @Binding var address: String

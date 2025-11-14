@@ -49,20 +49,18 @@ struct BubbleFields {
     }
     
     /// Employee Type values (from your Employee Type custom type)
-    /// NOTE: Display values remain unchanged (capitalized)
+    /// ACTUAL BUBBLE VALUES: "Office Crew", "Field Crew", "Admin"
     struct EmployeeType {
-        static let foreman = "Foreman"
-        static let crew = "Crew"
+        static let officeCrew = "Office Crew"
+        static let fieldCrew = "Field Crew"
         static let admin = "Admin"
-        static let office = "Office"
 
         static func toSwiftEnum(_ bubbleType: String) -> UserRole {
             switch bubbleType {
-            case office: return .officeCrew
-            case crew: return .fieldCrew
-            case foreman: return .fieldCrew // Foreman is a type of field crew
-            case admin: return .officeCrew // Admin is office-level
-            default: return .fieldCrew // Default to field crew if unknown
+            case officeCrew: return .officeCrew  // "Office Crew" → .officeCrew
+            case fieldCrew: return .fieldCrew    // "Field Crew" → .fieldCrew
+            case admin: return .admin            // "Admin" → .admin (company admin)
+            default: return .fieldCrew           // Default to field crew if unknown
             }
         }
     }
@@ -120,6 +118,7 @@ struct BubbleFields {
         static let location = "location"
         static let logo = "logo"  // Company logo image URL (actual Bubble field name)
         static let logoURL = "logoURL"  // Legacy/alternative field
+        static let defaultProjectColor = "defaultProjectColor"  // Hex color for projects
         static let projects = "projects"
         static let teams = "teams"
         static let clients = "clients"
@@ -211,7 +210,7 @@ struct BubbleFields {
     /// Task Status values
     /// NOTE: Display values remain unchanged (capitalized)
     struct TaskStatus {
-        static let scheduled = "Scheduled"
+        static let booked = "Booked"
         static let inProgress = "In Progress"
         static let completed = "Completed"
         static let cancelled = "Cancelled"

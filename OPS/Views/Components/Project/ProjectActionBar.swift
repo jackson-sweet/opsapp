@@ -228,7 +228,7 @@ struct ProjectActionBar: View {
         Task {
             // Update project status and exit project mode when completed
             // Always force sync for user-initiated status changes in the UI
-            dataController.syncManager.updateProjectStatus(
+            try? await dataController.syncManager.updateProjectStatus(
                 projectId: project.id,
                 status: status,
                 forceSync: true // Always force sync for manual status changes

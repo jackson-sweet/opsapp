@@ -9,52 +9,37 @@ import SwiftUI
 
 struct ExpandableNotesView: View {
     let notes: String
-    @State private var isExpanded = false
+    @Binding var isExpanded: Bool
     @State private var isEditing = false
     @Binding var editedNotes: String
     let onSave: () -> Void
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header with expand/collapse button
-            HStack {
-                Text("NOTES")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Spacer()
-                
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isExpanded.toggle()
-                    }
-                }) {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-            }
-            
             if isEditing {
                 // Editable notes
                 TextEditor(text: $editedNotes)
                     .frame(minHeight: 120)
-                    .padding(8)
-                    //.background(OPSStyle.Colors.cardBackground)
+                    .padding(12)
+                    .background(OPSStyle.Colors.cardBackground.opacity(0.6))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.9))
+                    .scrollContentBackground(.hidden)
                     .onChange(of: editedNotes) { _, newValue in
                         // Auto-save draft notes if needed
                         UserDefaults.standard.set(newValue, forKey: "draft_notes_temp")
                     }
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 
                 HStack {
                     Spacer()
                     
                     // Cancel button
                     Button(action: {
-                        isEditing = false
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isEditing = false
+                        }
                         // Reset to original notes
                         editedNotes = notes
                     }) {
@@ -64,10 +49,12 @@ struct ExpandableNotesView: View {
                             .padding(.vertical, 8)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    
+
                     // Save button
                     Button(action: {
-                        isEditing = false
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isEditing = false
+                        }
                         onSave()
                     }) {
                         Text("SAVE")
@@ -88,18 +75,21 @@ struct ExpandableNotesView: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                             .padding(.vertical, 8)
-                        
+
                         Spacer()
-                        
+
                         Button(action: {
-                            isEditing = true
-                            isExpanded = true
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isEditing = true
+                                isExpanded = true
+                            }
                         }) {
                             Image(systemName: "square.and.pencil")
                                 .font(.system(size: 16))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 } else {
                     // Notes content
                     VStack(alignment: .leading, spacing: 8) {
@@ -110,13 +100,15 @@ struct ExpandableNotesView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.vertical, 4)
-                            
+
                             // Edit button
                             HStack {
                                 Spacer()
-                                
+
                                 Button(action: {
-                                    isEditing = true
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        isEditing = true
+                                    }
                                 }) {
                                     Text("EDIT")
                                         .font(OPSStyle.Typography.smallCaption)
@@ -161,8 +153,10 @@ struct ExpandableNotesView: View {
                                     Spacer()
 
                                     Button(action: {
-                                        isEditing = true
-                                        isExpanded = true
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            isEditing = true
+                                            isExpanded = true
+                                        }
                                     }) {
                                         Image(systemName: "square.and.pencil")
                                             .font(.system(size: 24))
@@ -172,15 +166,10 @@ struct ExpandableNotesView: View {
                             }
                         }
                     }
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
         }
-        .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBackground, lineWidth: 1)
-        )
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .animation(.easeInOut(duration: 0.2), value: isEditing)
     }
 }

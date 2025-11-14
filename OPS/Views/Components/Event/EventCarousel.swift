@@ -108,14 +108,16 @@ struct EventCardView: View {
     @EnvironmentObject private var dataController: DataController
     
     private var displayTitle: String {
-        if event.type == .task {
-            // For task events, show task type
-            if let task = event.task {
-                return task.taskType?.display ?? event.title
-            }
-        }
-        // For project events, show project title
+        // ALWAYS show project title
         return project?.title ?? event.title
+    }
+
+    private var taskTypeBadge: String? {
+        // For task events, return the task type
+        if event.type == .task, let task = event.task {
+            return task.taskType?.display
+        }
+        return nil
     }
     
     private var displayColor: Color {
@@ -207,38 +209,56 @@ struct EventCardView: View {
                                 }
                                 
                                 Spacer()
-                                
-                                // Event type badge
-                                Text(event.type == .task ? "TASK" : "PROJECT")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(displayColor)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(displayColor.opacity(0.1))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .stroke(displayColor.opacity(0.3), lineWidth: 1)
-                                            )
-                                    )
+
+                                // Event type badge - show task type for tasks, "PROJECT" for projects
+                                if let taskType = taskTypeBadge {
+                                    Text(taskType.uppercased())
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(displayColor)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(displayColor.opacity(0.1))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 4)
+                                                        .stroke(displayColor.opacity(0.3), lineWidth: 1)
+                                                )
+                                        )
+                                } else if event.type == .project {
+                                    Text("PROJECT")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(displayColor)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(displayColor.opacity(0.1))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 4)
+                                                        .stroke(displayColor.opacity(0.3), lineWidth: 1)
+                                                )
+                                        )
+                                }
                             }
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .frame(width: 358, alignment: .leading)
-                        
-                        // Page indicators
-                        HStack(spacing: 12) {
-                            ForEach(0..<totalCount, id: \.self) { index in
-                                Circle()
-                                    .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.5))
-                                    .frame(width: 13, height: 13)
+
+                        // Page indicators - only show if there's more than one event
+                        if totalCount > 1 {
+                            HStack(spacing: 12) {
+                                ForEach(0..<totalCount, id: \.self) { index in
+                                    Circle()
+                                        .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.5))
+                                        .frame(width: 13, height: 13)
+                                }
                             }
+                            .padding(6)
+                            .padding(.top, 6)
+                            .padding(.trailing, 10)
                         }
-                        .padding(6)
-                        .padding(.top, 6)
-                        .padding(.trailing, 10)
                     }
                 }
             }

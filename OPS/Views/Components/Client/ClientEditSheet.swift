@@ -240,8 +240,16 @@ struct ClientEditSheet: View {
             )
             
             await MainActor.run {
+                // Success haptic feedback
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.success)
+
                 isSaving = false
-                isPresented = false
+
+                // Brief delay for graceful dismissal
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    isPresented = false
+                }
             }
         }
     }

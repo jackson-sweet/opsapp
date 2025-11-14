@@ -46,7 +46,13 @@ struct DateHelper {
         formatter.dateFormat = "EEEE, MMMM d"
         return formatter
     }()
-    
+
+    static let simpleDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM. d"
+        return formatter
+    }()
+
     static func isToday(_ date: Date) -> Bool {
         return Calendar.current.isDateInToday(date)
     }
@@ -74,7 +80,11 @@ struct DateHelper {
     static func fullDateString(from date: Date) -> String {
         return fullDateFormatter.string(from: date)
     }
-    
+
+    static func simpleDateString(from date: Date) -> String {
+        return simpleDateFormatter.string(from: date)
+    }
+
     static func dayAbbreviation(from date: Date) -> String {
         return twoLetterWeekdayFormatter.string(from: date)
     }

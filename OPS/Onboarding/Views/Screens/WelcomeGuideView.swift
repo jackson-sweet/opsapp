@@ -233,19 +233,19 @@ struct WelcomeGuidePage {
     // Pages for employees
     static let employeePages: [WelcomeGuidePage] = [
         WelcomeGuidePage(
-            title: "YOUR PROJECTS.",
+            title: " YOUR PROJECTS ",
             description: "See assigned jobs.\nMark projects complete.\nAdd photos and notes from the field.",
             iconName: "",
             features: []
         ),
         WelcomeGuidePage(
-            title: "WORKS OFFLINE.",
+            title: " WORKS OFFLINE ",
             description: "No signal required.\nUpdates your progress when you're back online.",
             iconName: "",
             features: []
         ),
         WelcomeGuidePage(
-            title: "NOTHING FANCY.",
+            title: " KEEP IT SIMPLE ",
             description: "Designed for simplicity.\nTested for reliability.",
             iconName: "",
             features: []
@@ -255,15 +255,15 @@ struct WelcomeGuidePage {
     // Pages for crew leads / business owners
     static let crewLeadPages: [WelcomeGuidePage] = [
         WelcomeGuidePage(
-            title: "TRACK PROJECTS",
+            title: " TRACK PROJECTS ",
             description: "Monitor job progress.\nView team assignments.\nUpdate from field."
         ),
         WelcomeGuidePage(
-            title: "TAKE CONTROL",
+            title: " TAKE CONTROL ",
             description: "All the functionality you need, anywhere you need it. Offline, in the mud, OPS is your wingman. Create jobs, clients, tasks, update assignments. All in your pocket."
         ),
         WelcomeGuidePage(
-            title: "TASK-BASED WORKFLOWS",
+            title: " TASK-BASED WORKFLOWS ",
             description: "",
             screenshots: [
                 ScreenshotInfo(imageName: "Group 12", description: "Create tasks or projects directly from the job board. Organize work by trade or phase."),

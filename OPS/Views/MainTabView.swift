@@ -234,10 +234,11 @@ struct MainTabView: View {
                 selectedTab = 0 // Reset to home if current tab no longer exists
             }
         }
-        .onChange(of: dataController.currentUser) { oldUser, newUser in
-            print("[MAIN_TAB_VIEW] currentUser object changed")
-            print("[MAIN_TAB_VIEW]   Old: \(String(describing: oldUser?.fullName)) - Role: \(String(describing: oldUser?.role))")
-            print("[MAIN_TAB_VIEW]   New: \(String(describing: newUser?.fullName)) - Role: \(String(describing: newUser?.role))")
+        .onChange(of: dataController.currentUser?.id) { oldUserId, newUserId in
+            print("[MAIN_TAB_VIEW] currentUser ID changed")
+            print("[MAIN_TAB_VIEW]   Old ID: \(String(describing: oldUserId))")
+            print("[MAIN_TAB_VIEW]   New ID: \(String(describing: newUserId))")
+            let newUser = dataController.currentUser
 
             // Update userRole when currentUser changes
             if let newRole = newUser?.role {

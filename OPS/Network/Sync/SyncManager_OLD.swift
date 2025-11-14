@@ -1,8 +1,11 @@
 //
-//  SyncManager.swift
+//  SyncManager_OLD.swift
 //  OPS
 //
 //  Created by Jackson Sweet on 2025-04-21.
+//
+//  ⚠️ DEPRECATED: This file is being replaced by CentralizedSyncManager.swift
+//  Do not add new functionality here. Migrate all references to CentralizedSyncManager.
 //
 
 import SwiftUI
@@ -11,7 +14,8 @@ import SwiftData
 import Combine
 
 @MainActor
-class SyncManager {
+@available(*, deprecated, message: "Use CentralizedSyncManager instead")
+class SyncManager_OLD {
     // MARK: - Sync State Publisher
     // MARK: - Properties
     
@@ -1024,7 +1028,8 @@ class SyncManager {
                     teamMembers: task.getTeamMemberIds(),
                     type: task.taskTypeId,
                     createdDate: nil,
-                    modifiedDate: nil
+                    modifiedDate: nil,
+                    deletedAt: nil
                 )
 
                 let createdTask = try await apiService.createTask(taskDTO)
@@ -1058,7 +1063,8 @@ class SyncManager {
                         type: "task",
                         active: calendarEvent.active,
                         createdDate: nil,
-                        modifiedDate: nil
+                        modifiedDate: nil,
+                        deletedAt: nil
                     )
 
                     let createdEventDTO = try await apiService.createAndLinkCalendarEvent(eventDTO)
@@ -2149,7 +2155,7 @@ class SyncManager {
     /// Update a local task from a remote DTO
     private func updateTask(_ localTask: ProjectTask, from remoteTask: TaskDTO, defaultColor: String? = nil, taskTypeMap: [String: TaskType]? = nil) {
         if let status = remoteTask.status {
-            localTask.status = TaskStatus(rawValue: status) ?? .scheduled
+            localTask.status = TaskStatus(rawValue: status) ?? .booked
         }
         if let taskColor = remoteTask.taskColor {
             localTask.taskColor = taskColor
@@ -2690,7 +2696,7 @@ class SyncManager {
         case .inProgress:
             // When project starts, start the first scheduled task
             if let firstScheduledTask = project.tasks
-                .filter({ $0.status == .scheduled })
+                .filter({ $0.status == .booked })
                 .sorted(by: { $0.displayOrder < $1.displayOrder })
                 .first {
                 firstScheduledTask.status = .inProgress
@@ -3343,7 +3349,8 @@ class SyncManager {
             type: "Project",
             active: true,
             createdDate: nil,
-            modifiedDate: nil
+            modifiedDate: nil,
+            deletedAt: nil
         )
 
         let createdEvent = try await apiService.createAndLinkCalendarEvent(eventDTO)

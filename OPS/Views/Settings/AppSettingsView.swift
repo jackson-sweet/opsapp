@@ -44,7 +44,7 @@ struct AppSettingsView: View {
                     onBackTapped: { dismiss() }
                 )
                 .padding(.bottom, 24)
-                
+
                 // Scrollable Settings list
                 ScrollView {
                     VStack(spacing: 16) {
@@ -58,7 +58,7 @@ struct AppSettingsView: View {
                             iconName: "map"
                         )
                     }
-                    
+
                     // Notifications
                     Button {
                         showNotificationSettings = true
@@ -69,7 +69,7 @@ struct AppSettingsView: View {
                             iconName: "bell"
                         )
                     }
-                    
+
                     // Data & Storage
                     Button {
                         showDataSettings = true
@@ -80,7 +80,7 @@ struct AppSettingsView: View {
                             iconName: "externaldrive"
                         )
                     }
-                    
+
                     // Security
                     Button {
                         showSecuritySettings = true
@@ -91,7 +91,7 @@ struct AppSettingsView: View {
                             iconName: "lock"
                         )
                     }
-                    
+
                     // Project Settings - only for admin and office crew
                     if let user = dataController.currentUser,
                        (user.role == .admin || user.role == .officeCrew) {
@@ -105,13 +105,13 @@ struct AppSettingsView: View {
                             )
                         }
                     }
-                    
+
                     // Developer Tools section - visible in debug builds or when developer mode is enabled
                     if shouldShowDeveloperOptions {
                         Divider()
                             .background(OPSStyle.Colors.tertiaryText)
                             .padding(.vertical, 8)
-                        
+
                         // Developer Tools Card
                         Button {
                             showDeveloperDashboard = true
@@ -123,14 +123,17 @@ struct AppSettingsView: View {
                             )
                         }
                     }
-                    
-                    // App info at the bottom of scroll content
-                    AppInfoCard()
-                        .padding(.top, 20)
-                        .padding(.bottom, 24)
                 }
                 .padding(.horizontal, 20)
+                .padding(.bottom, 80) // Extra padding for fixed footer
                 }
+
+                Spacer()
+
+                // Fixed footer at bottom
+                AppInfoCard()
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
             }
             .padding(.bottom, 90) // Tab bar padding
         }

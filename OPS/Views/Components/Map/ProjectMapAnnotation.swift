@@ -118,14 +118,11 @@ struct ProjectMapAnnotation: View {
     var body: some View {
         ZStack {
             // SF Symbols marker design
+            // NOTE: Tap handling is done through MKMapViewDelegate didSelect method
+            // SwiftUI gestures are disabled because they conflict with native map tap handling
             MarkerView()
-                .onTapGesture {
-                    handleTap()
-                }
-                .onLongPressGesture(minimumDuration: 0.3) {
-                    handleLongPress()
-                }
-            
+                .allowsHitTesting(false)  // Disable SwiftUI hit testing - let MKMapView handle it
+
             // Show popup when showPopup is true, regardless of selection state
             if showPopup {
                 // Use the old ProjectMarkerPopup implementation for the old map

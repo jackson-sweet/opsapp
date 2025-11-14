@@ -131,7 +131,7 @@ struct ProjectStatusChangeSheet: View {
                                 newTaskStatus = .completed
                             }
                         case .inProgress:
-                            if task.status == .scheduled {
+                            if task.status == .booked {
                                 newTaskStatus = .inProgress
                             }
                         default:
@@ -146,11 +146,22 @@ struct ProjectStatusChangeSheet: View {
                 }
 
                 await MainActor.run {
-                    dismiss()
+                    // Success haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+
+                    // Brief delay for graceful dismissal
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
                 }
             } catch {
                 await MainActor.run {
                     isSaving = false
+
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
                 }
             }
         }
@@ -763,11 +774,22 @@ struct ProjectTeamChangeView: View {
                 }
 
                 await MainActor.run {
-                    dismiss()
+                    // Success haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+
+                    // Brief delay for graceful dismissal
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
                 }
             } catch {
                 await MainActor.run {
                     isSaving = false
+
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
                 }
             }
         }
@@ -1032,11 +1054,22 @@ struct TaskTeamChangeView: View {
                         do {
                             try await dataController.updateProjectTeamMembers(project: project, memberIds: projectTeamIds)
                             await MainActor.run {
-                                onComplete()
+                                // Success haptic feedback
+                                let generator = UINotificationFeedbackGenerator()
+                                generator.notificationOccurred(.success)
+
+                                // Brief delay for graceful dismissal
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    onComplete()
+                                }
                             }
                         } catch {
                             await MainActor.run {
                                 isSaving = false
+
+                                // Error haptic feedback
+                                let generator = UINotificationFeedbackGenerator()
+                                generator.notificationOccurred(.error)
                             }
                         }
                     }
@@ -1044,6 +1077,10 @@ struct TaskTeamChangeView: View {
             } catch {
                 await MainActor.run {
                     isSaving = false
+
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
                 }
             }
         }

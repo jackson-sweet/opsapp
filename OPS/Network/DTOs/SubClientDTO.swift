@@ -14,7 +14,10 @@ struct SubClientDTO: Codable {
     let emailAddress: String?
     let phoneNumber: PhoneNumberType?  // Can be String or Number from API
     let address: BubbleAddress?
-    
+
+    // Soft delete support
+    let deletedAt: String?
+
     // Custom type to handle phone numbers that can be either String or Number
     enum PhoneNumberType: Codable {
         case string(String)
@@ -58,6 +61,7 @@ struct SubClientDTO: Codable {
         case emailAddress = "emailAddress"
         case phoneNumber = "phoneNumber"
         case address = "address"
+        case deletedAt = "deletedAt"
     }
     
     /// Convert DTO to SubClient model
@@ -70,10 +74,16 @@ struct SubClientDTO: Codable {
             phoneNumber: phoneNumber?.stringValue,  // Convert to string
             address: address?.formattedAddress
         )
-        
+
+        // Parse deletedAt if present
+        if let deletedAtString = deletedAt {
+            let formatter = ISO8601DateFormatter()
+            subClient.deletedAt = formatter.date(from: deletedAtString)
+        }
+
         // Location is stored in the address string for now
         // Could add lat/lng properties to SubClient if needed later
-        
+
         return subClient
     }
 }

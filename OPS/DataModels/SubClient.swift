@@ -26,7 +26,10 @@ final class SubClient: Identifiable {
     var updatedAt: Date
     var lastSyncedAt: Date?
     var needsSync: Bool = false
-    
+
+    // Soft delete support
+    var deletedAt: Date?
+
     // MARK: - Initialization
     init(
         id: String,

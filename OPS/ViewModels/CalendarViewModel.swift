@@ -43,7 +43,7 @@ class CalendarViewModel: ObservableObject {
     
     // MARK: - Private Properties
     var dataController: DataController?
-    
+
     // MARK: - Enums
     enum CalendarViewMode {
         case week
@@ -61,6 +61,13 @@ class CalendarViewModel: ObservableObject {
         self.dataController = controller
         loadTeamMembersIfNeeded()
         loadProjectsForDate(selectedDate)
+    }
+
+    /// Force reload of calendar data (called after scheduling changes)
+    func reloadCalendarData() {
+        loadProjectsForDate(selectedDate)
+        // Clear cache to force refresh
+        clearProjectCountCache()
     }
     
     // Check if current user should see team member filter
@@ -87,28 +94,31 @@ class CalendarViewModel: ObservableObject {
         let calendar = Calendar.current
         let oldMonth = calendar.component(.month, from: selectedDate)
         let newMonth = calendar.component(.month, from: date)
-        
+
         // If month changed, clear the cache
         if oldMonth != newMonth {
             clearProjectCountCache()
         }
-        
+
         // Track if this was a user-initiated selection (tapping a day)
         // or a programmatic selection (changing months, initializing)
         // We need to do this on the main thread since it's a @Published property
         DispatchQueue.main.async {
             self.userInitiatedDateSelection = userInitiated
-            
+
             // Explicitly trigger day sheet for month view user selections
             if userInitiated && self.viewMode == .month {
                 self.shouldShowDaySheet = true
             }
         }
-        
-        
+
+        // Update date immediately for instant UI feedback
         selectedDate = date
+
+        // Load project data for the selected date
+        // This happens synchronously but only queries for ONE date
         loadProjectsForDate(date)
-        
+
         // In month view, ensure visible month is synchronized with selected date
         if viewMode == .month {
             let calendar = Calendar.current
@@ -203,42 +213,26 @@ class CalendarViewModel: ObservableObject {
             
             // Apply comprehensive filters
             events = applyEventFilters(to: events)
-            
-            // Filter by shouldDisplay
-            return events.filter { $0.shouldDisplay }
+
+            // Filter by active status
+            return events.filter { $0.active }
         }
         
         return []
     }
     
     func projectCount(for date: Date) -> Int {
+        // CRITICAL: NEVER do database queries here - this is called during rendering
+        // Always return from cache only, even if 0
+
         // If it's the currently selected date, we already have the data
         if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
             return calendarEventsForSelectedDate.count
         }
-        
-        // Check the cache first
+
+        // Return from cache or 0 if not cached
         let dateKey = formatDateKey(date)
-        if let cachedCount = projectCountCache[dateKey] {
-            return cachedCount
-        }
-        
-        // For other dates, get the count from DataController
-        if let dataController = dataController {
-            // Get all calendar events active on this date
-            var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
-            
-            // Apply comprehensive filters
-            calendarEvents = applyEventFilters(to: calendarEvents)
-            
-            let count = calendarEvents.count
-            
-            // Cache the result
-            projectCountCache[dateKey] = count
-            return count
-        }
-        
-        return 0
+        return projectCountCache[dateKey] ?? 0
     }
     
     private func formatDateKey(_ date: Date) -> String {
@@ -263,7 +257,7 @@ class CalendarViewModel: ObservableObject {
         clearProjectCountCache()
         loadProjectsForDate(selectedDate)
     }
-    
+
     func applyFilters(teamMemberIds: Set<String>, taskTypeIds: Set<String>, clientIds: Set<String>, statuses: Set<Status>) {
         selectedTeamMemberIds = teamMemberIds
         selectedTaskTypeIds = taskTypeIds
@@ -377,9 +371,9 @@ class CalendarViewModel: ObservableObject {
         guard let dataController = dataController else {
             return
         }
-        
+
         isLoading = true
-        
+
         // First run the diagnostic if we're looking for Aug 17 or Aug 19
         let calendar = Calendar.current
         if calendar.component(.month, from: date) == 8 &&
@@ -387,31 +381,23 @@ class CalendarViewModel: ObservableObject {
             calendar.component(.year, from: date) == 2025 {
             dataController.diagnoseRailingsVinylProject()
         }
-        
+
         // Get calendar events for the selected date
         var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
-        
-        // Commented out verbose event logging for performance
-        /*
-         // Debug the events we got with detailed shouldDisplay analysis
-         for (index, event) in calendarEvents.enumerated() {
-         }
-         */
-        
+
         // Apply comprehensive filters
         calendarEvents = applyEventFilters(to: calendarEvents)
-        
+
         // Get unique projects from the calendar events
         let projectIds = Set(calendarEvents.compactMap { $0.projectId })
-        
+
         var projects: [Project] = []
         for projectId in projectIds {
             if let project = dataController.getProject(id: projectId) {
                 projects.append(project)
-            } else {
             }
         }
-        
+
         // Force UI update - Store IDs instead of models to avoid invalidation
         DispatchQueue.main.async { [weak self] in
             self?.objectWillChange.send()
@@ -419,7 +405,7 @@ class CalendarViewModel: ObservableObject {
             self?.projectIdsForSelectedDate = projects.map { $0.id }
             self?.isLoading = false
         }
-        
+
         // Update the cache for this date (based on calendar events now)
         let dateKey = formatDateKey(date)
         projectCountCache[dateKey] = calendarEvents.count
@@ -441,9 +427,6 @@ class CalendarViewModel: ObservableObject {
         
         // Reload projects for the current selected date with fresh data
         loadProjectsForDate(selectedDate)
-        
-        for project in projectsForSelectedDate {
-        }
     }
     
     private func getWeekDays() -> [Date] {

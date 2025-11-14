@@ -16,6 +16,8 @@ struct BillingInfoView: View {
 
     @State private var selectedPlan: SubscriptionPlan = .starter
     @State private var showPlanSelection = false
+    @State private var isRefreshing = false
+    @State private var refreshTrigger = false // Toggle to force view refresh
 
     // Optional closure to call when continue is tapped (for use in WelcomeGuideView)
     var onContinue: (() -> Void)? = nil
@@ -33,6 +35,7 @@ struct BillingInfoView: View {
 
     // Get current user's seated status
     private var isSeated: Bool {
+        let _ = refreshTrigger // Force dependency on refresh trigger
         guard let company = dataController.getCurrentUserCompany(),
               let userId = dataController.currentUser?.id else { return false }
         return company.getSeatedEmployeeIds().contains(userId)
@@ -40,6 +43,7 @@ struct BillingInfoView: View {
 
     // Get seat count
     private var seatsInfo: (used: Int, total: Int) {
+        let _ = refreshTrigger // Force dependency on refresh trigger
         guard let company = dataController.getCurrentUserCompany() else { return (0, 10) }
         return (company.getSeatedEmployeeIds().count, company.maxSeats)
     }
@@ -97,8 +101,25 @@ struct BillingInfoView: View {
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                 } else {
-                    // Employee - just Continue button (full width, but hidden since we don't show next button)
-                    EmptyView()
+                    // Employee - Continue button (matches NEXT button styling)
+                    Button(action: {
+                        if let onContinue = onContinue {
+                            onContinue()
+                        } else {
+                            onboardingViewModel.moveToNextStep()
+                        }
+                    }) {
+                        Text("NEXT")
+                            .font(OPSStyle.Typography.button)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                            )
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
             }
             .padding(.top, 40)
@@ -115,6 +136,80 @@ struct BillingInfoView: View {
                         onboardingViewModel.moveToNextStep()
                     }
                 }
+        }
+        .onAppear {
+            // For employees, refresh company data to get latest seat assignment
+            if !isCompanyCreator {
+                refreshCompanyData()
+            }
+        }
+    }
+
+    // MARK: - Helper Methods
+
+    private func refreshCompanyData() {
+        guard !isRefreshing else {
+            print("[BILLING_INFO] Refresh already in progress")
+            return
+        }
+
+        isRefreshing = true
+
+        Task {
+            // First, check data health
+            let healthManager = await DataHealthManager(
+                dataController: dataController,
+                authManager: AuthManager()  // Create a temporary instance
+            )
+
+            let (healthState, recoveryAction) = await healthManager.performHealthCheck()
+
+            if !healthState.isHealthy {
+                print("[BILLING_INFO] ⚠️ Data health check failed: \(healthState)")
+                print("[BILLING_INFO] 🔧 Executing recovery action: \(recoveryAction)")
+                await healthManager.executeRecoveryAction(recoveryAction)
+                await MainActor.run {
+                    isRefreshing = false
+                }
+                return
+            }
+
+            // Data is healthy, proceed with sync
+            guard let syncManager = dataController.syncManager else {
+                print("[BILLING_INFO] ❌ SyncManager still nil after health check")
+                await MainActor.run {
+                    isRefreshing = false
+                }
+                return
+            }
+
+            do {
+                // Fetch latest company data from API
+                print("[BILLING_INFO] 🔄 Refreshing company data for seat info...")
+                try await syncManager.syncCompany()
+
+                await MainActor.run {
+                    isRefreshing = false
+                    print("[BILLING_INFO] ✅ Company data refreshed")
+
+                    // Log seat info for debugging
+                    if let company = dataController.getCurrentUserCompany() {
+                        let seatedIds = company.getSeatedEmployeeIds()
+                        let isSeated = seatedIds.contains(dataController.currentUser?.id ?? "")
+                        print("[BILLING_INFO]    - Seats used: \(seatedIds.count)/\(company.maxSeats)")
+                        print("[BILLING_INFO]    - User is seated: \(isSeated)")
+                    }
+
+                    // Toggle refresh trigger to force view update
+                    refreshTrigger.toggle()
+                    print("[BILLING_INFO] 🔄 Triggered view refresh")
+                }
+            } catch {
+                print("[BILLING_INFO] ⚠️ Failed to refresh company data: \(error)")
+                await MainActor.run {
+                    isRefreshing = false
+                }
+            }
         }
     }
 
@@ -283,34 +378,85 @@ struct BillingInfoView: View {
                 .background(OPSStyle.Colors.cardBackground)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
 
-                // Explanation
+                // Contact admin section (if no seat)
                 if !isSeated {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "info.circle.fill")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    VStack(spacing: 24) {
+                        // Simple message
+                        Text("You don't have a seat in your company's OPS subscription. Contact your administrator to request access.")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 20)
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("About Seats")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        // Admin contact info
+                        if let company = dataController.getCurrentUserCompany(),
+                           let adminIds = company.getAdminIds().first,
+                           let admin = dataController.getUser(id: adminIds) {
 
-                            Text("To access the app, your company admin needs to assign you a seat. Contact your manager if you don't have access.")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
+                            VStack(spacing: 20) {
+                                // Admin info - no background, no avatar
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(admin.firstName) \(admin.lastName)")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                    Text("ADMINISTRATOR")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+
+                                // Contact buttons
+                                HStack(spacing: 12) {
+                                    if let phone = admin.phone {
+                                        Button(action: {
+                                            if let url = URL(string: "tel://\(phone)") {
+                                                UIApplication.shared.open(url)
+                                            }
+                                        }) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "phone.fill")
+                                                    .font(.system(size: 12))
+                                                Text("CALL")
+                                                    .font(OPSStyle.Typography.captionBold)
+                                            }
+                                            .foregroundColor(.black)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .background(Color.white)
+                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        }
+                                    }
+
+                                    if let email = admin.email {
+                                        Button(action: {
+                                            if let url = URL(string: "mailto:\(email)?subject=OPS%20App%20Access%20Request") {
+                                                UIApplication.shared.open(url)
+                                            }
+                                        }) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "envelope.fill")
+                                                    .font(.system(size: 12))
+                                                Text("EMAIL")
+                                                    .font(OPSStyle.Typography.captionBold)
+                                            }
+                                            .foregroundColor(.black)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .background(Color.white)
+                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                    .padding(12)
-                    .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.top, 8)
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
-
-    // MARK: - Helper Methods
 
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()

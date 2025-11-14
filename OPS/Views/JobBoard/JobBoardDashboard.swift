@@ -359,14 +359,34 @@ struct JobBoardDashboard: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
 
+        // Update local status immediately
         project.status = newStatus
-        project.needsSync = true
 
         do {
             try modelContext.save()
-            print("[ARCHIVE_DEBUG] ✅ Project status saved successfully to \(newStatus.rawValue)")
+            print("[ARCHIVE_DEBUG] ✅ Project status saved locally to \(newStatus.rawValue)")
         } catch {
-            print("[ARCHIVE_DEBUG] ❌ Failed to save project status: \(error)")
+            print("[ARCHIVE_DEBUG] ❌ Failed to save project status locally: \(error)")
+        }
+
+        // Sync to backend immediately
+        Task {
+            do {
+                try await dataController.apiService.updateProject(
+                    id: project.id,
+                    updates: ["status": newStatus.rawValue]
+                )
+                await MainActor.run {
+                    project.needsSync = false
+                    project.lastSyncedAt = Date()
+                }
+                print("[ARCHIVE_DEBUG] ✅ Project status synced to backend: \(newStatus.rawValue)")
+            } catch {
+                await MainActor.run {
+                    project.needsSync = true
+                }
+                print("[ARCHIVE_DEBUG] ❌ Failed to sync project status to backend: \(error)")
+            }
         }
     }
 

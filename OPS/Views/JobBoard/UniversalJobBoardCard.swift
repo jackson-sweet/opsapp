@@ -25,6 +25,8 @@ struct UniversalJobBoardCard: View {
     @State private var showingScheduler = false
     @State private var showingStatusPicker = false
     @State private var showingTeamPicker = false
+    @State private var showingTaskPicker = false
+    @State private var selectedTaskForScheduling: ProjectTask? = nil
     @State private var isLongPressing = false
     @State private var hasTriggeredLongPressHaptic = false
     @State private var showingProjectDetails = false
@@ -178,7 +180,9 @@ struct UniversalJobBoardCard: View {
         .overlay(
             Group {
                 if case .project(let project) = cardType {
-                    ZStack {
+                    // Badge stack - evenly spaced on right side
+                    VStack(alignment: .trailing, spacing: 0) {
+                        // Status badge - top
                         Text(project.status.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(project.status.color)
@@ -192,9 +196,27 @@ struct UniversalJobBoardCard: View {
                                 RoundedRectangle(cornerRadius: 4)
                                     .stroke(project.status.color, lineWidth: 1)
                             )
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                            .padding(8)
 
+                        Spacer()
+
+                        // Scheduling type badge - middle (evenly spaced)
+                        Text(project.eventType == .task ? "\(project.tasks.count) \(project.tasks.count == 1 ? "TASK" : "TASKS")" : "PROJECT")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(schedulingBadgeColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(OPSStyle.Colors.cardBackground)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(schedulingBadgeColor.opacity(0.3), lineWidth: 1)
+                            )
+
+                        Spacer()
+
+                        // Unscheduled badge - bottom (or spacer if not shown)
                         if shouldShowUnscheduledBadge(for: project) {
                             Text("UNSCHEDULED")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -209,10 +231,13 @@ struct UniversalJobBoardCard: View {
                                     RoundedRectangle(cornerRadius: 4)
                                         .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
                                 )
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                                .padding(8)
+                        } else {
+                            // Empty spacer to maintain badge positioning when unscheduled badge isn't shown
+                            Color.clear.frame(height: 0)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .padding(8)
                 }
             }
         )
@@ -264,6 +289,9 @@ struct UniversalJobBoardCard: View {
         }
         .sheet(isPresented: $showingScheduler) {
             schedulerSheet
+        }
+        .sheet(isPresented: $showingTaskPicker) {
+            taskPickerSheet
         }
         .sheet(isPresented: $showingStatusPicker) {
             if case .project(let project) = cardType {
@@ -475,6 +503,15 @@ struct UniversalJobBoardCard: View {
                 }
             }
         }
+        .alert("Delete \(deleteItemName)?", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deleteItem()
+            }
+        } message: {
+            Text("This will permanently delete this \(deleteItemName.lowercased()). This action cannot be undone.")
+        }
+        .customAlert($customAlert)
     }
 
     @ViewBuilder
@@ -496,21 +533,36 @@ struct UniversalJobBoardCard: View {
 
     @ViewBuilder
     private var metadataRow: some View {
-        HStack(spacing: 12) {
-            ForEach(metadataItems, id: \.icon) { item in
-                HStack(spacing: 4) {
-                    Image(systemName: item.icon)
-                        .font(.system(size: 11))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+        GeometryReader { geometry in
+            HStack(spacing: 12) {
+                ForEach(Array(metadataItems.enumerated()), id: \.offset) { index, item in
+                    HStack(spacing: 4) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 11))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                    Text(item.text)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        if index == 0 {
+                            // Address field - flexible width up to 35% max
+                            Text(item.text)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(maxWidth: geometry.size.width * 0.35, alignment: .leading)
+                        } else {
+                            // Other fields - natural width
+                            Text(item.text)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                        }
+                    }
                 }
-            }
 
-            Spacer()
+                Spacer()
+            }
         }
+        .frame(height: 16)
     }
 
     @ViewBuilder
@@ -538,7 +590,7 @@ struct UniversalJobBoardCard: View {
                 }
 
                 Button("Reschedule") {
-                    showingScheduler = true
+                    handleRescheduleForProject()
                 }
             }
 
@@ -640,11 +692,93 @@ struct UniversalJobBoardCard: View {
     private var schedulerSheet: some View {
         switch cardType {
         case .project(let project):
-            CalendarSchedulerSheet(
-                isPresented: $showingScheduler,
-                itemType: .project(project),
-                currentStartDate: project.startDate,
-                currentEndDate: project.endDate,
+            // If a specific task was selected, schedule it instead of the project
+            if let selectedTask = selectedTaskForScheduling {
+                CalendarSchedulerSheet(
+                    isPresented: $showingScheduler,
+                    itemType: .task(selectedTask),
+                    currentStartDate: selectedTask.calendarEvent?.startDate,
+                    currentEndDate: selectedTask.calendarEvent?.endDate,
+                    onScheduleUpdate: { startDate, endDate in
+                        Task {
+                            do {
+                                // Update or create calendar event
+                                if let calendarEvent = selectedTask.calendarEvent {
+                                    try await dataController.updateCalendarEvent(event: calendarEvent, startDate: startDate, endDate: endDate)
+                                } else {
+                                    // Create new calendar event for the task
+                                    let newEvent = CalendarEvent.fromTask(selectedTask, startDate: startDate, endDate: endDate)
+                                    selectedTask.calendarEvent = newEvent
+                                    dataController.modelContext?.insert(newEvent)
+                                    newEvent.needsSync = true
+                                    try? dataController.modelContext?.save()
+                                }
+
+                                // Update parent project dates if necessary
+                                if let project = selectedTask.project {
+                                    let allTaskEvents = project.tasks.compactMap { $0.calendarEvent }
+                                    if !allTaskEvents.isEmpty {
+                                        let earliestStart = allTaskEvents.compactMap { $0.startDate }.min() ?? startDate
+                                        let latestEnd = allTaskEvents.compactMap { $0.endDate }.max() ?? endDate
+
+                                        if project.startDate != earliestStart || project.endDate != latestEnd {
+                                            try await dataController.updateProjectDates(project: project, startDate: earliestStart, endDate: latestEnd)
+                                        }
+                                    }
+                                }
+                            } catch {
+                                print("❌ Failed to sync task schedule to Bubble: \(error)")
+                            }
+                        }
+                    },
+                    onClearDates: {
+                        // Clear task calendar event dates
+                        Task {
+                            do {
+                                if let calendarEvent = selectedTask.calendarEvent {
+                                    // Clear dates manually
+                                    calendarEvent.startDate = nil
+                                    calendarEvent.endDate = nil
+                                    calendarEvent.needsSync = true
+                                    try? dataController.modelContext?.save()
+                                }
+
+                                // Update parent project dates if necessary
+                                if let project = selectedTask.project {
+                                    let allTaskEvents = project.tasks.compactMap { $0.calendarEvent }
+                                    let taskEventsWithDates = allTaskEvents.filter { $0.startDate != nil && $0.endDate != nil }
+
+                                    if taskEventsWithDates.isEmpty {
+                                        // No tasks have dates, clear project dates
+                                        try await dataController.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
+                                    } else {
+                                        // Recalculate project dates from remaining task dates
+                                        let earliestStart = taskEventsWithDates.compactMap { $0.startDate }.min()
+                                        let latestEnd = taskEventsWithDates.compactMap { $0.endDate }.max()
+
+                                        if let start = earliestStart, let end = latestEnd {
+                                            try await dataController.updateProjectDates(project: project, startDate: start, endDate: end)
+                                        }
+                                    }
+                                }
+                            } catch {
+                                print("❌ Failed to clear task dates: \(error)")
+                            }
+                        }
+                    }
+                )
+                .environmentObject(dataController)
+                .onDisappear {
+                    // Clear the selected task when sheet is dismissed
+                    selectedTaskForScheduling = nil
+                }
+            } else {
+                // No specific task selected - schedule the project itself
+                CalendarSchedulerSheet(
+                    isPresented: $showingScheduler,
+                    itemType: .project(project),
+                    currentStartDate: project.startDate,
+                    currentEndDate: project.endDate,
                 onScheduleUpdate: { startDate, endDate in
                     // Update or create calendar event
                     if let projectEvent = project.primaryCalendarEvent {
@@ -689,7 +823,8 @@ struct UniversalJobBoardCard: View {
                                     type: "Project",
                                     active: true,
                                     createdDate: nil,
-                                    modifiedDate: nil
+                                    modifiedDate: nil,
+                                    deletedAt: nil
                                 )
 
                                 // Create event and link to project
@@ -763,6 +898,7 @@ struct UniversalJobBoardCard: View {
                 }
             )
             .environmentObject(dataController)
+            }
         case .task(let task):
             CalendarSchedulerSheet(
                 isPresented: $showingScheduler,
@@ -862,6 +998,113 @@ struct UniversalJobBoardCard: View {
         }
     }
 
+    // MARK: - Helper Functions
+
+    /// Handle reschedule action for projects
+    /// Checks if project has tasks and shows appropriate UI
+    private func handleRescheduleForProject() {
+        guard case .project(let project) = cardType else { return }
+
+        // Filter out deleted tasks
+        let activeTasks = project.tasks.filter { $0.deletedAt == nil }
+
+        if activeTasks.isEmpty {
+            // No tasks - reschedule the project itself
+            showingScheduler = true
+        } else if activeTasks.count == 1 {
+            // Exactly one task - reschedule it automatically
+            selectedTaskForScheduling = activeTasks.first
+            showingScheduler = true
+        } else {
+            // Multiple tasks - show task picker
+            showingTaskPicker = true
+        }
+    }
+
+    /// Task picker sheet for selecting which task to reschedule
+    private var taskPickerSheet: some View {
+        NavigationView {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient
+                    .edgesIgnoringSafeArea(.all)
+
+                if case .project(let project) = cardType {
+                    let activeTasks = project.tasks.filter { $0.deletedAt == nil }
+
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            ForEach(activeTasks, id: \.id) { task in
+                                Button(action: {
+                                    selectedTaskForScheduling = task
+                                    showingTaskPicker = false
+                                    showingScheduler = true
+                                }) {
+                                    HStack {
+                                        // Task type icon and color
+                                        if let taskType = task.taskType {
+                                            Circle()
+                                                .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
+                                                .frame(width: 12, height: 12)
+
+                                            if let icon = taskType.icon {
+                                                Image(systemName: icon)
+                                                    .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
+                                            }
+
+                                            Text(taskType.display)
+                                                .font(OPSStyle.Typography.bodyBold)
+                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                        } else {
+                                            Text("Task")
+                                                .font(OPSStyle.Typography.bodyBold)
+                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                        }
+
+                                        Spacer()
+
+                                        // Show dates if scheduled
+                                        if let startDate = task.calendarEvent?.startDate,
+                                           let endDate = task.calendarEvent?.endDate {
+                                            VStack(alignment: .trailing, spacing: 2) {
+                                                Text(startDate, style: .date)
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                Text(endDate, style: .date)
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                            }
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                        } else {
+                                            Text("Not scheduled")
+                                                .font(OPSStyle.Typography.smallCaption)
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                        }
+
+                                        Image(systemName: "chevron.right")
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    }
+                                    .padding()
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .navigationTitle("Select Task to Reschedule")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") {
+                        showingTaskPicker = false
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+    }
+
     // MARK: - Computed Properties
 
     private var title: String {
@@ -916,7 +1159,7 @@ struct UniversalJobBoardCard: View {
             return OPSStyle.Colors.primaryAccent
         case .task(let task):
             switch task.status {
-            case .scheduled:
+            case .booked:
                 return OPSStyle.Colors.primaryAccent
             case .inProgress:
                 return Color.blue
@@ -926,6 +1169,20 @@ struct UniversalJobBoardCard: View {
                 return Color.gray
             }
         }
+    }
+
+    private var schedulingBadgeColor: Color {
+        if case .project(let project) = cardType {
+            if project.eventType == .project {
+                // Use company's default project color for project-based scheduling
+                if let company = dataController.getCompany(id: project.companyId) {
+                    let colorHex = company.defaultProjectColor
+                    return Color(hex: colorHex) ?? OPSStyle.Colors.secondaryText
+                }
+            }
+        }
+        // Use secondaryText for task-based scheduling
+        return OPSStyle.Colors.secondaryText
     }
 
     private var taskTypeColor: Color {
@@ -950,30 +1207,32 @@ struct UniversalJobBoardCard: View {
         }
     }
 
+    /// Format address to show only street number and street name (no city)
+    private func formatAddressStreetOnly(_ address: String) -> String {
+        let components = address.components(separatedBy: ",")
+        if let streetAddress = components.first?.trimmingCharacters(in: .whitespaces), !streetAddress.isEmpty {
+            return streetAddress
+        }
+        return address.formatAsSimpleAddress()
+    }
+
     private var metadataItems: [(icon: String, text: String)] {
         switch cardType {
         case .project(let project):
             var items: [(icon: String, text: String)] = []
 
             if let address = project.address, !address.isEmpty {
-                items.append((OPSStyle.Icons.location, address.formatAsSimpleAddress()))
+                items.append((OPSStyle.Icons.location, formatAddressStreetOnly(address)))
             } else {
                 items.append((OPSStyle.Icons.location, "NO ADDRESS"))
             }
 
             if let startDate = project.startDate {
-                items.append((OPSStyle.Icons.calendar, DateHelper.fullDateString(from: startDate)))
+                items.append((OPSStyle.Icons.calendar, DateHelper.simpleDateString(from: startDate)))
             }
 
             if !project.teamMembers.isEmpty {
                 items.append((OPSStyle.Icons.personTwo, "\(project.teamMembers.count)"))
-            }
-
-            if project.eventType == .task {
-                let taskText = project.tasks.count == 1 ? "TASK" : "TASKS"
-                items.append((OPSStyle.Icons.checklist, "\(project.tasks.count) \(taskText)"))
-            } else {
-                items.append((OPSStyle.Icons.folderFill, "PROJECT"))
             }
 
             return items
@@ -996,14 +1255,14 @@ struct UniversalJobBoardCard: View {
 
             if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
                 if let address = project.address, !address.isEmpty {
-                    items.append((OPSStyle.Icons.location, address.formatAsSimpleAddress()))
+                    items.append((OPSStyle.Icons.location, formatAddressStreetOnly(address)))
                 } else {
                     items.append((OPSStyle.Icons.location, "NO ADDRESS"))
                 }
             }
 
             if let startDate = task.calendarEvent?.startDate {
-                items.append((OPSStyle.Icons.calendar, DateHelper.fullDateString(from: startDate)))
+                items.append((OPSStyle.Icons.calendar, DateHelper.simpleDateString(from: startDate)))
             }
 
             let teamMemberCount = task.getTeamMemberIds().count

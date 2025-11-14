@@ -114,6 +114,11 @@ struct WelcomeView: View {
         }
         .onAppear {
             animateContent()
+
+            // Perform data health check when welcome flow starts
+            Task {
+                await viewModel.performDataHealthCheck()
+            }
         }
     }
     

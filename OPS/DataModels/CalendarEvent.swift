@@ -48,7 +48,10 @@ final class CalendarEvent {
     // MARK: - Sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
-    
+
+    // Soft delete support
+    var deletedAt: Date?
+
     // MARK: - Initialization
     init(
         id: String,
@@ -73,7 +76,8 @@ final class CalendarEvent {
         self.taskId = nil
         self.projectEventType = nil // Will be set when linked to project
         if let start = startDate, let end = endDate {
-            self.duration = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 1
+            let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+            self.duration = daysDiff + 1  // Add 1 to include both start and end days
         } else {
             self.duration = 1
         }
@@ -96,6 +100,13 @@ final class CalendarEvent {
     /// Get SwiftUI Color from hex string
     var swiftUIColor: Color {
         return Color(hex: color) ?? Color.blue
+    }
+
+    /// Get the display color hex string
+    /// NOTE: This returns the stored color. Views should check event type and use
+    /// company.defaultProjectColor for project events via their own computed properties.
+    var displayColor: String {
+        return color
     }
     
     /// Get display icon based on type

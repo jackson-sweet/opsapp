@@ -12,9 +12,10 @@ import UIKit
 
 struct CalendarDaySelector: View {
     @ObservedObject var viewModel: CalendarViewModel
+    @EnvironmentObject private var dataController: DataController
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging: Bool = false
-    
+
     var body: some View {
         Group {
             if viewModel.viewMode == .week {
@@ -37,9 +38,7 @@ struct CalendarDaySelector: View {
                             eventCount: viewModel.projectCount(for: date),
                             events: viewModel.calendarEvents(for: date),
                             onTap: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    viewModel.selectDate(date, userInitiated: true)
-                                }
+                                viewModel.selectDate(date, userInitiated: true)
                             }
                         )
                         .frame(maxWidth: .infinity)
@@ -87,31 +86,34 @@ struct CalendarDaySelector: View {
         .onChange(of: viewModel.selectedDate) { _, _ in
             // The view will automatically refresh with the new week
         }
+        // Watch for calendar event changes and force refresh
+        .onChange(of: dataController.calendarEventsDidChange) { _, _ in
+            // Use objectWillChange instead of forcing full view recreation
+            viewModel.objectWillChange.send()
+        }
     }
     
     private func navigateToWeek(offset: Int) {
         var calendar = Calendar.current
         calendar.firstWeekday = 2 // Monday
-        
+
         // Get the current week's start date
         guard let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: viewModel.selectedDate)?.start else {
             return
         }
-        
+
         // Calculate the new week's start date
         guard let newWeekStart = calendar.date(byAdding: .weekOfYear, value: offset, to: currentWeekStart) else {
             return
         }
-        
+
         // Add haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.prepare()
-        
-        // Select the first day of the new week with animation
-        withAnimation(.easeInOut(duration: 0.3)) {
-            viewModel.selectDate(newWeekStart, userInitiated: false)
-        }
-        
+
+        // Update immediately - no animation needed, SwiftUI handles it naturally
+        viewModel.selectDate(newWeekStart, userInitiated: false)
+
         impactFeedback.impactOccurred()
     }
     

@@ -58,6 +58,9 @@ final class Project: Identifiable {
     var lastSyncedAt: Date?
     var needsSync: Bool = false
     var syncPriority: Int = 1 // Higher numbers = higher priority
+
+    // Soft delete support
+    var deletedAt: Date?
     
     // Transient properties (not persisted to database)
     @Transient var lastTapped: Date?

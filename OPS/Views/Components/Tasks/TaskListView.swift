@@ -516,7 +516,8 @@ struct TaskRow: View {
             type: "Task",
             active: true,
             createdDate: nil,
-            modifiedDate: nil
+            modifiedDate: nil,
+            deletedAt: nil
         )
 
         do {
@@ -557,7 +558,7 @@ struct TaskRow: View {
     
     private func statusColor(for status: TaskStatus) -> Color {
         switch status {
-        case .scheduled:
+        case .booked:
             return OPSStyle.Colors.tertiaryText
         case .inProgress:
             return OPSStyle.Colors.warningStatus

@@ -300,7 +300,7 @@ struct TaskCompletionTrend: View {
     @Query private var tasks: [ProjectTask]
     let timeframe: JobBoardAnalyticsView.TimeFrame
 
-    private var trendData: [(date: String, completed: Int, scheduled: Int)] {
+    private var trendData: [(date: String, completed: Int, booked: Int)] {
         // This would calculate actual trend data based on timeframe
         // For now, returning mock data
         switch timeframe {
@@ -355,7 +355,7 @@ struct TaskCompletionTrend: View {
                             Circle()
                                 .fill(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 8, height: 8)
-                            Text("Scheduled")
+                            Text("Booked")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
@@ -373,7 +373,7 @@ struct TaskCompletionTrend: View {
                                     )
 
                                     BarView(
-                                        value: Double(item.scheduled),
+                                        value: Double(item.booked),
                                         maxValue: 15,
                                         color: OPSStyle.Colors.primaryAccent.opacity(0.5)
                                     )

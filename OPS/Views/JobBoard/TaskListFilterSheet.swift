@@ -12,8 +12,8 @@ enum TaskSortOption: String, CaseIterable {
     case createdDateAscending = "Created Date (Oldest First)"
     case scheduledDateDescending = "Scheduled Date (Latest First)"
     case scheduledDateAscending = "Scheduled Date (Earliest First)"
-    case statusAscending = "Status (Scheduled to Completed)"
-    case statusDescending = "Status (Completed to Scheduled)"
+    case statusAscending = "Status (Booked to Completed)"
+    case statusDescending = "Status (Completed to Booked)"
 }
 
 struct TaskListFilterSheet: View {
@@ -28,7 +28,7 @@ struct TaskListFilterSheet: View {
     let availableTaskTypes: [TaskType]
     let availableTeamMembers: [User]
 
-    private let availableStatuses: [TaskStatus] = [.scheduled, .inProgress, .completed, .cancelled]
+    private let availableStatuses: [TaskStatus] = [.booked, .inProgress, .completed, .cancelled]
 
     var body: some View {
         NavigationView {

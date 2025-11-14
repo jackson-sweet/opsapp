@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-10-16
+## [Unreleased]
+
+### In Development
+- No unreleased changes at this time
+
+## [2.0.2] - 2025-10-23
+
+### Bug Fixes
+- **Task Deletion UX**: Fixed ProjectDetailsView closing abruptly after task deletion by wrapping modelContext.delete() in animation block
+- **Task List Animations**: Added smooth transition animations when tasks are deleted from list
+- **Team Member Avatars**: Fixed team member avatars not displaying on task cards by adding @Query for users in TaskRow
+- **Address Formatting**: Applied .formatAsSimpleAddress() to trim postal codes and countries, showing only street and city
+- **Empty Address Display**: Shows "NO ADDRESS" in all capitals when address is missing on project/task cards
+- **Team Member Display**: Created displayTeamMembers computed property that fetches users from DB when teamMembers relationship is empty
+
+### Technical Improvements
+- Enhanced sync manager with improved calendar event and project endpoint handling
+- Improved onboarding flow with better billing info validation
+- Updated BUBBLE_FIELD_MAPPINGS.md for accuracy
+
+## [2.0.1] - 2025-10-16
 
 ### Project Completion & Permissions
 
@@ -159,9 +179,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview crashes from missing environment objects
 - Project sync to remove unassigned projects
 
-## [Unreleased] - 2025-07-03
+## [1.0.3] - 2025-07-03
 
-### Fixed (Historical)
+### Fixed
 - User type being cached before signup completion, causing persistence on logout
 - Team invite page being skipped for company owners due to duplicate switch case
 - Company and project data not loading properly during onboarding

@@ -19,11 +19,7 @@ struct ProjectSheetContainer: View {
             Color.clear // Empty view that doesn't affect layout
         }
         // Project details sheet - uses isPresented and item together for more reliable presentation
-        .sheet(isPresented: $appState.showProjectDetails, onDismiss: {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                appState.dismissProjectDetails()
-            }
-        }) {
+        .sheet(isPresented: $appState.showProjectDetails) {
             if let projectID = appState.activeProjectID,
                let project = dataController.getProject(id: projectID) {
                 NavigationView {

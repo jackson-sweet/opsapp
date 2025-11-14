@@ -81,7 +81,10 @@ final class Company {
     // Offline/sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
-    
+
+    // Soft delete support
+    var deletedAt: Date?
+
     init(id: String, name: String) {
         self.id = id
         self.name = name

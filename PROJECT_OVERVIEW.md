@@ -1,7 +1,7 @@
 # OPS App - Project Overview
 
-**Last Updated**: August 2025  
-**Version**: 1.2.0  
+**Last Updated**: November 2025
+**Version**: 2.0.2
 **Status**: Production
 
 ## App Purpose

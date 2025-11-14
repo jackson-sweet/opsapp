@@ -17,6 +17,7 @@ struct CalendarSchedulerSheet: View {
     let currentEndDate: Date?
     let onScheduleUpdate: (Date, Date) -> Void
     let onClearDates: (() -> Void)?
+    let preselectedTeamMemberIds: Set<String>?  // Optional pre-selected team members for filtering
 
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
@@ -44,7 +45,8 @@ struct CalendarSchedulerSheet: View {
          currentStartDate: Date?,
          currentEndDate: Date?,
          onScheduleUpdate: @escaping (Date, Date) -> Void,
-         onClearDates: (() -> Void)? = nil) {
+         onClearDates: (() -> Void)? = nil,
+         preselectedTeamMemberIds: Set<String>? = nil) {
 
         self._isPresented = isPresented
         self.itemType = itemType
@@ -52,6 +54,7 @@ struct CalendarSchedulerSheet: View {
         self.currentEndDate = currentEndDate
         self.onScheduleUpdate = onScheduleUpdate
         self.onClearDates = onClearDates
+        self.preselectedTeamMemberIds = preselectedTeamMemberIds
 
         // Initialize with current dates or today
         let startDate = currentStartDate ?? Date()
@@ -636,11 +639,18 @@ struct CalendarSchedulerSheet: View {
 
         // Get team members for the current item
         let currentTeamMembers: Set<String>
-        switch itemType {
-        case .project(let project):
-            currentTeamMembers = Set(project.getTeamMemberIds())
-        case .task(let task):
-            currentTeamMembers = Set(task.getTeamMemberIds())
+
+        // If preselected team members are provided, use those
+        if let preselectedIds = preselectedTeamMemberIds, !preselectedIds.isEmpty {
+            currentTeamMembers = preselectedIds
+        } else {
+            // Otherwise, get from the current item
+            switch itemType {
+            case .project(let project):
+                currentTeamMembers = Set(project.getTeamMemberIds())
+            case .task(let task):
+                currentTeamMembers = Set(task.getTeamMemberIds())
+            }
         }
 
         // Check if any events on this date share team members (excluding current item)
@@ -692,24 +702,13 @@ struct CalendarSchedulerSheet: View {
     }
 
     private func loadCalendarEvents() {
-        // Load all calendar events
+        // Load all calendar events in the date range (optimized)
         let calendar = Calendar.current
         let searchStart = calendar.date(byAdding: .month, value: -3, to: selectedStartDate) ?? selectedStartDate
         let searchEnd = calendar.date(byAdding: .month, value: 3, to: selectedEndDate) ?? selectedEndDate
 
-        // Get all events in the extended range
-        var allEvents: [CalendarEvent] = []
-        var currentDate = searchStart
-
-        while currentDate <= searchEnd {
-            let dayEvents = dataController.getCalendarEvents(for: currentDate)
-                .filter { $0.shouldDisplay }
-            allEvents.append(contentsOf: dayEvents)
-            currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? searchEnd
-        }
-
-        // Remove duplicates
-        allCalendarEvents = Array(Set(allEvents))
+        // Use optimized range query instead of day-by-day loop
+        allCalendarEvents = dataController.getCalendarEvents(in: searchStart...searchEnd)
 
         // Filter events
         filterCalendarEvents()
@@ -741,11 +740,17 @@ struct CalendarSchedulerSheet: View {
         // Get team members for the current item
         let currentTeamMembers: Set<String>
 
-        switch itemType {
-        case .project(let project):
-            currentTeamMembers = Set(project.getTeamMemberIds())
-        case .task(let task):
-            currentTeamMembers = Set(task.getTeamMemberIds())
+        // If preselected team members are provided, use those
+        if let preselectedIds = preselectedTeamMemberIds, !preselectedIds.isEmpty {
+            currentTeamMembers = preselectedIds
+        } else {
+            // Otherwise, get from the current item
+            switch itemType {
+            case .project(let project):
+                currentTeamMembers = Set(project.getTeamMemberIds())
+            case .task(let task):
+                currentTeamMembers = Set(task.getTeamMemberIds())
+            }
         }
 
         // Filter events that share at least one team member

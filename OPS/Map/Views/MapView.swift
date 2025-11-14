@@ -11,20 +11,28 @@ import MapKit
 
 struct MapView: View {
     @ObservedObject var coordinator: MapCoordinator
-    
+
+    // Callbacks
+    let onProjectSelected: (Project) -> Void
+
     // Map interaction state - removed duplicate mapCameraPosition
     @State private var showingMarkerPopup: String? = nil // Project ID of popup
-    
+    @State private var selectedAnnotationId: String? = nil // Track selected annotation
+
     // Map settings
     @AppStorage("map3DBuildings") private var show3DBuildings = true
     @AppStorage("mapTrafficDisplay") private var showTraffic = false
     @AppStorage("mapDefaultType") private var defaultMapType = "standard"
-    
+
     // Environment
     @EnvironmentObject private var appState: AppState
-    
+
     var body: some View {
-        Map(position: $coordinator.mapCameraPosition, interactionModes: .all) {
+        Map(
+            position: $coordinator.mapCameraPosition,
+            interactionModes: [.pan, .zoom], // REMOVED .all to disable single-finger zoom
+            selection: $selectedAnnotationId  // Use native selection for reliable taps
+        ) {
             // User location annotation
             UserAnnotation()
             
@@ -38,10 +46,7 @@ struct MapView: View {
                                 isSelected: project.id == coordinator.selectedProjectId,
                                 isNavigating: coordinator.isNavigating && project.id == coordinator.selectedProjectId
                             )
-                            .onTapGesture {
-                                handleMarkerTap(for: project)
-                            }
-                            
+
                             // Show popup below marker if this project's popup is active
                             if showingMarkerPopup == project.id {
                                 ProjectMarkerPopup(
@@ -75,6 +80,7 @@ struct MapView: View {
                             }
                         }
                     }
+                    .tag(project.id)  // CRITICAL: Enable native selection for this annotation
                 }
             }
             
@@ -85,6 +91,29 @@ struct MapView: View {
             }
         }
         .mapStyle(currentMapStyle)
+        .onChange(of: selectedAnnotationId) { oldValue, newValue in
+            // Handle annotation selection (pin tap)
+            guard let projectId = newValue,
+                  let project = coordinator.projects.first(where: { $0.id == projectId }) else {
+                return
+            }
+
+            print("[MAP] 📍 Pin tapped via native selection: \(project.title)")
+
+            // Haptic feedback (async to not block)
+            Task {
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+            }
+
+            // Deselect immediately to allow repeated taps on same pin
+            selectedAnnotationId = nil
+
+            // Handle the tap asynchronously to avoid blocking
+            Task { @MainActor in
+                handleMarkerTap(for: project)
+            }
+        }
         .onTapGesture { location in
             // Only dismiss popup when tapping on map background
             // This ensures the tap doesn't interfere with annotation taps
@@ -141,13 +170,16 @@ struct MapView: View {
     // MARK: - Helper Methods
     
     private func handleMarkerTap(for project: Project) {
-        // If in project mode, always show popup instead of project details
+        // ALWAYS update carousel selection
+        onProjectSelected(project)
+
+        // If in project mode (project is active), show popup below pin
         if appState.isInProjectMode {
             withAnimation(.easeInOut(duration: 0.2)) {
                 showingMarkerPopup = project.id
             }
         } else {
-            // Normal selection behavior when no project is active
+            // Not in project mode - select project to show bottom sheet
             coordinator.selectProject(project)
         }
     }

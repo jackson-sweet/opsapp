@@ -61,6 +61,13 @@ struct HomeContentView: View {
             if isLoading {
                 loadingOverlay
             }
+
+            // 5. Initial sync loading screen - shows on first login
+            if dataController.isPerformingInitialSync {
+                TacticalInitialLoadingView(dataController: dataController)
+                    .transition(.opacity)
+                    .zIndex(999)
+            }
         }
         // Sheet for editing projects (admin/office crew only)
         .sheet(isPresented: $showingEditProject) {
@@ -83,9 +90,10 @@ struct HomeContentView: View {
             // New map implementation with safety wrapper
             SafeMapContainer(
                 projects: todaysProjects,
-                selectedIndex: todaysProjects.isEmpty ? 0 : 
-                    (todaysCalendarEvents.indices.contains(selectedEventIndex) ? 
+                selectedIndex: todaysProjects.isEmpty ? 0 :
+                    (todaysCalendarEvents.indices.contains(selectedEventIndex) ?
                         todaysProjects.firstIndex(where: { $0.id == todaysCalendarEvents[selectedEventIndex].projectId }) ?? 0 : 0),
+                selectedEvent: todaysCalendarEvents.indices.contains(selectedEventIndex) ? todaysCalendarEvents[selectedEventIndex] : nil,
                 onProjectSelected: { project in
                     // Find event index for this project
                     if let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == project.id }) {
@@ -119,11 +127,13 @@ struct HomeContentView: View {
                                     }
                                 }
                             } catch {
-                                dataController.syncManager.updateProjectStatus(
-                                    projectId: project.id,
-                                    status: .inProgress,
-                                    forceSync: true
-                                )
+                                Task {
+                                    try? await dataController.syncManager.updateProjectStatus(
+                                        projectId: project.id,
+                                        status: .inProgress,
+                                        forceSync: true
+                                    )
+                                }
                             }
                         }
                     }
@@ -286,29 +296,27 @@ struct HomeContentView: View {
     
     private var loadingOverlay: some View {
         ZStack {
-            Color.black
+            // Semi-transparent black background
+            Color.black.opacity(0.85)
                 .ignoresSafeArea()
-            
-            VStack {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                    .scaleEffect(1.5)
-                
-                Text("Loading projects...")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.top)
+
+            VStack(spacing: 16) {
+                // Tactical loading bar
+                TacticalLoadingBarAnimated(
+                    barCount: 8,
+                    barWidth: 2,
+                    barHeight: 6,
+                    spacing: 4,
+                    emptyColor: Color.white.opacity(0.2),
+                    fillColor: Color.white.opacity(0.6)
+                )
+
+                // Loading text
+                Text("LOADING PROJECTS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .tracking(1.2)
             }
-            .padding()
-            .background(
-                ZStack {
-                    Color(.blue)
-                    Rectangle()
-                        .fill(Color.clear)
-                        .background(Material.ultraThinMaterial)
-                }
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
     

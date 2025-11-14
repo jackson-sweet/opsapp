@@ -273,6 +273,29 @@ struct EventCardView: View {
             if showConfirmation && !isActiveProject {
                 confirmationOverlay
             }
+
+            // Completed overlay - grey out and show badge
+            if (event.type == .task && event.task?.status == .completed) ||
+               (event.type == .project && project?.status == .completed) {
+                ZStack(alignment: .topTrailing) {
+                    // Grey overlay
+                    Color.black.opacity(0.5)
+                        .frame(width: 362, height: 100)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+
+                    // Completed badge
+                    Text("COMPLETED")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(OPSStyle.Colors.statusColor(for: .completed))
+                        )
+                        .padding(8)
+                }
+            }
         }
         .onTapGesture {
             // Always use the tap handler for confirmation

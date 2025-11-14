@@ -110,102 +110,127 @@ struct CalendarEventCard: View {
     }
     
     var body: some View {
-        HStack(spacing: 0) {
-            // Left status bar - color coded by task type or project status
-            Rectangle()
-                .fill(displayColor)
-                .frame(width: 4)
-            
-            // Content area with badges overlaid
-            ZStack(alignment: .topLeading) {
-                // Main content - fills available space
-                HStack(spacing: 0) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        // Show project name as the main title
-                        if let project = associatedProject {
-                            Text(project.title)
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .lineLimit(1)
-                                .textCase(.uppercase)
-                            
-                            // Show client name as subtitle for both tasks and projects
-                            Text(project.effectiveClientName)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .lineLimit(1)
-                            
-                            // Formatted address (street number, street name, municipality)
-                            Text(formattedAddress)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .lineLimit(1)
+        ZStack {
+            // Card container
+            HStack(spacing: 0) {
+                // Left status bar - color coded by task type or project status
+                Rectangle()
+                    .fill(displayColor)
+                    .frame(width: 4)
+
+                // Content area with badges overlaid
+                ZStack(alignment: .topLeading) {
+                    // Main content - fills available space
+                    HStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            // Show project name as the main title
+                            if let project = associatedProject {
+                                Text(project.title)
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .lineLimit(1)
+                                    .textCase(.uppercase)
+
+                                // Show client name as subtitle for both tasks and projects
+                                Text(project.effectiveClientName)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .lineLimit(1)
+
+                                // Formatted address (street number, street name, municipality)
+                                Text(formattedAddress)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .lineLimit(1)
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // Invisible spacer to reserve space for badges
+                        Color.clear
+                            .frame(width: 80) // Reserve space for badges
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    // Invisible spacer to reserve space for badges
-                    Color.clear
-                        .frame(width: 80) // Reserve space for badges
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-                
-                // Task type or "PROJECT" badge in top right corner
-                VStack {
-                    HStack {
-                        Spacer()
-                        if !typeDisplay.isEmpty {
-                            Text(typeDisplay)
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(badgeColor)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(badgeColor.opacity(0.1))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(badgeColor.opacity(0.3), lineWidth: 1)
-                                )
-                        }
-                    }
-                    Spacer()
-                }
-                .padding(.top, 16)
-                .padding(.trailing, 16)
-                
-                // Ongoing badge in bottom right corner
-                if isOngoing {
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+
+                    // Task type or "PROJECT" badge in top right corner
                     VStack {
-                        Spacer()
                         HStack {
                             Spacer()
-                            Text("ONGOING")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.gray.opacity(0.1))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                                )
+                            if !typeDisplay.isEmpty {
+                                Text(typeDisplay)
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(badgeColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(badgeColor.opacity(0.1))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .stroke(badgeColor.opacity(0.3), lineWidth: 1)
+                                    )
+                            }
                         }
+                        Spacer()
                     }
-                    .padding(.bottom, 16)
+                    .padding(.top, 16)
                     .padding(.trailing, 16)
+
+                    // Ongoing badge in bottom right corner
+                    if isOngoing {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Text("ONGOING")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color.gray.opacity(0.1))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                    )
+                            }
+                        }
+                        .padding(.bottom, 16)
+                        .padding(.trailing, 16)
+                    }
+                }
+            }
+            .background(cardBackground)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .contentShape(Rectangle()) // Make entire card tappable
+            .shadow(color: Color.black, radius: 2, x: 0, y: 1)
+
+            // Completed overlay - grey out and show badge
+            if (event.type == .task && event.task?.status == .completed) ||
+               (event.type == .project && associatedProject?.status == .completed) {
+                ZStack(alignment: .topTrailing) {
+                    // Grey overlay
+                    Color.black.opacity(0.5)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+
+                    // Completed badge
+                    Text("COMPLETED")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(OPSStyle.Colors.statusColor(for: .completed))
+                        )
+                        .padding(8)
                 }
             }
         }
-        .background(cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .contentShape(Rectangle()) // Make entire card tappable
-        .shadow(color: Color.black, radius: 2, x: 0, y: 1)
         .onTapGesture {
             onTap()
         }

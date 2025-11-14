@@ -97,6 +97,9 @@ class CentralizedSyncManager {
     /// Complete sync of all data types - Called by manual sync button
     func syncAll() async throws {
         debugLog("🔵 FUNCTION CALLED", enabled: DebugFlags.syncAll)
+        print("[SYNC_ALL] ========================================")
+        print("[SYNC_ALL] 🔄 FULL SYNC STARTED")
+        print("[SYNC_ALL] ========================================")
 
         guard !syncInProgress else {
             debugLog("⚠️ Sync already in progress - aborting", enabled: DebugFlags.syncAll)
@@ -114,9 +117,12 @@ class CentralizedSyncManager {
         defer {
             syncInProgress = false
             debugLog("🔵 FUNCTION EXITING - syncInProgress set to false", enabled: DebugFlags.syncAll)
+            print("[SYNC_ALL] ========================================")
+            print("[SYNC_ALL] 🏁 FULL SYNC COMPLETED")
+            print("[SYNC_ALL] ========================================")
         }
 
-        print("[SYNC_ALL] 🔄 Starting complete sync...")
+        print("[SYNC_ALL] Starting complete data sync...")
         debugLog("📊 Starting complete data sync", enabled: DebugFlags.syncAll)
 
         // Log current data counts BEFORE sync
@@ -603,19 +609,27 @@ class CentralizedSyncManager {
             let projectCountBefore = (try? modelContext.fetchCount(FetchDescriptor<Project>())) ?? 0
             debugLog("📊 Projects in DB BEFORE sync: \(projectCountBefore)", enabled: DebugFlags.syncProjects)
 
-            // Fetch from Bubble (role-based)
+            // Fetch ALL company projects for all roles
+            // Field crew will be filtered to only projects/tasks they're assigned to during local filtering
+            guard let companyId = currentUser?.companyId else {
+                throw SyncError.missingCompanyId
+            }
+
+            debugLog("📥 Fetching ALL company projects for company: \(companyId)", enabled: DebugFlags.syncProjects)
+            let allDtos = try await apiService.fetchCompanyProjects(companyId: companyId)
+
+            // Filter projects based on user role
             let dtos: [ProjectDTO]
             if currentUser?.role == .admin || currentUser?.role == .officeCrew {
-                // Admin/Office: Get ALL company projects
-                guard let companyId = currentUser?.companyId else {
-                    throw SyncError.missingCompanyId
-                }
-                debugLog("📥 Fetching ALL company projects for company: \(companyId)", enabled: DebugFlags.syncProjects)
-                dtos = try await apiService.fetchCompanyProjects(companyId: companyId)
+                // Admin/Office: Keep all projects
+                dtos = allDtos
+                debugLog("✅ Admin/Office user - keeping all \(allDtos.count) projects", enabled: DebugFlags.syncProjects)
             } else {
-                // Field Crew: Get only assigned projects
-                debugLog("📥 Fetching user-assigned projects for user: \(userId)", enabled: DebugFlags.syncProjects)
-                dtos = try await apiService.fetchUserProjects(userId: userId)
+                // Field Crew: Filter to projects where user is assigned to project OR any of its tasks
+                // Note: We'll filter this after syncing tasks, for now sync all projects
+                // and let the access control happen at the UI level
+                dtos = allDtos
+                debugLog("✅ Field Crew user - syncing all \(allDtos.count) projects (will filter by task assignment)", enabled: DebugFlags.syncProjects)
             }
 
             debugLog("✅ API returned \(dtos.count) project DTOs", enabled: DebugFlags.syncProjects)
@@ -788,6 +802,7 @@ class CentralizedSyncManager {
 
             try modelContext.save()
             print("[SYNC_TASKS] ✅ Synced \(dtos.count) tasks")
+
         } catch {
             print("[SYNC_TASKS] ❌ Failed: \(error)")
             throw error

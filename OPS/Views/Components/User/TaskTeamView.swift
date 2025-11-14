@@ -60,11 +60,8 @@ struct TaskTeamView: View {
                 // Entering edit mode
                 selectedMemberIds = Set(task.getTeamMemberIds())
                 loadAvailableMembers()
-            } else {
-                // Exiting edit mode
-                selectedMemberIds.removeAll()
-                availableMembers.removeAll()
             }
+            // Note: No need to clear on exit - save function handles it
         }
         .onChange(of: triggerSave) { oldValue, newValue in
             // When trigger changes, save the team changes
@@ -272,8 +269,7 @@ struct TaskTeamView: View {
 
     func saveTeamChanges() {
         guard selectedMemberIds != Set(task.getTeamMemberIds()) else {
-            // No changes, just exit edit mode
-            isEditing = false
+            // No changes, nothing to save
             return
         }
 
@@ -281,73 +277,51 @@ struct TaskTeamView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
 
-        isSaving = true
+        // Store the new member IDs for optimistic update
+        let newMemberIds = Array(selectedMemberIds)
 
+        // Optimistically update UI immediately
+        task.setTeamMemberIds(newMemberIds)
+        task.needsSync = true  // Mark for sync
+
+        // Also update calendar event if exists
+        if let calendarEvent = task.calendarEvent {
+            calendarEvent.setTeamMemberIds(newMemberIds)
+            calendarEvent.needsSync = true
+        }
+
+        // Save to local database
+        try? dataController.modelContext?.save()
+
+        loadTaskTeamMembers()
+        refreshKey = UUID()
+
+        // Clear selections (parent will handle exiting edit mode)
+        selectedMemberIds.removeAll()
+        availableMembers.removeAll()
+
+        // Perform API sync in background
         Task {
             do {
-                print("[TASK_TEAM_UPDATE] Updating task team members...")
-                print("[TASK_TEAM_UPDATE] Selected member IDs: \(Array(selectedMemberIds))")
+                print("[TASK_TEAM_UPDATE] Syncing task team members to API in background...")
+                print("[TASK_TEAM_UPDATE] Selected member IDs: \(newMemberIds)")
 
-                // Update task team members
-                let updates = [BubbleFields.Task.teamMembers: Array(selectedMemberIds)]
-                let bodyData = try JSONSerialization.data(withJSONObject: updates)
+                // Use DataController method which includes project team sync
+                try await dataController.updateTaskTeamMembers(task: task, memberIds: newMemberIds)
 
-                let _: EmptyResponse = try await dataController.apiService.executeRequest(
-                    endpoint: "api/1.1/obj/Task/\(task.id)",
-                    method: "PATCH",
-                    body: bodyData,
-                    requiresAuth: true
-                )
-
-                print("[TASK_TEAM_UPDATE] ✅ Team updated in Bubble")
+                print("[TASK_TEAM_UPDATE] ✅ Task team synced to API (includes project team sync)")
 
                 // Update calendar event team members if exists
                 if let calendarEvent = task.calendarEvent {
-                    let eventUpdates = [BubbleFields.CalendarEvent.teamMembers: Array(selectedMemberIds)]
-                    let eventBodyData = try JSONSerialization.data(withJSONObject: eventUpdates)
-
-                    let _: EmptyResponse = try await dataController.apiService.executeRequest(
-                        endpoint: "api/1.1/obj/CalendarEvent/\(calendarEvent.id)",
-                        method: "PATCH",
-                        body: eventBodyData,
-                        requiresAuth: true
-                    )
-
-                    print("[TASK_TEAM_UPDATE] ✅ Calendar event team updated")
+                    try await dataController.updateCalendarEventTeamMembers(event: calendarEvent, memberIds: newMemberIds)
+                    print("[TASK_TEAM_UPDATE] ✅ Calendar event team synced to API")
                 }
 
-                await MainActor.run {
-                    task.setTeamMemberIds(Array(selectedMemberIds))
-                    task.needsSync = false
-                    task.lastSyncedAt = Date()
-
-                    if let calendarEvent = task.calendarEvent {
-                        calendarEvent.setTeamMemberIds(Array(selectedMemberIds))
-                        calendarEvent.needsSync = false
-                        calendarEvent.lastSyncedAt = Date()
-                    }
-
-                    do {
-                        try dataController.modelContext?.save()
-                    } catch {
-                        print("Error saving context: \(error)")
-                    }
-
-                    // Refresh team members
-                    loadTaskTeamMembers()
-                    refreshKey = UUID()
-
-                    // Exit edit mode and clear selections
-                    isEditing = false
-                    selectedMemberIds.removeAll()
-                    availableMembers.removeAll()
-                    isSaving = false
-                }
             } catch {
-                await MainActor.run {
-                    print("[TASK_TEAM_UPDATE] ❌ Error: \(error)")
-                    isSaving = false
-                }
+                print("[TASK_TEAM_UPDATE] ⚠️ Sync failed: \(error)")
+                print("[TASK_TEAM_UPDATE] ℹ️ Changes saved locally and marked for retry")
+                // Changes are already saved locally with needsSync = true
+                // Next sync will pick them up
             }
         }
     }

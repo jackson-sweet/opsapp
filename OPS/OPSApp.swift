@@ -158,13 +158,36 @@ struct OPSApp: App {
             authManager: AuthManager()
         )
 
-        // Check if we have minimum required data
-        let hasMinimumData = healthManager.hasMinimumRequiredData()
-
-        if !hasMinimumData {
-            print("[APP_LAUNCH] ⚠️ Minimum data requirements not met - skipping sync and subscription check")
-            print("[APP_LAUNCH] ℹ️ User is likely not authenticated or mid-onboarding")
+        // Check if we're authenticated (have a user_id)
+        guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else {
+            print("[APP_LAUNCH] ⚠️ No user ID - user not authenticated, skipping sync")
             return
+        }
+
+        print("[APP_LAUNCH] ✅ User authenticated with ID: \(userId)")
+
+        // If we don't have currentUser loaded yet, try to load from SwiftData or trigger sync to fetch
+        if dataController.currentUser == nil {
+            print("[APP_LAUNCH] ⚠️ currentUser is nil - attempting to load from SwiftData...")
+
+            // Try to load user from SwiftData
+            if let modelContext = dataController.modelContext {
+                let descriptor = FetchDescriptor<User>(
+                    predicate: #Predicate<User> { $0.id == userId }
+                )
+
+                do {
+                    let users = try modelContext.fetch(descriptor)
+                    if let user = users.first {
+                        dataController.currentUser = user
+                        print("[APP_LAUNCH] ✅ Loaded currentUser from SwiftData: \(user.fullName)")
+                    } else {
+                        print("[APP_LAUNCH] ⚠️ User not found in SwiftData - sync will fetch from API")
+                    }
+                } catch {
+                    print("[APP_LAUNCH] ❌ Error loading user from SwiftData: \(error)")
+                }
+            }
         }
 
         // Perform full health check
@@ -173,13 +196,29 @@ struct OPSApp: App {
         if !healthState.isHealthy {
             print("[APP_LAUNCH] ❌ Data health check failed: \(healthState)")
             print("[APP_LAUNCH] 🔧 Executing recovery action: \(recoveryAction)")
+
+            // Execute recovery action
             await healthManager.executeRecoveryAction(recoveryAction)
-            return
+
+            // If recovery action was to fetch data, continue to full sync
+            // For logout/return to onboarding, we should stop here
+            switch recoveryAction {
+            case .fetchUserFromAPI, .fetchCompanyFromAPI, .reinitializeSyncManager:
+                print("[APP_LAUNCH] ✅ Recovery action completed - continuing to full sync")
+                // Fall through to run the sync
+            case .logout, .returnToOnboarding:
+                print("[APP_LAUNCH] ⚠️ Recovery action requires user intervention - skipping sync")
+                return
+            case .none:
+                break
+            }
+        } else {
+            print("[APP_LAUNCH] ✅ Data health check passed")
         }
 
-        print("[APP_LAUNCH] ✅ Data health check passed - proceeding with sync and subscription check")
+        print("[APP_LAUNCH] 🔄 Proceeding with full sync and subscription check")
 
-        // Data is healthy, proceed with normal app launch operations
+        // Data is healthy (or was repaired), proceed with normal app launch operations
         dataController.performAppLaunchSync()
 
         // Check subscription status

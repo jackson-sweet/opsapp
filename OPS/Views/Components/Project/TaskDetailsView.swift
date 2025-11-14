@@ -493,6 +493,8 @@ struct TaskDetailsView: View {
                         if isEditingTeam {
                             // Trigger save when Done is pressed
                             triggerTeamSave.toggle()
+                            // Exit edit mode after triggering save
+                            isEditingTeam = false
                         } else {
                             isEditingTeam.toggle()
                         }

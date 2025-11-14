@@ -214,9 +214,35 @@ class DataHealthManager: ObservableObject {
     }
 
     private func fetchAndStoreUserData() async {
-        // Note: This should trigger a user sync via syncManager
-        print("[DATA_HEALTH] 🔄 User data fetch would be triggered here")
-        // TODO: Implement user-specific sync if needed
+        guard let syncManager = dataController.syncManager else {
+            print("[DATA_HEALTH] ❌ Cannot fetch user - syncManager is nil")
+            return
+        }
+
+        guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else {
+            print("[DATA_HEALTH] ❌ Cannot fetch user - no user ID")
+            return
+        }
+
+        do {
+            print("[DATA_HEALTH] 🔄 Fetching user data from API...")
+            try await syncManager.syncUsers()
+            print("[DATA_HEALTH] ✅ User data fetched and stored")
+
+            // After syncing, try to set currentUser
+            if let modelContext = dataController.modelContext {
+                let descriptor = FetchDescriptor<User>(
+                    predicate: #Predicate<User> { $0.id == userId }
+                )
+                let users = try modelContext.fetch(descriptor)
+                if let user = users.first {
+                    dataController.currentUser = user
+                    print("[DATA_HEALTH] ✅ Set currentUser: \(user.fullName)")
+                }
+            }
+        } catch {
+            print("[DATA_HEALTH] ❌ Failed to fetch user data: \(error)")
+        }
     }
 
     private func fetchAndStoreCompanyData() async {

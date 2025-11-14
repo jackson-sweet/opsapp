@@ -211,42 +211,30 @@ class DataController: ObservableObject {
     
     // Method to perform sync on app launch
     func performAppLaunchSync() {
-        print("[SUBSCRIPTION] performAppLaunchSync: Starting initial sync")
-        
+        print("[APP_LAUNCH_SYNC] 🚀 Starting app launch sync")
+        print("[APP_LAUNCH_SYNC] - isConnected: \(isConnected)")
+        print("[APP_LAUNCH_SYNC] - isAuthenticated: \(isAuthenticated)")
+        print("[APP_LAUNCH_SYNC] - currentUser: \(currentUser != nil ? currentUser!.fullName : "nil")")
+        print("[APP_LAUNCH_SYNC] - syncManager: \(syncManager != nil ? "available" : "nil")")
+
         Task {
-            // First, ensure we have company data
+            // Always trigger full sync on app launch if authenticated
             if isConnected && isAuthenticated {
-                // Sync company data first - critical for subscription checks
                 if let syncManager = syncManager {
-                    print("[SUBSCRIPTION] performAppLaunchSync: Triggering full sync including company")
+                    print("[APP_LAUNCH_SYNC] ✅ Triggering FULL SYNC (syncAll)")
                     await syncManager.triggerBackgroundSync(forceProjectSync: true)
+                    print("[APP_LAUNCH_SYNC] ✅ Full sync completed")
+                } else {
+                    print("[APP_LAUNCH_SYNC] ❌ Cannot sync - syncManager is nil")
                 }
-                
+
                 // Then sync pending images
                 if let imageSyncManager = imageSyncManager {
                     await imageSyncManager.syncPendingImages()
                 }
+            } else {
+                print("[APP_LAUNCH_SYNC] ⚠️ Skipping sync - not connected or not authenticated")
             }
-            
-            // Then check if we should do a full data sync
-            let syncOnLaunch = UserDefaults.standard.bool(forKey: "syncOnLaunch")
-            
-            guard syncOnLaunch,
-                  isAuthenticated,
-                  isConnected else {
-                return
-            }
-            
-            // Check if we've synced too recently
-            if let lastSync = lastSyncTime,
-               Date().timeIntervalSince(lastSync) < AppConfiguration.Sync.minimumSyncInterval {
-                return
-            }
-            
-            // Trigger full data sync
-            await syncManager?.triggerBackgroundSync()
-            
-            lastSyncTime = Date()
         }
     }
         
@@ -2737,21 +2725,18 @@ class DataController: ObservableObject {
     
     /// Gets a project by ID
     func getProject(id: String) -> Project? {
-        guard let context = modelContext else { 
-            DebugLogger.shared.logProjectAccess(project: nil, location: "DataController.getProject - no context", projectId: id)
-            return nil 
+        guard let context = modelContext else {
+            return nil
         }
-        
+
         // Always fetch fresh from context to avoid invalidated models
         do {
             let descriptor = FetchDescriptor<Project>(
                 predicate: #Predicate<Project> { $0.id == id }
             )
             let projects = try context.fetch(descriptor)
-            
+
             if let project = projects.first {
-                DebugLogger.shared.logProjectAccess(project: project, location: "DataController.getProject - fetched", projectId: id)
-                
                 // Don't pass the model to a background task - use the ID instead
                 let projectId = project.id
                 Task { @MainActor in
@@ -2762,11 +2747,9 @@ class DataController: ObservableObject {
                 }
                 return project
             }
-            DebugLogger.shared.logProjectAccess(project: nil, location: "DataController.getProject - not found", projectId: id)
             return nil
         } catch {
             print("[DataController] Error fetching project \(id): \(error)")
-            DebugLogger.shared.logCritical("Failed to fetch project: \(error)", location: "DataController.getProject")
             return nil
         }
     }
@@ -3285,6 +3268,46 @@ class DataController: ObservableObject {
                 task.lastSyncedAt = Date()
             }
         )
+
+        // After updating task team members, sync project team members
+        // Project team members should be the union of all task team members
+        if let project = task.project {
+            await syncProjectTeamMembersFromTasks(project)
+        }
+    }
+
+    /// Syncs project team members based on all its tasks
+    /// Project team should include anyone assigned to any task
+    @MainActor
+    private func syncProjectTeamMembersFromTasks(_ project: Project) async {
+        print("[TEAM_SYNC] 🔄 Syncing project team members from tasks for project: \(project.title)")
+
+        // Collect all unique team member IDs from all tasks
+        var allTeamMemberIds = Set<String>()
+
+        for task in project.tasks where task.deletedAt == nil {
+            let taskTeamIds = task.getTeamMemberIds()
+            allTeamMemberIds.formUnion(taskTeamIds)
+        }
+
+        let projectTeamIds = Set(project.getTeamMemberIds())
+        let finalTeamIds = Array(allTeamMemberIds)
+
+        // Only update if the team members have changed
+        if projectTeamIds != allTeamMemberIds {
+            print("[TEAM_SYNC] 📝 Project team members changed:")
+            print("[TEAM_SYNC]   - Before: \(projectTeamIds.count) members")
+            print("[TEAM_SYNC]   - After: \(finalTeamIds.count) members")
+
+            do {
+                try await updateProjectTeamMembers(project: project, memberIds: finalTeamIds)
+                print("[TEAM_SYNC] ✅ Project team members updated successfully")
+            } catch {
+                print("[TEAM_SYNC] ❌ Failed to update project team members: \(error)")
+            }
+        } else {
+            print("[TEAM_SYNC] ℹ️ Project team members unchanged, no update needed")
+        }
     }
 
     /// Update project team members - SINGLE SOURCE OF TRUTH

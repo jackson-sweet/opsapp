@@ -74,38 +74,49 @@ struct ClientFormSheet: View {
                     .ignoresSafeArea()
                 
                 ScrollView {
-                    VStack(spacing: OPSStyle.Layout.spacing3) {
+                    VStack(spacing: 24) {
+                        // PREVIEW CARD
+                        previewCard
+
                         // Import from Contacts button (only in create mode)
                         if mode.isCreate {
                             Button(action: { showingContactPicker = true }) {
-                                HStack {
+                                HStack(spacing: 8) {
                                     Image(systemName: "person.crop.circle.badge.plus")
-                                        .font(.system(size: 20))
+                                        .font(.system(size: 16))
                                     Text("IMPORT FROM CONTACTS")
                                         .font(OPSStyle.Typography.bodyBold)
                                 }
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(maxWidth: .infinity)
-                                .padding(OPSStyle.Layout.spacing3)
-                                .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                                .padding()
+                                .background(OPSStyle.Colors.cardBackgroundDark)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                )
                             }
                         }
 
                         // Name Field with Duplicate Detection
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                            Text("CLIENT NAME *")
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("CLIENT NAME")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
+
                             TextField("Enter client name", text: $name)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .autocorrectionDisabled(true)
                                 .textInputAutocapitalization(.words)
-                                .padding(OPSStyle.Layout.spacing3)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .padding()
+                                .background(Color.clear)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
                                 .onChange(of: name) { _, newValue in
                                     if mode.isCreate {
                                         checkForDuplicates()
@@ -124,40 +135,48 @@ struct ClientFormSheet: View {
                         }
                         
                         // Email Field
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("EMAIL")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
+
                             TextField("Enter email address", text: $email)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .keyboardType(.emailAddress)
                                 .autocapitalization(.none)
                                 .autocorrectionDisabled(true)
-                                .padding(OPSStyle.Layout.spacing3)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .padding()
+                                .background(Color.clear)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
                         }
-                        
+
                         // Phone Field
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("PHONE")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
+
                             TextField("Enter phone number", text: $phone)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .keyboardType(.phonePad)
                                 .autocorrectionDisabled(true)
-                                .padding(OPSStyle.Layout.spacing3)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .padding()
+                                .background(Color.clear)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
                         }
-                        
+
                         // Address Field
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("ADDRESS")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -167,27 +186,31 @@ struct ClientFormSheet: View {
                                 placeholder: "Enter client address"
                             )
                         }
-                        
+
                         // Notes Field
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("NOTES")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            TextField("Enter notes", text: $notes, axis: .vertical)
+
+                            TextEditor(text: $notes)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
-                                .lineLimit(3...6)
-                                .autocorrectionDisabled(true)
-                                .padding(OPSStyle.Layout.spacing3)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .frame(minHeight: 80)
+                                .padding(12)
+                                .background(Color.clear)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .scrollContentBackground(.hidden)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
                         }
                     }
-                    .padding(OPSStyle.Layout.spacing3)
+                    .padding()
+                    .padding(.bottom, 24)
                 }
             }
-            .navigationTitle(mode.isCreate ? "NEW CLIENT" : "EDIT CLIENT")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -197,6 +220,12 @@ struct ClientFormSheet: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .disabled(isSaving)
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text(mode.isCreate ? "CREATE CLIENT" : "EDIT CLIENT")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -399,6 +428,70 @@ struct ClientFormSheet: View {
 
         // Use centralized function for immediate sync
         try await dataController.updateClient(client: client)
+    }
+
+    // MARK: - Preview Card
+
+    private var previewCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            // Client name
+                            Text(name.isEmpty ? "CLIENT NAME" : name.uppercased())
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(name.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                                .lineLimit(1)
+
+                            // Email or phone
+                            if !email.isEmpty {
+                                Text(email)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .lineLimit(1)
+                            } else if !phone.isEmpty {
+                                Text(phone)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .lineLimit(1)
+                            } else {
+                                Text("NO CONTACT INFO")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .lineLimit(1)
+                            }
+                        }
+
+                        Spacer()
+                    }
+
+                    // Metadata row
+                    HStack(spacing: 12) {
+                        // Address
+                        HStack(spacing: 4) {
+                            Image(systemName: "mappin.circle")
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Text(address.isEmpty ? "NO ADDRESS" : address.components(separatedBy: ",").first ?? address)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+                    }
+                }
+                .padding(14)
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+        }
+        .opacity(0.7) // Slightly faded to indicate it's a preview
     }
 }
 

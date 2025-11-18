@@ -123,18 +123,31 @@ struct TaskFormSheet: View {
                     savingOverlay
                 }
             }
-            .navigationTitle(mode.isCreate ? "NEW TASK" : "EDIT TASK")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    dismiss()
-                }.foregroundColor(OPSStyle.Colors.primaryAccent),
-                trailing: Button("Save") {
-                    saveTask()
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .foregroundColor(isValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                .disabled(!isValid || isSaving)
-            )
+
+                ToolbarItem(placement: .principal) {
+                    Text(mode.isCreate ? "CREATE TASK" : "EDIT TASK")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        saveTask()
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(isValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .disabled(!isValid || isSaving)
+                }
+            }
         }
         .sheet(isPresented: $showingScheduler) {
             if let project = selectedProject, let startDate = startDate, let endDate = endDate {
@@ -192,8 +205,12 @@ struct TaskFormSheet: View {
                         showingProjectSuggestions = isEditing
                     })
                     .padding()
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .font(OPSStyle.Typography.body)
                     .autocorrectionDisabled(true)
@@ -321,8 +338,12 @@ struct TaskFormSheet: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
             }
         }
     }
@@ -408,8 +429,12 @@ struct TaskFormSheet: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
             }
             .disabled(selectedProjectId == nil)
         }
@@ -422,12 +447,17 @@ struct TaskFormSheet: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             TextEditor(text: $taskNotes)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(minHeight: 100)
                 .padding(12)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .foregroundColor(OPSStyle.Colors.primaryText)
                 .scrollContentBackground(.hidden)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
         }
     }
 
@@ -501,10 +531,8 @@ struct TaskFormSheet: View {
                         let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
                         calendarEvent.duration = daysDiff + 1
                     }
-                    calendarEvent.active = true
                 } else {
                     let newEvent = CalendarEvent.fromTask(task, startDate: startDate, endDate: endDate)
-                    newEvent.active = true
                     task.calendarEvent = newEvent
                     modelContext.insert(newEvent)
                 }
@@ -530,29 +558,6 @@ struct TaskFormSheet: View {
 
             do {
                 try await Task.timeout(seconds: 5) {
-                    if case .create = mode, let projectId = selectedProjectId {
-                        if let project = dataController.getAllProjects().first(where: { $0.id == projectId }) {
-                            if project.eventType == .project {
-                                print("[TASK_FORM] 🔄 Updating project eventType to task-based on Bubble...")
-                                try await dataController.apiService.updateProject(id: project.id, updates: ["eventType": "Task"])
-
-                                await MainActor.run {
-                                    project.eventType = .task
-                                    project.needsSync = false
-                                    project.lastSyncedAt = Date()
-                                }
-                                print("[TASK_FORM] ✅ Project eventType updated on Bubble")
-
-                                if let projectEvent = project.primaryCalendarEvent, projectEvent.type == .project {
-                                    projectEvent.active = false
-                                    try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": false])
-                                    projectEvent.needsSync = false
-                                    projectEvent.lastSyncedAt = Date()
-                                }
-                            }
-                        }
-                    }
-
                     print("[TASK_FORM] 🔵 Creating task on Bubble...")
                     let taskDTO = TaskDTO.from(task)
                     let createdTask = try await dataController.apiService.createTask(taskDTO)
@@ -565,6 +570,7 @@ struct TaskFormSheet: View {
                     if let calendarEvent = task.calendarEvent {
                         print("[TASK_FORM] 📅 Creating calendar event on Bubble...")
                         let dateFormatter = ISO8601DateFormatter()
+                        // Task-only scheduling migration: type parameter removed
                         let eventDTO = CalendarEventDTO(
                             id: calendarEvent.id,
                             color: calendarEvent.color,
@@ -576,8 +582,6 @@ struct TaskFormSheet: View {
                             startDate: calendarEvent.startDate.map { dateFormatter.string(from: $0) },
                             teamMembers: calendarEvent.getTeamMemberIds(),
                             title: calendarEvent.title,
-                            type: "Task",
-                            active: calendarEvent.active,
                             createdDate: nil,
                             modifiedDate: nil,
                             deletedAt: nil
@@ -596,12 +600,7 @@ struct TaskFormSheet: View {
                     print("[TASK_FORM] ✅ Task and calendar event saved to SwiftData")
 
                     if let project = task.project {
-                        print("[TASK_FORM] 📅 Checking if project dates need updating...")
-
-                        await MainActor.run {
-                            project.updateDatesFromTasks()
-                            try? modelContext.save()
-                        }
+                        print("[TASK_FORM] 📅 Project dates automatically computed from tasks...")
 
                         print("[TASK_FORM] 🔄 Syncing project dates to Bubble...")
                         try await dataController.apiService.updateProjectDates(

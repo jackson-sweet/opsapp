@@ -136,7 +136,7 @@ struct UniversalJobBoardCard: View {
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
                     .gesture(
-                        DragGesture(minimumDistance: 20)
+                        DragGesture(minimumDistance: 10)
                             .onChanged { value in
                                 handleSwipeChanged(value: value, cardWidth: geometry.size.width)
                             }
@@ -158,17 +158,15 @@ struct UniversalJobBoardCard: View {
     private var projectCardContent: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        titleText
-                        subtitleText
-                    }
-
-                    Spacer()
+                VStack(alignment: .leading, spacing: 4) {
+                    titleText
+                    subtitleText
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 metadataRow
             }
+            .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(14)
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
@@ -199,8 +197,8 @@ struct UniversalJobBoardCard: View {
 
                         Spacer()
 
-                        // Scheduling type badge - middle (evenly spaced)
-                        Text(project.eventType == .task ? "\(project.tasks.count) \(project.tasks.count == 1 ? "TASK" : "TASKS")" : "PROJECT")
+                        // Task-only scheduling migration: Always show task count badge
+                        Text("\(project.tasks.count) \(project.tasks.count == 1 ? "TASK" : "TASKS")")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(schedulingBadgeColor)
                             .padding(.horizontal, 8)
@@ -343,7 +341,7 @@ struct UniversalJobBoardCard: View {
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
                     .gesture(
-                        DragGesture(minimumDistance: 20)
+                        DragGesture(minimumDistance: 10)
                             .onChanged { value in
                                 handleSwipeChanged(value: value, cardWidth: geometry.size.width)
                             }
@@ -369,17 +367,15 @@ struct UniversalJobBoardCard: View {
                 .frame(width: 4)
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        titleText
-                        subtitleText
-                    }
-
-                    Spacer()
+                VStack(alignment: .leading, spacing: 4) {
+                    titleText
+                    subtitleText
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 metadataRow
             }
+            .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(14)
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
@@ -520,6 +516,8 @@ struct UniversalJobBoardCard: View {
             .font(OPSStyle.Typography.bodyBold)
             .foregroundColor(OPSStyle.Colors.primaryText)
             .lineLimit(1)
+            .truncationMode(.tail)
+            .baselineOffset(0)
     }
 
     @ViewBuilder
@@ -528,6 +526,8 @@ struct UniversalJobBoardCard: View {
             .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .lineLimit(1)
+            .truncationMode(.tail)
+            .baselineOffset(0)
     }
 
 
@@ -542,12 +542,12 @@ struct UniversalJobBoardCard: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         if index == 0 {
-                            // Address field - flexible width up to 35% max
+                            // Address field - truncates at 35% max width
                             Text(item.text)
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
+                                .truncationMode(.tail)
                                 .frame(maxWidth: geometry.size.width * 0.35, alignment: .leading)
                         } else {
                             // Other fields - natural width
@@ -780,115 +780,25 @@ struct UniversalJobBoardCard: View {
                     currentStartDate: project.startDate,
                     currentEndDate: project.endDate,
                 onScheduleUpdate: { startDate, endDate in
-                    // Update or create calendar event
-                    if let projectEvent = project.primaryCalendarEvent {
-                        // Update existing calendar event and project dates using centralized functions
-                        Task {
-                            do {
-                                try await dataController.updateProjectDates(project: project, startDate: startDate, endDate: endDate)
-                                try await dataController.updateCalendarEvent(event: projectEvent, startDate: startDate, endDate: endDate)
-                            } catch {
-                                print("❌ Failed to sync project schedule to Bubble: \(error)")
-                            }
-                        }
-                    } else {
-                        // Create new calendar event
-                        try? dataController.modelContext?.save()
-
-                        Task {
-                            do {
-                                print("[JOB_BOARD_SCHEDULE] Creating calendar event for project")
-
-                                let dateFormatter = ISO8601DateFormatter()
-                                dateFormatter.formatOptions = [.withInternetDateTime]
-
-                                let duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
-
-                                // Get company's default project color
-                                let company = dataController.getCompany(id: project.companyId)
-                                let projectColor = company?.defaultProjectColor ?? "#9CA3AF"  // Light grey fallback
-                                print("[JOB_BOARD_SCHEDULE] Using project color: \(projectColor)")
-
-                                let eventDTO = CalendarEventDTO(
-                                    id: UUID().uuidString,
-                                    color: projectColor,
-                                    companyId: project.companyId,
-                                    projectId: project.id,
-                                    taskId: nil,
-                                    duration: Double(duration),
-                                    endDate: dateFormatter.string(from: endDate),
-                                    startDate: dateFormatter.string(from: startDate),
-                                    teamMembers: project.teamMembers.map { $0.id },
-                                    title: project.effectiveClientName.capitalizedWords(),
-                                    type: "Project",
-                                    active: true,
-                                    createdDate: nil,
-                                    modifiedDate: nil,
-                                    deletedAt: nil
-                                )
-
-                                // Create event and link to project
-                                let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
-                                print("[JOB_BOARD_SCHEDULE] ✅ Calendar event created with ID: \(createdEvent.id)")
-
-                                await MainActor.run {
-                                    if let calendarEvent = createdEvent.toModel() {
-                                        calendarEvent.needsSync = false
-                                        calendarEvent.lastSyncedAt = Date()
-                                        dataController.modelContext?.insert(calendarEvent)
-
-                                        project.primaryCalendarEvent = calendarEvent
-
-                                        try? dataController.modelContext?.save()
-                                        print("[JOB_BOARD_SCHEDULE] ✅ Calendar event linked to project")
-                                    }
-                                }
-
-                                // Update project dates in Bubble
-                                try await dataController.apiService.updateProjectDates(
-                                    projectId: project.id,
-                                    startDate: startDate,
-                                    endDate: endDate
-                                )
-                            } catch {
-                                print("❌ Failed to create calendar event: \(error)")
-                            }
+                    // Task-only scheduling migration: Remove primaryCalendarEvent handling
+                    // Projects without tasks can be scheduled directly
+                    Task {
+                        do {
+                            try await dataController.updateProjectDates(project: project, startDate: startDate, endDate: endDate)
+                        } catch {
+                            print("❌ Failed to sync project schedule to Bubble: \(error)")
                         }
                     }
+
                 },
                 onClearDates: {
-                    // Clear project and calendar event dates
+                    // Task-only scheduling migration: Clear project dates only
                     Task {
                         do {
                             print("🗑️ [JOB_BOARD] Clearing project dates")
 
                             // Clear project dates using centralized function
                             try await dataController.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
-
-                            // Clear calendar event dates if exists
-                            if let projectEvent = project.primaryCalendarEvent {
-                                try await dataController.performSyncedOperation(
-                                    item: projectEvent,
-                                    operationName: "CLEAR_CALENDAR_EVENT_DATES",
-                                    itemDescription: "Clearing calendar event \(projectEvent.id) dates",
-                                    localUpdate: {
-                                        projectEvent.startDate = nil
-                                        projectEvent.endDate = nil
-                                        projectEvent.duration = 0
-                                        projectEvent.needsSync = true
-                                    },
-                                    syncToAPI: {
-                                        let updates: [String: Any] = [
-                                            BubbleFields.CalendarEvent.startDate: NSNull(),
-                                            BubbleFields.CalendarEvent.endDate: NSNull(),
-                                            BubbleFields.CalendarEvent.duration: 0
-                                        ]
-                                        try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: updates)
-                                        projectEvent.needsSync = false
-                                        projectEvent.lastSyncedAt = Date()
-                                    }
-                                )
-                            }
 
                             print("✅ [JOB_BOARD] Project dates cleared and synced")
                         } catch {
@@ -1172,16 +1082,7 @@ struct UniversalJobBoardCard: View {
     }
 
     private var schedulingBadgeColor: Color {
-        if case .project(let project) = cardType {
-            if project.eventType == .project {
-                // Use company's default project color for project-based scheduling
-                if let company = dataController.getCompany(id: project.companyId) {
-                    let colorHex = company.defaultProjectColor
-                    return Color(hex: colorHex) ?? OPSStyle.Colors.secondaryText
-                }
-            }
-        }
-        // Use secondaryText for task-based scheduling
+        // Task-only scheduling migration: Always use secondaryText for task count badge
         return OPSStyle.Colors.secondaryText
     }
 
@@ -1227,13 +1128,16 @@ struct UniversalJobBoardCard: View {
                 items.append((OPSStyle.Icons.location, "NO ADDRESS"))
             }
 
+            // Always show calendar icon
             if let startDate = project.startDate {
                 items.append((OPSStyle.Icons.calendar, DateHelper.simpleDateString(from: startDate)))
+            } else {
+                items.append((OPSStyle.Icons.calendar, "-"))
             }
 
-            if !project.teamMembers.isEmpty {
-                items.append((OPSStyle.Icons.personTwo, "\(project.teamMembers.count)"))
-            }
+            // Always show team member icon
+            let teamCount = project.teamMembers.count
+            items.append((OPSStyle.Icons.personTwo, "\(teamCount)"))
 
             return items
 
@@ -1261,14 +1165,16 @@ struct UniversalJobBoardCard: View {
                 }
             }
 
+            // Always show calendar icon
             if let startDate = task.calendarEvent?.startDate {
                 items.append((OPSStyle.Icons.calendar, DateHelper.simpleDateString(from: startDate)))
+            } else {
+                items.append((OPSStyle.Icons.calendar, "-"))
             }
 
+            // Always show team member icon
             let teamMemberCount = task.getTeamMemberIds().count
-            if teamMemberCount > 0 {
-                items.append((OPSStyle.Icons.personTwo, "\(teamMemberCount)"))
-            }
+            items.append((OPSStyle.Icons.personTwo, "\(teamMemberCount)"))
 
             return items
         }
@@ -1335,7 +1241,7 @@ struct UniversalJobBoardCard: View {
 
         guard canSwipe(direction: direction) else { return }
 
-        withAnimation(.interactiveSpring()) {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
             swipeOffset = value.translation.width
         }
 
@@ -1358,8 +1264,8 @@ struct UniversalJobBoardCard: View {
             confirmingDirection = direction
             isChangingStatus = true
 
-            // Snap card back to center
-            withAnimation(.easeInOut(duration: 0.15)) {
+            // Snap card back to center with smooth animation
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
                 swipeOffset = 0
             }
 
@@ -1369,7 +1275,7 @@ struct UniversalJobBoardCard: View {
 
                 // Immediately hide confirmation after status change
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
                         isChangingStatus = false
                         confirmingStatus = nil
                         confirmingDirection = nil
@@ -1378,7 +1284,7 @@ struct UniversalJobBoardCard: View {
                 }
             }
         } else {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                 swipeOffset = 0
             }
             hasTriggeredHaptic = false
@@ -1461,17 +1367,11 @@ struct UniversalJobBoardCard: View {
 
     // Helper function to determine if UNSCHEDULED badge should be shown
     private func shouldShowUnscheduledBadge(for project: Project) -> Bool {
-        // Check the project's scheduling mode
-        if project.eventType == .project {
-            // Project-based scheduling: Check if project's calendar event has a start date
-            return project.primaryCalendarEvent?.startDate == nil
-        } else {
-            // Task-based scheduling: Check if any tasks are unscheduled
-            let unscheduledTasks = project.tasks.filter { task in
-                task.calendarEvent?.startDate == nil
-            }
-            return !unscheduledTasks.isEmpty
+        // Task-only scheduling migration: Check if any tasks are unscheduled
+        let unscheduledTasks = project.tasks.filter { task in
+            task.calendarEvent?.startDate == nil
         }
+        return !unscheduledTasks.isEmpty
     }
 }
 

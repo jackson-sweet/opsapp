@@ -37,7 +37,7 @@ struct OptionalSectionPill: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.secondaryText, lineWidth: 1)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
             )
         }
         .buttonStyle(PlainButtonStyle())

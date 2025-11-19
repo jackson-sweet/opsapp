@@ -55,6 +55,7 @@ struct TaskFormSheet: View {
     @State private var showingCreateTaskType = false
     @State private var projectSearchText: String = ""
     @State private var showingProjectSuggestions = false
+    @State private var showingTeamPicker = false
 
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -109,11 +110,23 @@ struct TaskFormSheet: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
-                        projectSection
-                        taskTypeSection
-                        teamSection
-                        datesSection
-                        notesSection
+                        // Live preview card at top
+                        previewCard
+
+                        // TASK DETAILS section - ALL FIELDS IN ONE SECTION
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("TASK DETAILS")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            VStack(spacing: 16) {
+                                projectSection
+                                taskTypeSection
+                                teamSection
+                                datesSection
+                                notesSection
+                            }
+                        }
                     }
                     .padding()
                     .padding(.bottom, 100)
@@ -126,11 +139,11 @@ struct TaskFormSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    Button("CANCEL") {
                         dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -140,7 +153,7 @@ struct TaskFormSheet: View {
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
+                    Button(mode.isCreate ? "CREATE" : "SAVE") {
                         saveTask()
                     }
                     .font(OPSStyle.Typography.bodyBold)
@@ -148,6 +161,7 @@ struct TaskFormSheet: View {
                     .disabled(!isValid || isSaving)
                 }
             }
+            .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showingScheduler) {
             if let project = selectedProject, let startDate = startDate, let endDate = endDate {
@@ -177,6 +191,12 @@ struct TaskFormSheet: View {
             }
             .environmentObject(dataController)
         }
+        .sheet(isPresented: $showingTeamPicker) {
+            TeamMemberPickerSheet(
+                selectedTeamMemberIds: $selectedTeamMemberIds,
+                allTeamMembers: uniqueTeamMembers
+            )
+        }
         .alert("Error", isPresented: $showingError) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -193,8 +213,99 @@ struct TaskFormSheet: View {
 
     // MARK: - Sections
 
+    // MARK: - Preview Card
+    private var previewCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // "PREVIEW" label
+            Text("PREVIEW")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            // Preview card with live updates
+            HStack(spacing: 0) {
+                // Colored left border (4pt width) - task type color
+                Rectangle()
+                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? OPSStyle.Colors.primaryAccent)
+                    .frame(width: 4)
+
+                HStack(alignment: .top, spacing: 12) {
+                    // Task content
+                    VStack(alignment: .leading, spacing: 6) {
+                        // Task type name (uppercase, bold)
+                        Text(selectedTaskType?.display.uppercased() ?? "SELECT TASK TYPE")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(selectedTaskType != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+
+                        // Project name (if selected)
+                        if let project = selectedProject {
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                Text(project.title)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                        }
+
+                        // Scheduled date (if selected)
+                        if let startDate = startDate {
+                            HStack(spacing: 4) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                Text(formatDate(startDate))
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                        }
+
+                        // Team member avatars (if selected)
+                        if !selectedTeamMemberIds.isEmpty {
+                            let selectedMembers = uniqueTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }
+                            HStack(spacing: -8) {
+                                ForEach(selectedMembers.prefix(3), id: \.id) { member in
+                                    UserAvatar(teamMember: member, size: 24)
+                                }
+                                if selectedMembers.count > 3 {
+                                    Text("+\(selectedMembers.count - 3)")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                        .padding(.leading, 4)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    // Status badge (top-right) - always show "BOOKED" for new tasks
+                    Text("BOOKED")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(OPSStyle.Colors.primaryAccent.opacity(0.2))
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        )
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7)) // Semi-transparent to indicate preview
+            .cornerRadius(5)
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
+        }
+    }
+
     private var projectSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("PROJECT")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -204,7 +315,8 @@ struct TaskFormSheet: View {
                     TextField("Search or select project", text: $projectSearchText, onEditingChanged: { isEditing in
                         showingProjectSuggestions = isEditing
                     })
-                    .padding()
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
                     .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -277,7 +389,8 @@ struct TaskFormSheet: View {
     }
 
     private var taskTypeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
+            // Title and "NEW TYPE" button
             HStack {
                 Text("TASK TYPE")
                     .font(OPSStyle.Typography.captionBold)
@@ -297,167 +410,197 @@ struct TaskFormSheet: View {
                 }
             }
 
-            Menu {
-                ForEach(allTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
-                    Button(action: {
-                        selectedTaskTypeId = taskType.id
-                    }) {
-                        HStack {
-                            if let icon = taskType.icon {
-                                Image(systemName: icon)
-                            }
-                            Text(taskType.display)
-                            if selectedTaskTypeId == taskType.id {
-                                Image(systemName: "checkmark")
+            // Task type picker with colored left border
+            HStack(spacing: 0) {
+                // Colored left border (4pt width) - task type color
+                Rectangle()
+                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? Color.white.opacity(0.15))
+                    .frame(width: 4)
+
+                Menu {
+                    ForEach(allTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
+                        Button(action: {
+                            selectedTaskTypeId = taskType.id
+                        }) {
+                            HStack {
+                                // Colored dot in menu
+                                Circle()
+                                    .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 12, height: 12)
+                                Text(taskType.display.uppercased())
+                                if selectedTaskTypeId == taskType.id {
+                                    Image(systemName: "checkmark")
+                                }
                             }
                         }
                     }
-                }
-            } label: {
-                HStack {
-                    if let taskType = selectedTaskType {
-                        HStack(spacing: 12) {
-                            if let icon = taskType.icon {
-                                Image(systemName: icon)
-                                    .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
-                            }
-                            Text(taskType.display)
-                                .font(OPSStyle.Typography.bodyBold)
+                } label: {
+                    HStack {
+                        if let taskType = selectedTaskType {
+                            Text(taskType.display.uppercased())
+                                .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
+                        } else {
+                            Text("Select Task Type")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
-                    } else {
-                        Text("Select Task Type")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        Spacer()
+
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 14))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 14))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding()
-                .background(Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
             }
+            .background(Color.clear)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
         }
     }
 
     private var teamSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("TEAM MEMBERS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            ScrollView {
-                VStack(spacing: 1) {
-                    ForEach(uniqueTeamMembers) { member in
-                        Button(action: {
-                            if selectedTeamMemberIds.contains(member.id) {
-                                selectedTeamMemberIds.remove(member.id)
-                            } else {
-                                selectedTeamMemberIds.insert(member.id)
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: selectedTeamMemberIds.contains(member.id) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundColor(selectedTeamMemberIds.contains(member.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-
-                                Text(member.fullName)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                Spacer()
-
-                                Text(member.role)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                            .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+        // Team member picker showing avatars
+        Button(action: {
+            showingTeamPicker = true
+        }) {
+            HStack {
+                if selectedTeamMemberIds.isEmpty {
+                    Text("Select team members")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                } else {
+                    // Show selected team member avatars
+                    let selectedMembers = uniqueTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }
+                    HStack(spacing: -8) {
+                        ForEach(selectedMembers.prefix(3), id: \.id) { member in
+                            UserAvatar(teamMember: member, size: 24)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        if selectedMembers.count > 3 {
+                            Text("+\(selectedMembers.count - 3)")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .padding(.leading, 8)
+                        }
                     }
+
+                    Text("\(selectedMembers.count) member\(selectedMembers.count == 1 ? "" : "s")")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .padding(.leading, 12)
                 }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .frame(maxHeight: 300)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .background(Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
         }
     }
 
     private var datesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("DATES")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Button(action: {
-                if startDate == nil {
-                    startDate = Date()
-                    endDate = Date().addingTimeInterval(86400)
-                }
-                showingScheduler = true
-            }) {
-                HStack {
-                    Image(systemName: "calendar")
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    if let startDate = startDate, let endDate = endDate {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(formatDate(startDate))
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                            Text("to \(formatDate(endDate))")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                    } else {
-                        Text("Tap to Schedule")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    // Ensure dates are set before showing scheduler
+                    if startDate == nil {
+                        startDate = Date()
+                    }
+                    if endDate == nil {
+                        endDate = Date().addingTimeInterval(86400)
                     }
 
-                    Spacer()
+                    // Delay to ensure state updates before sheet presentation
+                    DispatchQueue.main.async {
+                        showingScheduler = true
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "calendar")
+                            .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        if let startDate = startDate, let endDate = endDate {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(formatDate(startDate))
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                Text("to \(formatDate(endDate))")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                        } else {
+                            Text("Tap to Schedule")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                    .background(Color.clear)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    )
                 }
-                .padding()
-                .background(Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
-            }
-            .disabled(selectedProjectId == nil)
+                .disabled(selectedProjectId == nil)
         }
     }
 
     private var notesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("NOTES")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            TextEditor(text: $taskNotes)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(minHeight: 100)
-                .padding(12)
-                .background(Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .scrollContentBackground(.hidden)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
+            ZStack(alignment: .topLeading) {
+                // Placeholder text
+                if taskNotes.isEmpty {
+                    Text("Add notes...")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .padding(.top, 20)
+                        .padding(.leading, 16)
+                }
+
+                TextEditor(text: $taskNotes)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(minHeight: 100, maxHeight: 200)
+                    .padding(12)
+                    .background(Color.clear)
+                    .scrollContentBackground(.hidden)
+            }
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
         }
     }
 
@@ -689,6 +832,79 @@ struct TaskFormSheet: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy"
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - Team Member Picker Sheet
+struct TeamMemberPickerSheet: View {
+    @Binding var selectedTeamMemberIds: Set<String>
+    let allTeamMembers: [TeamMember]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                OPSStyle.Colors.background
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 1) {
+                        ForEach(allTeamMembers) { member in
+                            Button(action: {
+                                if selectedTeamMemberIds.contains(member.id) {
+                                    selectedTeamMemberIds.remove(member.id)
+                                } else {
+                                    selectedTeamMemberIds.insert(member.id)
+                                }
+                            }) {
+                                HStack(spacing: 12) {
+                                    // Checkbox
+                                    Image(systemName: selectedTeamMemberIds.contains(member.id) ? "checkmark.circle.fill" : "circle")
+                                        .foregroundColor(selectedTeamMemberIds.contains(member.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                                        .font(.system(size: 20))
+
+                                    // Avatar
+                                    UserAvatar(teamMember: member, size: 40)
+
+                                    // Name and role
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(member.fullName)
+                                            .font(OPSStyle.Typography.bodyBold)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                        Text(member.role)
+                                            .font(OPSStyle.Typography.caption)
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    }
+
+                                    Spacer()
+                                }
+                                .padding()
+                                .background(OPSStyle.Colors.cardBackgroundDark)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("SELECT TEAM MEMBERS")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("DONE") {
+                        dismiss()
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+        }
     }
 }
 

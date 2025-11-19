@@ -2,6 +2,53 @@
 
 This guide serves as the primary reference for maintaining OPS brand consistency and design philosophy throughout development. All code changes should align with these principles.
 
+## Documentation Structure for Claude (AI Assistants)
+
+**Purpose**: The markdown files in this project are specifically designed for Claude and other AI assistants to read and understand the complete project architecture. They provide comprehensive context for accurate code generation and debugging.
+
+### Core Technical Documentation (4 Files)
+
+When working on the OPS codebase, reference these consolidated documentation files:
+
+1. **[DATA_AND_MODELS.md](DATA_AND_MODELS.md)** - Complete data architecture
+   - SwiftData models (8 core entities) and relationships
+   - Bubble field mappings (BubbleFields.swift constants)
+   - DTOs and data conversion patterns
+   - Query predicates and soft delete strategy
+   - SwiftData defensive patterns (critical for preventing crashes)
+
+2. **[API_AND_SYNC.md](API_AND_SYNC.md)** - Complete API and sync reference
+   - All API endpoints organized by entity
+   - Triple-layer sync strategy (immediate, event-driven, periodic)
+   - CentralizedSyncManager implementation details
+   - Image upload/sync system with S3
+   - Error handling and retry logic
+
+3. **[UI_GUIDELINES.md](UI_GUIDELINES.md)** - Complete UI design standards
+   - OPSStyle system (colors, typography, icons, layout)
+   - Field-first design principles
+   - Component patterns and styling rules
+   - Gesture patterns (swipe-to-change-status, etc.)
+   - Anti-patterns to avoid
+
+4. **[COMPONENTS.md](COMPONENTS.md)** - Reusable component library
+   - All standardized UI components with usage examples
+   - Job Board components (UniversalJobBoardCard, CollapsibleSection, etc.)
+   - Form components, cards, buttons, utilities
+   - Always use existing components - never recreate
+
+### How to Use This Documentation
+
+**Before writing any code**:
+1. Check [COMPONENTS.md](COMPONENTS.md) for existing reusable components
+2. Review [UI_GUIDELINES.md](UI_GUIDELINES.md) for styling standards
+3. Reference [DATA_AND_MODELS.md](DATA_AND_MODELS.md) for data patterns
+4. Check [API_AND_SYNC.md](API_AND_SYNC.md) for API/sync implementation
+
+**Key Principle**: These docs are the single source of truth. Code that doesn't align with these standards will be rejected.
+
+---
+
 ## Recent Implementation Updates (August 2025)
 
 ### CalendarEvent-Centric Architecture

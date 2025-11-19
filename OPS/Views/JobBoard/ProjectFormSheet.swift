@@ -50,6 +50,8 @@ struct ProjectFormSheet: View {
     @State private var description: String = ""
     @State private var notes: String = ""
     @State private var address: String = ""
+    @State private var latitude: Double?
+    @State private var longitude: Double?
     @State private var selectedClientId: String?
     @State private var selectedStatus: Status = .rfq
     @State private var startDate: Date? = nil
@@ -188,14 +190,23 @@ struct ProjectFormSheet: View {
 
                         // COPY FROM BUTTON
                         if mode.isCreate {
-                            Button(action: { showingCopyFromProject = true }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.caption)
-                                    Text("Copy from project")
-                                        .font(OPSStyle.Typography.caption)
+                            HStack {
+                                Spacer()
+                                Button(action: { showingCopyFromProject = true }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "doc.on.doc")
+                                            .font(.caption)
+                                        Text("Copy from project")
+                                            .font(OPSStyle.Typography.caption)
+                                    }
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                    )
                                 }
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             .padding(.bottom, 12)
                         }
@@ -217,11 +228,11 @@ struct ProjectFormSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    Button("CANCEL") {
                         dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                     .disabled(isSaving)
                 }
 
@@ -238,7 +249,7 @@ struct ProjectFormSheet: View {
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                                 .scaleEffect(0.8)
                         } else {
-                            Text("Save")
+                            Text(mode.isCreate ? "CREATE" : "SAVE")
                                 .font(OPSStyle.Typography.bodyBold)
                         }
                     }
@@ -246,6 +257,7 @@ struct ProjectFormSheet: View {
                     .disabled(!isValid || isSaving)
                 }
             }
+            .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showingCreateClient) {
             ClientFormSheet(mode: .create, prefilledName: clientSearchText) { newClient in
@@ -362,7 +374,8 @@ struct ProjectFormSheet: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }
-        .padding()
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
         .background(Color.clear)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -392,7 +405,8 @@ struct ProjectFormSheet: View {
                     }
                 }
             }
-            .padding()
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
             .background(Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -415,7 +429,8 @@ struct ProjectFormSheet: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                 Spacer()
                             }
-                            .padding()
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
                         }
                     } else {
                         ForEach(matchingClients.prefix(5)) { client in
@@ -429,7 +444,8 @@ struct ProjectFormSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                     Spacer()
                                 }
-                                .padding()
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 16)
                             }
                             .buttonStyle(PlainButtonStyle())
 
@@ -462,13 +478,14 @@ struct ProjectFormSheet: View {
                 .autocorrectionDisabled(true)
                 .textInputAutocapitalization(.words)
                 .focused($focusedField, equals: .title)
-                .padding()
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
                 .background(Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
-                            focusedField == .title ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1),
+                            focusedField == .title ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.15),
                             lineWidth: 1
                         )
                 )
@@ -507,7 +524,8 @@ struct ProjectFormSheet: View {
                         .font(.system(size: 12))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding()
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
                 .background(Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -680,7 +698,8 @@ struct ProjectFormSheet: View {
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(maxWidth: .infinity)
-                                .padding()
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 16)
                                 .background(OPSStyle.Colors.background)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
@@ -698,7 +717,8 @@ struct ProjectFormSheet: View {
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding()
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 16)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
@@ -759,7 +779,8 @@ struct ProjectFormSheet: View {
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(maxWidth: .infinity)
-                                .padding()
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 16)
                                 .background(OPSStyle.Colors.background)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
@@ -777,7 +798,8 @@ struct ProjectFormSheet: View {
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding()
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 16)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
@@ -805,13 +827,11 @@ struct ProjectFormSheet: View {
         ) {
             VStack(spacing: 12) {
                 if !localTasks.isEmpty {
-                    VStack(spacing: 1) {
+                    VStack(spacing: 12) {
                         ForEach(Array(localTasks.enumerated()), id: \.element.id) { index, task in
                             taskRow(task: task, index: index)
                         }
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
 
                 Button(action: {
@@ -826,7 +846,8 @@ struct ProjectFormSheet: View {
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -884,7 +905,7 @@ struct ProjectFormSheet: View {
                 if !taskTeamMembers.isEmpty {
                     HStack(spacing: -8) {
                         ForEach(taskTeamMembers.prefix(3), id: \.id) { member in
-                            UserAvatar(user: member, size: 24)
+                            UserAvatar(teamMember: member, size: 24)
                         }
                         if taskTeamMembers.count > 3 {
                             ZStack {
@@ -926,9 +947,10 @@ struct ProjectFormSheet: View {
             .buttonStyle(PlainButtonStyle())
         }
         .background(Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 0)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
         )
     }
 
@@ -1963,7 +1985,11 @@ struct LocalTask: Identifiable, Equatable {
     var teamMemberIds: [String] = []
 
     static func == (lhs: LocalTask, rhs: LocalTask) -> Bool {
-        lhs.id == rhs.id
+        lhs.id == rhs.id &&
+        lhs.taskTypeId == rhs.taskTypeId &&
+        lhs.customTitle == rhs.customTitle &&
+        lhs.status == rhs.status &&
+        lhs.teamMemberIds == rhs.teamMemberIds
     }
 }
 

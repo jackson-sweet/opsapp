@@ -52,14 +52,15 @@ struct PushInMessage: View {
         subtitle: String? = nil,
         type: PushInMessageType = .info,
         autoDismissAfter: TimeInterval = 3.0,
-        showDismissButton: Bool = true
+        showDismissButton: Bool? = nil
     ) {
         self._isPresented = isPresented
         self.title = title
         self.subtitle = subtitle
         self.type = type
         self.autoDismissAfter = autoDismissAfter
-        self.showDismissButton = showDismissButton
+        // Don't show X button if auto-dismissing (unless explicitly requested)
+        self.showDismissButton = showDismissButton ?? (autoDismissAfter <= 0)
     }
 
     var body: some View {
@@ -108,7 +109,7 @@ struct PushInMessage: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
-                .padding(.top, geometry.safeAreaInsets.top + 12)
+                .padding(.top, max(geometry.safeAreaInsets.top + 8, 60))
                 .background(
                     Rectangle()
                         .fill(type == .info ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.background)

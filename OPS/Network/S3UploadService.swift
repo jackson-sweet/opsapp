@@ -200,6 +200,34 @@ class S3UploadService {
         return s3URL
     }
 
+    /// Upload a client profile image to S3
+    func uploadClientProfileImage(_ image: UIImage, clientId: String, companyId: String) async throws -> String {
+        print("[S3_UPLOAD] Starting client profile image upload for client: \(clientId)")
+
+        // Resize to square and compress
+        let maxSize: CGFloat = 512
+        let resizedImage = resizeImageToSquare(image, maxSize: maxSize)
+
+        guard let imageData = resizedImage.jpegData(compressionQuality: 0.8) else {
+            print("[S3_UPLOAD] ❌ Failed to compress client profile image")
+            throw S3Error.imageConversionFailed
+        }
+
+        let sizeInMB = Double(imageData.count) / (1024 * 1024)
+        print("[S3_UPLOAD] Client profile image size: \(String(format: "%.2f", sizeInMB))MB")
+
+        // Generate filename
+        let timestamp = Date().timeIntervalSince1970
+        let filename = "client_\(clientId)_\(timestamp).jpg"
+
+        // Upload to S3 at: company-{companyId}/clients/{filename}
+        let objectKey = "company-\(companyId)/clients/\(filename)"
+        let s3URL = try await uploadToS3(imageData: imageData, objectKey: objectKey)
+
+        print("[S3_UPLOAD] ✅ Client profile image uploaded: \(s3URL)")
+        return s3URL
+    }
+
     // MARK: - Private Methods
 
     /// Generic S3 upload method

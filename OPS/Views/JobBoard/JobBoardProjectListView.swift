@@ -109,61 +109,58 @@ struct JobBoardProjectListView: View {
     }
 
     var body: some View {
-        ZStack {
-            OPSStyle.Colors.background.ignoresSafeArea()
+        VStack(spacing: 0) {
+            if showingFilters && hasActiveFilters {
+                activeFilterBadges
+                    .padding(.top, 8)
+            }
 
-            VStack(spacing: 0) {
-                if showingFilters && hasActiveFilters {
-                    activeFilterBadges
-                        .padding(.top, 8)
-                }
+            if allProjects.isEmpty {
+                JobBoardEmptyState(
+                    icon: "folder.fill",
+                    title: "No Projects Yet",
+                    subtitle: "Create your first project to get started"
+                )
+                .frame(maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(activeProjects) { project in
+                            UniversalJobBoardCard(cardType: .project(project))
+                                .environmentObject(dataController)
+                                .id("\(project.id)-\(project.teamMemberIdsString)")
+                        }
 
-                if allProjects.isEmpty {
-                    JobBoardEmptyState(
-                        icon: "folder.fill",
-                        title: "No Projects Yet",
-                        subtitle: "Create your first project to get started"
-                    )
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(activeProjects) { project in
-                                UniversalJobBoardCard(cardType: .project(project))
-                                    .environmentObject(dataController)
-                                    .id("\(project.id)-\(project.teamMemberIdsString)")
-                            }
-
-                            if !closedProjects.isEmpty {
-                                CollapsibleSection(
-                                    title: "CLOSED",
-                                    count: closedProjects.count,
-                                    isExpanded: $isClosedExpanded
-                                ) {
-                                    ForEach(closedProjects) { project in
-                                        UniversalJobBoardCard(cardType: .project(project))
-                                            .environmentObject(dataController)
-                                            .id("\(project.id)-\(project.teamMemberIdsString)")
-                                    }
-                                }
-                            }
-
-                            if !archivedProjects.isEmpty {
-                                CollapsibleSection(
-                                    title: "ARCHIVED",
-                                    count: archivedProjects.count,
-                                    isExpanded: $isArchivedExpanded
-                                ) {
-                                    ForEach(archivedProjects) { project in
-                                        UniversalJobBoardCard(cardType: .project(project))
-                                            .environmentObject(dataController)
-                                            .id("\(project.id)-\(project.teamMemberIdsString)")
-                                    }
+                        if !closedProjects.isEmpty {
+                            CollapsibleSection(
+                                title: "CLOSED",
+                                count: closedProjects.count,
+                                isExpanded: $isClosedExpanded
+                            ) {
+                                ForEach(closedProjects) { project in
+                                    UniversalJobBoardCard(cardType: .project(project))
+                                        .environmentObject(dataController)
+                                        .id("\(project.id)-\(project.teamMemberIdsString)")
                                 }
                             }
                         }
-                        .padding(.top, 12)
-                        .padding(.bottom, 120)
+
+                        if !archivedProjects.isEmpty {
+                            CollapsibleSection(
+                                title: "ARCHIVED",
+                                count: archivedProjects.count,
+                                isExpanded: $isArchivedExpanded
+                            ) {
+                                ForEach(archivedProjects) { project in
+                                    UniversalJobBoardCard(cardType: .project(project))
+                                        .environmentObject(dataController)
+                                        .id("\(project.id)-\(project.teamMemberIdsString)")
+                                }
+                            }
+                        }
                     }
+                    .padding(.top, 12)
+                    .padding(.bottom, 120)
                 }
             }
         }

@@ -135,8 +135,8 @@ struct UniversalJobBoardCard: View {
                 projectCardContent
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
-                    .gesture(
-                        DragGesture(minimumDistance: 10)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 5)
                             .onChanged { value in
                                 handleSwipeChanged(value: value, cardWidth: geometry.size.width)
                             }
@@ -340,8 +340,8 @@ struct UniversalJobBoardCard: View {
                 taskCardContent
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
-                    .gesture(
-                        DragGesture(minimumDistance: 10)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 5)
                             .onChanged { value in
                                 handleSwipeChanged(value: value, cardWidth: geometry.size.width)
                             }

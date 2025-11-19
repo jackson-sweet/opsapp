@@ -34,12 +34,12 @@ struct SplashLoadingView: View {
                     
                     
                 Spacer()
-                
+
                 // Version info
                 Text("[ VERSION \(AppConfiguration.AppInfo.version.uppercased()) ]")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                    .padding(.bottom, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing5 + 48)
             }
         }
     }

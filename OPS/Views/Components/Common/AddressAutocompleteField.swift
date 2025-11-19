@@ -21,6 +21,7 @@ struct AddressAutocompleteField: View {
     @StateObject private var searchCompleterDelegate = SearchCompleterDelegate()
     @State private var searchDebouncer = PassthroughSubject<String, Never>()
     @EnvironmentObject private var locationManager: LocationManager
+    @FocusState private var isFocused: Bool
 
     init(address: Binding<String>,
          placeholder: String = "Enter Address",
@@ -39,6 +40,7 @@ struct AddressAutocompleteField: View {
                     .foregroundColor(.white)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.words)
+                    .focused($isFocused)
                     .onChange(of: searchText) { _, newValue in
                         if newValue.isEmpty {
                             searchResults = []
@@ -62,12 +64,13 @@ struct AddressAutocompleteField: View {
                     }
                 }
             }
-            .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .background(Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.primaryAccent.opacity(showingResults ? 1.0 : 0.5), lineWidth: 1)
+                    .stroke(isFocused ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.15), lineWidth: 1)
             )
             
             // Search results

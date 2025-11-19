@@ -38,6 +38,11 @@ struct ClientFormSheet: View {
     @State private var address: String = ""
     @State private var notes: String = ""
 
+    // Avatar
+    @State private var clientImage: UIImage?
+    @State private var clientImageURL: String?
+    @State private var showImagePicker = false
+
     // Duplicate Detection
     @State private var duplicateCheckResult: DuplicateCheckResult?
     @State private var showingDuplicateAlert = false
@@ -51,6 +56,10 @@ struct ClientFormSheet: View {
     // Contact Import
     @State private var showingContactPicker = false
 
+    // Validation
+    @State private var showEmailError = false
+    @State private var showPhoneError = false
+
     init(mode: Mode, prefilledName: String? = nil, onSave: @escaping (Client) -> Void) {
         self.mode = mode
         self.onSave = onSave
@@ -62,6 +71,7 @@ struct ClientFormSheet: View {
             _phone = State(initialValue: client.phoneNumber ?? "")
             _address = State(initialValue: client.address ?? "")
             _notes = State(initialValue: client.notes ?? "")
+            _clientImageURL = State(initialValue: client.profileImageURL)
         } else if let prefilledName = prefilledName {
             _name = State(initialValue: prefilledName)
         }
@@ -72,153 +82,192 @@ struct ClientFormSheet: View {
             ZStack {
                 OPSStyle.Colors.background
                     .ignoresSafeArea()
-                
+
                 ScrollView {
                     VStack(spacing: 24) {
                         // PREVIEW CARD
                         previewCard
 
-                        // Import from Contacts button (only in create mode)
-                        if mode.isCreate {
-                            Button(action: { showingContactPicker = true }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "person.crop.circle.badge.plus")
-                                        .font(.system(size: 16))
-                                    Text("IMPORT FROM CONTACTS")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                }
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                                )
-                            }
-                        }
-
-                        // Name Field with Duplicate Detection
+                        // CLIENT DETAILS Section - ALL FIELDS IN ONE SECTION
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("CLIENT NAME")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            HStack {
+                                Text("CLIENT DETAILS")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                            TextField("Enter client name", text: $name)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .autocorrectionDisabled(true)
-                                .textInputAutocapitalization(.words)
-                                .padding()
-                                .background(Color.clear)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                                )
-                                .onChange(of: name) { _, newValue in
-                                    if mode.isCreate {
-                                        checkForDuplicates()
-                                    }
-                                }
-                            
-                            if let duplicate = duplicateCheckResult {
-                                DuplicateWarning(duplicate: duplicate) {
-                                    // Use existing client
-                                    if let existingClient = dataController.getAllClients(for: dataController.currentUser?.companyId ?? "").first(where: { $0.id == duplicate.clientId }) {
-                                        dismiss()
-                                        onSave(existingClient)
+                                Spacer()
+
+                                // De-emphasized Import from Contacts button
+                                if mode.isCreate {
+                                    Button(action: { showingContactPicker = true }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "person.crop.circle")
+                                                .font(.caption)
+                                            Text("Import from contacts")
+                                                .font(OPSStyle.Typography.caption)
+                                        }
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
                                 }
                             }
-                        }
-                        
-                        // Email Field
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("EMAIL")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                            TextField("Enter email address", text: $email)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .keyboardType(.emailAddress)
-                                .autocapitalization(.none)
-                                .autocorrectionDisabled(true)
-                                .padding()
-                                .background(Color.clear)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                                )
-                        }
+                            VStack(spacing: 16) {
+                                // Avatar Uploader
+                                avatarUploader
 
-                        // Phone Field
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("PHONE")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                // Name Field with Duplicate Detection
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("CLIENT NAME")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                            TextField("Enter phone number", text: $phone)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .keyboardType(.phonePad)
-                                .autocorrectionDisabled(true)
-                                .padding()
-                                .background(Color.clear)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                                )
-                        }
+                                    TextField("Client name", text: $name)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .autocorrectionDisabled(true)
+                                        .textInputAutocapitalization(.words)
+                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, 16)
+                                        .background(Color.clear)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                        )
+                                        .onChange(of: name) { _, newValue in
+                                            if mode.isCreate {
+                                                checkForDuplicates()
+                                            }
+                                        }
 
-                        // Address Field
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("ADDRESS")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    if let duplicate = duplicateCheckResult {
+                                        DuplicateWarning(duplicate: duplicate) {
+                                            // Use existing client
+                                            if let existingClient = dataController.getAllClients(for: dataController.currentUser?.companyId ?? "").first(where: { $0.id == duplicate.clientId }) {
+                                                dismiss()
+                                                onSave(existingClient)
+                                            }
+                                        }
+                                    }
+                                }
 
-                            AddressSearchField(
-                                address: $address,
-                                placeholder: "Enter client address"
-                            )
-                        }
+                                // Email Field
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("EMAIL")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        // Notes Field
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("NOTES")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    TextField("email@example.com", text: $email, prompt: Text("email@example.com").foregroundColor(OPSStyle.Colors.tertiaryText))
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .keyboardType(.emailAddress)
+                                        .autocapitalization(.none)
+                                        .autocorrectionDisabled(true)
+                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, 16)
+                                        .background(Color.clear)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(showEmailError ? Color.red.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
+                                        )
+                                        .onChange(of: email) { _, _ in
+                                            showEmailError = !isValidEmail
+                                        }
 
-                            TextEditor(text: $notes)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(minHeight: 80)
-                                .padding(12)
-                                .background(Color.clear)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .scrollContentBackground(.hidden)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                                )
+                                    if showEmailError {
+                                        Text("Invalid email format")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(.red)
+                                    }
+                                }
+
+                                // Phone Field
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("PHONE")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    TextField("(555) 123-4567", text: $phone)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .keyboardType(.phonePad)
+                                        .autocorrectionDisabled(true)
+                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, 16)
+                                        .background(Color.clear)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(showPhoneError ? Color.red.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
+                                        )
+                                        .onChange(of: phone) { _, _ in
+                                            showPhoneError = !isValidPhone
+                                        }
+
+                                    if showPhoneError {
+                                        Text("Invalid phone format")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(.red)
+                                    }
+                                }
+
+                                // Address Field
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("ADDRESS")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    AddressSearchField(
+                                        address: $address,
+                                        placeholder: "Start typing address..."
+                                    )
+                                }
+
+                                // Notes Field
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("NOTES")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    ZStack(alignment: .topLeading) {
+                                        if notes.isEmpty {
+                                            Text("Add notes...")
+                                                .font(OPSStyle.Typography.body)
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                .padding(.top, 20)
+                                                .padding(.leading, 16)
+                                        }
+
+                                        TextEditor(text: $notes)
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                            .frame(minHeight: 80, maxHeight: 200)
+                                            .padding(12)
+                                            .background(Color.clear)
+                                            .scrollContentBackground(.hidden)
+                                    }
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                    )
+                                }
+                            }
                         }
                     }
                     .padding()
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 100)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    Button("CANCEL") {
                         dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                     .disabled(isSaving)
                 }
 
@@ -227,7 +276,7 @@ struct ClientFormSheet: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: saveClient) {
                         if isSaving {
@@ -235,14 +284,15 @@ struct ClientFormSheet: View {
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                                 .scaleEffect(0.8)
                         } else {
-                            Text("Save")
+                            Text(mode.isCreate ? "CREATE" : "SAVE")
                                 .font(OPSStyle.Typography.bodyBold)
                         }
                     }
-                    .foregroundColor(name.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
-                    .disabled(name.isEmpty || isSaving)
+                    .foregroundColor(isFormValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .disabled(!isFormValid || isSaving)
                 }
             }
+            .interactiveDismissDisabled()
             .alert("Error", isPresented: $showingError) {
                 Button("OK") {
                     errorMessage = nil
@@ -275,11 +325,100 @@ struct ClientFormSheet: View {
                         if !value.postalCode.isEmpty { addressComponents.append(value.postalCode) }
                         self.address = addressComponents.joined(separator: ", ")
                     }
+
+                    // Get contact photo if available
+                    if let imageData = contact.imageData {
+                        self.clientImage = UIImage(data: imageData)
+                    }
                 }, onDismiss: nil)
+            }
+            .sheet(isPresented: $showImagePicker) {
+                ImagePicker(
+                    images: Binding(
+                        get: { clientImage.map { [$0] } ?? [] },
+                        set: { images in
+                            clientImage = images.first
+                        }
+                    ),
+                    allowsEditing: true,
+                    sourceType: .both,
+                    selectionLimit: 1
+                )
             }
         }
     }
     
+    // MARK: - Computed Properties
+
+    private var isFormValid: Bool {
+        !name.isEmpty && isValidEmail && isValidPhone
+    }
+
+    private var isValidEmail: Bool {
+        if email.isEmpty { return true } // Optional field
+        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+        let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
+        return emailPredicate.evaluate(with: email)
+    }
+
+    private var isValidPhone: Bool {
+        if phone.isEmpty { return true } // Optional field
+        let phoneRegex = "^[0-9+\\s()\\-]{7,}$"
+        let phonePredicate = NSPredicate(format: "SELF MATCHES %@", phoneRegex)
+        return phonePredicate.evaluate(with: phone)
+    }
+
+    // MARK: - Avatar Uploader
+
+    private var avatarUploader: some View {
+        HStack(spacing: 16) {
+            // Avatar circle
+            Button(action: { showImagePicker = true }) {
+                ZStack {
+                    if let image = clientImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 80, height: 80)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
+                    } else {
+                        Circle()
+                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .frame(width: 80, height: 80)
+                            .overlay(
+                                Image(systemName: "building.2")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            )
+                            .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(clientImage == nil ? "TAP TO ADD PHOTO" : "CHANGE PHOTO")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                if clientImage != nil {
+                    Button(action: {
+                        clientImage = nil
+                        clientImageURL = nil
+                    }) {
+                        Text("Remove photo")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(.red.opacity(0.8))
+                    }
+                }
+            }
+
+            Spacer()
+        }
+    }
+
+    // MARK: - Helper Functions
+
     private func checkForDuplicates() {
         guard name.count >= 3 else {
             duplicateCheckResult = nil
@@ -382,11 +521,27 @@ struct ClientFormSheet: View {
             throw ClientError.noCompanyId
         }
 
-        print("[CLIENT_CREATE] Creating client in Bubble...")
+        print("[CLIENT_CREATE] Creating client...")
 
         // Create local client with temporary UUID
+        let tempId = UUID().uuidString
+        var profileImageURL: String? = nil
+
+        // Upload avatar image if provided
+        if let image = clientImage {
+            do {
+                print("[CLIENT_CREATE] Uploading client profile image...")
+                profileImageURL = try await S3UploadService.shared.uploadClientProfileImage(image, clientId: tempId, companyId: companyId)
+                print("[CLIENT_CREATE] ✅ Profile image uploaded: \(profileImageURL ?? "")")
+            } catch {
+                print("[CLIENT_CREATE] ⚠️ Failed to upload profile image: \(error.localizedDescription)")
+                // Continue with client creation even if image upload fails
+            }
+        }
+
+        // Create local client
         let tempClient = Client(
-            id: UUID().uuidString,
+            id: tempId,
             name: name,
             email: email.isEmpty ? nil : email,
             phoneNumber: phone.isEmpty ? nil : phone,
@@ -395,7 +550,13 @@ struct ClientFormSheet: View {
             notes: notes.isEmpty ? nil : notes
         )
 
-        // Create in Bubble API first
+        // Set profile image URL if uploaded
+        if let imageURL = profileImageURL {
+            tempClient.profileImageURL = imageURL
+        }
+
+        // Create in Bubble API
+        print("[CLIENT_CREATE] Creating client in Bubble...")
         let bubbleId = try await dataController.apiService.createClient(tempClient)
         print("[CLIENT_CREATE] ✅ Client created in Bubble with ID: \(bubbleId)")
 
@@ -417,6 +578,26 @@ struct ClientFormSheet: View {
     }
     
     private func updateExistingClient(_ client: Client) async throws {
+        guard let companyId = dataController.currentUser?.companyId else {
+            throw ClientError.noCompanyId
+        }
+
+        // Upload new avatar image if changed
+        if let image = clientImage, clientImageURL != client.profileImageURL {
+            do {
+                print("[CLIENT_UPDATE] Uploading updated client profile image...")
+                let newImageURL = try await S3UploadService.shared.uploadClientProfileImage(image, clientId: client.id, companyId: companyId)
+                print("[CLIENT_UPDATE] ✅ Profile image uploaded: \(newImageURL)")
+
+                await MainActor.run {
+                    client.profileImageURL = newImageURL
+                }
+            } catch {
+                print("[CLIENT_UPDATE] ⚠️ Failed to upload profile image: \(error.localizedDescription)")
+                // Continue with client update even if image upload fails
+            }
+        }
+
         // Update client properties
         await MainActor.run {
             client.name = name
@@ -434,64 +615,88 @@ struct ClientFormSheet: View {
 
     private var previewCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            // Client name
-                            Text(name.isEmpty ? "CLIENT NAME" : name.uppercased())
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(name.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
-                                .lineLimit(1)
+                    // Client name
+                    Text(name.isEmpty ? "CLIENT NAME" : name.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(name.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
 
-                            // Email or phone
-                            if !email.isEmpty {
-                                Text(email)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    .lineLimit(1)
-                            } else if !phone.isEmpty {
-                                Text(phone)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    .lineLimit(1)
-                            } else {
-                                Text("NO CONTACT INFO")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .lineLimit(1)
-                            }
-                        }
-
-                        Spacer()
+                    // Email or phone
+                    if !email.isEmpty {
+                        Text(email)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    } else if !phone.isEmpty {
+                        Text(phone)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    } else {
+                        Text("NO CONTACT INFO")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .lineLimit(1)
                     }
 
-                    // Metadata row
-                    HStack(spacing: 12) {
-                        // Address
-                        HStack(spacing: 4) {
-                            Image(systemName: "mappin.circle")
-                                .font(.system(size: 11))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Text(address.isEmpty ? "NO ADDRESS" : address.components(separatedBy: ",").first ?? address)
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
+                    // Address
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.circle")
+                            .font(.system(size: 11))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text(address.isEmpty ? "NO ADDRESS" : address.components(separatedBy: ",").first ?? address)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .lineLimit(1)
                     }
                 }
-                .padding(14)
+
+                Spacer()
+
+                // Avatar on right side
+                ZStack {
+                    if let image = clientImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 48, height: 48)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
+                    } else if !name.isEmpty {
+                        // Show initials if name exists but no image
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                            .frame(width: 48, height: 48)
+                            .overlay(
+                                Text(String(name.prefix(1)).uppercased())
+                                    .font(.custom("Mohave-Bold", size: 20))
+                                    .foregroundColor(.white)
+                            )
+                    } else {
+                        // Placeholder
+                        Circle()
+                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .frame(width: 48, height: 48)
+                            .overlay(
+                                Image(systemName: "building.2")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            )
+                            .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
+                    }
+                }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
             )
         }
-        .opacity(0.7) // Slightly faded to indicate it's a preview
     }
 }
 

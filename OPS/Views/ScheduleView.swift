@@ -267,7 +267,8 @@ struct ScheduleView: View {
                 title: "[ \(syncedProjectsCount) NEW PROJECT\(syncedProjectsCount == 1 ? "" : "S") LOADED ]",
                 subtitle: nil,
                 type: .info,
-                autoDismissAfter: 4.0
+                autoDismissAfter: 4.0,
+                showDismissButton: false
             )
             .ignoresSafeArea(edges: .top)
             .zIndex(1000)

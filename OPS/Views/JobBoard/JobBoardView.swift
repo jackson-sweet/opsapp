@@ -576,6 +576,7 @@ struct JobBoardTasksView: View {
                     title: "No Tasks Yet",
                     subtitle: "Create tasks from projects to get started"
                 )
+                .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {

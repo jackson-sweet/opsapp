@@ -531,7 +531,7 @@ struct TaskPickerForTeamChange: View {
             }
         }
         .sheet(isPresented: $showingTaskForm) {
-            TaskFormSheet(project: project)
+            TaskFormSheet(mode: .create, preselectedProjectId: project.id) { _ in }
                 .environmentObject(dataController)
         }
     }

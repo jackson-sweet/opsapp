@@ -1,10 +1,94 @@
 # OPS Codebase Consolidation & Cleanup Plan
 
-**Purpose**: Agent-executable plan for consolidating duplicate code, migrating hardcoded values to OPSStyle, reorganizing folder structure, and removing waste.
+**📖 Document Type**: COMPREHENSIVE IMPLEMENTATION GUIDE (9 Phases)
+**🎯 Purpose**: Tracks A, E, F, L, M, N (OPSStyle Expansion, Styling Migration, Refactoring)
+**👉 Start Here**: [README.md](./README.md) → Choose your track
+
+---
 
 **Last Updated**: November 18, 2025
 
-**Execution Order**: Tasks must be executed in the order listed to avoid breaking dependencies.
+## How to Use This Document
+
+This is the MASTER implementation guide for all styling-related consolidation work.
+
+**For Track A (Expand OPSStyle)** - 🔴 DO THIS FIRST:
+- **READ**: OPSSTYLE_GAPS_AND_STANDARDIZATION.md → Part 2
+- **FOLLOW**: Phase 1 of this document (Create Reusable Components)
+- **Effort**: 4-6 hours, **Impact**: Unblocks all styling migration
+
+**For Track E (Hardcoded Colors Migration)** - Requires Track A:
+- **FOLLOW**: Phase 2 of this document
+- **Effort**: 15-20 hours, **Impact**: ~815 color violations fixed
+
+**For Track F (Hardcoded Icons Migration)** - Requires Track A:
+- **FOLLOW**: Phase 4 of this document
+- **Effort**: 20-25 hours, **Impact**: ~438 icon violations fixed
+
+**For Track L (DataController Refactor)**:
+- **FOLLOW**: Phase 6 of this document
+- **Effort**: 8-10 hours, **Impact**: Better organization
+
+**For Track M (Folder Reorganization)** - ⚠️ DO THIS LAST:
+- **FOLLOW**: Phase 7 of this document
+- **Effort**: 4-6 hours, **Impact**: Easier navigation
+
+**For Track N (Remaining Migrations)**:
+- **FOLLOW**: Phases 3, 5, 8, 9 of this document
+- **Effort**: 25-30 hours, **Impact**: Complete OPSStyle adoption
+
+**Prerequisites**:
+- Phase 1 (Track A): ✅ None - foundation for all styling work
+- Phases 2-9: 🔴 Require Phase 1 completion
+
+**Total Effort**: 60-75 hours
+**Total Impact**: ~5,077 styling violations fixed, complete OPSStyle adoption
+
+**Execution Order**: ⚠️ Phases must be executed in order to avoid breaking dependencies.
+
+---
+
+## 🚨 CRITICAL RULES FOR IMPLEMENTATION
+
+### Rule 1: ProjectFormSheet is the Styling Authority
+
+**READ [PROJECTFORMSHEET_AUTHORITY.md](./PROJECTFORMSHEET_AUTHORITY.md) BEFORE starting any track.**
+
+This document defines the AUTHORITATIVE patterns from `ProjectFormSheet.swift` for:
+- Section card styling (ExpandableSection)
+- Navigation bar styling
+- Input field styling (TextField)
+- TextEditor styling (with Cancel/Save buttons)
+
+When consolidating UI code:
+- 👍 **KEEP** ProjectFormSheet's patterns
+- 👎 **MIGRATE** other files to match ProjectFormSheet
+- ⚠️ **ASK USER** before deleting any conflicting implementation
+
+### Rule 2: ALWAYS Ask Before Deleting
+
+**⚠️ MANDATORY**: Before deleting ANY duplicate code during consolidation:
+
+1. **STOP** and compare both implementations
+2. **DOCUMENT** differences with file paths and line numbers
+3. **ASK THE USER** which version to keep
+4. **WAIT** for user confirmation
+5. **ONLY THEN** delete the rejected version
+
+**Example Question Format**:
+```
+⚠️ DUPLICATE COLOR USAGE FOUND
+
+FILE: TaskDetailsView.swift line 145
+
+CURRENT: .foregroundColor(.white)
+AUTHORITY: OPSStyle.Colors.primaryText
+
+Should I replace this with OPSStyle.Colors.primaryText?
+(This might affect UI appearance if there's a reason for .white)
+```
+
+**Do NOT assume** all duplicates should be removed. Some may be intentional.
 
 ---
 

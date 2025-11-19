@@ -1,6 +1,25 @@
 # Hardcoded Values Audit Report
+
+**📖 Document Type**: REFERENCE ONLY (Analysis & Metrics)
+**🎯 Purpose**: Provides scope and context for styling migration tracks
+**👉 For Implementation**: See [README.md](./README.md) and [CONSOLIDATION_PLAN.md](./CONSOLIDATION_PLAN.md)
+
+---
+
 **Date**: November 18, 2025
 **Codebase**: OPS iOS App (283 Swift files)
+
+## How to Use This Document
+
+**If you're an implementation agent**: This document is REFERENCE MATERIAL showing the scale and breakdown of hardcoded styling issues. Use it to understand WHAT needs to be fixed, but refer to CONSOLIDATION_PLAN.md for step-by-step HOW TO FIX IT.
+
+**Related Tracks**:
+- Track A: Expand OPSStyle (must read Part 2 of OPSSTYLE_GAPS_AND_STANDARDIZATION.md)
+- Track E: Hardcoded Colors Migration
+- Track F: Hardcoded Icons Migration
+- Track N: Remaining Migrations
+
+---
 
 ## Executive Summary
 

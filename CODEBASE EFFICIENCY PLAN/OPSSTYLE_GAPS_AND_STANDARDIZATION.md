@@ -1,7 +1,25 @@
 # OPSStyle Gaps & Standardization Opportunities
 
+**📖 Document Type**: REFERENCE + IMPLEMENTATION GUIDE
+**🎯 Purpose**: Analysis of hardcoded value usage + Track A implementation guide
+**👉 Start Here**: [README.md](./README.md) → Track A: Expand OPSStyle
+
+---
+
 **Date**: November 18, 2025
-**Purpose**: Deep content analysis of hardcoded values and identification of missing OPSStyle definitions
+
+## How to Use This Document
+
+**For Track A (Expand OPSStyle)**:
+- **READ**: Part 2 (Missing OPSStyle Color Definitions) → This is your implementation checklist
+- **SKIP**: Parts 1, 3, 4 (context only)
+
+**For Context**:
+- Part 1: Analyzes what hardcoded colors are actually used for
+- Part 3: Form input standardization analysis
+- Part 4: Additional standardization opportunities
+
+**Prerequisites**: None - Track A is the foundation for everything else
 
 ---
 

@@ -1,7 +1,120 @@
-# Architectural Duplication & Business Logic Consolidation Audit
+# Architectural Duplication & Business Logic Consolidation
+
+**📖 Document Type**: IMPLEMENTATION GUIDE
+**🎯 Purpose**: Tracks C, J, K (Notifications, DataController CRUD, Loading Modifiers)
+**👉 Start Here**: [README.md](./README.md) → Tracks C, J, K
+
+---
 
 **Date**: November 18, 2025
-**Purpose**: Identify duplicated business logic, API patterns, and notification handling
+
+## How to Use This Document
+
+**For Track C (Notification Consolidation)**:
+- **READ**: Part 1 (Notification & Alert Duplication)
+- **FOLLOW**: Part 5 → Priority 1 (Phase A)
+- **Effort**: 4-6 hours, **Impact**: 156 lines + consistent UX
+
+**For Track J (DataController CRUD Methods)**:
+- **READ**: Part 3 (Model Persistence Patterns)
+- **FOLLOW**: Part 5 → Priority 2 (Phase B)
+- **Effort**: 6-8 hours, **Impact**: Eliminate 99 direct save() calls
+
+**For Track K (Loading & Confirmation Modifiers)**:
+- **READ**: Part 4 (Common Operation Duplication)
+- **FOLLOW**: Part 5 → Priority 3 (Phase C)
+- **Effort**: 3-4 hours, **Impact**: ~600 lines saved
+
+**Prerequisites**:
+- ✅ None - Tracks C, J, K are independent
+- ⚠️ Can run in parallel with any other track
+
+**Total Effort**: 13-18 hours
+**Total Impact**: ~906 lines of duplicate business logic eliminated
+
+---
+
+## 🚨 CRITICAL: Ask Before Deleting Duplicates
+
+**⚠️ MANDATORY RULE FOR TRACKS C, J, K**: When consolidating duplicate business logic, you MUST ask the user before deleting ANY duplicate implementation.
+
+### Why This Matters
+
+Business logic duplicates may have subtle but critical differences:
+- Different error messages that users depend on
+- Different validation rules for different contexts
+- Different API endpoints or parameters
+- Different timing/sequencing of operations
+- Intentional variations for specific use cases
+
+**NEVER ASSUME** two alert handlers or save methods are identical. **ALWAYS ASK** the user.
+
+### Track-Specific Warnings
+
+#### Track C (Notification Consolidation)
+When migrating 52 files from `.alert()` to `NotificationBanner`:
+- **COMPARE** each file's error handling before migration
+- **ASK** if error messages should remain the same or be standardized
+- **DOCUMENT** any custom error handling logic
+- **VERIFY** notification behavior matches original alert behavior
+
+**Example Question**:
+```
+⚠️ CUSTOM ERROR HANDLER FOUND
+
+FILE: ProjectFormSheet.swift lines 89-95
+
+CURRENT:
+.alert("Project Error", isPresented: $showingError) {
+    Button("Retry") { retryProjectCreation() }  // ← Custom retry logic
+    Button("Cancel", role: .cancel) {}
+}
+
+STANDARD NotificationBanner: Only shows message, no action buttons
+
+Should I:
+1. Migrate to NotificationBanner (loses retry button)
+2. Keep custom alert for this case
+3. Enhance NotificationBanner to support action buttons
+```
+
+#### Track J (DataController CRUD Methods)
+When consolidating 99 direct `save()` calls:
+- **EXAMINE** each save location for custom logic
+- **ASK** if pre-save validation should be preserved
+- **DOCUMENT** any sync priority differences
+- **VERIFY** save behavior matches original
+
+**Example Question**:
+```
+⚠️ CUSTOM SAVE LOGIC FOUND
+
+FILE: TaskDetailsView.swift lines 234-242
+
+CURRENT:
+task.status = .completed
+task.completedAt = Date()
+task.completedBy = currentUser.id  // ← Custom field
+task.needsSync = true
+task.syncPriority = 5  // ← Higher priority than standard
+try modelContext.save()
+
+PROPOSED DataController.updateTask():
+- Sets needsSync = true
+- Uses syncPriority = 3 (standard)
+- Does NOT set completedBy
+
+Should I:
+1. Add completedBy logic to DataController.updateTask()
+2. Keep this custom save
+3. Create updateTaskStatus() method specifically for status changes
+```
+
+#### Track K (Loading & Confirmation Modifiers)
+When migrating loading overlays and confirmation dialogs:
+- **CHECK** if any have custom messages or styling
+- **ASK** if custom behavior should be preserved
+- **VERIFY** confirmation actions are identical
 
 ---
 

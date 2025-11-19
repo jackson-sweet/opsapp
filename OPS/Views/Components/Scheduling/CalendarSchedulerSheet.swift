@@ -30,7 +30,7 @@ struct CalendarSchedulerSheet: View {
     @State private var conflictingEvents: [CalendarEvent] = []
     @State private var showingConflictWarning = false
     @State private var showOnlyTeamEvents = true  // Filter by team members by default
-    @State private var showOnlyProjectTasks = false  // Filter by same project tasks
+    @State private var showOnlyProjectTasks = true  // Filter by same project tasks - default ON
     @State private var allCalendarEvents: [CalendarEvent] = []
     @State private var filteredCalendarEvents: [CalendarEvent] = []
 
@@ -650,6 +650,8 @@ struct CalendarSchedulerSheet: View {
                 currentTeamMembers = Set(project.getTeamMemberIds())
             case .task(let task):
                 currentTeamMembers = Set(task.getTeamMemberIds())
+            case .draftTask(_, let teamMemberIds):
+                currentTeamMembers = Set(teamMemberIds)
             }
         }
 
@@ -663,6 +665,9 @@ struct CalendarSchedulerSheet: View {
                 isSameItem = false
             case .task(let task):
                 isSameItem = event.taskId == task.id
+            case .draftTask:
+                // Draft tasks don't have an ID yet, so they can't match existing events
+                isSameItem = false
             }
 
             if !isSameItem && event.spannedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) }) {
@@ -716,19 +721,24 @@ struct CalendarSchedulerSheet: View {
     }
 
     private func filterCalendarEvents() {
-        // Handle project tasks filter (only for tasks)
-        if showOnlyProjectTasks, case .task(let task) = itemType {
-            // Show only other tasks from the same project
-            filteredCalendarEvents = allCalendarEvents.filter { event in
-                // All events are task events now - no type check needed
+        // Handle project tasks filter (only for tasks with a project)
+        if showOnlyProjectTasks {
+            if case .task(let task) = itemType {
+                // Show only other tasks from the same project
+                filteredCalendarEvents = allCalendarEvents.filter { event in
+                    // All events are task events now - no type check needed
 
-                // Must be from the same project
-                guard event.projectId == task.projectId else { return false }
+                    // Must be from the same project
+                    guard event.projectId == task.projectId else { return false }
 
-                // Exclude the current task being scheduled
-                return event.taskId != task.id
+                    // Exclude the current task being scheduled
+                    return event.taskId != task.id
+                }
+                return
+            } else if case .draftTask = itemType {
+                // Draft tasks have no project yet, so don't filter by project tasks
+                // Just continue to team member filtering below
             }
-            return
         }
 
         // Handle team events filter
@@ -750,6 +760,8 @@ struct CalendarSchedulerSheet: View {
                 currentTeamMembers = Set(project.getTeamMemberIds())
             case .task(let task):
                 currentTeamMembers = Set(task.getTeamMemberIds())
+            case .draftTask(_, let teamMemberIds):
+                currentTeamMembers = Set(teamMemberIds)
             }
         }
 
@@ -774,6 +786,9 @@ struct CalendarSchedulerSheet: View {
                 isSameItem = false
             case .task(let task):
                 isSameItem = event.taskId == task.id
+            case .draftTask:
+                // Draft tasks don't have an ID yet, so they can't match existing events
+                isSameItem = false
             }
 
             // Check for date overlap
@@ -843,14 +858,20 @@ struct CalendarSchedulerSheet: View {
     enum ScheduleItemType {
         case project(Project)
         case task(ProjectTask)
+        case draftTask(taskTypeId: String, teamMemberIds: [String])
 
         var displayName: String {
             switch self {
             case .project:
                 return "Project"
-            case .task:
+            case .task, .draftTask:
                 return "Task"
             }
+        }
+
+        var isDraft: Bool {
+            if case .draftTask = self { return true }
+            return false
         }
     }
 }

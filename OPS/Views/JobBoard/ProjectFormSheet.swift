@@ -97,8 +97,6 @@ struct ProjectFormSheet: View {
     // Temporary state for notes and description editing
     @State private var tempNotes: String = ""
     @State private var tempDescription: String = ""
-    @State private var isEditingNotes = false
-    @State private var isEditingDescription = false
 
     enum FormField: Hashable {
         case client
@@ -188,7 +186,13 @@ struct ProjectFormSheet: View {
                         // PREVIEW CARD
                         previewCard
 
-                        // COPY FROM BUTTON
+                        // MANDATORY FIELDS (always visible)
+                        mandatoryFieldsSection
+
+                        // OPTIONAL SECTIONS
+                        optionalSectionsArea
+
+                        // COPY FROM BUTTON (at bottom)
                         if mode.isCreate {
                             HStack {
                                 Spacer()
@@ -208,14 +212,8 @@ struct ProjectFormSheet: View {
                                     )
                                 }
                             }
-                            .padding(.bottom, 12)
+                            .padding(.top, 12)
                         }
-
-                        // MANDATORY FIELDS (always visible)
-                        mandatoryFieldsSection
-
-                        // OPTIONAL SECTIONS
-                        optionalSectionsArea
                     }
                     .padding()
                     .padding(.bottom, 24)
@@ -664,7 +662,7 @@ struct ProjectFormSheet: View {
             }
         ) {
             VStack(spacing: 12) {
-                TextEditor(text: isEditingDescription ? $tempDescription : $description)
+                TextEditor(text: focusedField == .description ? $tempDescription : $description)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(minHeight: 100)
@@ -680,20 +678,18 @@ struct ProjectFormSheet: View {
                                 lineWidth: 1
                             )
                     )
-                    .onTapGesture {
-                        if !isEditingDescription {
+                    .onChange(of: focusedField) { oldValue, newValue in
+                        if newValue == .description && oldValue != .description {
                             tempDescription = description
-                            isEditingDescription = true
                         }
                     }
 
-                if isEditingDescription {
+                if focusedField == .description {
                     HStack(spacing: 16) {
                         Spacer()
 
                         Button("CANCEL") {
                             tempDescription = ""
-                            isEditingDescription = false
                             focusedField = nil
                         }
                         .font(OPSStyle.Typography.caption)
@@ -701,7 +697,6 @@ struct ProjectFormSheet: View {
 
                         Button("SAVE") {
                             description = tempDescription
-                            isEditingDescription = false
                             focusedField = nil
                         }
                         .font(OPSStyle.Typography.caption)
@@ -729,7 +724,7 @@ struct ProjectFormSheet: View {
             }
         ) {
             VStack(spacing: 12) {
-                TextEditor(text: isEditingNotes ? $tempNotes : $notes)
+                TextEditor(text: focusedField == .notes ? $tempNotes : $notes)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(minHeight: 80)
@@ -745,20 +740,18 @@ struct ProjectFormSheet: View {
                                 lineWidth: 1
                             )
                     )
-                    .onTapGesture {
-                        if !isEditingNotes {
+                    .onChange(of: focusedField) { oldValue, newValue in
+                        if newValue == .notes && oldValue != .notes {
                             tempNotes = notes
-                            isEditingNotes = true
                         }
                     }
 
-                if isEditingNotes {
+                if focusedField == .notes {
                     HStack(spacing: 16) {
                         Spacer()
 
                         Button("CANCEL") {
                             tempNotes = ""
-                            isEditingNotes = false
                             focusedField = nil
                         }
                         .font(OPSStyle.Typography.caption)
@@ -766,7 +759,6 @@ struct ProjectFormSheet: View {
 
                         Button("SAVE") {
                             notes = tempNotes
-                            isEditingNotes = false
                             focusedField = nil
                         }
                         .font(OPSStyle.Typography.caption)

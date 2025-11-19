@@ -5,9 +5,9 @@ This document contains all development tasks for November 19, 2025, focusing on 
 
 ---
 
-## 1. LOADING SCREEN PADDING FIX
+## 1. LOADING SCREEN PADDING FIX ✅ COMPLETE
 
-### 1.1 Add Bottom Padding to Post-Login Loading Screen
+### 1.1 Add Bottom Padding to Post-Login Loading Screen ✅
 **File**: `OPS/Views/LoginView.swift` or `OPS/Views/SplashLoadingView.swift`
 **Issue**: The loading screen shown immediately after successful login lacks sufficient bottom padding.
 **Requirements**:
@@ -18,9 +18,9 @@ This document contains all development tasks for November 19, 2025, focusing on 
 
 ---
 
-## 2. JOB BOARD SCROLLING FIX
+## 2. JOB BOARD SCROLLING FIX ✅ COMPLETE
 
-### 2.1 Fix Project List Scrolling
+### 2.1 Fix Project List Scrolling ✅
 **File**: `OPS/Views/JobBoard/JobBoardView.swift` or `OPS/Views/JobBoard/JobBoardDashboard.swift`
 **Issue**: Project list section is not scrollable
 **Requirements**:
@@ -30,7 +30,7 @@ This document contains all development tasks for November 19, 2025, focusing on 
 - Check that no gesture conflicts are blocking scroll (like the tap vs scroll issue we fixed recently)
 - Test scrolling with 20+ projects to verify functionality
 
-### 2.2 Fix Task List Scrolling
+### 2.2 Fix Task List Scrolling ✅
 **File**: `OPS/Views/JobBoard/JobBoardView.swift` or task list component
 **Issue**: Task list section is not scrollable
 **Requirements**:
@@ -46,9 +46,9 @@ This document contains all development tasks for November 19, 2025, focusing on 
 
 ---
 
-## 3. CHANGE TEAM FUNCTIONALITY FIX
+## 3. CHANGE TEAM FUNCTIONALITY FIX ✅ COMPLETE
 
-### 3.1 Update "Change Team" to Show Task Selection Menu
+### 3.1 Update "Change Team" to Show Task Selection Menu ✅
 **File**: `OPS/Views/Components/Project/ProjectDetailsView.swift` or wherever "Change Team" action is triggered
 **Current Behavior**: "Change Team" directly edits the project's team, which is incorrect since `project.teamMembers` is a computed property
 **New Behavior**: Show a menu/sheet listing all tasks for the project, allowing user to select which task's team to edit
@@ -122,9 +122,9 @@ This document contains all development tasks for November 19, 2025, focusing on 
 
 ---
 
-## 5. PUSH IN NOTIFICATION TOP PADDING FIX
+## 5. PUSH IN NOTIFICATION TOP PADDING FIX ✅ COMPLETE
 
-### 5.1 Fix PushInMessage Top Padding for iPhone 16 Camera Area
+### 5.1 Fix PushInMessage Top Padding for iPhone 16 Camera Area ✅
 **File**: `OPS/Views/Components/Common/PushInMessage.swift`
 
 **Issue**: PushInMessage appears behind the iPhone 16 camera cutout area
@@ -160,9 +160,9 @@ GeometryReader { geometry in
 
 ---
 
-## 6. MANUAL SYNC NOTIFICATION ENHANCEMENTS
+## 6. MANUAL SYNC NOTIFICATION ENHANCEMENTS ✅ COMPLETE
 
-### 6.1 Show Project Count in Manual Sync Notification
+### 6.1 Show Project Count in Manual Sync Notification ✅
 **Files**:
 - `OPS/Views/Calendar Tab/ScheduleView.swift` (manual sync button location)
 - `OPS/Network/Sync/CentralizedSyncManager.swift` (sync logic)
@@ -206,7 +206,7 @@ GeometryReader { geometry in
 
 ## 7. CREATE PROJECT SHEET UPDATES
 
-### 7.1 Task Line Item Interaction Changes
+### 7.1 Task Line Item Interaction Changes ✅
 **File**: `OPS/Views/JobBoard/ProjectFormSheet.swift` (lines ~867-975 based on recent commits)
 
 #### 7.1.1 Remove Edit Icon from Task Line Items
@@ -266,7 +266,7 @@ GeometryReader { geometry in
 6. Team member count or avatars (see 7.2.2)
 7. Trash icon (right edge)
 
-#### 7.2.2 Use UserAvatar for Team Member Icons
+#### 7.2.2 Use UserAvatar for Team Member Icons ✅
 - Replace current team member avatar implementation with `UserAvatar` component
 - Show up to 3 team member avatars
 - Avatar size: 20pt diameter (small)
@@ -281,7 +281,7 @@ GeometryReader { geometry in
 - Text: White
 - Border: Optional white border for overlap visibility
 
-#### 7.2.3 Remove Background, Add Border Only
+#### 7.2.3 Remove Background, Add Border Only ✅
 - Current: Task rows likely have `OPSStyle.Colors.cardBackgroundDark` background
 - New: Transparent background (`.background(Color.clear)`)
 - Add border: `.overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.white.opacity(0.15), lineWidth: 1))`
@@ -289,7 +289,7 @@ GeometryReader { geometry in
 - Maintain 5pt corner radius
 - Padding: `.padding(.vertical, 12).padding(.horizontal, 16)`
 
-### 7.3 Address Predictive Suggestions Fix
+### 7.3 Address Predictive Suggestions Fix ✅
 **File**: `OPS/Views/JobBoard/ProjectFormSheet.swift`
 **Issue**: Address autocomplete stopped working after recent styling changes to address input field
 
@@ -345,7 +345,7 @@ to:
 - Description is separate from Notes in the form
 - Track dirty state independently
 
-### 7.5 Copy From Project Button Styling
+### 7.5 Copy From Project Button Styling ✅
 **File**: `OPS/Views/JobBoard/ProjectFormSheet.swift`
 
 **Issue**: "Copy From Project" button is too visually prominent/obnoxious
@@ -377,20 +377,7 @@ Button(action: { showCopyProjectSheet = true }) {
 ### 7.6 Pill and Section Border Color Update
 **File**: `OPS/Views/JobBoard/ProjectFormSheet.swift`
 
-**Issue**: Pills and section borders are too light/subtle
-
-**Current Opacity**: Likely `Color.white.opacity(0.1)` based on recent changes
-
-**New Requirements**:
-- Update pill borders to: `Color.white.opacity(0.15)` or `Color.white.opacity(0.2)`
-- Update section borders to: `Color.white.opacity(0.15)` or `Color.white.opacity(0.2)`
-- Ensure consistency across:
-  - Pills (DETAILS, TEAM, TASKS, etc.)
-  - Section containers
-  - Input field borders
-  - Task list item borders
-- Test visibility in bright outdoor conditions (field use case)
-- Balance between subtle and visible
+**Issue**: Pills and section borders are too dark. make brighter
 
 **Affected Elements**:
 - All pill buttons (DETAILS, TEAM, TASKS, IMAGES, etc.)
@@ -398,7 +385,7 @@ Button(action: { showCopyProjectSheet = true }) {
 - Collapsible section containers
 - Input field overlays
 
-### 7.7 Remove Divider Between Project Details and Pills
+### 7.7 Remove Divider Between Project Details and Pills ✅
 **File**: `OPS/Views/JobBoard/ProjectFormSheet.swift`
 
 **Location**: Between top "Project Details" section header and the expandable pill buttons (DETAILS, TEAM, TASKS, etc.)
@@ -409,7 +396,7 @@ Button(action: { showCopyProjectSheet = true }) {
 - Likely reduce spacing from ~16pt to ~12pt
 - Ensure clear visual separation still exists through spacing alone
 
-### 7.8 Remove Dates Pill Button
+### 7.8 Remove Dates Pill Button ✅
 **File**: `OPS/Views/JobBoard/ProjectFormSheet.swift`
 
 **Rationale**: Projects are not scheduled directly. Only tasks have schedules. Project dates are computed properties based on task start/end dates.
@@ -435,7 +422,7 @@ Button(action: { showCopyProjectSheet = true }) {
 
 **Action**: Remove TEAM pill if it allows editing. If read-only display, can keep it.
 
-### 7.9 Project/Task/CalendarEvent Creation and Linking Fix
+### 7.9 Project/Task/CalendarEvent Creation and Linking Fix ✅
 **Files**:
 - `OPS/Views/JobBoard/ProjectFormSheet.swift` (form submission)
 - `OPS/Network/API/APIService.swift` (API calls)
@@ -666,34 +653,23 @@ Enable/disable with debug flag in `CentralizedSyncManager.DebugFlags`
 **New Requirements**: Match Create Project Sheet structure WITHOUT expanding/collapsing sections
 - Remove all collapsible section logic
 - Remove pill buttons (DETAILS, TEAM, etc.)
-- Place all fields in a single scrollable form
-- Use section headers with `OPSStyle.Typography.captionBold` and `OPSStyle.Colors.secondaryText`
-- Maintain consistent spacing: 24pt between sections
+- Place all fields in a single section styled like a section from Create Project Sheet
 - Use same input field styling as updated ProjectFormSheet
 
 ### 8.2 Add Live Preview Task Card
 **File**: `OPS/Views/JobBoard/TaskFormSheet.swift`
+- the live preview should look like the Universal Job Card for Tasks
 
 **Requirements**:
 
 #### 8.2.1 Create Preview Card Component
 - Position: Top of sheet, above all form fields
 - Update in real-time as user fills form
-- Use Universal Job Board Card layout:
-  - Colored vertical bar on left (4pt width) - uses selected task type color
-  - Status badge (top-right) - shows selected status
-  - Task type name (uppercase, bold)
-  - Scheduled date (if selected)
-  - Team member avatars (if selected)
-  - Project name (if project selected)
+- Use Universal Job Board Card layout. 
 
 #### 8.2.2 Preview Card Styling
-- Background: `OPSStyle.Colors.cardBackgroundDark.opacity(0.7)` (semi-transparent to indicate preview)
-- Border: `Color.white.opacity(0.1)`
-- Corner radius: 5pt
-- Padding: `.padding(.vertical, 14).padding(.horizontal, 16)`
-- Shadow: Optional subtle shadow for elevation
-- Label above card: "PREVIEW" in `OPSStyle.Typography.smallCaption`, `OPSStyle.Colors.tertiaryText`
+- Match Universal Job Card for Task
+
 
 #### 8.2.3 Live Update Binding
 Preview card should update when user changes:
@@ -737,12 +713,7 @@ Preview card should update when user changes:
 - This matches the preview card and maintains consistency
 
 #### 8.4.3 Picker Styling
-- Background: `Color.clear`
-- Border: `.overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.white.opacity(0.15), lineWidth: 1))`
-- Colored left border: 4pt width, task type color
-- Height: 44pt minimum (touch target)
-- Font: `OPSStyle.Typography.body`
-- Chevron: Show down chevron on right to indicate dropdown
+- Make the picker look like the other inputs. no background color. grey borders that are primaryAccent when the input is focused.
 
 **Layout**:
 ```
@@ -778,40 +749,17 @@ Option B: If multi-select is required (RECOMMENDED):
 #### 8.5.3 Styling
 - Same styling as task type picker (8.4.3)
 - No colored left border for team picker
-- Height: Auto-expand to accommodate avatars if needed (min 44pt)
+- Height: same as other inputs
 
 ### 8.6 Single Section Layout
 **File**: `OPS/Views/JobBoard/TaskFormSheet.swift`
 
-**Requirements**: Place all fields in one section with consistent styling matching Create Project Sheet sections
-
-**Section Structure**:
-```
-PREVIEW CARD
-(spacing: 24pt)
-
-TASK DETAILS
-- Project Selection (dropdown or search)
-- Task Type Selection (dropdown with colored border)
-- Status Selection (dropdown or segmented control)
-
-SCHEDULING
-- Start Date Picker
-- End Date Picker (or duration)
-- Notes (TextEditor)
-
-TEAM
-- Team Member Selection (dropdown/multi-select)
-
-(bottom spacing: 24pt)
-```
+**Requirements**: Place all fields in one section with consistent styling matching Create Project Sheet sections. Give each input a title.
 
 #### 8.6.1 Section Headers
 - Format: "TASK DETAILS", "SCHEDULING", "TEAM" (uppercase)
 - Font: `OPSStyle.Typography.captionBold`
 - Color: `OPSStyle.Colors.secondaryText`
-- Spacing above: 24pt
-- Spacing below: 12pt
 
 #### 8.6.2 Field Spacing
 - Vertical spacing between fields within section: 16pt
@@ -898,41 +846,19 @@ TEAM
 ### 9.2 Import From Contacts Button Styling Update
 **File**: `OPS/Views/JobBoard/ClientFormSheet.swift`
 
-**Issue**: "Import From Contacts" button is too visually prominent
-
-**Current State**: Based on recent commit a7f20a0, button exists but may be too bold
-
-**New Requirements**: Style like the de-emphasized "Copy From Project" button (section 7.5)
-- Style as tertiary button (text-only, no background)
-- Text: "IMPORT FROM CONTACTS" or "Import from contacts"
-- Color: `OPSStyle.Colors.secondaryText` (not primary accent)
-- Font: `OPSStyle.Typography.caption`
-- Add subtle icon: `OPSStyle.Icons.person` or "person.crop.circle" SF Symbol
-- Position: Below client name field or at top of form
-- Reduce padding/spacing around button to make it less prominent
-
-**Implementation**:
-```swift
-Button(action: { showContactsPicker = true }) {
-    HStack(spacing: 6) {
-        Image(systemName: "person.crop.circle")
-            .font(.caption)
-        Text("Import from contacts")
-            .font(OPSStyle.Typography.caption)
-    }
-    .foregroundColor(OPSStyle.Colors.secondaryText)
-}
-```
+**Issue**: "Import From Contacts" button should match 'Copy from project button' in Create Project Sheet
 
 ### 9.3 Single Section Layout
 **File**: `OPS/Views/JobBoard/ClientFormSheet.swift`
 
-**Requirements**: Place all fields in one section with consistent styling
+**Requirements**: Place all fields in one section, styled like the sections in create project sheet
 
 **Section Structure**:
 ```
 CLIENT PREVIEW CARD
 (spacing: 24pt)
+
+AVATAR INPUT
 
 CLIENT DETAILS
 - Client Name (text field)
@@ -940,19 +866,14 @@ CLIENT DETAILS
 - Email (text field)
 - Phone (text field)
 - Address (text field with autocomplete)
-
-ADDITIONAL INFO
 - Notes (TextEditor)
 
 (bottom spacing: 24pt)
 ```
 
 #### 9.3.1 Section Headers
-- Format: "CLIENT DETAILS", "ADDITIONAL INFO" (uppercase)
-- Font: `OPSStyle.Typography.captionBold`
-- Color: `OPSStyle.Colors.secondaryText`
-- Spacing above: 24pt
-- Spacing below: 12pt
+- just one section header required
+- but have title over each input
 
 #### 9.3.2 Field Styling
 - All input fields use consistent styling:
@@ -970,14 +891,14 @@ ADDITIONAL INFO
 - Font: `OPSStyle.Typography.body`
 
 **Email**:
-- Placeholder: "email@example.com"
+- Placeholder: "Email Address"
 - Keyboard type: `.emailAddress`
 - Auto-capitalize: none
 - Autocorrect: disabled
 - Font: `OPSStyle.Typography.body`
 
 **Phone**:
-- Placeholder: "(555) 123-4567"
+- Placeholder: "Phone Number"
 - Keyboard type: `.phonePad`
 - Font: `OPSStyle.Typography.body`
 - Optional formatting as user types
@@ -987,6 +908,7 @@ ADDITIONAL INFO
 - Placeholder: "Start typing address..."
 - Show suggestions dropdown
 - Font: `OPSStyle.Typography.body`
+- make sure this is formatted to match other input (no background color, same border color as others, border color is primaryAccent when focused)
 
 **Notes**:
 - Use `TextEditor` for multi-line support
@@ -996,8 +918,9 @@ ADDITIONAL INFO
 - Border: `Color.white.opacity(0.15)`, 1pt width
 - `.scrollContentBackground(.hidden)`
 - Placeholder: "Add notes..." (shown when empty using ZStack overlay)
+- make sure you add a minimalist save and cancel button that become visible when the user is typing (this applies to notes and description sections in create project and create task views as well)
 
-### 9.4 Add Client Avatar Uploader
+### 9.4 Add Client Avatar Uploader ✅
 **File**: `OPS/Views/JobBoard/ClientFormSheet.swift`
 
 **Requirements**: Add avatar upload capability for client profile picture
@@ -1080,7 +1003,7 @@ VStack(spacing: 12) {
 }
 ```
 
-### 9.5 Update Client Preview Card
+### 9.5 Update Client Preview Card ✅
 **File**: `OPS/Views/JobBoard/ClientFormSheet.swift`
 
 **Current State**: Based on recent commit a7f20a0, preview card exists at top of form (lines 79, 435-495)
@@ -1183,7 +1106,7 @@ HStack(alignment: .top) {
 .padding(.horizontal, 16)
 ```
 
-### 9.6 Navigation Bar Title
+### 9.6 Navigation Bar Title ✅
 **File**: `OPS/Views/JobBoard/ClientFormSheet.swift`
 
 **Requirements**: Ensure navigation bar uses OPSStyle font
@@ -1220,7 +1143,7 @@ HStack(alignment: .top) {
 }
 ```
 
-### 9.7 Form Validation
+### 9.7 Form Validation ✅
 **File**: `OPS/Views/JobBoard/ClientFormSheet.swift`
 
 **Requirements**:
@@ -1255,7 +1178,7 @@ var isValidPhone: Bool {
 - If phone invalid: Show red border and error text below field
 - Validation should occur on blur or form submission attempt
 
-### 9.8 Import From Contacts Integration
+### 9.8 Import From Contacts Integration ✅
 **File**: `OPS/Views/JobBoard/ClientFormSheet.swift`
 
 **Requirements**: Verify import from contacts functionality works correctly
@@ -1283,7 +1206,7 @@ var isValidPhone: Bool {
 - Handle permission denial gracefully with alert explaining why access is needed
 - Provide option to open Settings if permission denied
 
-### 9.9 Client Creation and Sync Flow
+### 9.9 Client Creation and Sync Flow ✅
 **File**: `OPS/Views/JobBoard/ClientFormSheet.swift`
 
 **Requirements**: Similar to project creation flow (section 7.9), but simpler

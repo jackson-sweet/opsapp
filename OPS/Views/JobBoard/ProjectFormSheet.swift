@@ -1724,10 +1724,17 @@ struct SimpleTaskFormSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTaskTypeId: String?
-    @State private var customTitle: String = ""
     @State private var selectedStatus: TaskStatus = .booked
-    @State private var useCustomTitle: Bool = false
     @State private var selectedTeamMemberIds: Set<String> = []
+
+    private var selectedTaskType: TaskType? {
+        guard let id = selectedTaskTypeId else { return nil }
+        return allTaskTypes.first { $0.id == id }
+    }
+
+    private var selectedTeamMembers: [TeamMember] {
+        allTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }
+    }
 
     init(allTaskTypes: [TaskType], allTeamMembers: [TeamMember], editingTask: LocalTask? = nil, onSave: @escaping (LocalTask) -> Void) {
         self.allTaskTypes = allTaskTypes
@@ -1737,9 +1744,7 @@ struct SimpleTaskFormSheet: View {
 
         if let task = editingTask {
             _selectedTaskTypeId = State(initialValue: task.taskTypeId)
-            _customTitle = State(initialValue: task.customTitle ?? "")
             _selectedStatus = State(initialValue: task.status)
-            _useCustomTitle = State(initialValue: task.customTitle != nil)
             _selectedTeamMemberIds = State(initialValue: Set(task.teamMemberIds))
         }
     }
@@ -1752,198 +1757,47 @@ struct SimpleTaskFormSheet: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Task Type Selection
+                        // Live preview card
+                        previewCard
+
+                        // TASK DETAILS section - ALL FIELDS IN ONE SECTION
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("TASK TYPE")
+                            Text("TASK DETAILS")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                            if allTaskTypes.isEmpty {
-                                Text("No task types available. Contact your admin to add task types.")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .padding()
-                            } else {
-                                VStack(spacing: 1) {
-                                    ForEach(allTaskTypes, id: \.id) { taskType in
-                                        Button(action: {
-                                            selectedTaskTypeId = taskType.id
-                                        }) {
-                                            HStack(spacing: 12) {
-                                                if let icon = taskType.icon {
-                                                    Image(systemName: icon)
-                                                        .font(.system(size: 18))
-                                                        .foregroundColor(Color(hex: taskType.color))
-                                                        .frame(width: 24)
-                                                }
-
-                                                Text(taskType.display)
-                                                    .font(OPSStyle.Typography.body)
-                                                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                                Spacer()
-
-                                                if selectedTaskTypeId == taskType.id {
-                                                    Image(systemName: "checkmark.circle.fill")
-                                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                                } else {
-                                                    Image(systemName: "circle")
-                                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                                }
-                                            }
-                                            .padding(12)
-                                            .background(
-                                                selectedTaskTypeId == taskType.id
-                                                    ? OPSStyle.Colors.primaryAccent.opacity(0.1)
-                                                    : OPSStyle.Colors.background
-                                            )
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                    }
-                                }
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            }
-                        }
-
-                        // Custom Title Toggle
-                        VStack(alignment: .leading, spacing: 12) {
-                            Toggle(isOn: $useCustomTitle) {
-                                Text("USE CUSTOM TITLE")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            .tint(OPSStyle.Colors.primaryAccent)
-
-                            if useCustomTitle {
-                                TextField("Enter custom task title", text: $customTitle)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .autocorrectionDisabled(true)
-                                    .textInputAutocapitalization(.words)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            }
-                        }
-
-                        // Status Selection
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("STATUS")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                            Menu {
-                                ForEach(TaskStatus.allCases, id: \.self) { status in
-                                    Button(action: {
-                                        selectedStatus = status
-                                    }) {
-                                        HStack {
-                                            Text(status.displayName)
-                                            if selectedStatus == status {
-                                                Image(systemName: "checkmark")
-                                            }
-                                        }
-                                    }
-                                }
-                            } label: {
-                                HStack {
-                                    Text(selectedStatus.displayName.uppercased())
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.down")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                }
-                                .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            }
-                        }
-
-                        // Team Member Selection
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("ASSIGN TEAM (OPTIONAL)")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                            if !allTeamMembers.isEmpty {
-                                VStack(spacing: 1) {
-                                    ForEach(allTeamMembers, id: \.id) { member in
-                                        Button(action: {
-                                            if selectedTeamMemberIds.contains(member.id) {
-                                                selectedTeamMemberIds.remove(member.id)
-                                            } else {
-                                                selectedTeamMemberIds.insert(member.id)
-                                            }
-                                        }) {
-                                            HStack(spacing: 12) {
-                                                Circle()
-                                                    .fill(OPSStyle.Colors.primaryAccent)
-                                                    .frame(width: 32, height: 32)
-                                                    .overlay(
-                                                        Text(member.initials)
-                                                            .font(.system(size: 12, weight: .semibold))
-                                                            .foregroundColor(.white)
-                                                    )
-
-                                                Text("\(member.firstName) \(member.lastName)")
-                                                    .font(OPSStyle.Typography.body)
-                                                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                                Spacer()
-
-                                                if selectedTeamMemberIds.contains(member.id) {
-                                                    Image(systemName: "checkmark.circle.fill")
-                                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                                } else {
-                                                    Image(systemName: "circle")
-                                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                                }
-                                            }
-                                            .padding(12)
-                                            .background(
-                                                selectedTeamMemberIds.contains(member.id)
-                                                    ? OPSStyle.Colors.primaryAccent.opacity(0.1)
-                                                    : OPSStyle.Colors.background
-                                            )
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                    }
-                                }
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            } else {
-                                Text("No team members available")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .padding()
+                            VStack(spacing: 16) {
+                                taskTypeSection
+                                statusSection
+                                teamSection
                             }
                         }
                     }
                     .padding()
                 }
             }
-            .navigationTitle(editingTask == nil ? "ADD TASK" : "EDIT TASK")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    Button("CANCEL") {
                         dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text(editingTask == nil ? "ADD TASK" : "EDIT TASK")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
+                    Button("SAVE") {
                         var task = LocalTask(
                             id: editingTask?.id ?? UUID(),
                             taskTypeId: selectedTaskTypeId!,
-                            customTitle: useCustomTitle && !customTitle.isEmpty ? customTitle : nil,
+                            customTitle: nil,
                             status: selectedStatus
                         )
                         task.teamMemberIds = Array(selectedTeamMemberIds)
@@ -1954,6 +1808,228 @@ struct SimpleTaskFormSheet: View {
                     .foregroundColor(selectedTaskTypeId != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     .disabled(selectedTaskTypeId == nil)
                 }
+            }
+        }
+    }
+
+    // MARK: - Preview Card
+    private var previewCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("PREVIEW")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            HStack(spacing: 0) {
+                // Colored left border
+                Rectangle()
+                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? Color.white.opacity(0.25))
+                    .frame(width: 4)
+
+                HStack(alignment: .top, spacing: 12) {
+                    // Task content
+                    VStack(alignment: .leading, spacing: 6) {
+                        // Task type name
+                        Text(selectedTaskType?.display.uppercased() ?? "SELECT TASK TYPE")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(selectedTaskType != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+
+                        // Team avatars (if selected)
+                        if !selectedTeamMembers.isEmpty {
+                            HStack(spacing: -8) {
+                                ForEach(selectedTeamMembers.prefix(3), id: \.id) { member in
+                                    UserAvatar(teamMember: member, size: 24)
+                                }
+                                if selectedTeamMembers.count > 3 {
+                                    Text("+\(selectedTeamMembers.count - 3)")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                        .padding(.leading, 4)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    // Status badge
+                    Text(selectedStatus.displayName.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(selectedStatus.color.opacity(0.2))
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(selectedStatus.color, lineWidth: 1)
+                        )
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
+            .cornerRadius(5)
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+            )
+        }
+    }
+
+    // MARK: - Sections
+    private var taskTypeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("TASK TYPE")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            // Task type picker with colored left border
+            HStack(spacing: 0) {
+                // Colored left border (4pt width) - task type color
+                Rectangle()
+                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? Color.white.opacity(0.25))
+                    .frame(width: 4)
+
+                Menu {
+                    ForEach(allTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
+                        Button(action: {
+                            selectedTaskTypeId = taskType.id
+                        }) {
+                            HStack {
+                                Circle()
+                                    .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 12, height: 12)
+                                Text(taskType.display.uppercased())
+                                if selectedTaskTypeId == taskType.id {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        if let taskType = selectedTaskType {
+                            Text(taskType.display.uppercased())
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        } else {
+                            Text("Select Task Type")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                    .background(Color.clear)
+                }
+            }
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
+        }
+    }
+
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("STATUS")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Menu {
+                ForEach(TaskStatus.allCases, id: \.self) { status in
+                    Button(action: {
+                        selectedStatus = status
+                    }) {
+                        HStack {
+                            Text(status.displayName)
+                            if selectedStatus == status {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(selectedStatus.displayName.uppercased())
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    private var teamSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ASSIGN TEAM (OPTIONAL)")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            if !allTeamMembers.isEmpty {
+                VStack(spacing: 1) {
+                    ForEach(allTeamMembers, id: \.id) { member in
+                        Button(action: {
+                            if selectedTeamMemberIds.contains(member.id) {
+                                selectedTeamMemberIds.remove(member.id)
+                            } else {
+                                selectedTeamMemberIds.insert(member.id)
+                            }
+                        }) {
+                            HStack(spacing: 12) {
+                                UserAvatar(teamMember: member, size: 32)
+
+                                Text("\(member.firstName) \(member.lastName)")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                Spacer()
+
+                                if selectedTeamMemberIds.contains(member.id) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                } else {
+                                    Image(systemName: "circle")
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+                            }
+                            .padding(12)
+                            .background(
+                                selectedTeamMemberIds.contains(member.id)
+                                    ? OPSStyle.Colors.primaryAccent.opacity(0.1)
+                                    : Color.clear
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+            } else {
+                Text("No team members available")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding()
             }
         }
     }

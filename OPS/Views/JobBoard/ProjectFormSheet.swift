@@ -204,7 +204,7 @@ struct ProjectFormSheet: View {
                                     .padding(.vertical, 8)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
                                     )
                                 }
                             }
@@ -412,7 +412,7 @@ struct ProjectFormSheet: View {
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(
-                        focusedField == .client ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1),
+                        focusedField == .client ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
                         lineWidth: 1
                     )
             )
@@ -531,7 +531,7 @@ struct ProjectFormSheet: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
-                            focusedField == .status ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1),
+                            focusedField == .status ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
                             lineWidth: 1
                         )
                 )
@@ -676,7 +676,7 @@ struct ProjectFormSheet: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
-                                focusedField == .description ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1),
+                                focusedField == .description ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
                                 lineWidth: 1
                             )
                     )
@@ -688,40 +688,24 @@ struct ProjectFormSheet: View {
                     }
 
                 if isEditingDescription {
-                    HStack(spacing: 12) {
-                        Button(action: {
+                    HStack(spacing: 16) {
+                        Spacer()
+
+                        Button("CANCEL") {
                             tempDescription = ""
                             isEditingDescription = false
                             focusedField = nil
-                        }) {
-                            Text("Cancel")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 16)
-                                .background(OPSStyle.Colors.background)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                                )
                         }
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        Button(action: {
+                        Button("SAVE") {
                             description = tempDescription
                             isEditingDescription = false
                             focusedField = nil
-                        }) {
-                            Text("Save")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 16)
-                                .background(OPSStyle.Colors.primaryAccent)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }
             }
@@ -757,7 +741,7 @@ struct ProjectFormSheet: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
-                                focusedField == .notes ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1),
+                                focusedField == .notes ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
                                 lineWidth: 1
                             )
                     )
@@ -769,40 +753,24 @@ struct ProjectFormSheet: View {
                     }
 
                 if isEditingNotes {
-                    HStack(spacing: 12) {
-                        Button(action: {
+                    HStack(spacing: 16) {
+                        Spacer()
+
+                        Button("CANCEL") {
                             tempNotes = ""
                             isEditingNotes = false
                             focusedField = nil
-                        }) {
-                            Text("Cancel")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 16)
-                                .background(OPSStyle.Colors.background)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                                )
                         }
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        Button(action: {
+                        Button("SAVE") {
                             notes = tempNotes
                             isEditingNotes = false
                             focusedField = nil
-                        }) {
-                            Text("Save")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 16)
-                                .background(OPSStyle.Colors.primaryAccent)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }
             }
@@ -873,31 +841,47 @@ struct ProjectFormSheet: View {
 
             // Main tappable content area
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    // Task type name - uppercase, light gray
+                // All text inline with bullet separators
+                HStack(spacing: 6) {
+                    // Task type name
                     Text(taskType?.display.uppercased() ?? "UNKNOWN TASK")
                         .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    // Status and date row
-                    HStack(spacing: 12) {
-                        Text(task.status.displayName)
-                            .font(OPSStyle.Typography.smallCaption)
+                    // Bullet separator
+                    Text("•")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    // Status
+                    Text(task.status.displayName.uppercased())
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    // Date (if exists)
+                    if let startDate = startDate {
+                        Text("•")
+                            .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                        // Show date if project has dates
-                        if let startDate = startDate {
-                            HStack(spacing: 4) {
-                                Image(systemName: "calendar")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                Text(DateHelper.simpleDateString(from: startDate))
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                        }
+                        Text(DateHelper.simpleDateString(from: startDate).uppercased())
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+
+                    // Team count (if exists)
+                    if !taskTeamMembers.isEmpty {
+                        Text("•")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        Text("\(taskTeamMembers.count) \(taskTeamMembers.count == 1 ? "MEMBER" : "MEMBERS")")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                 }
+                .lineLimit(1)
+                .truncationMode(.tail)
 
                 Spacer()
 
@@ -905,13 +889,13 @@ struct ProjectFormSheet: View {
                 if !taskTeamMembers.isEmpty {
                     HStack(spacing: -8) {
                         ForEach(taskTeamMembers.prefix(3), id: \.id) { member in
-                            UserAvatar(teamMember: member, size: 24)
+                            UserAvatar(teamMember: member, size: 20)
                         }
                         if taskTeamMembers.count > 3 {
                             ZStack {
                                 Circle()
                                     .fill(OPSStyle.Colors.tertiaryText)
-                                    .frame(width: 24, height: 24)
+                                    .frame(width: 20, height: 20)
                                 Text("+\(taskTeamMembers.count - 3)")
                                     .font(.system(size: 8, weight: .semibold))
                                     .foregroundColor(.white)

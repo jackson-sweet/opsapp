@@ -122,12 +122,20 @@ struct TaskFormSheet: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
                             VStack(spacing: 16) {
-                                projectSection
-                                taskTypeSection
-                                teamSection
-                                datesSection
-                                notesSection
+                                projectField
+                                taskTypeField
+                                teamField
+                                datesField
+                                notesField
                             }
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 16)
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                            )
                         }
                     }
                     .padding()
@@ -306,7 +314,7 @@ struct TaskFormSheet: View {
         }
     }
 
-    private var projectSection: some View {
+    private var projectField: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("PROJECT")
                 .font(OPSStyle.Typography.captionBold)
@@ -390,7 +398,7 @@ struct TaskFormSheet: View {
         }
     }
 
-    private var taskTypeSection: some View {
+    private var taskTypeField: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Title and "NEW TYPE" button
             HStack {
@@ -468,11 +476,16 @@ struct TaskFormSheet: View {
         }
     }
 
-    private var teamSection: some View {
-        // Team member picker showing avatars
-        Button(action: {
-            showingTeamPicker = true
-        }) {
+    private var teamField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ASSIGN TEAM (OPTIONAL)")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            // Team member picker showing avatars
+            Button(action: {
+                showingTeamPicker = true
+            }) {
             HStack {
                 if selectedTeamMemberIds.isEmpty {
                     Text("Select team members")
@@ -514,9 +527,10 @@ struct TaskFormSheet: View {
                     .stroke(Color.white.opacity(0.25), lineWidth: 1)
             )
         }
+        }
     }
 
-    private var datesSection: some View {
+    private var datesField: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("DATES")
                 .font(OPSStyle.Typography.captionBold)
@@ -574,7 +588,7 @@ struct TaskFormSheet: View {
         }
     }
 
-    private var notesSection: some View {
+    private var notesField: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("NOTES")
                 .font(OPSStyle.Typography.captionBold)

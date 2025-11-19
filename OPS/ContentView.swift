@@ -151,12 +151,17 @@ struct PINGatedView: View {
                         }
                 }
 
-                // Sync restored alert overlay
-                SyncRestoredAlert(isPresented: Binding(
-                    get: { dataController.showSyncRestoredAlert },
-                    set: { dataController.showSyncRestoredAlert = $0 }
-                ))
-                .environmentObject(dataController)
+                // Sync restored notification
+                PushInMessage(
+                    isPresented: Binding(
+                        get: { dataController.showSyncRestoredAlert },
+                        set: { dataController.showSyncRestoredAlert = $0 }
+                    ),
+                    title: "SYNCING \(dataController.pendingSyncCount) ITEM\(dataController.pendingSyncCount == 1 ? "" : "S")...",
+                    subtitle: "Connection restored",
+                    type: .info,
+                    autoDismissAfter: 4.0
+                )
                 .zIndex(2)
             }
         }

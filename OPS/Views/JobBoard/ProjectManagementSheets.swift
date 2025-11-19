@@ -425,6 +425,7 @@ struct TaskPickerForTeamChange: View {
     let onTaskSelected: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
+    @State private var showingTaskForm = false
 
     var body: some View {
         ZStack {
@@ -502,10 +503,36 @@ struct TaskPickerForTeamChange: View {
                                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
                             )
                         }
+
+                        // Create New Task button
+                        Button(action: {
+                            showingTaskForm = true
+                        }) {
+                            HStack {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 18))
+                                Text("CREATE NEW TASK")
+                                    .font(OPSStyle.Typography.bodyBold)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                     .padding(20)
                 }
             }
+        }
+        .sheet(isPresented: $showingTaskForm) {
+            TaskFormSheet(project: project)
+                .environmentObject(dataController)
         }
     }
 }

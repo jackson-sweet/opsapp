@@ -108,22 +108,27 @@ struct PushInMessage: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
-                .padding(.top, geometry.safeAreaInsets.top)
+                .padding(.top, geometry.safeAreaInsets.top + 12)
                 .background(
                     Rectangle()
-                        .fill(OPSStyle.Colors.background)
+                        .fill(type == .info ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.background)
                         .overlay(
-                            Rectangle()
-                                .fill(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [
-                                            type.color.opacity(0.1),
-                                            Color.clear
-                                        ]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
+                            Group {
+                                // Only show gradient for non-info types
+                                if type != .info {
+                                    Rectangle()
+                                        .fill(
+                                            LinearGradient(
+                                                gradient: Gradient(colors: [
+                                                    type.color.opacity(0.1),
+                                                    Color.clear
+                                                ]),
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
+                                        )
+                                }
+                            }
                         )
                 )
                 .overlay(

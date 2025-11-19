@@ -264,10 +264,10 @@ struct ScheduleView: View {
         .overlay(
             PushInMessage(
                 isPresented: $showSyncMessage,
-                title: "Sync Complete",
-                subtitle: syncedProjectsCount == 0 ? "No new projects" : "\(syncedProjectsCount) new project\(syncedProjectsCount == 1 ? "" : "s") fetched",
-                type: .success,
-                autoDismissAfter: 3.0
+                title: "[ \(syncedProjectsCount) NEW PROJECT\(syncedProjectsCount == 1 ? "" : "S") LOADED ]",
+                subtitle: nil,
+                type: .info,
+                autoDismissAfter: 4.0
             )
             .ignoresSafeArea(edges: .top)
             .zIndex(1000)

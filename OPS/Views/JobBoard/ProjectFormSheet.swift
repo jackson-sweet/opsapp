@@ -189,31 +189,19 @@ struct ProjectFormSheet: View {
                         // COPY FROM BUTTON
                         if mode.isCreate {
                             Button(action: { showingCopyFromProject = true }) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: 6) {
                                     Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 16))
-                                    Text("COPY FROM PROJECT")
-                                        .font(OPSStyle.Typography.bodyBold)
+                                        .font(.caption)
+                                    Text("Copy from project")
+                                        .font(OPSStyle.Typography.caption)
                                 }
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                                )
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
+                            .padding(.bottom, 12)
                         }
 
                         // MANDATORY FIELDS (always visible)
                         mandatoryFieldsSection
-
-                        // Visual divider
-                        Divider()
-                            .background(Color.white.opacity(0.1))
-                            .padding(.vertical, 8)
 
                         // OPTIONAL SECTIONS
                         optionalSectionsArea
@@ -562,11 +550,6 @@ struct ProjectFormSheet: View {
                         isTasksExpanded = true
                     }
                 }),
-                (title: "DATES", icon: "calendar", isExpanded: isDatesExpanded, action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        isDatesExpanded = true
-                    }
-                }),
                 (title: "PHOTOS", icon: "photo", isExpanded: isPhotosExpanded, action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         isPhotosExpanded = true
@@ -589,10 +572,6 @@ struct ProjectFormSheet: View {
 
             if isTasksExpanded {
                 tasksSection
-            }
-
-            if isDatesExpanded {
-                datesSection
             }
 
             if isPhotosExpanded {
@@ -635,22 +614,17 @@ struct ProjectFormSheet: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
-                TextField("Enter project address", text: $address)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .autocorrectionDisabled(true)
-                    .textInputAutocapitalization(.words)
-                    .focused($focusedField, equals: .address)
-                    .padding()
-                    .background(Color.clear)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(
-                                focusedField == .address ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1),
-                                lineWidth: 1
-                            )
-                    )
+                AddressAutocompleteField(
+                    address: $address,
+                    placeholder: "Enter project address",
+                    onAddressSelected: { fullAddress, coordinates in
+                        address = fullAddress
+                        if let coords = coordinates {
+                            latitude = coords.latitude
+                            longitude = coords.longitude
+                        }
+                    }
+                )
             }
         }
     }
@@ -876,14 +850,15 @@ struct ProjectFormSheet: View {
                 .fill(taskColor)
                 .frame(width: 4)
 
+            // Main tappable content area
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    // Task title
-                    Text(task.customTitle ?? taskType?.display ?? "Unknown Task")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    // Task type name - uppercase, light gray
+                    Text(taskType?.display.uppercased() ?? "UNKNOWN TASK")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    // Status and metadata row
+                    // Status and date row
                     HStack(spacing: 12) {
                         Text(task.status.displayName)
                             .font(OPSStyle.Typography.smallCaption)
@@ -900,134 +875,61 @@ struct ProjectFormSheet: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                         }
-
-                        // Show team avatars if task has team members
-                        if !taskTeamMembers.isEmpty {
-                            HStack(spacing: -8) {
-                                ForEach(taskTeamMembers.prefix(3), id: \.id) { member in
-                                    Circle()
-                                        .fill(OPSStyle.Colors.primaryAccent)
-                                        .frame(width: 20, height: 20)
-                                        .overlay(
-                                            Text(member.initials)
-                                                .font(.system(size: 8, weight: .semibold))
-                                                .foregroundColor(.white)
-                                        )
-                                        .overlay(
-                                            Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: 1)
-                                        )
-                                }
-                                if taskTeamMembers.count > 3 {
-                                    Circle()
-                                        .fill(OPSStyle.Colors.tertiaryText)
-                                        .frame(width: 20, height: 20)
-                                        .overlay(
-                                            Text("+\(taskTeamMembers.count - 3)")
-                                                .font(.system(size: 8, weight: .semibold))
-                                                .foregroundColor(.white)
-                                        )
-                                        .overlay(
-                                            Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: 1)
-                                        )
-                                }
-                            }
-                        }
                     }
                 }
 
                 Spacer()
 
-                // Edit button
-                Button(action: {
-                    editingTaskIndex = index
-                    showingTaskForm = true
-                }) {
-                    Image(systemName: "pencil")
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .font(.system(size: 16))
+                // Team member avatars on the right using UserAvatar
+                if !taskTeamMembers.isEmpty {
+                    HStack(spacing: -8) {
+                        ForEach(taskTeamMembers.prefix(3), id: \.id) { member in
+                            UserAvatar(user: member, size: 24)
+                        }
+                        if taskTeamMembers.count > 3 {
+                            ZStack {
+                                Circle()
+                                    .fill(OPSStyle.Colors.tertiaryText)
+                                    .frame(width: 24, height: 24)
+                                Text("+\(taskTeamMembers.count - 3)")
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                            .overlay(
+                                Circle()
+                                    .stroke(OPSStyle.Colors.background, lineWidth: 1)
+                            )
+                        }
+                    }
                 }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 8)
-
-                // Delete button
-                Button(action: {
-                    localTasks.remove(at: index)
-                    #if !targetEnvironment(simulator)
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    #endif
-                }) {
-                    Image(systemName: "trash")
-                        .foregroundColor(OPSStyle.Colors.errorStatus)
-                        .font(.system(size: 16))
-                }
-                .buttonStyle(PlainButtonStyle())
             }
             .padding()
-        }
-        .background(OPSStyle.Colors.background)
-        .overlay(
-            RoundedRectangle(cornerRadius: 0)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        )
-    }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                editingTaskIndex = index
+                showingTaskForm = true
+            }
 
-    private var datesSection: some View {
-        ExpandableSection(
-            title: "DATES",
-            icon: "calendar",
-            isExpanded: $isDatesExpanded,
-            onDelete: {
-                startDate = nil
-                endDate = nil
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    isDatesExpanded = false
-                }
+            // Delete button (separate, on the right)
+            Button(action: {
+                localTasks.remove(at: index)
                 #if !targetEnvironment(simulator)
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
                 #endif
-            }
-        ) {
-            Button(action: {
-                if startDate == nil {
-                    startDate = Date()
-                    endDate = Date().addingTimeInterval(86400 * 7)
-                }
-                showingScheduler = true
             }) {
-                HStack {
-                    Image(systemName: "calendar")
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    if let startDate = startDate, let endDate = endDate {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(formatDate(startDate))
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                            Text("to \(formatDate(endDate))")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                    } else {
-                        Text("Tap to Schedule")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                Image(systemName: "trash")
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                    .font(.system(size: 16))
+                    .padding(.trailing, 16)
             }
+            .buttonStyle(PlainButtonStyle())
         }
+        .background(Color.clear)
+        .overlay(
+            RoundedRectangle(cornerRadius: 0)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
     }
 
     private var photosSection: some View {
@@ -1432,14 +1334,6 @@ struct ProjectFormSheet: View {
             print("[PROJECT_CREATE] ✅ Project saved locally")
         }
 
-        // Create tasks from localTasks array
-        if !localTasks.isEmpty {
-            print("[PROJECT_CREATE] Creating \(localTasks.count) task(s)")
-            for localTask in localTasks {
-                await createTask(for: project, localTask: localTask)
-            }
-        }
-
         var savedOffline = false
 
         do {
@@ -1449,12 +1343,21 @@ struct ProjectFormSheet: View {
             }
             print("[PROJECT_CREATE] ✅ Project created in Bubble with ID: \(bubbleProjectId)")
 
+            // Update project ID BEFORE creating tasks
             project.id = bubbleProjectId
             project.needsSync = false
             project.lastSyncedAt = Date()
 
             await MainActor.run {
                 try? modelContext.save()
+            }
+
+            // Create tasks AFTER project is synced and has Bubble ID
+            if !localTasks.isEmpty {
+                print("[PROJECT_CREATE] Creating \(localTasks.count) task(s) with project ID: \(bubbleProjectId)")
+                for localTask in localTasks {
+                    await createTask(for: project, localTask: localTask)
+                }
             }
 
             // Continue with linking and other operations in background
@@ -1490,9 +1393,25 @@ struct ProjectFormSheet: View {
         } catch is CancellationError {
             savedOffline = true
             print("[PROJECT_CREATE] ⏱️ Network timeout - project saved offline")
+
+            // Create tasks offline with local project ID
+            if !localTasks.isEmpty {
+                print("[PROJECT_CREATE] Creating \(localTasks.count) task(s) offline with local project ID")
+                for localTask in localTasks {
+                    await createTask(for: project, localTask: localTask)
+                }
+            }
         } catch let error as URLError {
             savedOffline = true
             print("[PROJECT_CREATE] ❌ Network error - project saved offline: \(error)")
+
+            // Create tasks offline with local project ID
+            if !localTasks.isEmpty {
+                print("[PROJECT_CREATE] Creating \(localTasks.count) task(s) offline with local project ID")
+                for localTask in localTasks {
+                    await createTask(for: project, localTask: localTask)
+                }
+            }
         } catch let error as APIError {
             print("[PROJECT_CREATE] ❌ API error during project creation: \(error)")
             await MainActor.run {
@@ -1783,7 +1702,7 @@ struct ExpandableSection<Content: View>: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.secondaryText, lineWidth: 1)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
             )
         }
     }

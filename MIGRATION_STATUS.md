@@ -1,3 +1,14 @@
+# Migration Status - Task-Only Scheduling Migration
+
+## 🚀 TASK-ONLY SCHEDULING MIGRATION (November 18, 2025)
+
+### Status: **IN PROGRESS** - Awaiting Final Build Verification
+
+### Overview:
+Complete removal of dual-scheduling system (project-level vs task-level calendar events) to unified task-only scheduling architecture.
+
+---
+
 # Sync Migration Status - CentralizedSyncManager
 
 ## ✅ COMPLETED WORK
@@ -177,7 +188,47 @@ case admin: return .admin            // "Admin" from Bubble
 
 **PROJECT NOW BUILDS SUCCESSFULLY** ✅
 
-## 📋 NEXT STEPS
+## 📋 TASK-ONLY SCHEDULING MIGRATION - COMPLETED PHASES
+
+### Phase 1: Data Models ✅
+- ✅ CalendarEvent.swift - Removed CalendarEventType enum, type, active, and all dual-scheduling properties
+- ✅ Project.swift - Removed eventType, primaryCalendarEvent, scheduling mode properties
+- ✅ Project.swift - Added computedStartDate and computedEndDate as computed properties from tasks
+
+### Phase 2: DTOs ✅
+- ✅ CalendarEventDTO.swift - Removed type and active fields
+- ✅ ProjectDTO.swift - Removed eventType field
+
+### Phase 3: Sync Manager ✅
+- ✅ CentralizedSyncManager.swift - Removed eventType assignment, simplified CalendarEvent creation
+- ✅ CentralizedSyncManager.swift - Removed migrateProjectEventColors() function
+
+### Phase 4: API & UI ✅
+- ✅ CalendarEventEndpoints.swift - Simplified to task-only linking
+- ✅ ProjectEndpoints.swift - Removed eventType syncing
+- ✅ ProjectDetailsView.swift - Removed scheduling mode badge and switching UI
+- ✅ TaskFormSheet.swift - Removed eventType conversion logic
+- ✅ ProjectFormSheet.swift - Removed createCalendarEventForProject
+- ✅ DataController.swift - Replaced SortDescriptor(\.startDate) with in-memory sorting comments
+
+### Phase 5: Migration Code ✅
+- ✅ OPSApp.swift - Added deleteProjectLevelCalendarEvents() with UserDefaults flag
+
+### Compilation Error Fixes ✅
+- ✅ TaskListView.swift - Removed usesTaskBasedScheduling checks, fixed CalendarEventDTO init
+- ✅ ProjectTeamView.swift - Removed usesTaskBasedScheduling check
+- ✅ CalendarEventsDebugView.swift - Removed CalendarEvent.fromProject() call
+- ✅ ProjectDetailsCard.swift - Removed event.type checks
+- ✅ ProjectSearchFilterView.swift - Removed scheduling type filter code
+- ✅ ProjectManagementSheets.swift - Removed updateProjectEventTypeCache calls
+- ✅ RelinkCalendarEventsView.swift - Fixed for task-only events
+
+### Current Status: ⏳ AWAITING BUILD VERIFICATION
+Running clean build to verify all compilation errors resolved...
+
+---
+
+## 📋 NEXT STEPS (Original Sync Migration)
 
 1. ✅ **Fix Compilation Errors** - COMPLETED
    - All DTO property access fixed

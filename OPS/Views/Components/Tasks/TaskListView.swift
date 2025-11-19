@@ -68,11 +68,8 @@ struct TaskListView: View {
                 // ADD button
                 if canModify {
                     Button(action: {
-                        if !project.usesTaskBasedScheduling {
-                            showingSchedulingModeAlert = true
-                        } else {
-                            showingTaskForm = true
-                        }
+                        // Task-only scheduling migration: All projects use task-based scheduling now
+                        showingTaskForm = true
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
@@ -96,11 +93,8 @@ struct TaskListView: View {
             if project.tasks.isEmpty {
                 // Empty state with create button
                 Button(action: {
-                    if !project.usesTaskBasedScheduling {
-                        showingSchedulingModeAlert = true
-                    } else {
-                        showingTaskForm = true
-                    }
+                    // Task-only scheduling migration: All projects use task-based scheduling now
+                    showingTaskForm = true
                 }) {
                     VStack(spacing: 12) {
                         Image(systemName: "hammer.circle")
@@ -356,24 +350,18 @@ struct TaskRow: View {
                     try? dataController.modelContext?.save()
                     print("[RESCHEDULE_TASK] ✅ Task saved to SwiftData")
 
-                    // Update project dates if using task-based scheduling
+                    // Update project dates (computed from tasks)
                     if let project = task.project {
                         print("[RESCHEDULE_TASK] 📅 Updating project dates after reschedule...")
                         print("[RESCHEDULE_TASK] Project: \(project.title)")
-                        print("[RESCHEDULE_TASK] Uses task-based scheduling: \(project.usesTaskBasedScheduling)")
 
                         Task {
-                            await MainActor.run {
-                                project.updateDatesFromTasks()
-                                try? dataController.modelContext?.save()
-                            }
-
-                            // Sync updated dates to Bubble
+                            // Sync computed dates to Bubble
                             print("[RESCHEDULE_TASK] 🔄 Syncing updated project dates to Bubble...")
                             try? await dataController.apiService.updateProjectDates(
                                 projectId: project.id,
-                                startDate: project.startDate,
-                                endDate: project.endDate
+                                startDate: project.computedStartDate,
+                                endDate: project.computedEndDate
                             )
                             print("[RESCHEDULE_TASK] ✅ Project dates update complete")
                         }
@@ -431,29 +419,18 @@ struct TaskRow: View {
                 try await dataController.apiService.deleteTask(id: taskId)
                 print("[DELETE_TASK] ✅ Task deleted from Bubble")
 
-                // Update project dates if using task-based scheduling
+                // Update project dates (computed from tasks)
                 if let project = project {
                     print("[DELETE_TASK] 📅 Updating project dates after deletion...")
                     print("[DELETE_TASK] Project: \(project.title)")
-                    print("[DELETE_TASK] Uses task-based scheduling: \(project.usesTaskBasedScheduling)")
                     print("[DELETE_TASK] Remaining tasks: \(project.tasks.count)")
 
-                    await MainActor.run {
-                        // Wrap in transaction with animations disabled to prevent parent sheet from dismissing
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) {
-                            project.updateDatesFromTasks()
-                            try? dataController.modelContext?.save()
-                        }
-                    }
-
-                    // Sync updated dates to Bubble
+                    // Sync computed dates to Bubble
                     print("[DELETE_TASK] 🔄 Syncing updated project dates to Bubble...")
                     try await dataController.apiService.updateProjectDates(
                         projectId: project.id,
-                        startDate: project.startDate,
-                        endDate: project.endDate
+                        startDate: project.computedStartDate,
+                        endDate: project.computedEndDate
                     )
                     print("[DELETE_TASK] ✅ Project dates update complete")
                 } else {
@@ -513,8 +490,6 @@ struct TaskRow: View {
             startDate: dateFormatter.string(from: startDate),
             teamMembers: task.getTeamMemberIds(),
             title: task.taskType?.display ?? "Task",
-            type: "Task",
-            active: true,
             createdDate: nil,
             modifiedDate: nil,
             deletedAt: nil

@@ -30,34 +30,22 @@ struct CalendarEventCard: View {
     }
     
     // Get the associated project for client and address info
+    // Task-only scheduling migration: All events are task events
     private var associatedProject: Project? {
-        // For task events, get the task's project
-        if event.type == .task, let task = event.task {
+        if let task = event.task {
             return task.project
         }
-        // For project events, use the direct project
         return event.project
     }
     
     // Get the color for the status bar and task type
+    // Task-only scheduling migration: Use task color
     private var displayColor: Color {
-        // For project events, use the company's defaultProjectColor
-        if event.type == .project {
-            if let project = associatedProject,
-               let company = dataController.getCompany(id: project.companyId),
-               let defaultColor = Color(hex: company.defaultProjectColor) {
-                return defaultColor
-            }
+        if let task = event.task,
+           let color = Color(hex: task.effectiveColor) {
+            return color
         }
-        
-        // For task events, use the task color or event color
-        if event.type == .task {
-            if let task = event.task,
-               let color = Color(hex: task.effectiveColor) {
-                return color
-            }
-        }
-        
+
         // Fallback to event color
         return event.swiftUIColor
     }
@@ -82,30 +70,18 @@ struct CalendarEventCard: View {
         return address
     }
     
-    // Get the display text for task type or "PROJECT"
+    // Get the display text for task type
+    // Task-only scheduling migration: All events show task type
     private var typeDisplay: String {
-        if event.type == .task, let task = event.task, let taskType = task.taskType {
+        if let task = event.task, let taskType = task.taskType {
             return taskType.display.uppercased()
-        } else if event.type == .project {
-            // Check if this is a task-based project
-            if let project = associatedProject, project.usesTaskBasedScheduling {
-                let taskCount = project.tasks.count
-                return taskCount == 1 ? "1 TASK" : "\(taskCount) TASKS"
-            }
-            return "PROJECT"
         }
         return ""
     }
 
-    // Get the badge color based on project type
+    // Get the badge color
+    // Task-only scheduling migration: Use display color for all events
     private var badgeColor: Color {
-        if event.type == .project,
-           let project = associatedProject,
-           project.usesTaskBasedScheduling {
-            // Use secondary accent for task-based projects
-            return OPSStyle.Colors.secondaryAccent
-        }
-        // Use display color for regular projects and tasks
         return displayColor
     }
     
@@ -210,8 +186,8 @@ struct CalendarEventCard: View {
             .shadow(color: Color.black, radius: 2, x: 0, y: 1)
 
             // Completed overlay - grey out and show badge
-            if (event.type == .task && event.task?.status == .completed) ||
-               (event.type == .project && associatedProject?.status == .completed) {
+            // Task-only scheduling migration: Only check task completion
+            if event.task?.status == .completed {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
                     Color.black.opacity(0.5)
@@ -253,7 +229,8 @@ struct CalendarEventCard: View {
         .padding(.vertical, 4)
         .padding(.horizontal)
         .sheet(isPresented: $showingReschedule) {
-            if event.type == .task, let task = event.task {
+            // Task-only scheduling migration: All events are task events
+            if let task = event.task {
                 CalendarSchedulerSheet(
                     isPresented: $showingReschedule,
                     itemType: .task(task),
@@ -264,25 +241,12 @@ struct CalendarEventCard: View {
                     }
                 )
                 .environmentObject(dataController)
-            } else if event.type == .project, let project = associatedProject {
-                CalendarSchedulerSheet(
-                    isPresented: $showingReschedule,
-                    itemType: .project(project),
-                    currentStartDate: event.startDate,
-                    currentEndDate: event.endDate,
-                    onScheduleUpdate: { newStart, newEnd in
-                        updateProjectSchedule(project: project, startDate: newStart, endDate: newEnd)
-                    }
-                )
-                .environmentObject(dataController)
             }
         }
         .sheet(isPresented: $showingStatusPicker) {
-            if event.type == .task, let task = event.task {
+            // Task-only scheduling migration: All events are task events
+            if let task = event.task {
                 TaskStatusChangeSheet(task: task)
-                    .environmentObject(dataController)
-            } else if event.type == .project, let project = associatedProject {
-                ProjectStatusChangeSheet(project: project)
                     .environmentObject(dataController)
             }
         }

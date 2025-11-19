@@ -144,13 +144,9 @@ struct ProjectTeamView: View {
 
             Spacer()
 
-            if !activeProject.usesTaskBasedScheduling {
-                Button("ADD") {
-                    showingTeamPicker = true
-                }
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-            }
+            // Task-only scheduling migration: All projects use task-based scheduling now
+            // Team members are assigned at the task level, not project level
+            // Button removed - use TaskTeamChangeSheet to assign team members to individual tasks
         }
         .padding(.vertical, 8)
     }

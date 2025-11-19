@@ -685,19 +685,13 @@ struct DirectionalDragCard: View {
                 }
             }
 
-            if project.usesTaskBasedScheduling {
-                if !project.tasks.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checklist")
-                            .font(.system(size: 10))
-                        Text("\(project.tasks.count)")
-                            .font(OPSStyle.Typography.smallCaption)
-                    }
-                }
-            } else {
+            // Task-only scheduling migration: All projects use tasks
+            if !project.tasks.isEmpty {
                 HStack(spacing: 4) {
-                    Image(systemName: "calendar.badge.clock")
+                    Image(systemName: "checklist")
                         .font(.system(size: 10))
+                    Text("\(project.tasks.count)")
+                        .font(OPSStyle.Typography.smallCaption)
                 }
             }
 
@@ -821,19 +815,13 @@ struct DraggingCardOverlay: View {
                             }
                         }
 
-                        if project.usesTaskBasedScheduling {
-                            if !project.tasks.isEmpty {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "checklist")
-                                        .font(.system(size: 10))
-                                    Text("\(project.tasks.count)")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                }
-                            }
-                        } else {
+                        // Task-only scheduling migration: All projects use tasks
+                        if !project.tasks.isEmpty {
                             HStack(spacing: 4) {
-                                Image(systemName: "calendar.badge.clock")
+                                Image(systemName: "checklist")
                                     .font(.system(size: 10))
+                                Text("\(project.tasks.count)")
+                                    .font(OPSStyle.Typography.smallCaption)
                             }
                         }
 

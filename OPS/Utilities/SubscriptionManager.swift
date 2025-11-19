@@ -181,36 +181,71 @@ class SubscriptionManager: ObservableObject {
     }
     
     /// Determine if user should be locked out
+    /// Implements comprehensive 5-layer validation to prevent unauthorized access
     private func shouldLockoutUser() -> Bool {
-        
-        // Check subscription status
-        switch subscriptionStatus {
-        case .expired, .cancelled:
-            print("[AUTH] Access denied - subscription \(subscriptionStatus.rawValue)")
+
+        // LAYER 1: Check for nil/invalid company data
+        guard let company = dataController?.getCurrentUserCompany() else {
+            print("[AUTH] ❌ LAYER 1 FAILED: No company found for user")
             return true
+        }
+
+        // LAYER 2: Check for nil subscription status
+        guard let companySubscriptionStatus = company.subscriptionStatusEnum else {
+            print("[AUTH] ❌ LAYER 2 FAILED: Company has nil subscription status")
+            return true
+        }
+
+        // LAYER 3: Check for invalid maxSeats (must be > 0)
+        guard company.maxSeats > 0 else {
+            print("[AUTH] ❌ LAYER 3 FAILED: Company has invalid maxSeats: \(company.maxSeats)")
+            return true
+        }
+
+        // LAYER 4: Check if seated employees exceed maxSeats
+        let seatedCount = company.getSeatedEmployeeIds().count
+        if seatedCount > company.maxSeats {
+            print("[AUTH] ❌ LAYER 4 FAILED: Seated employees (\(seatedCount)) exceed maxSeats (\(company.maxSeats))")
+            return true
+        }
+
+        // LAYER 5: Check subscription status and validate trial date if needed
+        switch companySubscriptionStatus {
+        case .expired, .cancelled:
+            print("[AUTH] ❌ Access denied - subscription \(companySubscriptionStatus.rawValue)")
+            return true
+
         case .trial:
+            // For trial status, validate trial end date exists
+            if trialDaysRemaining == nil {
+                print("[AUTH] ❌ LAYER 5 FAILED: Trial status but no trial end date")
+                return true
+            }
+
             // Check if trial has expired
             if let daysRemaining = trialDaysRemaining, daysRemaining <= 0 {
-                print("[AUTH] Access denied - trial expired")
+                print("[AUTH] ❌ Access denied - trial expired")
                 return true
             } else {
-                print("[AUTH] Access granted - trial active (\(trialDaysRemaining ?? 0) days left)")
+                print("[AUTH] ✅ Access granted - trial active (\(trialDaysRemaining ?? 0) days left)")
             }
+
         case .active, .grace:
             // Check if user has a seat
             if !userHasSeat {
                 // Show whether user is admin when denying access for no seat
                 if isUserAdmin {
-                    print("[AUTH] Access denied - admin user has no seat")
+                    print("[AUTH] ❌ Access denied - admin user has no seat")
                 } else {
-                    print("[AUTH] Access denied - no seat available")
+                    print("[AUTH] ❌ Access denied - no seat available")
                 }
                 return true
             } else {
-                print("[AUTH] Access granted - \(subscriptionStatus.rawValue) subscription with seat")
+                print("[AUTH] ✅ Access granted - \(companySubscriptionStatus.rawValue) subscription with seat")
             }
         }
-        
+
+        print("[AUTH] ✅ All 5 validation layers passed")
         return false
     }
     

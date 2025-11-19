@@ -19,191 +19,214 @@ struct TaskTestView: View {
     @State private var testCalendarEvents: [CalendarEvent] = []
     @State private var statusMessage = "Ready to test"
     @State private var isSyncing = false
-    
+
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Test Status")
+                .font(.headline)
+            Text(statusMessage)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+    }
+
+    private var testActionsSection: some View {
+        VStack(spacing: 12) {
+            Button(action: createTestData) {
+                Label("Create Test Data", systemImage: "plus.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button(action: testTaskStatusPropagation) {
+                Label("Test Status Propagation", systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(testProject == nil)
+
+            Button(action: testCalendarEventGeneration) {
+                Label("Generate Calendar Events", systemImage: "calendar")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(testTasks.isEmpty)
+
+            Button(action: cleanupTestData) {
+                Label("Cleanup Test Data", systemImage: "trash")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .foregroundColor(.red)
+            .disabled(testProject == nil)
+
+            Divider()
+                .padding(.vertical, 8)
+
+            // API Sync Testing
+            Text("API Sync Testing")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+           
+            Button(action: testTaskTypeSync) {
+                Label("Test TaskType Sync", systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isSyncing)
+
+            Button(action: testTaskSync) {
+                Label("Test Task Sync", systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isSyncing || testProject == nil)
+        }
+        .padding(.horizontal)
+    }
+
+    @ViewBuilder
+    private var testDataSection: some View {
+        if let project = testProject {
+            projectDataSection(project)
+        }
+
+        if !testTaskTypes.isEmpty {
+            taskTypesDataSection
+        }
+
+        if !testTasks.isEmpty {
+            tasksDataSection
+        }
+
+        if !testCalendarEvents.isEmpty {
+            calendarEventsDataSection
+        }
+    }
+
+    private func projectDataSection(_ project: Project) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Test Project")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Title: \(project.title)")
+                Text("Status: \(project.status.displayName)")
+                Text("Computed Status: \(project.computedStatus.displayName)")
+                Text("Has Tasks: \(project.hasTasks ? "Yes" : "No")")
+                Text("Task Count: \(project.tasks.count)")
+            }
+            .font(.caption)
+            .padding()
+            .background(Color.blue.opacity(0.1))
+            .cornerRadius(8)
+        }
+        .padding(.horizontal)
+    }
+
+    private var taskTypesDataSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Task Types")
+                .font(.headline)
+
+            ForEach(testTaskTypes, id: \.id) { taskType in
+                HStack {
+                    if let icon = taskType.icon {
+                        Image(systemName: icon)
+                            .foregroundColor(Color(hex: taskType.color))
+                    }
+                    Text(taskType.display)
+                    Spacer()
+                    Circle()
+                        .fill(Color(hex: taskType.color) ?? .gray)
+                        .frame(width: 20, height: 20)
+                }
+                .padding(8)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(6)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var tasksDataSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Tasks")
+                .font(.headline)
+
+            ForEach(testTasks, id: \.id) { task in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(task.displayTitle)
+                            .font(.caption)
+                            .bold()
+                        Spacer()
+                        Text(task.status.displayName)
+                            .font(.caption2)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(statusColor(for: task.status))
+                            .foregroundColor(.white)
+                            .cornerRadius(4)
+                    }
+                    Text("Color: \(task.effectiveColor)")
+                        .font(.caption2)
+                    Text("Order: \(task.displayOrder)")
+                        .font(.caption2)
+                }
+                .padding(8)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(6)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var calendarEventsDataSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Calendar Events")
+                .font(.headline)
+
+            ForEach(testCalendarEvents, id: \.id) { event in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        if let icon = event.displayIcon {
+                            Image(systemName: icon)
+                                .foregroundColor(event.swiftUIColor)
+                        }
+                        Text(event.title)
+                            .font(.caption)
+                            .bold()
+                        Spacer()
+                        Text(event.task?.taskType?.display ?? "Task")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Text("Dates: \(formatDate(event.startDate)) - \(formatDate(event.endDate))")
+                        .font(.caption2)
+                    Text("Multi-day: \(event.isMultiDay ? "Yes" : "No")")
+                        .font(.caption2)
+                    Text("Color: \(event.color)")
+                        .font(.caption2)
+                }
+                .padding(8)
+                .background(event.swiftUIColor.opacity(0.1))
+                .cornerRadius(6)
+            }
+        }
+        .padding(.horizontal)
+    }
+
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Status section
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Test Status")
-                            .font(.headline)
-                        Text(statusMessage)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
-                    
-                    // Test Actions
-                    VStack(spacing: 12) {
-                        Button(action: createTestData) {
-                            Label("Create Test Data", systemImage: "plus.circle.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        
-                        Button(action: testTaskStatusPropagation) {
-                            Label("Test Status Propagation", systemImage: "arrow.triangle.2.circlepath")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(testProject == nil)
-                        
-                        Button(action: testCalendarEventGeneration) {
-                            Label("Generate Calendar Events", systemImage: "calendar")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(testTasks.isEmpty)
-                        
-                        Button(action: cleanupTestData) {
-                            Label("Cleanup Test Data", systemImage: "trash")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .foregroundColor(.red)
-                        .disabled(testProject == nil)
-                        
-                        Divider()
-                            .padding(.vertical, 8)
-                        
-                        // API Sync Testing
-                        Text("API Sync Testing")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        Button(action: testTaskTypeSync) {
-                            Label("Test TaskType Sync", systemImage: "arrow.triangle.2.circlepath")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isSyncing)
-                        
-                        Button(action: testTaskSync) {
-                            Label("Test Task Sync", systemImage: "arrow.triangle.2.circlepath")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(isSyncing || testProject == nil)
-                    }
-                    .padding(.horizontal)
-                    
-                    // Display test data
-                    if let project = testProject {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Test Project")
-                                .font(.headline)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Title: \(project.title)")
-                                Text("Status: \(project.status.displayName)")
-                                Text("Computed Status: \(project.computedStatus.displayName)")
-                                Text("Has Tasks: \(project.hasTasks ? "Yes" : "No")")
-                                Text("Task Count: \(project.tasks.count)")
-                            }
-                            .font(.caption)
-                            .padding()
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
-                        }
-                        .padding(.horizontal)
-                    }
-                    
-                    if !testTaskTypes.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Task Types")
-                                .font(.headline)
-                            
-                            ForEach(testTaskTypes, id: \.id) { taskType in
-                                HStack {
-                                    if let icon = taskType.icon {
-                                        Image(systemName: icon)
-                                            .foregroundColor(Color(hex: taskType.color))
-                                    }
-                                    Text(taskType.display)
-                                    Spacer()
-                                    Circle()
-                                        .fill(Color(hex: taskType.color) ?? .gray)
-                                        .frame(width: 20, height: 20)
-                                }
-                                .padding(8)
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(6)
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                    
-                    if !testTasks.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Tasks")
-                                .font(.headline)
-                            
-                            ForEach(testTasks, id: \.id) { task in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(task.displayTitle)
-                                            .font(.caption)
-                                            .bold()
-                                        Spacer()
-                                        Text(task.status.displayName)
-                                            .font(.caption2)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 2)
-                                            .background(statusColor(for: task.status))
-                                            .foregroundColor(.white)
-                                            .cornerRadius(4)
-                                    }
-                                    Text("Color: \(task.effectiveColor)")
-                                        .font(.caption2)
-                                    Text("Order: \(task.displayOrder)")
-                                        .font(.caption2)
-                                }
-                                .padding(8)
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(6)
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                    
-                    if !testCalendarEvents.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Calendar Events")
-                                .font(.headline)
-                            
-                            ForEach(testCalendarEvents, id: \.id) { event in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        if let icon = event.displayIcon {
-                                            Image(systemName: icon)
-                                                .foregroundColor(event.swiftUIColor)
-                                        }
-                                        Text(event.title)
-                                            .font(.caption)
-                                            .bold()
-                                        Spacer()
-                                        Text(event.type.rawValue)
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Text("Dates: \(formatDate(event.startDate)) - \(formatDate(event.endDate))")
-                                        .font(.caption2)
-                                    Text("Multi-day: \(event.isMultiDay ? "Yes" : "No")")
-                                        .font(.caption2)
-                                    Text("Color: \(event.color)")
-                                        .font(.caption2)
-                                }
-                                .padding(8)
-                                .background(event.swiftUIColor.opacity(0.1))
-                                .cornerRadius(6)
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                    
+                    statusSection
+                    testActionsSection
+                    testDataSection
                     Spacer(minLength: 50)
                 }
                 .padding(.vertical)
@@ -384,13 +407,8 @@ struct TaskTestView: View {
             currentDate = calendar.date(byAdding: .day, value: 3, to: currentDate) ?? currentDate
         }
         
-        // Generate project-level event if no tasks
-        if testTasks.isEmpty && project.startDate != nil {
-            if let projectEvent = CalendarEvent.fromProject(project, companyDefaultColor: "#59779F") {
-                modelContext.insert(projectEvent)
-                testCalendarEvents.append(projectEvent)
-            }
-        }
+        // Task-only scheduling migration: Project-level events no longer exist
+        // Projects without tasks don't have calendar events
         
         do {
             try modelContext.save()

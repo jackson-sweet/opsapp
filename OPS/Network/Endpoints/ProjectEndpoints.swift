@@ -318,13 +318,6 @@ extension APIService {
             print("[CREATE_PROJECT] No team members")
         }
 
-        if let eventType = project.eventType {
-            // Bubble expects capitalized values: "Task" or "Project"
-            let bubbleEventType = eventType.rawValue.capitalized
-            projectData["eventType"] = bubbleEventType
-            print("[CREATE_PROJECT] Event type: \(bubbleEventType)")
-        }
-
         let bodyData = try JSONSerialization.data(withJSONObject: projectData)
 
         if let jsonString = String(data: bodyData, encoding: .utf8) {

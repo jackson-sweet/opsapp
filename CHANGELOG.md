@@ -8,7 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### In Development
-- No unreleased changes at this time
+
+#### November 18, 2025 - Project Form Sheet Refinements
+- **Job Board Floating Action Button**: Removed job board-specific FAB, consolidated all creation actions into global FAB
+- **Search Bar Gradient**: Added gradient background to UniversalSearchBar (black to clear) for better depth
+- **Address Field Truncation**: Fixed address field overlap on job cards using truncationMode instead of fixedSize
+- **Form Spacing**: Reduced bottom padding from 100pt to 24pt for better use of screen space
+- **Section Title Styling**: Updated nav bar titles to use OPSStyle.Typography.bodyBold
+- **Mandatory Field Labels**: Removed asterisks from required fields (CLIENT, PROJECT NAME, JOB STATUS)
+- **Job Status Relocation**: Moved job status field into PROJECT DETAILS section alongside client and project name
+- **Team Members Section**: Removed team members section from project creation form
+- **Border Styling Correction**:
+  - Pills and expanded sections now use `OPSStyle.Colors.secondaryText` (brighter/more visible)
+  - Input fields use `Color.white.opacity(0.1)` when unfocused (darker/more subtle)
+  - Focused inputs use `OPSStyle.Colors.primaryAccent`
+  - This creates proper visual hierarchy between structural elements and input fields
+- **Pill Text Consistency**: Updated OptionalSectionPill to use secondaryText for icon, text, and border
+
+#### Files Modified
+- JobBoardView.swift: Removed FAB
+- UniversalSearchBar.swift: Added gradient background
+- UniversalJobBoardCard.swift: Fixed address truncation
+- ProjectFormSheet.swift: Multiple UI refinements and border corrections
+- OptionalSectionPill.swift: Consistent secondaryText styling
+- UI_DESIGN_GUIDELINES.md: Added form element border guidelines
 
 ## [2.0.2] - 2025-10-23
 

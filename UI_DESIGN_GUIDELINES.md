@@ -192,6 +192,20 @@ Text("Button").font(OPSStyle.Typography.button)              // ALWAYS
 - Border: Minimal, subtle border
 - Focus state: Primary accent color border
 
+### Form Elements & Progressive Disclosure
+**Pills & Section Containers** (brighter borders for structure):
+- Border: `OPSStyle.Colors.secondaryText`
+- Text: `OPSStyle.Colors.secondaryText`
+- Icons: `OPSStyle.Colors.secondaryText`
+- Use for: OptionalSectionPills, ExpandableSections
+
+**Input Fields** (darker borders for subtlety):
+- Unfocused border: `Color.white.opacity(0.1)`
+- Focused border: `OPSStyle.Colors.primaryAccent`
+- Use for: TextFields, TextEditors, Pickers within forms
+
+This creates clear visual hierarchy: structural elements (pills/sections) are more visible, while inputs are subtle until focused.
+
 ## Specific UI Patterns
 
 ### Navigation Bar

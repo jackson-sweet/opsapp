@@ -20,8 +20,6 @@ struct CalendarEventDTO: Codable {
     let startDate: String?  // ISO 8601 date string
     let teamMembers: [String]?  // Array of User IDs
     let title: String?
-    let type: String?  // "project" or "task"
-    let active: Bool?  // Whether this event is active (based on project scheduling mode)
 
     // Metadata
     let createdDate: String?
@@ -42,8 +40,6 @@ struct CalendarEventDTO: Codable {
         case startDate = "startDate"
         case teamMembers = "teamMembers"
         case title = "title"
-        case type = "eventType"  // Renamed from 'type' to 'eventType' in Bubble
-        case active = "active"
         case createdDate = "Created Date"  // Bubble default field
         case modifiedDate = "Modified Date"  // Bubble default field
         case deletedAt = "deletedAt"  // Soft delete timestamp
@@ -135,11 +131,7 @@ struct CalendarEventDTO: Codable {
         
         // Validate title
         let validTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Untitled Event"
-        
-        // Validate type and ensure consistency with taskId
-        let eventType = CalendarEventType(rawValue: type?.lowercased() ?? "project") ?? .project
-        
-        
+
         let event = CalendarEvent(
             id: id,
             projectId: projectIdValue,
@@ -147,9 +139,7 @@ struct CalendarEventDTO: Codable {
             title: validTitle,
             startDate: startDateObj,
             endDate: endDateObj,
-            color: validColor,
-            type: eventType,
-            active: active ?? true  // Default to active if not specified
+            color: validColor
         )
         
         event.taskId = taskId
@@ -183,8 +173,6 @@ struct CalendarEventDTO: Codable {
             startDate: event.startDate.map { dateFormatter.string(from: $0) },
             teamMembers: event.getTeamMemberIds(),
             title: event.title,
-            type: event.type.rawValue,
-            active: event.active,
             createdDate: nil,
             modifiedDate: nil,
             deletedAt: event.deletedAt.map { dateFormatter.string(from: $0) }

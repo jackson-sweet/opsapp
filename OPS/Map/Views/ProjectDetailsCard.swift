@@ -19,16 +19,16 @@ struct ProjectDetailsCard: View {
     @State private var errorMessage: String?
 
     private var taskTypeBadge: String? {
-        // For task events, return the task type
-        if selectedEvent?.type == .task, let task = selectedEvent?.task {
+        // All events are task events now - return the task type
+        if let task = selectedEvent?.task {
             return task.taskType?.display
         }
         return nil
     }
 
     private var taskColor: Color {
-        // For task events, use task color
-        if selectedEvent?.type == .task, let task = selectedEvent?.task,
+        // All events are task events now - use task color
+        if let task = selectedEvent?.task,
            let color = Color(hex: task.effectiveColor) {
             return color
         }

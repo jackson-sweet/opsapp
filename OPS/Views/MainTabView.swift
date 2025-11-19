@@ -64,6 +64,15 @@ struct MainTabView: View {
         return baseTabs
     }
 
+    // Check if currently on Settings tab
+    private var isSettingsTab: Bool {
+        let tabCount = tabs.count
+        // Settings is always the last tab
+        // For admin/office crew (4 tabs): Settings is tab 3
+        // For field crew (3 tabs): Settings is tab 2
+        return selectedTab == (tabCount - 1)
+    }
+
     private var slideTransition: AnyTransition {
         if selectedTab > previousTab {
             return .asymmetric(
@@ -141,9 +150,16 @@ struct MainTabView: View {
             }
             .ignoresSafeArea(.all, edges: .bottom)
             .preferredColorScheme(.dark)
-            .opacity(keyboardIsShowing ? 0 : 1)
+            .opacity(keyboardIsShowing || dataController.isPerformingInitialSync ? 0 : 1)
             .animation(.easeInOut(duration: 0.25), value: keyboardIsShowing)
-            
+            .animation(.easeInOut(duration: 0.25), value: dataController.isPerformingInitialSync)
+
+            // Floating action menu - visible across all tabs except Settings and during initial sync (Office Crew and Admin only)
+            if !isSettingsTab && !dataController.isPerformingInitialSync {
+                FloatingActionMenu()
+                    .environmentObject(dataController)
+            }
+
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()
         }

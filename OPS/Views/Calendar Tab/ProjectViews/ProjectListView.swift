@@ -194,27 +194,17 @@ struct ProjectListView: View {
     }
     
     private func handleEventTap(_ event: CalendarEvent) {
-        // Check if this is a task event or project event
-        if event.type == .task, let task = event.task {
-            // For task events, send task ID and project ID
+        // Task-only scheduling migration: All events are task events
+        if let task = event.task {
+            // Send task ID and project ID
             let userInfo: [String: String] = [
                 "taskID": task.id,
                 "projectID": task.projectId
             ]
-            
+
             // Post notification for task details
             NotificationCenter.default.post(
                 name: Notification.Name("ShowCalendarTaskDetails"),
-                object: nil,
-                userInfo: userInfo
-            )
-        } else {
-            // For project events, send just project ID
-            let userInfo: [String: String] = ["projectID": event.projectId]
-            
-            // Post notification for project details
-            NotificationCenter.default.post(
-                name: Notification.Name("ShowCalendarProjectDetails"),
                 object: nil,
                 userInfo: userInfo
             )

@@ -74,8 +74,8 @@ class MonthGridCache: ObservableObject {
 
             let oneYearAgo = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
 
+            // Task-only scheduling migration: active property removed
             let allEvents = dataController.getAllCalendarEvents(from: oneYearAgo)
-                .filter { $0.active }
 
             let filteredEvents = viewModel.applyEventFilters(to: allEvents)
 
@@ -102,21 +102,8 @@ class MonthGridCache: ObservableObject {
                     let isMonday = (weekday == 2)
                     let isFirstInWeek = isFirst || isMonday
 
-                    // Determine color: use company defaultProjectColor for project events
-                    let displayColor: String
-                    if event.type == .project {
-                        // Get company's defaultProjectColor
-                        if let project = event.project,
-                           let company = dataController.getCompany(id: project.companyId),
-                           !company.defaultProjectColor.isEmpty {
-                            displayColor = company.defaultProjectColor
-                        } else {
-                            displayColor = "#9CA3AF"  // Grey fallback
-                        }
-                    } else {
-                        // For task events, use stored color
-                        displayColor = event.color
-                    }
+                    // Task-only scheduling migration: Use stored color for all events
+                    let displayColor = event.color
 
                     let preview = CalendarEventPreview(
                         id: "\(event.id)_\(dayOffset)",
@@ -992,9 +979,9 @@ struct DayDetailsSheet: View {
     }
 
     private func handleEventTap(_ event: CalendarEvent) {
-        // Check if this is a task event or project event
-        if event.type == .task, let task = event.task {
-            // For task events, send task ID and project ID
+        // Task-only scheduling migration: All events are task events
+        if let task = event.task {
+            // Send task ID and project ID
             let userInfo: [String: String] = [
                 "taskID": task.id,
                 "projectID": task.projectId
@@ -1003,16 +990,6 @@ struct DayDetailsSheet: View {
             // Post notification for task details
             NotificationCenter.default.post(
                 name: Notification.Name("ShowCalendarTaskDetails"),
-                object: nil,
-                userInfo: userInfo
-            )
-        } else {
-            // For project events, send just project ID
-            let userInfo: [String: String] = ["projectID": event.projectId]
-
-            // Post notification for project details
-            NotificationCenter.default.post(
-                name: Notification.Name("ShowCalendarProjectDetails"),
                 object: nil,
                 userInfo: userInfo
             )
@@ -1036,7 +1013,15 @@ struct EventDetailCard: View {
         Color(hex: event.color) ?? OPSStyle.Colors.primaryAccent
     }
 
-    var body: some View {
+    private var dateRangeText: String {
+        if let start = event.startDate, let end = event.endDate {
+            return "\(start.formatted(date: .abbreviated, time: .omitted)) - \(end.formatted(date: .abbreviated, time: .omitted))"
+        } else {
+            return "No dates"
+        }
+    }
+
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Rectangle()
@@ -1064,20 +1049,14 @@ struct EventDetailCard: View {
                     HStack(spacing: 4) {
                         Image(systemName: "calendar")
                             .font(.system(size: 12))
-                        if let start = event.startDate, let end = event.endDate {
-                            Text("\(start.formatted(date: .abbreviated, time: .omitted)) - \(end.formatted(date: .abbreviated, time: .omitted))")
-                                .font(OPSStyle.Typography.smallCaption)
-                        } else {
-                            Text("No dates")
-                                .font(OPSStyle.Typography.smallCaption)
-                        }
+                        Text(dateRangeText)
+                            .font(OPSStyle.Typography.smallCaption)
                     }
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
 
                 Spacer()
 
-                // Chevron to indicate tappable
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -1090,6 +1069,10 @@ struct EventDetailCard: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
+    }
+
+    var body: some View {
+        cardContent
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : (isPressed ? 0.98 : 1.0))
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
@@ -1131,19 +1114,17 @@ struct EventDetailCard: View {
             Button("Cancel", role: .cancel) {}
         }
         .sheet(isPresented: $showingDetailView) {
-            if event.type == .task, let task = event.task, let project = task.project {
+            // Task-only scheduling migration: All events are task events
+            if let task = event.task, let project = task.project {
                 TaskDetailsView(task: task, project: project)
                     .environmentObject(dataController)
                     .environmentObject(appState)
                     .environment(\.modelContext, dataController.modelContext!)
-            } else if event.type == .project, let project = event.project {
-                ProjectDetailsView(project: project)
-                    .environmentObject(dataController)
-                    .environmentObject(appState)
             }
         }
         .sheet(isPresented: $showingReschedule) {
-            if event.type == .task, let task = event.task {
+            // Task-only scheduling migration: All events are task events
+            if let task = event.task {
                 CalendarSchedulerSheet(
                     isPresented: $showingReschedule,
                     itemType: .task(task),
@@ -1151,17 +1132,6 @@ struct EventDetailCard: View {
                     currentEndDate: event.endDate,
                     onScheduleUpdate: { newStart, newEnd in
                         updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
-                    }
-                )
-                .environmentObject(dataController)
-            } else if event.type == .project, let project = event.project {
-                CalendarSchedulerSheet(
-                    isPresented: $showingReschedule,
-                    itemType: .project(project),
-                    currentStartDate: event.startDate,
-                    currentEndDate: event.endDate,
-                    onScheduleUpdate: { newStart, newEnd in
-                        updateProjectSchedule(project: project, startDate: newStart, endDate: newEnd)
                     }
                 )
                 .environmentObject(dataController)

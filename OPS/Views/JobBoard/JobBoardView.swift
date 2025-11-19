@@ -15,11 +15,6 @@ struct JobBoardView: View {
     @State private var previousSection: JobBoardSection = .dashboard
     @State private var searchText = ""
     @State private var showingFilters = false
-    @State private var showCreateMenu = false
-    @State private var showingCreateProject = false
-    @State private var showingCreateClient = false
-    @State private var showingCreateTaskType = false
-    @State private var showingCreateTask = false
     @State private var showingProjectFilterSheet = false
     @State private var showingTaskFilterSheet = false
 
@@ -132,105 +127,6 @@ struct JobBoardView: View {
 
                 }
 
-                // Floating action button and menu
-                ZStack {
-                    // Dimmed background when menu is shown
-                    if showCreateMenu {
-                        Color.black.opacity(0.5)
-                            .ignoresSafeArea()
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    showCreateMenu = false
-                                }
-                            }
-                    }
-
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 16) {
-                                // Floating menu items (shown when expanded)
-                                VStack(alignment: .trailing, spacing: 16){
-                                if showCreateMenu {
-                                    FloatingActionItem(
-                                        icon: "checklist",
-                                        label: "New Task Type",
-                                        action: {
-                                            showCreateMenu = false
-                                            showingCreateTaskType = true
-                                        }
-                                    )
-                                    .transition(.scale.combined(with: .opacity))
-                                    
-                                    FloatingActionItem(
-                                        icon: "checkmark.square.fill",
-                                        label: "Create Task",
-                                        action: {
-                                            showCreateMenu = false
-                                            showingCreateTask = true
-                                        }
-                                    )
-                                    .transition(.scale.combined(with: .opacity))
-                                    
-                                    FloatingActionItem(
-                                        icon: "folder.badge.plus",
-                                        label: "Create Project",
-                                        action: {
-                                            showCreateMenu = false
-                                            showingCreateProject = true
-                                        }
-                                    )
-                                    .transition(.scale.combined(with: .opacity))
-                                    
-                                    FloatingActionItem(
-                                        icon: "person.badge.plus",
-                                        label: "Create Client",
-                                        action: {
-                                            showCreateMenu = false
-                                            showingCreateClient = true
-                                        }
-                                    )
-                                    .transition(.scale.combined(with: .opacity))
-                                }
-                            }
-                                .padding(.trailing, 8)
-                                // Main plus button
-                                Button(action: {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        showCreateMenu.toggle()
-                                    }
-                                }) {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 30))
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        .rotationEffect(.degrees(showCreateMenu ? 225 : 0))
-                                        .frame(width: 64, height: 64)
-                                        .background(.ultraThinMaterial)
-                                        .clipShape(Circle())
-                                        .shadow(color: OPSStyle.Colors.background.opacity(0.4), radius: 8, x: 0, y: 4)
-                                }
-                            }
-                            .padding(.trailing, 36)
-                            .padding(.bottom, 140) // Position above tab bar
-                        }
-                    }
-                }
-                
-            
-            }
-            .sheet(isPresented: $showingCreateClient) {
-                ClientFormSheet(mode: .create) { _ in }
-            }
-            .sheet(isPresented: $showingCreateProject) {
-                ProjectFormSheet(mode: .create) { _ in }
-            }
-            .sheet(isPresented: $showingCreateTaskType) {
-                TaskTypeFormSheet { _ in }
-            }
-            .sheet(isPresented: $showingCreateTask) {
-                TaskFormSheet(mode: .create) { _ in }
             }
         }
 
@@ -562,8 +458,8 @@ struct JobBoardTasksView: View {
 
     private var allTasks: [ProjectTask] {
         let projects = dataController.getAllProjects()
+        // Task-only scheduling migration: All projects use tasks
         let tasks = projects.flatMap { project -> [ProjectTask] in
-            guard project.usesTaskBasedScheduling else { return [] }
             return project.tasks
         }
 
@@ -600,12 +496,12 @@ struct JobBoardTasksView: View {
 
         var filtered = allTasks
 
-        // Filter by project eventType
+        // Task-only scheduling migration: eventType filter removed (all projects use tasks)
         filtered = filtered.filter { task in
             guard let project = projectsById[task.projectId] else {
                 return false
             }
-            return project.eventType == .task
+            return true
         }
 
         // Filter by status

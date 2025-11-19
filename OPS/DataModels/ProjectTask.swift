@@ -100,7 +100,8 @@ final class ProjectTask {
     var taskNotes: String?
     var taskTypeId: String
     var displayOrder: Int = 0
-    
+    var customTitle: String?  // Optional custom title for task (overrides taskType.display)
+
     // Store team member IDs as string (for compatibility with existing patterns)
     var teamMemberIdsString: String = ""
     
@@ -158,8 +159,11 @@ final class ProjectTask {
         teamMemberIdsString = ids.joined(separator: ",")
     }
     
-    /// Get display title (from TaskType or fallback)
+    /// Get display title (custom title, TaskType, or fallback)
     var displayTitle: String {
+        if let customTitle = customTitle, !customTitle.isEmpty {
+            return customTitle
+        }
         return taskType?.display ?? "Task"
     }
     

@@ -1,4 +1,16 @@
-# Task Scheduling - Quick Reference Guide
+# DEPRECATED - Task Scheduling - Quick Reference Guide
+
+**DEPRECATION NOTICE**
+**Date Archived:** 2025-11-16
+**Reason:** This document describes the OLD dual scheduling system (project-level vs task-level CalendarEvents)
+**Current System:** Task-only scheduling - All projects now use task-based scheduling exclusively
+**See:** `/Development Tasks/TASK_ONLY_SCHEDULING_MIGRATION.md` for migration details
+
+---
+
+**THIS INFORMATION IS NO LONGER ACCURATE - PRESERVED FOR HISTORICAL REFERENCE ONLY**
+
+---
 
 ## Key Concepts
 - **Projects can now have Tasks** (sub-components like "Site Estimate", "Installation")
@@ -14,9 +26,9 @@ Project (no tasks) → CalendarEvent
 Project → Task → CalendarEvent
           ↑
       TaskType (color, display name)
-      
+
 Field Names in Bubble:
-- Task: projectId, companyId, scheduledDate, completionDate
+- Task: projectID (capital ID), companyId, scheduledDate, completionDate
 - CalendarEvent: companyId, projectId, taskId (all lowercase first letter)
 - TaskType: Color, Display, isDefault (Option Set)
 ```
@@ -40,6 +52,7 @@ Field Names in Bubble:
 
 ## Calendar Display
 - **Task Event**: Shows task color, task type name
+- **Project Event**: Shows default color, project name
 - **Visual**: Different colors distinguish event types
 
 ## UI Changes
@@ -49,7 +62,7 @@ Field Names in Bubble:
 
 ## Sync Priority
 1. CalendarEvents (most time-sensitive)
-2. Tasks 
+2. Tasks
 3. Projects
 4. TaskTypes (rarely change)
 

@@ -17,7 +17,7 @@ struct CalendarEventsDebugView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedEvent: CalendarEvent?
-    @State private var filterType: CalendarEventType? = nil
+    @State private var filterType: String? = nil
     @State private var searchText: String = ""
     @State private var showDeleted: Bool = false
     @State private var showingEventSearchSheet = false
@@ -30,10 +30,7 @@ struct CalendarEventsDebugView: View {
             filtered = filtered.filter { $0.deletedAt == nil }
         }
 
-        // Filter by type
-        if let filterType = filterType {
-            filtered = filtered.filter { $0.type == filterType }
-        }
+        // All events are task events now - no type filtering needed
 
         // Filter by search text
         if !searchText.isEmpty {
@@ -111,23 +108,9 @@ struct CalendarEventsDebugView: View {
 
                 // Filter chips
                 HStack(spacing: 12) {
-                    EventFilterChip(
-                        title: "All",
-                        isSelected: filterType == nil,
-                        action: { filterType = nil }
-                    )
-
-                    EventFilterChip(
-                        title: "Projects",
-                        isSelected: filterType == .project,
-                        action: { filterType = .project }
-                    )
-
-                    EventFilterChip(
-                        title: "Tasks",
-                        isSelected: filterType == .task,
-                        action: { filterType = .task }
-                    )
+                    Text("All events are task events")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     Spacer()
 
@@ -169,7 +152,7 @@ struct CalendarEventsDebugView: View {
                         Text("No Events Found")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(.white)
-                        Text(filterType != nil ? "No \(filterType!.rawValue) events found" : "No calendar events in the database")
+                        Text("No calendar events in the database")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -195,12 +178,9 @@ struct CalendarEventsDebugView: View {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         
-                        HStack(spacing: 8) {
-                            Text("Projects: \(events.filter { $0.type == .project }.count)")
-                            Text("Tasks: \(events.filter { $0.type == .task }.count)")
-                        }
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text("All task events")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     
                     Spacer()
@@ -309,22 +289,9 @@ struct CalendarEventsDebugView: View {
             
             var generatedCount = 0
             
-            for project in projects {
-                // Skip if project has no dates
-                guard project.startDate != nil else { continue }
-                
-                // Check if event already exists
-                let eventId = "project-\(project.id)"
-                let existingEvent = events.first { $0.id == eventId }
-                
-                if existingEvent == nil {
-                    // Generate event from project
-                    if let event = CalendarEvent.fromProject(project, companyDefaultColor: "#59779F") {
-                        modelContext.insert(event)
-                        generatedCount += 1
-                    }
-                }
-            }
+            // Task-only scheduling migration: Project-level calendar events are no longer supported
+            // All calendar events are now task-based only
+            errorMessage = "Project-level event generation is no longer supported. All events are task-based now."
             
             try modelContext.save()
             
@@ -391,8 +358,8 @@ struct CalendarEventDetailCard: View {
                     Circle()
                         .fill(event.swiftUIColor)
                         .frame(width: 8, height: 8)
-                    
-                    Text(event.type.rawValue.capitalized)
+
+                    Text("Task")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -408,7 +375,7 @@ struct CalendarEventDetailCard: View {
             // Fields grid
             VStack(alignment: .leading, spacing: 4) {
                 FieldRow(label: "ID", value: event.id)
-                FieldRow(label: "Type", value: event.type.rawValue)
+                FieldRow(label: "Type", value: "Task")
                 FieldRow(label: "Project ID", value: event.projectId)
                 FieldRow(label: "Task ID", value: event.taskId ?? "nil")
                 FieldRow(label: "Company ID", value: event.companyId)
@@ -419,8 +386,7 @@ struct CalendarEventDetailCard: View {
                 FieldRow(label: "Multi-Day", value: event.isMultiDay ? "Yes" : "No")
                 FieldRow(label: "Spanned Days", value: "\(event.spannedDates.count)")
                 FieldRow(label: "Team Members", value: event.getTeamMemberIds().joined(separator: ", ").isEmpty ? "none" : event.getTeamMemberIds().joined(separator: ", "))
-                FieldRow(label: "Active", value: event.active ? "Yes" : "No")
-                FieldRow(label: "Should Display", value: event.shouldDisplay ? "Yes" : "No")
+                // Task-only scheduling migration: 'active' and 'shouldDisplay' properties removed
                 FieldRow(label: "Needs Sync", value: event.needsSync ? "Yes" : "No")
                 FieldRow(label: "Last Synced", value: event.lastSyncedAt?.formatted() ?? "Never")
                 FieldRow(label: "Deleted At", value: event.deletedAt?.formatted() ?? "Not deleted")
@@ -668,7 +634,7 @@ struct EventSearchSheet: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     FieldRow(label: "ID", value: local.id)
                                     FieldRow(label: "Title", value: local.title)
-                                    FieldRow(label: "Type", value: local.type.rawValue)
+                                    FieldRow(label: "Type", value: "Task")
                                     FieldRow(label: "Project ID", value: local.projectId)
                                     FieldRow(label: "Task ID", value: local.taskId ?? "nil")
                                     FieldRow(label: "Company ID", value: local.companyId)
@@ -676,8 +642,7 @@ struct EventSearchSheet: View {
                                     FieldRow(label: "Start Date", value: local.startDate?.formatted() ?? "nil")
                                     FieldRow(label: "End Date", value: local.endDate?.formatted() ?? "nil")
                                     FieldRow(label: "Duration", value: "\(local.duration) days")
-                                    FieldRow(label: "Active", value: local.active ? "Yes" : "No")
-                                    FieldRow(label: "Should Display", value: local.shouldDisplay ? "Yes" : "No")
+                                    // Task-only scheduling migration: 'active' and 'shouldDisplay' properties removed
                                     FieldRow(label: "Deleted At", value: local.deletedAt?.formatted() ?? "Not deleted")
                                     FieldRow(label: "Last Synced", value: local.lastSyncedAt?.formatted() ?? "Never")
                                     FieldRow(label: "Needs Sync", value: local.needsSync ? "Yes" : "No")
@@ -711,7 +676,7 @@ struct EventSearchSheet: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     FieldRow(label: "ID", value: bubble.id)
                                     FieldRow(label: "Title", value: bubble.title ?? "nil")
-                                    FieldRow(label: "Type", value: bubble.type ?? "nil")
+                                    // Task-only scheduling migration: type and active fields removed
                                     FieldRow(label: "Project ID", value: bubble.projectId ?? "nil")
                                     FieldRow(label: "Task ID", value: bubble.taskId ?? "nil")
                                     FieldRow(label: "Company ID", value: bubble.companyId ?? "nil")
@@ -719,7 +684,6 @@ struct EventSearchSheet: View {
                                     FieldRow(label: "Start Date", value: bubble.startDate ?? "nil")
                                     FieldRow(label: "End Date", value: bubble.endDate ?? "nil")
                                     FieldRow(label: "Duration", value: bubble.duration.map { "\($0)" } ?? "nil")
-                                    FieldRow(label: "Active", value: bubble.active.map { $0 ? "Yes" : "No" } ?? "nil")
                                     FieldRow(label: "Deleted At", value: bubble.deletedAt ?? "nil")
                                     FieldRow(label: "Team Members", value: bubble.teamMembers?.joined(separator: ", ") ?? "nil")
 

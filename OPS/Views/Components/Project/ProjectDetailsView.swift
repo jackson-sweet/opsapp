@@ -42,14 +42,11 @@ struct ProjectDetailsView: View {
     @State private var isGeocodingAddress = false
     @State private var addressDebounceTask: Task<Void, Never>?
     @StateObject private var addressSearchCompleter = AddressSearchCompleter()
-    @State private var showingTaskBasedSchedulingAlert = false
-    @State private var showingSwitchToTaskBasedAlert = false
     @State private var isEditingTeam = false
     @State private var triggerTeamSave = false
     @State private var showingCompletionSheet = false
     @State private var showingCompletionAlert = false
     @State private var showingDeleteAlert = false
-    @State private var showingProjectBasedAlert = false
     @State private var refreshTrigger = false  // Toggle to force view refresh
     @State private var isNotesExpanded = false
     @State private var isEditingTitle = false
@@ -146,34 +143,11 @@ struct ProjectDetailsView: View {
                 )
                 .environmentObject(dataController)
             }
-            .alert("Task-Based Scheduling", isPresented: $showingTaskBasedSchedulingAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("This project uses task-based scheduling. Project dates are determined by the individual task schedules. To change dates, schedule the tasks instead.")
-            }
-            .alert("Switch to Task-Based Scheduling", isPresented: $showingSwitchToTaskBasedAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Switch") {
-                    switchToTaskBasedScheduling()
-                }
-            } message: {
-                Text("This will change the project to use task-based scheduling. You'll be able to create and manage individual tasks for this project.")
-            }
-            .alert("Switch to Project-Based Scheduling", isPresented: $showingProjectBasedAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Switch") {
-                    switchToProjectBasedScheduling()
-                }
-            } message: {
-                Text("This will change the project to use project-based scheduling. All tasks will remain but won't be used for scheduling.")
-            }
             .sheet(isPresented: $showingCompletionSheet) {
-                if project.usesTaskBasedScheduling {
-                    TaskCompletionChecklistSheet(project: project, onComplete: {
-                        markProjectComplete()
-                    })
-                    .environmentObject(dataController)
-                }
+                TaskCompletionChecklistSheet(project: project, onComplete: {
+                    markProjectComplete()
+                })
+                .environmentObject(dataController)
             }
             .sheet(isPresented: $showingAddressEditor) {
                 AddressEditorSheet(
@@ -220,20 +194,6 @@ struct ProjectDetailsView: View {
     private var headerTopRow: some View {
         HStack {
             StatusBadge.forJobStatus(project.status)
-
-            Text(project.usesTaskBasedScheduling ? "TASK-BASED" : "PROJECT-BASED")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: 1)
-                )
 
             Spacer()
 
@@ -433,16 +393,6 @@ struct ProjectDetailsView: View {
                 try await dataController.updateProjectDates(project: project, startDate: startDate, endDate: endDate)
                 print("✅ Project dates updated and synced")
 
-                // Update associated calendar event if exists, or create new one
-                if let projectEvent = project.primaryCalendarEvent {
-                    try await dataController.updateCalendarEvent(event: projectEvent, startDate: startDate, endDate: endDate)
-                    print("✅ Calendar event updated and synced")
-                } else {
-                    // No calendar event exists - create one now
-                    print("📅 No calendar event found - creating new one")
-                    await createCalendarEventForProject(startDate: startDate, endDate: endDate)
-                }
-
                 // Force view refresh to show updated dates
                 await MainActor.run {
                     refreshTrigger.toggle()
@@ -462,35 +412,6 @@ struct ProjectDetailsView: View {
                 try await dataController.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
                 print("✅ Project dates cleared and synced")
 
-                // Clear calendar event dates if exists
-                if let projectEvent = project.primaryCalendarEvent {
-                    // Use performSyncedOperation for calendar event clearing
-                    try await dataController.performSyncedOperation(
-                        item: projectEvent,
-                        operationName: "CLEAR_CALENDAR_EVENT_DATES",
-                        itemDescription: "Clearing calendar event \(projectEvent.id) dates",
-                        localUpdate: {
-                            projectEvent.startDate = nil
-                            projectEvent.endDate = nil
-                            projectEvent.duration = 0
-                            projectEvent.active = false  // Mark as inactive when unscheduled
-                            projectEvent.needsSync = true
-                        },
-                        syncToAPI: {
-                            let updates: [String: Any] = [
-                                BubbleFields.CalendarEvent.startDate: NSNull(),
-                                BubbleFields.CalendarEvent.endDate: NSNull(),
-                                BubbleFields.CalendarEvent.duration: 0,
-                                BubbleFields.CalendarEvent.active: false
-                            ]
-                            try await self.dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: updates)
-                            projectEvent.needsSync = false
-                            projectEvent.lastSyncedAt = Date()
-                        }
-                    )
-                    print("✅ Calendar event dates cleared and synced")
-                }
-
                 // Force view refresh to show cleared dates
                 await MainActor.run {
                     refreshTrigger.toggle()
@@ -503,127 +424,8 @@ struct ProjectDetailsView: View {
         }
     }
 
-    private func updateCalendarEventsForProject(startDate: Date, endDate: Date) {
-        // Update project-level calendar events
-        if project.eventType == .project {
-            // Update the primary calendar event for project-based scheduling
-            if let projectEvent = project.primaryCalendarEvent {
-                projectEvent.startDate = startDate
-                projectEvent.endDate = endDate
-                let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-                projectEvent.duration = daysDiff + 1  // Include both start and end dates
-                projectEvent.needsSync = true
 
-                print("📅 Updated calendar event: \(projectEvent.title) - \(startDate) to \(endDate) (\(projectEvent.duration) days)")
-            } else {
-                print("⚠️ No primary calendar event found for project - creating one now")
-                Task {
-                    await createCalendarEventForProject(startDate: startDate, endDate: endDate)
-                }
-            }
-        } else if project.eventType == .task {
-            // For task-based projects, update the individual task calendar events if needed
-            // This would typically be done through TaskDetailsView for individual tasks
-            // Project dates are derived from the earliest/latest task dates
-        }
-    }
-
-    private func syncCalendarEventToServer(_ calendarEvent: CalendarEvent) async {
-        print("🔄 Syncing calendar event to server: \(calendarEvent.id)")
-
-        do {
-            let formatter = ISO8601DateFormatter()
-            // Use standard ISO format without fractional seconds (matches createCalendarEvent)
-            formatter.formatOptions = [.withInternetDateTime]
-
-            let startDateString = calendarEvent.startDate.map { formatter.string(from: $0) } ?? ""
-            let endDateString = calendarEvent.endDate.map { formatter.string(from: $0) } ?? ""
-
-            print("📅 Formatted dates - Start: \(startDateString), End: \(endDateString)")
-
-            let updates: [String: Any] = [
-                BubbleFields.CalendarEvent.startDate: startDateString,
-                BubbleFields.CalendarEvent.endDate: endDateString,
-                BubbleFields.CalendarEvent.duration: calendarEvent.duration
-            ]
-
-            try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
-
-            await MainActor.run {
-                calendarEvent.needsSync = false
-                calendarEvent.lastSyncedAt = Date()
-                try? dataController.modelContext?.save()
-            }
-
-            print("✅ Calendar event synced successfully to server")
-        } catch {
-            print("⚠️ Failed to sync calendar event to server: \(error)")
-        }
-    }
-
-    private func createCalendarEventForProject(startDate: Date, endDate: Date) async {
-        print("[CREATE_CALENDAR_EVENT] Creating calendar event for project: \(project.title)")
-
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime]
-
-        let duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
-
-        // Get company's default project color
-        let company = dataController.getCompany(id: project.companyId)
-        let projectColor = company?.defaultProjectColor ?? "#9CA3AF"  // Light grey fallback
-        print("[CREATE_CALENDAR_EVENT] Using project color: \(projectColor)")
-
-        let eventDTO = CalendarEventDTO(
-            id: UUID().uuidString,
-            color: projectColor,
-            companyId: project.companyId,
-            projectId: project.id,
-            taskId: nil,
-            duration: Double(duration),
-            endDate: dateFormatter.string(from: endDate),
-            startDate: dateFormatter.string(from: startDate),
-            teamMembers: project.teamMembers.map { $0.id },
-            title: project.effectiveClientName.capitalizedWords(),
-            type: "Project",
-            active: true,
-            createdDate: nil,
-            modifiedDate: nil,
-            deletedAt: nil
-        )
-
-        do {
-            // Create event and link to project and company automatically based on type
-            let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
-            print("[CREATE_CALENDAR_EVENT] ✅ Calendar event created with ID: \(createdEvent.id)")
-
-            await MainActor.run {
-                if let calendarEvent = createdEvent.toModel() {
-                    calendarEvent.needsSync = false
-                    calendarEvent.lastSyncedAt = Date()
-                    dataController.modelContext?.insert(calendarEvent)
-
-                    project.primaryCalendarEvent = calendarEvent
-
-                    try? dataController.modelContext?.save()
-                    print("[CREATE_CALENDAR_EVENT] ✅ Calendar event linked to project locally")
-                }
-            }
-
-            // Update project dates in Bubble
-            print("[CREATE_CALENDAR_EVENT] 📡 Updating project dates in Bubble...")
-            try await dataController.apiService.updateProjectDates(
-                projectId: project.id,
-                startDate: startDate,
-                endDate: endDate
-            )
-            print("[CREATE_CALENDAR_EVENT] ✅ Project dates updated in Bubble")
-        } catch {
-            print("[CREATE_CALENDAR_EVENT] ❌ Failed to create calendar event or update project: \(error)")
-        }
-    }
-
-    // Project header section with title and date  
+    // Project header section with title and date
     private var projectHeaderSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Project title with task count if applicable
@@ -631,9 +433,9 @@ struct ProjectDetailsView: View {
                 Text(project.title)
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(.white)
-                
+
                 // Show task count if project has tasks
-                if project.eventType == .task && !project.tasks.isEmpty {
+                if !project.tasks.isEmpty {
                     Text("\(project.tasks.count) \(project.tasks.count == 1 ? "TASK" : "TASKS")")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -645,16 +447,16 @@ struct ProjectDetailsView: View {
                         )
                         .padding(.top, 4)
                 }
-                
+
                 Spacer()
             }
-            
+
             // Client info
             VStack(alignment: .leading, spacing: 4) {
                 Text("CLIENT")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                
+
                 Text(project.effectiveClientName)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
@@ -898,77 +700,57 @@ struct ProjectDetailsView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 
-                // Dates row - make dates tappable for admin/office crew
-                Button(action: {
-                    if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
-                        if project.eventType == .task {
-                            showingTaskBasedSchedulingAlert = true
-                        } else {
-                            showingScheduler = true
+                // Dates row - show computed dates from tasks
+                HStack(spacing: 0) {
+                    // Start date (show computed date from tasks)
+                    HStack(spacing: 12) {
+                        Image(systemName: "calendar")
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(width: 24)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("START DATE")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            if let startDate = project.computedStartDate {
+                                Text(formatDate(startDate))
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            } else {
+                                Text("No scheduled tasks")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
                         }
                     }
-                }) {
-                    HStack(spacing: 0) {
-                        // Start date (show actual date or "Unscheduled")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // End date (only show if valid - exists and on or after start date)
+                    if let endDate = project.computedEndDate,
+                       let startDate = project.computedStartDate,
+                       endDate >= startDate {
                         HStack(spacing: 12) {
-                            Image(systemName: "calendar")
+                            Image(systemName: "calendar.badge.checkmark")
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 24)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("START DATE")
+                                Text("COMPLETION DATE")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                if let startDate = project.startDate {
-                                    Text(formatDate(startDate))
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                } else {
-                                    Text("Tap to Schedule")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                }
+                                Text(formatDate(endDate))
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-
-                        // End date (only show if valid - exists and on or after start date)
-                        if let endDate = project.endDate,
-                           let startDate = project.startDate,
-                           endDate >= startDate {
-                            HStack(spacing: 12) {
-                                Image(systemName: "calendar.badge.checkmark")
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .frame(width: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("COMPLETION DATE")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                                    Text(formatDate(endDate))
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
-                        // Chevron indicator for admin/office crew to show it's tappable
-                        if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 14))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.trailing, 12)
-                        }
                     }
-                    .padding()
-                    .background(OPSStyle.Colors.cardBackgroundDark)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .padding()
+                .background(OPSStyle.Colors.cardBackgroundDark)
                 .id(refreshTrigger)  // Force refresh when dates change
-                .disabled(!(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew))
                 
                 // Description card
                 if let description = project.projectDescription, !description.isEmpty {
@@ -1087,10 +869,6 @@ struct ProjectDetailsView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 Spacer()
-
-                if !project.usesTaskBasedScheduling && canEditProjectSettings() {
-                    teamEditButton
-                }
             }
             .padding(.horizontal)
 
@@ -1333,161 +1111,19 @@ struct ProjectDetailsView: View {
     // Tasks section
     private var tasksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if project.eventType == .project {
-                // Show button to switch to task-based scheduling
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: "hammer.circle")
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        Text("TASKS")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-
-                    Button(action: {
-                        showingSwitchToTaskBasedAlert = true
-                    }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "calendar.badge.plus")
-                                .font(.system(size: 16))
-
-                            Text("SWITCH TO TASK-BASED SCHEDULING")
-                                .font(OPSStyle.Typography.bodyBold)
-                        }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                        )
-                    }
-                    .padding(.horizontal)
-                }
-            } else {
-                // Show task list
-                TaskListView(project: project, onSwitchToProjectBased: {
-                    showingProjectBasedAlert = true
-                })
+            // Show task list
+            TaskListView(project: project)
                 .environmentObject(dataController)
                 .environmentObject(appState)
-            }
         }
     }
 
-    private func switchToTaskBasedScheduling() {
-        Task {
-            do {
-                print("[PROJECT_DETAILS] 🔄 Switching project to task-based scheduling...")
-                try await dataController.apiService.updateProject(id: project.id, updates: ["eventType": "Task"])
-
-                await MainActor.run {
-                    project.eventType = .task
-                    project.needsSync = false
-                    project.lastSyncedAt = Date()
-                }
-
-                // Deactivate project calendar event
-                // First try primary calendar event
-                if let projectEvent = project.primaryCalendarEvent, projectEvent.type == .project {
-                    projectEvent.active = false
-                    try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": false])
-                    projectEvent.needsSync = false
-                    projectEvent.lastSyncedAt = Date()
-                    print("[PROJECT_DETAILS] ✅ Deactivated project calendar event via primaryCalendarEvent")
-                } else {
-                    // Fallback: search for project calendar event by project ID
-                    print("[PROJECT_DETAILS] ⚠️ primaryCalendarEvent not found, searching for project event...")
-                    // Get all calendar events from a year ago to now
-                    let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
-                    let allEvents = dataController.getAllCalendarEvents(from: oneYearAgo)
-                    let projectId = project.id
-                    let foundEvent = allEvents.first { event in
-                        event.projectId == projectId && event.type == .project
-                    }
-
-                    if let projectEvent = foundEvent {
-                        projectEvent.active = false
-                        try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": false])
-                        projectEvent.needsSync = false
-                        projectEvent.lastSyncedAt = Date()
-                        print("[PROJECT_DETAILS] ✅ Deactivated project calendar event via search")
-                    } else {
-                        print("[PROJECT_DETAILS] ⚠️ No project calendar event found to deactivate")
-                    }
-                }
-
-                // Activate all task calendar events
-                for task in project.tasks {
-                    if let taskEvent = task.calendarEvent, taskEvent.type == .task {
-                        taskEvent.active = true
-                        try await dataController.apiService.updateCalendarEvent(id: taskEvent.id, updates: ["active": true])
-                        taskEvent.needsSync = false
-                        taskEvent.lastSyncedAt = Date()
-                        print("[PROJECT_DETAILS] ✅ Activated task calendar event: \(taskEvent.id)")
-                    }
-                }
-
-                print("[PROJECT_DETAILS] ✅ Project switched to task-based scheduling")
-            } catch {
-                print("[PROJECT_DETAILS] ❌ Failed to switch scheduling type: \(error)")
-            }
-        }
-    }
-
-    private func switchToProjectBasedScheduling() {
-        Task {
-            do {
-                print("[PROJECT_DETAILS] 🔄 Switching project to project-based scheduling...")
-                try await dataController.apiService.updateProject(id: project.id, updates: ["eventType": "Project"])
-
-                await MainActor.run {
-                    project.eventType = .project
-                    project.needsSync = false
-                    project.lastSyncedAt = Date()
-                }
-
-                // Activate project calendar event
-                if let projectEvent = project.primaryCalendarEvent, projectEvent.type == .project {
-                    projectEvent.active = true
-                    try await dataController.apiService.updateCalendarEvent(id: projectEvent.id, updates: ["active": true])
-                    projectEvent.needsSync = false
-                    projectEvent.lastSyncedAt = Date()
-                    print("[PROJECT_DETAILS] ✅ Activated project calendar event")
-                }
-
-                // Deactivate all task calendar events
-                for task in project.tasks {
-                    if let taskEvent = task.calendarEvent, taskEvent.type == .task {
-                        taskEvent.active = false
-                        try await dataController.apiService.updateCalendarEvent(id: taskEvent.id, updates: ["active": false])
-                        taskEvent.needsSync = false
-                        taskEvent.lastSyncedAt = Date()
-                        print("[PROJECT_DETAILS] ✅ Deactivated task calendar event: \(taskEvent.id)")
-                    }
-                }
-
-                print("[PROJECT_DETAILS] ✅ Project switched to project-based scheduling")
-            } catch {
-                print("[PROJECT_DETAILS] ❌ Failed to switch scheduling type: \(error)")
-            }
-        }
-    }
 
     private var completeButton: some View {
         Button(action: {
-            if project.usesTaskBasedScheduling {
-                let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
-                if !incompleteTasks.isEmpty {
-                    showingCompletionAlert = true
-                } else {
-                    markProjectComplete()
-                }
+            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+            if !incompleteTasks.isEmpty {
+                showingCompletionAlert = true
             } else {
                 markProjectComplete()
             }

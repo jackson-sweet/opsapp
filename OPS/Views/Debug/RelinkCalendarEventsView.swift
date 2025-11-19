@@ -274,7 +274,7 @@ struct RelinkCalendarEventsView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                                 HStack(spacing: 12) {
-                                    Label(event.type.rawValue.capitalized, systemImage: event.type == .task ? "checklist" : "briefcase")
+                                    Label("Task", systemImage: "checklist")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -431,7 +431,8 @@ struct RelinkCalendarEventsView: View {
                 stats.eventsProcessed += 1
             }
 
-            if event.type == .task, let taskId = event.taskId {
+            // All events are task events now
+            if let taskId = event.taskId {
                 // Find and link to task
                 if let task = tasks.first(where: { $0.id == taskId }) {
                     await MainActor.run {
@@ -446,20 +447,10 @@ struct RelinkCalendarEventsView: View {
                         stats.orphanedEvents += 1
                     }
                 }
-            } else if event.type == .project {
-                // Find and link to project
-                if let project = projects.first(where: { $0.id == event.projectId }) {
-                    await MainActor.run {
-                        // Project may have multiple events, so we don't set it here
-                        // Just ensure the relationship exists
-                        stats.projectsLinked += 1
-                    }
-                    await log("🔗 Linked event '\(event.title)' to project", type: .info)
-                } else {
-                    await log("⚠️ Orphaned project event: \(event.title) (project \(event.projectId) not found)", type: .warning)
-                    await MainActor.run {
-                        stats.orphanedEvents += 1
-                    }
+            } else {
+                await log("⚠️ Event has no task ID: \(event.title)", type: .warning)
+                await MainActor.run {
+                    stats.orphanedEvents += 1
                 }
             }
         }
@@ -685,7 +676,7 @@ struct EventDetailWithDeleteSheet: View {
                         DetailRow(label: "ID", value: event.id, monospaced: true)
 
                         // Type
-                        DetailRow(label: "Type", value: event.type.rawValue.capitalized)
+                        DetailRow(label: "Type", value: "Task")
 
                         // Color
                         HStack {
@@ -726,8 +717,7 @@ struct EventDetailWithDeleteSheet: View {
                         // Duration
                         DetailRow(label: "Duration", value: "\(event.duration) day\(event.duration == 1 ? "" : "s")")
 
-                        // Active
-                        DetailRow(label: "Active", value: event.active ? "Yes" : "No")
+                        // Task-only scheduling migration: 'active' property removed
 
                         // Company ID
                         DetailRow(label: "Company ID", value: event.companyId, monospaced: true)
@@ -822,9 +812,7 @@ struct DetailRow: View {
         title: "Test Event",
         startDate: Date(),
         endDate: Date().addingTimeInterval(86400),
-        color: "#59779F",
-        type: .project,
-        active: true
+        color: "#59779F"
     )
     EventDetailWithDeleteSheet(event: event, onDelete: {})
         .preferredColorScheme(.dark)

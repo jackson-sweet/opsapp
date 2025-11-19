@@ -111,6 +111,12 @@ struct ClientDTO: Codable {
             client.deletedAt = formatter.date(from: deletedAtString)
         }
 
+        // Parse createdDate if present
+        if let createdDateString = createdDate {
+            let formatter = ISO8601DateFormatter()
+            client.createdAt = formatter.date(from: createdDateString)
+        }
+
         client.lastSyncedAt = Date()
 
         return client

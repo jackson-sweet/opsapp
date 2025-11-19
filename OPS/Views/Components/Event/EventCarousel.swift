@@ -113,34 +113,20 @@ struct EventCardView: View {
     }
 
     private var taskTypeBadge: String? {
-        // For task events, return the task type
-        if event.type == .task, let task = event.task {
+        // All events are task events now
+        if let task = event.task {
             return task.taskType?.display
         }
         return nil
     }
-    
+
     private var displayColor: Color {
-        // For project events, use company's defaultProjectColor
-        if event.type == .project {
-            if let project = project,
-               let company = dataController.getCompany(id: project.companyId),
-               !company.defaultProjectColor.isEmpty,
-               let defaultColor = Color(hex: company.defaultProjectColor) {
-                return defaultColor
-            }
-            // Fallback to light grey for project events without color
-            return Color.gray.opacity(0.6)
+        // All events are task events now - use task color
+        if let task = event.task,
+           let color = Color(hex: task.effectiveColor) {
+            return color
         }
-        
-        // For task events, use task color
-        if event.type == .task {
-            if let task = event.task,
-               let color = Color(hex: task.effectiveColor) {
-                return color
-            }
-        }
-        
+
         // Fallback to event color or grey
         if let eventColor = Color(hex: event.color) {
             return eventColor
@@ -163,9 +149,8 @@ struct EventCardView: View {
                         .background(Material.thinMaterial.opacity(0.7))
                     
                     // Subtle background for completed tasks
-                    if event.type == .task, let task = event.task, task.status == .completed {
-                        OPSStyle.Colors.statusColor(for: .completed).opacity(0.1)
-                    } else if event.type == .project, let project = project, project.status == .completed {
+                    // All events are task events now
+                    if let task = event.task, task.status == .completed {
                         OPSStyle.Colors.statusColor(for: .completed).opacity(0.1)
                     }
                     
@@ -210,7 +195,7 @@ struct EventCardView: View {
                                 
                                 Spacer()
 
-                                // Event type badge - show task type for tasks, "PROJECT" for projects
+                                // Event type badge - show task type (all events are tasks now)
                                 if let taskType = taskTypeBadge {
                                     Text(taskType.uppercased())
                                         .font(OPSStyle.Typography.smallCaption)
@@ -225,8 +210,8 @@ struct EventCardView: View {
                                                         .stroke(displayColor.opacity(0.3), lineWidth: 1)
                                                 )
                                         )
-                                } else if event.type == .project {
-                                    Text("PROJECT")
+                                } else {
+                                    Text("TASK")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(displayColor)
                                         .padding(.horizontal, 8)
@@ -275,8 +260,8 @@ struct EventCardView: View {
             }
 
             // Completed overlay - grey out and show badge
-            if (event.type == .task && event.task?.status == .completed) ||
-               (event.type == .project && project?.status == .completed) {
+            // All events are task events now
+            if event.task?.status == .completed {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
                     Color.black.opacity(0.5)
@@ -318,12 +303,11 @@ struct EventCardView: View {
                 // Success feedback and open details
                 HapticFeedback.longPressSuccess()
                 
-                // Open appropriate details view
-                if event.type == .task, let task = event.task, let project = project {
-                    // For task events, show task details
+                // Open task details view (all events are task events now)
+                if let task = event.task, let project = project {
                     appState.viewTaskDetails(task: task, project: project)
                 } else if let project = project {
-                    // For project events, show project details
+                    // Fallback to project details if task is missing
                     appState.viewProjectDetails(project)
                 }
             }
@@ -332,10 +316,10 @@ struct EventCardView: View {
     
     private var confirmationOverlay: some View {
         VStack(spacing: 8) {
-            Text(event.type == .task ? "START TASK" : "START PROJECT")
+            Text("START TASK")  // All events are task events now
                 .font(OPSStyle.Typography.button)
                 .foregroundColor(.white)
-            
+
             Image(systemName: "play.fill")
                 .font(.system(size: 24))
                 .foregroundColor(.white)
@@ -344,11 +328,11 @@ struct EventCardView: View {
         .background(OPSStyle.Colors.primaryAccent.opacity(0.95))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .onTapGesture {
-            if event.type == .task, let task = event.task, let project = project {
-                // Start task navigation/routing
+            // Start task navigation (all events are task events now)
+            if let task = event.task, let project = project {
                 startTask(task, project: project)
             } else {
-                // Start project
+                // Fallback to generic start
                 onStart()
             }
         }

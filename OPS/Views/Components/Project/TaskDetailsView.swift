@@ -754,7 +754,7 @@ struct TaskDetailsView: View {
             calendarEvent.endDate = endDate
             let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
             calendarEvent.duration = daysDiff + 1
-            calendarEvent.active = true  // Mark as active when scheduled
+            // Task-only scheduling migration: 'active' property removed
             calendarEvent.needsSync = true
         } else {
             // Create new calendar event for the task
@@ -824,7 +824,7 @@ struct TaskDetailsView: View {
         calendarEvent.startDate = nil
         calendarEvent.endDate = nil
         calendarEvent.duration = 0
-        calendarEvent.active = false  // Mark as inactive when unscheduled
+        // Task-only scheduling migration: 'active' property removed
         calendarEvent.needsSync = true
         task.needsSync = true
 
@@ -943,8 +943,6 @@ struct TaskDetailsView: View {
                     startDate: calendarEvent.startDate.map { formatter.string(from: $0) } ?? "",
                     teamMembers: task.getTeamMemberIds(),
                     title: taskTitle,
-                    type: "Task",
-                    active: true,
                     createdDate: nil,
                     modifiedDate: nil,
                     deletedAt: nil

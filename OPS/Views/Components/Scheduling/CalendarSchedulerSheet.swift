@@ -659,7 +659,8 @@ struct CalendarSchedulerSheet: View {
             let isSameItem: Bool
             switch itemType {
             case .project(let project):
-                isSameItem = event.projectId == project.id && event.type == .project
+                // All events are task events now - project events no longer exist
+                isSameItem = false
             case .task(let task):
                 isSameItem = event.taskId == task.id
             }
@@ -719,8 +720,7 @@ struct CalendarSchedulerSheet: View {
         if showOnlyProjectTasks, case .task(let task) = itemType {
             // Show only other tasks from the same project
             filteredCalendarEvents = allCalendarEvents.filter { event in
-                // Must be a task event
-                guard event.type == .task else { return false }
+                // All events are task events now - no type check needed
 
                 // Must be from the same project
                 guard event.projectId == task.projectId else { return false }
@@ -770,7 +770,8 @@ struct CalendarSchedulerSheet: View {
             let isSameItem: Bool
             switch itemType {
             case .project(let project):
-                isSameItem = event.projectId == project.id && event.type == .project
+                // All events are task events now - project events no longer exist
+                isSameItem = false
             case .task(let task):
                 isSameItem = event.taskId == task.id
             }

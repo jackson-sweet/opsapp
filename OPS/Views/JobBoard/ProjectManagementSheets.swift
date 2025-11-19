@@ -121,7 +121,8 @@ struct ProjectStatusChangeSheet: View {
                 try await dataController.updateProjectStatus(project: project, to: selectedStatus)
 
                 // Update task statuses using centralized function
-                if project.eventType == .task {
+                // Task-only scheduling migration: All projects use tasks
+                if true {
                     for task in project.tasks {
                         var newTaskStatus: TaskStatus? = nil
 
@@ -224,8 +225,10 @@ struct SchedulingModeConversionSheet: View {
     @State private var showingError = false
     @State private var errorMessage = ""
 
-    private var targetMode: CalendarEventType {
-        project.eventType == .project ? .task : .project
+    // Note: This feature is disabled in task-only scheduling migration
+    // Kept for potential future re-enablement
+    private var targetMode: String {
+        "task"  // Always task-based now
     }
 
     var body: some View {
@@ -235,7 +238,7 @@ struct SchedulingModeConversionSheet: View {
 
                 VStack(spacing: OPSStyle.Layout.spacing4) {
                     // Icon
-                    Image(systemName: targetMode == .task ? "checklist" : "calendar")
+                    Image(systemName: "checklist")  // Always task-based now
                         .font(.system(size: 48))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -271,33 +274,19 @@ struct SchedulingModeConversionSheet: View {
 
                     // Explanation
                     VStack(alignment: .leading, spacing: 12) {
-                        if targetMode == .task {
-                            FeaturePoint(
-                                icon: "checkmark.circle",
-                                text: "Each task will appear separately on calendar"
-                            )
-                            FeaturePoint(
-                                icon: "calendar.badge.clock",
-                                text: "Project dates will be determined by task dates"
-                            )
-                            FeaturePoint(
-                                icon: "info.circle",
-                                text: "Current project calendar event will be hidden"
-                            )
-                        } else {
-                            FeaturePoint(
-                                icon: "calendar",
-                                text: "Project will have single calendar entry"
-                            )
-                            FeaturePoint(
-                                icon: "eye.slash",
-                                text: "Individual tasks won't appear on calendar"
-                            )
-                            FeaturePoint(
-                                icon: "clock",
-                                text: "You'll set project dates directly"
-                            )
-                        }
+                        // Always task-based now
+                        FeaturePoint(
+                            icon: "checkmark.circle",
+                            text: "Each task will appear separately on calendar"
+                        )
+                        FeaturePoint(
+                            icon: "calendar.badge.clock",
+                            text: "Project dates will be determined by task dates"
+                        )
+                        FeaturePoint(
+                            icon: "info.circle",
+                            text: "All scheduling is now task-based"
+                        )
                     }
                     .padding(16)
                     .background(OPSStyle.Colors.cardBackgroundDark)
@@ -355,69 +344,10 @@ struct SchedulingModeConversionSheet: View {
         }
     }
 
-    private func convertSchedulingMode(project: Project, to targetMode: CalendarEventType) async throws {
+    private func convertSchedulingMode(project: Project, to targetMode: String) async throws {
         try await MainActor.run {
-            // Update project
-            project.eventType = targetMode
-
-            if targetMode == .task {
-                // Converting to task-based
-                // Update project's calendar event (deactivates it)
-                if let event = project.primaryCalendarEvent, event.type == .project {
-                    event.updateProjectEventTypeCache(from: project)
-                }
-
-                // Update all task calendar events (activates them)
-                for task in project.tasks {
-                    if let event = task.calendarEvent {
-                        event.updateProjectEventTypeCache(from: project)
-                    }
-                }
-
-                // Update project dates based on tasks
-                updateProjectDatesFromTasks(project)
-
-            } else {
-                // Converting to project-based
-                // Create or activate project calendar event
-                var projectEvent: CalendarEvent?
-
-                // Use existing project calendar event
-                if let event = project.primaryCalendarEvent, event.type == .project {
-                    projectEvent = event
-                }
-
-                if let projectEvent = projectEvent {
-                    projectEvent.updateProjectEventTypeCache(from: project)
-                } else {
-                    // Create new calendar event if needed
-                    // Get company's default project color
-                    let company = dataController.getCompany(id: project.companyId)
-                    let projectColor = company?.defaultProjectColor ?? "#9CA3AF"  // Light grey fallback
-
-                    let newEvent = CalendarEvent(
-                        id: UUID().uuidString,
-                        projectId: project.id,
-                        companyId: project.companyId,
-                        title: project.title,
-                        startDate: project.startDate ?? Date(),
-                        endDate: project.endDate ?? Date().addingTimeInterval(86400),
-                        color: projectColor,
-                        type: .project,
-                        active: true
-                    )
-                    newEvent.taskId = nil
-                    newEvent.updateProjectEventTypeCache(from: project)
-                    modelContext.insert(newEvent)
-                }
-
-                // Update all task calendar events (deactivates them)
-                for task in project.tasks {
-                    if let event = task.calendarEvent {
-                        event.updateProjectEventTypeCache(from: project)
-                    }
-                }
-            }
+            // Note: Task-only scheduling migration - all projects use task-based scheduling now
+            // Project dates are automatically computed from task calendar events
 
             project.needsSync = true
 
@@ -460,7 +390,8 @@ struct ProjectTeamChangeSheet: View {
 
     var body: some View {
         NavigationStack {
-            if project.eventType == .task && !project.tasks.isEmpty {
+            // Task-only scheduling migration: All projects use tasks
+            if !project.tasks.isEmpty {
                 TaskPickerForTeamChange(
                     project: project,
                     onTaskSelected: { taskId in
@@ -766,11 +697,9 @@ struct ProjectTeamChangeView: View {
                 // Update project team using centralized function
                 try await dataController.updateProjectTeamMembers(project: project, memberIds: Array(selectedMemberIds))
 
-                // If task-based scheduling, update all task teams
-                if project.eventType == .task {
-                    for task in project.tasks {
-                        try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedMemberIds))
-                    }
+                // Task-only scheduling migration: Update all task teams
+                for task in project.tasks {
+                    try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedMemberIds))
                 }
 
                 await MainActor.run {

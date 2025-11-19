@@ -677,11 +677,6 @@ class CentralizedSyncManager {
                 project.companyId = dto.company?.stringValue ?? ""
                 debugLog("    - Company ID: \(project.companyId)", enabled: DebugFlags.syncProjects)
 
-                // Event type
-                if let eventTypeString = dto.eventType {
-                    project.eventType = CalendarEventType(rawValue: eventTypeString.lowercased()) ?? .project
-                }
-
                 // Client relationship
                 if let clientId = dto.client {  // ProjectDTO uses 'client', not 'clientId'
                     project.clientId = clientId
@@ -831,10 +826,6 @@ class CentralizedSyncManager {
                 defaultProjectColor = "#9CA3AF"  // Light grey fallback
             }
 
-            // MIGRATION: Update all existing project calendar events to use company color
-            // This fixes events that were created with old blue color
-            try await migrateProjectEventColors(companyId: companyId, defaultColor: defaultProjectColor)
-
             // Fetch from Bubble
             let dtos = try await apiService.fetchCompanyCalendarEvents(companyId: companyId)
 
@@ -857,22 +848,13 @@ class CentralizedSyncManager {
                 event.title = modelEvent.title
 
                 // ALWAYS use company's defaultProjectColor for project-level events
-                // Ignore any color from Bubble API for projects (may have old blue colors)
-                if modelEvent.type == .project {
-                    // Project event: ALWAYS use company's default project color
-                    event.color = defaultProjectColor
-                    print("[SYNC_CALENDAR] 🎨 Setting project event '\(event.title)' color to company default: \(defaultProjectColor)")
-                } else {
-                    // Task event: use the color from the task type
-                    event.color = modelEvent.color
-                    print("[SYNC_CALENDAR] 🎨 Setting task event '\(event.title)' color from API: \(modelEvent.color)")
-                }
+                // Use the color from the task type
+                event.color = modelEvent.color
+                print("[SYNC_CALENDAR] 🎨 Setting task event '\(event.title)' color from API: \(modelEvent.color)")
 
                 event.startDate = modelEvent.startDate
                 event.endDate = modelEvent.endDate
                 event.duration = modelEvent.duration
-                event.type = modelEvent.type
-                event.active = modelEvent.active
 
                 // Team members
                 if let teamMemberIds = dto.teamMembers {
@@ -1859,11 +1841,6 @@ class CentralizedSyncManager {
                         task.deletedAt = Date()
                     }
 
-                    if let calendarEvent = project.primaryCalendarEvent, calendarEvent.deletedAt == nil {
-                        debugLog("   Cascading delete to calendar event", enabled: DebugFlags.deleteOperations)
-                        calendarEvent.deletedAt = Date()
-                    }
-
                     deletedCount += 1
                 } else {
                     if project.lastSyncedAt == nil {
@@ -2002,43 +1979,11 @@ class CentralizedSyncManager {
         if let existing = try modelContext.fetch(descriptor).first {
             return existing
         }
-        let new = CalendarEvent(id: id, projectId: "", companyId: "", title: "Event", startDate: nil, endDate: nil, color: "#59779F", type: .project, active: true)
+        let new = CalendarEvent(id: id, projectId: "", companyId: "", title: "Event", startDate: nil, endDate: nil, color: "#59779F")
         modelContext.insert(new)
         return new
     }
 
-    /// Migration: Update all existing project calendar events to use company's defaultProjectColor
-    /// This fixes events that were synced before we implemented the color override
-    private func migrateProjectEventColors(companyId: String, defaultColor: String) async throws {
-        print("[MIGRATION] 🎨 Updating project event colors to company default: \(defaultColor)")
-
-        // Get all calendar events for this company
-        let descriptor = FetchDescriptor<CalendarEvent>(
-            predicate: #Predicate<CalendarEvent> { event in
-                event.companyId == companyId
-            }
-        )
-
-        let allEvents = try modelContext.fetch(descriptor)
-        var updatedCount = 0
-
-        // Filter and update project events
-        for event in allEvents where event.type == .project {
-            // Only update if the color is different from the target color
-            if event.color != defaultColor {
-                print("[MIGRATION] 🎨 Updating '\(event.title)' from \(event.color) to \(defaultColor)")
-                event.color = defaultColor
-                updatedCount += 1
-            }
-        }
-
-        if updatedCount > 0 {
-            try modelContext.save()
-            print("[MIGRATION] ✅ Updated \(updatedCount) project event colors")
-        } else {
-            print("[MIGRATION] ℹ️ No project events needed color updates")
-        }
-    }
 }
 
 // MARK: - Sync Errors

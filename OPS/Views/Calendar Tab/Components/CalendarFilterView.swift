@@ -26,7 +26,10 @@ struct CalendarFilterView: View {
 
     // Search state for clients
     @State private var clientSearchText: String = ""
-    
+
+    // Pagination for clients
+    @State private var displayedClientCount: Int = 5
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -359,6 +362,29 @@ struct CalendarFilterView: View {
                 }
             }
 
+            // Show More button
+            if hasMoreClients {
+                Divider()
+                    .background(Color.white.opacity(0.1))
+
+                Button(action: {
+                    displayedClientCount += 5
+                }) {
+                    HStack {
+                        Spacer()
+                        Text("SHOW MORE")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        Spacer()
+                    }
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+
             // Show message if no results
             if filteredClients.isEmpty && !clientSearchText.isEmpty {
                 Text("No clients found")
@@ -367,18 +393,42 @@ struct CalendarFilterView: View {
                     .padding(.vertical, 32)
             }
         }
+        .onChange(of: clientSearchText) { oldValue, newValue in
+            // Reset pagination when search text changes
+            displayedClientCount = 5
+        }
     }
 
-    // Filtered clients based on search text
+    // Filtered clients based on search text and pagination
     private var filteredClients: [Client] {
+        let filtered: [Client]
         if clientSearchText.isEmpty {
-            return availableClients
+            filtered = availableClients
+        } else {
+            filtered = availableClients.filter { client in
+                client.name.localizedCaseInsensitiveContains(clientSearchText) ||
+                (client.email?.localizedCaseInsensitiveContains(clientSearchText) ?? false) ||
+                (client.address?.localizedCaseInsensitiveContains(clientSearchText) ?? false)
+            }
         }
-        return availableClients.filter { client in
-            client.name.localizedCaseInsensitiveContains(clientSearchText) ||
-            (client.email?.localizedCaseInsensitiveContains(clientSearchText) ?? false) ||
-            (client.address?.localizedCaseInsensitiveContains(clientSearchText) ?? false)
+
+        // Limit to displayedClientCount
+        return Array(filtered.prefix(displayedClientCount))
+    }
+
+    // Check if there are more clients to show
+    private var hasMoreClients: Bool {
+        let totalCount: Int
+        if clientSearchText.isEmpty {
+            totalCount = availableClients.count
+        } else {
+            totalCount = availableClients.filter { client in
+                client.name.localizedCaseInsensitiveContains(clientSearchText) ||
+                (client.email?.localizedCaseInsensitiveContains(clientSearchText) ?? false) ||
+                (client.address?.localizedCaseInsensitiveContains(clientSearchText) ?? false)
+            }.count
         }
+        return displayedClientCount < totalCount
     }
     
     // MARK: - Filter Row Component
@@ -547,15 +597,25 @@ struct CalendarFilterView: View {
     private func loadAvailableOptions() {
         guard let companyId = dataController.currentUser?.companyId,
               let company = dataController.getCompany(id: companyId) else { return }
-        
+
         // Load team members
         availableTeamMembers = company.teamMembers.sorted { $0.fullName < $1.fullName }
-        
+
         // Load task types
         availableTaskTypes = dataController.getAllTaskTypes(for: companyId).sorted { $0.displayOrder < $1.displayOrder }
-        
-        // Load clients
-        availableClients = dataController.getAllClients(for: companyId).sorted { $0.name < $1.name }
+
+        // Load clients - sorted by most recent first (createdAt descending)
+        availableClients = dataController.getAllClients(for: companyId).sorted {
+            // If both have createdAt, sort by most recent first
+            if let date1 = $0.createdAt, let date2 = $1.createdAt {
+                return date1 > date2
+            }
+            // If only one has createdAt, prioritize it
+            if $0.createdAt != nil { return true }
+            if $1.createdAt != nil { return false }
+            // Fallback to alphabetical if neither has createdAt
+            return $0.name < $1.name
+        }
     }
     
     private func loadCurrentFilters() {

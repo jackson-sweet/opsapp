@@ -214,8 +214,8 @@ class CalendarViewModel: ObservableObject {
             // Apply comprehensive filters
             events = applyEventFilters(to: events)
 
-            // Filter by active status
-            return events.filter { $0.active }
+            // All events are now active by default (active property removed in task-only scheduling)
+            return events
         }
         
         return []

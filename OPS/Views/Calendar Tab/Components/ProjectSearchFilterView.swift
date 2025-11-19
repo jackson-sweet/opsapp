@@ -16,7 +16,8 @@ struct ProjectSearchFilterView: View {
     @Binding var selectedTeamMemberIds: Set<String>
     @Binding var selectedTaskTypeIds: Set<String>
     @Binding var selectedClientIds: Set<String>
-    @Binding var selectedSchedulingTypes: Set<CalendarEventType>
+    // Removed: scheduling type filter (task-only scheduling migration)
+    // @Binding var selectedSchedulingTypes: Set<ProjectEventType>
     
     // Available options
     let availableTeamMembers: [TeamMember]
@@ -34,13 +35,13 @@ struct ProjectSearchFilterView: View {
                 
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Scheduling Type Section
-                        filterSection(
-                            title: "SCHEDULING TYPE",
-                            icon: "calendar"
-                        ) {
-                            schedulingTypeContent
-                        }
+                        // Scheduling Type Section - Removed (task-only scheduling migration)
+                        // filterSection(
+                        //     title: "SCHEDULING TYPE",
+                        //     icon: "calendar"
+                        // ) {
+                        //     schedulingTypeContent
+                        // }
                         
                         // Status Section
                         filterSection(
@@ -117,45 +118,9 @@ struct ProjectSearchFilterView: View {
     }
     
     // MARK: - Content Sections
-    
-    private var schedulingTypeContent: some View {
-        VStack(spacing: 0) {
-            // "All" option
-            filterRow(
-                title: "All Scheduling Types",
-                subtitle: nil,
-                isSelected: selectedSchedulingTypes.isEmpty,
-                isSpecial: true
-            ) {
-                selectedSchedulingTypes.removeAll()
-            }
-            
-            Divider()
-                .background(Color.white.opacity(0.1))
-            
-            // Project-based scheduling
-            filterRow(
-                title: "Project-Based",
-                subtitle: "Scheduled at project level",
-                isSelected: selectedSchedulingTypes.contains(.project)
-            ) {
-                toggleSelection(CalendarEventType.project, in: &selectedSchedulingTypes)
-            }
-            
-            Divider()
-                .background(Color.white.opacity(0.05))
-                .padding(.leading, 40)
-            
-            // Task-based scheduling
-            filterRow(
-                title: "Task-Based",
-                subtitle: "Scheduled at task level",
-                isSelected: selectedSchedulingTypes.contains(.task)
-            ) {
-                toggleSelection(CalendarEventType.task, in: &selectedSchedulingTypes)
-            }
-        }
-    }
+
+    // Removed: schedulingTypeContent - task-only scheduling migration
+    // All projects now use task-based scheduling
     
     private var statusContent: some View {
         VStack(spacing: 0) {
@@ -455,17 +420,20 @@ struct ProjectSearchFilterView: View {
                         }
                     }
                     
+                    // Removed: scheduling type filter display (task-only scheduling migration)
+                    /*
                     if !selectedSchedulingTypes.isEmpty {
                         HStack {
                             Image(systemName: "calendar")
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            
+
                             Text("\(selectedSchedulingTypes.count) scheduling type\(selectedSchedulingTypes.count == 1 ? "" : "s") selected")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                     }
+                    */
                     
                     Button(action: resetFilters) {
                         Text("Reset All Filters")
@@ -489,7 +457,7 @@ struct ProjectSearchFilterView: View {
     // MARK: - Helper Properties
     
     private var hasActiveFilters: Bool {
-        !selectedStatuses.isEmpty || !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty || !selectedSchedulingTypes.isEmpty
+        !selectedStatuses.isEmpty || !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty // || !selectedSchedulingTypes.isEmpty
     }
     
     // MARK: - Helper Methods
@@ -507,6 +475,6 @@ struct ProjectSearchFilterView: View {
         selectedTeamMemberIds.removeAll()
         selectedTaskTypeIds.removeAll()
         selectedClientIds.removeAll()
-        selectedSchedulingTypes.removeAll()
+        // selectedSchedulingTypes.removeAll()  // Removed (task-only scheduling migration)
     }
 }

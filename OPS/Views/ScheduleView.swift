@@ -35,6 +35,8 @@ struct ScheduleView: View {
     @State private var showSearchSheet = false
     @State private var showingRefreshAlert = false
     @State private var showFilterSheet = false
+    @State private var showSyncMessage = false
+    @State private var syncedProjectsCount = 0
     
     var body: some View {
         NavigationStack {
@@ -52,11 +54,31 @@ struct ScheduleView: View {
                         onRefreshTapped: {
                             // Show indicator immediately
                             showingRefreshAlert = true
-                            
+
                             // Refresh projects in background
                             Task {
+                                // Count projects before sync (respects field crew permissions)
+                                let projectsBefore = dataController.getProjectsForCurrentUser()
+                                let countBefore = projectsBefore.count
+
+                                // Perform sync
                                 await viewModel.refreshProjects()
-                                // Indicator will auto-dismiss after showing success
+
+                                // Count projects after sync
+                                let projectsAfter = dataController.getProjectsForCurrentUser()
+                                let countAfter = projectsAfter.count
+
+                                // Calculate new projects count
+                                let newProjectsCount = countAfter - countBefore
+
+                                // Hide refresh indicator
+                                await MainActor.run {
+                                    showingRefreshAlert = false
+
+                                    // Show sync message with count
+                                    syncedProjectsCount = max(0, newProjectsCount) // Ensure non-negative
+                                    showSyncMessage = true
+                                }
                             }
                         },
                         onFilterTapped: {
@@ -140,17 +162,17 @@ struct ScheduleView: View {
                 date: viewModel.selectedDate,
                 calendarEvents: viewModel.calendarEventsForSelectedDate,
                 onEventSelected: { event in
-                    // Check if this is a task event or project event
-                    if event.type == .task, let task = event.task {
-                        // For task events, show task details
+                    // All events are task events now
+                    if let task = event.task {
+                        // Show task details
                         let userInfo: [String: String] = [
                             "taskID": task.id,
                             "projectID": task.projectId
                         ]
-                        
+
                         // Dismiss sheet first
                         self.showDaySheet = false
-                        
+
                         // Post notification for task details after a delay
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             NotificationCenter.default.post(
@@ -160,7 +182,7 @@ struct ScheduleView: View {
                             )
                         }
                     } else {
-                        // For project events, set the selected project ID and dismiss this sheet
+                        // Fallback: set the selected project ID and dismiss this sheet
                         self.selectedProjectID = event.projectId
                         self.showDaySheet = false
                     }
@@ -237,7 +259,20 @@ struct ScheduleView: View {
         }
         // Add refresh indicator
         .refreshIndicator(isPresented: $showingRefreshAlert)
-        
+
+        // Add sync message with fetch count
+        .overlay(
+            PushInMessage(
+                isPresented: $showSyncMessage,
+                title: "Sync Complete",
+                subtitle: syncedProjectsCount == 0 ? "No new projects" : "\(syncedProjectsCount) new project\(syncedProjectsCount == 1 ? "" : "s") fetched",
+                type: .success,
+                autoDismissAfter: 3.0
+            )
+            .ignoresSafeArea(edges: .top)
+            .zIndex(1000)
+        )
+
         // Filter sheet
         .sheet(isPresented: $showFilterSheet) {
             CalendarFilterView(viewModel: viewModel)

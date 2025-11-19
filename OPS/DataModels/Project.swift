@@ -13,8 +13,6 @@ import CoreLocation
 final class Project: Identifiable {
     var id: String
     var title: String
-    var clientEmail: String? // Keep for backward compatibility
-    var clientPhone: String? // Keep for backward compatibility
     var address: String?
     var latitude: Double?
     var longitude: Double?
@@ -26,7 +24,6 @@ final class Project: Identifiable {
     var companyId: String
     var clientId: String? // Store the client's Bubble ID
     var allDay: Bool
-    var eventType: CalendarEventType? // Optional to handle migration - defaults to .pr      oject when nil
     
     // Relationship to Client object
     @Relationship(deleteRule: .nullify)
@@ -46,13 +43,9 @@ final class Project: Identifiable {
     @Relationship(deleteRule: .noAction)
     var teamMembers: [User]
     
-    // Relationship to tasks (for task-based scheduling)
+    // Relationship to tasks
     @Relationship(deleteRule: .cascade, inverse: \ProjectTask.project)
     var tasks: [ProjectTask] = []
-    
-    // Relationship to the project's primary calendar event (for project-based scheduling)
-    @Relationship(deleteRule: .nullify)
-    var primaryCalendarEvent: CalendarEvent?
     
     // Offline/sync tracking
     var lastSyncedAt: Date?
@@ -71,15 +64,12 @@ final class Project: Identifiable {
         self.title = title
         self.status = status
         self.address = nil
-        self.clientEmail = nil
-        self.clientPhone = nil
         self.companyId = ""
         self.teamMemberIdsString = ""
         self.projectImagesString = ""
         self.unsyncedImagesString = ""
         self.teamMembers = []
         self.allDay = false
-        self.eventType = .project // Default to project scheduling
         self.client = nil
     }
     
@@ -93,7 +83,7 @@ final class Project: Identifiable {
         if let clientEmail = client?.email, !clientEmail.isEmpty {
             return clientEmail
         }
-        
+
         // Check sub-clients for email
         if let subClients = client?.subClients {
             for subClient in subClients {
@@ -102,9 +92,8 @@ final class Project: Identifiable {
                 }
             }
         }
-        
-        // Fall back to legacy field
-        return clientEmail
+
+        return nil
     }
     
     var effectiveClientPhone: String? {
@@ -112,7 +101,7 @@ final class Project: Identifiable {
         if let clientPhone = client?.phoneNumber, !clientPhone.isEmpty {
             return clientPhone
         }
-        
+
         // Check sub-clients for phone
         if let subClients = client?.subClients {
             for subClient in subClients {
@@ -121,9 +110,8 @@ final class Project: Identifiable {
                 }
             }
         }
-        
-        // Fall back to legacy field
-        return clientPhone
+
+        return nil
     }
     
     // Check if any contact info is available (including sub-clients)
@@ -195,50 +183,9 @@ final class Project: Identifiable {
     // Debug method to show project state
     func debugProjectState() {
     }
-    
+
     // MARK: - Task-Based Scheduling Properties
-    
-    /// Get the effective eventType (defaults to .project if nil)
-    var effectiveEventType: CalendarEventType {
-        return eventType ?? .project
-    }
-    
-    /// Check if this project uses task-based scheduling
-    var usesTaskBasedScheduling: Bool {
-        return effectiveEventType == .task
-    }
-    
-    /// Check if this project uses traditional project scheduling
-    var usesProjectScheduling: Bool {
-        return effectiveEventType == .project
-    }
-    
-    // MARK: - Calendar Event Date Synchronization
-    
-    /// Sync dates with the primary calendar event (for project-based scheduling)
-    func syncDatesWithCalendarEvent() {
-        guard let calendarEvent = primaryCalendarEvent else { return }
-        
-        // Update project dates to match calendar event
-        self.startDate = calendarEvent.startDate
-        self.endDate = calendarEvent.endDate
-        self.duration = calendarEvent.duration
-    }
-    
-    /// Update calendar event dates when project dates change
-    func updateCalendarEventDates() {
-        guard let calendarEvent = primaryCalendarEvent else { return }
-        
-        // Update calendar event to match project dates
-        if let startDate = self.startDate {
-            calendarEvent.startDate = startDate
-        }
-        if let endDate = self.endDate {
-            calendarEvent.endDate = endDate
-        }
-        calendarEvent.duration = self.duration ?? 1
-    }
-    
+
     // Computed property for location with validation
     var coordinate: CLLocationCoordinate2D? {
         guard let latitude = latitude,
@@ -429,61 +376,24 @@ final class Project: Identifiable {
         return status
     }
     
-    /// Get effective start date (from tasks or project)
-    var effectiveStartDate: Date? {
-        if hasTasks {
-            // Get earliest task start date
-            let taskDates = tasks.compactMap { task in
-                task.calendarEvent?.startDate
-            }
-            return taskDates.min() ?? startDate
+    // MARK: - Computed Date Properties (from tasks)
+
+    /// Project start date - computed from earliest task CalendarEvent
+    /// Returns nil if no tasks have scheduled dates
+    var computedStartDate: Date? {
+        let taskDates = tasks.compactMap { task in
+            task.calendarEvent?.startDate
         }
-        return startDate
-    }
-    
-    /// Get effective completion date (from tasks or project)
-    var effectiveCompletionDate: Date? {
-        if hasTasks {
-            // Get latest task end date
-            let taskDates = tasks.compactMap { task in
-                task.calendarEvent?.endDate
-            }
-            return taskDates.max() ?? endDate
-        }
-        return effectiveEndDate
+        return taskDates.min()
     }
 
-    /// Update project start and end dates based on task dates (for task-based scheduling)
-    /// Should be called after task creation, update, or deletion
-    func updateDatesFromTasks() {
-        guard usesTaskBasedScheduling else { return }
-
-        print("[PROJECT_DATES] 🔄 Updating project dates from tasks...")
-        print("[PROJECT_DATES] Project: \(title)")
-        print("[PROJECT_DATES] Current start: \(startDate?.description ?? "nil"), end: \(endDate?.description ?? "nil")")
-
-        let taskDates = tasks.compactMap { task -> (start: Date?, end: Date?) in
-            (task.calendarEvent?.startDate, task.calendarEvent?.endDate)
+    /// Project end date - computed from latest task CalendarEvent
+    /// Returns nil if no tasks have scheduled dates
+    var computedEndDate: Date? {
+        let taskDates = tasks.compactMap { task in
+            task.calendarEvent?.endDate
         }
-
-        let allStartDates = taskDates.compactMap { $0.start }
-        let allEndDates = taskDates.compactMap { $0.end }
-
-        print("[PROJECT_DATES] Found \(allStartDates.count) task start dates and \(allEndDates.count) task end dates")
-
-        if !allStartDates.isEmpty {
-            let earliestStart = allStartDates.min()
-            print("[PROJECT_DATES] Earliest task start: \(earliestStart?.description ?? "nil")")
-            startDate = earliestStart
-        }
-
-        if !allEndDates.isEmpty {
-            let latestEnd = allEndDates.max()
-            print("[PROJECT_DATES] Latest task end: \(latestEnd?.description ?? "nil")")
-            endDate = latestEnd
-        }
-
-        print("[PROJECT_DATES] ✅ Updated start: \(startDate?.description ?? "nil"), end: \(endDate?.description ?? "nil")")
+        return taskDates.max()
     }
 
     /// Update project team members based on all task team members

@@ -37,40 +37,25 @@ struct SegmentedBorderView: View {
     @EnvironmentObject private var dataController: DataController
     
     private var taskColorSegments: [(color: Color, count: Int)] {
-        // Group events by type and color
+        // Task-only scheduling migration: All events are task events
         var colorCounts: [String: Int] = [:]
         var colorMap: [String: Color] = [:]
-        
+
         for event in events {
-            if event.type == .task, let task = event.task {
-                // For tasks, use the task's effective color (from task type)
+            if let task = event.task {
+                // Use the task's effective color (from task type)
                 let colorKey = "task_\(task.effectiveColor)"
                 colorCounts[colorKey, default: 0] += 1
-                
+
                 if let color = Color(hex: task.effectiveColor) {
                     colorMap[colorKey] = color
                 } else {
                     // Fallback for invalid task colors
                     colorMap[colorKey] = Color.gray.opacity(0.6)
                 }
-            } else if event.type == .project, let project = event.project {
-                // For projects, use the company's default project color
-                var projectColor = Color.gray.opacity(0.6) // Default fallback
-                
-                // Try to get company's default project color
-                if let company = dataController.getCompany(id: project.companyId),
-                   !company.defaultProjectColor.isEmpty,
-                   let defaultColor = Color(hex: company.defaultProjectColor) {
-                    projectColor = defaultColor
-                }
-                
-                // Use a single key for all projects to group them together
-                let colorKey = "project_default"
-                colorCounts[colorKey, default: 0] += 1
-                colorMap[colorKey] = projectColor
             }
         }
-        
+
         // Convert to array of (color, count) tuples
         return colorCounts.compactMap { key, count in
             guard let color = colorMap[key] else { return nil }

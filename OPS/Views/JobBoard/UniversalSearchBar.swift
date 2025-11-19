@@ -101,6 +101,16 @@ struct UniversalSearchBar: View {
             }
 
         }
+        .background(
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    OPSStyle.Colors.background,
+                    Color.clear
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
     }
 
     private var placeholderText: String {

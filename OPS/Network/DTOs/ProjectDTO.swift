@@ -44,23 +44,14 @@ struct ProjectDTO: Codable {
         self.teamNotes = try container.decodeIfPresent(String.self, forKey: .teamNotes)
         self.teamMembers = try container.decodeIfPresent([String].self, forKey: .teamMembers)
         self.thumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnail)
-        self.clientName = try container.decodeIfPresent(String.self, forKey: .clientName)
-        self.clientEmail = try container.decodeIfPresent(String.self, forKey: .clientEmail)
-        self.clientPhone = try container.decodeIfPresent(String.self, forKey: .clientPhone)
         self.projectImages = try container.decodeIfPresent([String].self, forKey: .projectImages)
         self.duration = try container.decodeIfPresent(Int.self, forKey: .duration)
         self.projectValue = try container.decodeIfPresent(Double.self, forKey: .projectValue)
         self.projectGrossCost = try container.decodeIfPresent(Double.self, forKey: .projectGrossCost)
         self.balance = try container.decodeIfPresent(Double.self, forKey: .balance)
         self.slug = try container.decodeIfPresent(String.self, forKey: .slug)
-        self.eventType = try container.decodeIfPresent(String.self, forKey: .eventType)
         self.tasks = try container.decodeIfPresent([BubbleReference].self, forKey: .tasks)
         self.deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
-
-        // Log eventType for debugging
-        if let eventTypeValue = self.eventType {
-        } else {
-        }
     }
     let company: BubbleReference?
     let completion: String?
@@ -71,13 +62,8 @@ struct ProjectDTO: Codable {
     let teamNotes: String?
     let teamMembers: [String]?
     let thumbnail: String?
-    // These fields are deprecated - using Client reference instead
-    let clientName: String?
-    let clientEmail: String?
-    let clientPhone: String?
-    let projectImages: [String]?  // Added this field
+    let projectImages: [String]?  // Project image URLs
     let duration: Int? // Duration in days
-    let eventType: String? // CalendarEventType - "Task" or "Project"
     let tasks: [BubbleReference]? // List of tasks associated with this project
     
     // Additional fields from the actual API response
@@ -108,12 +94,8 @@ struct ProjectDTO: Codable {
         case projectGrossCost = "projectGrossCost" // The gross cost of the proejct. We dont need to store this for now.
         case balance = "balance" // The outstanding project balance. Dont need to store this now.
         case slug = "Slug" // The project's URL slug (Bubble default field). We don't need to store this in the app.
-        case clientName = "clientName" // The project's client's name. type string.
-        case clientEmail = "clientEmail" // The client's email address. type string.
-        case clientPhone = "clientPhone" // The client's phone number. type string.
         case projectImages = "projectImages" // list of type image, that have been uploaded to the project object.
         case duration = "duration" // Duration in days for the project. type number.
-        case eventType = "eventType" // CalendarEventType - determines if project uses task-based or project scheduling
         case tasks = "tasks" // List of tasks associated with this project, type list of Task
         case deletedAt = "deletedAt" // Soft delete timestamp
     }
@@ -136,17 +118,8 @@ struct ProjectDTO: Codable {
         // Store client reference if available
         if let clientId = client {
             project.clientId = clientId
-        } else {
-            // Debug: Check if we at least have the deprecated text fields
-            if let cName = clientName {
-            }
         }
-        
-        // Store client info only as fallback if text fields exist (deprecated)
-        // Client name now comes from Client relationship
-        project.clientEmail = clientEmail
-        project.clientPhone = clientPhone
-            
+
         if let companyRef = company {
             project.companyId = companyRef.stringValue
         }
@@ -166,14 +139,7 @@ struct ProjectDTO: Codable {
         project.notes = teamNotes
         project.projectDescription = description
         project.allDay = allDay ?? false
-        
-        // Set eventType - default to .project if nil
-        if let eventTypeString = eventType {
-            project.eventType = CalendarEventType(rawValue: eventTypeString.lowercased()) ?? .project
-        } else {
-            project.eventType = .project // Default to project scheduling if not specified
-        }
-        
+
         project.lastSyncedAt = Date()
         project.syncPriority = 1
         

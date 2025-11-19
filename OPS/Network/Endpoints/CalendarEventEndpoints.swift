@@ -30,12 +30,7 @@ extension APIService {
             constraints: constraints,
             sortField: BubbleFields.CalendarEvent.startDate
         )
-        
-        
-        // Summary statistics (case-insensitive comparison)
-        let projectEvents = events.filter { $0.type?.lowercased() == "project" && $0.taskId == nil }
-        let taskEvents = events.filter { $0.type?.lowercased() == "task" && $0.taskId != nil }
-        
+
         return events
     }
     
@@ -106,18 +101,14 @@ extension APIService {
     
     // MARK: - Calendar Event Creation
 
-    /// Create a new calendar event and link it to the company
+    /// Create a new task calendar event and link it to the task and company
     /// This is the universal method that should be used for all calendar event creation
     /// - Parameter event: The calendar event DTO to create
     /// - Returns: The created calendar event DTO with server-assigned ID
-    /// - Note: Automatically links the event based on its type:
-    ///   - If type is "Project", links to project.calendarEvent field
-    ///   - If type is "Task", links to task.calendarEventId field
-    ///   - Always links to company.calendarEventsList
+    /// - Note: Links the event to task.calendarEventId and company.calendarEventsList
     func createAndLinkCalendarEvent(_ event: CalendarEventDTO) async throws -> CalendarEventDTO {
         print("[CREATE_AND_LINK_EVENT] 🆕 Creating and linking calendar event")
         print("[CREATE_AND_LINK_EVENT] Title: \(event.title ?? "Untitled")")
-        print("[CREATE_AND_LINK_EVENT] Type: \(event.type ?? "Unknown")")
         print("[CREATE_AND_LINK_EVENT] Company ID: \(event.companyId ?? "Unknown")")
         print("[CREATE_AND_LINK_EVENT] Project ID: \(event.projectId ?? "Unknown")")
         print("[CREATE_AND_LINK_EVENT] Task ID: \(event.taskId ?? "Unknown")")
@@ -125,35 +116,16 @@ extension APIService {
         let createdEvent = try await createCalendarEvent(event)
         print("[CREATE_AND_LINK_EVENT] ✅ Event created with ID: \(createdEvent.id)")
 
-        // Auto-detect type and link appropriately
-        let eventType = event.type?.lowercased() ?? ""
-
-        if eventType == "project" {
-            // Link to project's calendarEvent field
-            if let projectId = event.projectId, !projectId.isEmpty {
-                print("[CREATE_AND_LINK_EVENT] 🔗 Type is 'Project' - linking to project...")
-                try await self.linkCalendarEventToProject(
-                    projectId: projectId,
-                    calendarEventId: createdEvent.id
-                )
-                print("[CREATE_AND_LINK_EVENT] ✅ Event linked to project")
-            } else {
-                print("[CREATE_AND_LINK_EVENT] ⚠️ Type is 'Project' but no project ID provided")
-            }
-        } else if eventType == "task" {
-            // Link to task's calendarEventId field
-            if let taskId = event.taskId, !taskId.isEmpty {
-                print("[CREATE_AND_LINK_EVENT] 🔗 Type is 'Task' - linking to task...")
-                try await self.linkCalendarEventToTask(
-                    taskId: taskId,
-                    calendarEventId: createdEvent.id
-                )
-                print("[CREATE_AND_LINK_EVENT] ✅ Event linked to task")
-            } else {
-                print("[CREATE_AND_LINK_EVENT] ⚠️ Type is 'Task' but no task ID provided")
-            }
+        // Link to task's calendarEventId field
+        if let taskId = event.taskId, !taskId.isEmpty {
+            print("[CREATE_AND_LINK_EVENT] 🔗 Linking to task...")
+            try await self.linkCalendarEventToTask(
+                taskId: taskId,
+                calendarEventId: createdEvent.id
+            )
+            print("[CREATE_AND_LINK_EVENT] ✅ Event linked to task")
         } else {
-            print("[CREATE_AND_LINK_EVENT] ⚠️ Unknown event type '\(eventType)' - skipping project/task linking")
+            print("[CREATE_AND_LINK_EVENT] ⚠️ No task ID provided")
         }
 
         // Always link to company (done last to ensure event exists)
@@ -185,8 +157,7 @@ extension APIService {
             BubbleFields.CalendarEvent.projectId: event.projectId ?? "",
             BubbleFields.CalendarEvent.companyId: event.companyId ?? "",
             BubbleFields.CalendarEvent.duration: event.duration ?? 1,
-            BubbleFields.CalendarEvent.color: event.color ?? "#59779F",
-            BubbleFields.CalendarEvent.eventType: event.type ?? "Project"
+            BubbleFields.CalendarEvent.color: event.color ?? "#59779F"
         ]
 
         // Add dates if provided
@@ -205,10 +176,6 @@ extension APIService {
 
         if let teamMembers = event.teamMembers {
             eventData[BubbleFields.CalendarEvent.teamMembers] = teamMembers
-        }
-
-        if let active = event.active {
-            eventData[BubbleFields.CalendarEvent.active] = active
         }
 
         let bodyData = try JSONSerialization.data(withJSONObject: eventData)
@@ -237,8 +204,6 @@ extension APIService {
             startDate: event.startDate,
             teamMembers: event.teamMembers,
             title: event.title,
-            type: event.type,
-            active: event.active,
             createdDate: nil,
             modifiedDate: nil,
             deletedAt: nil

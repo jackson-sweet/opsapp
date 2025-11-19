@@ -793,38 +793,12 @@ struct OrganizationSettingsView: View {
         isUpdatingColor = false
     }
 
-    // Update all project-type calendar events to use the new color
+    // Task-only scheduling migration: Project-level calendar events no longer exist
+    // All calendar events are now task-based and get their color from the task's task type
+    // This function is no longer needed but kept as a no-op to avoid breaking existing call sites
     private func updateAllProjectEventColors(to newColor: String) async throws {
-        guard let context = dataController.modelContext,
-              let companyId = organization?.id else { return }
-
-        print("[COLOR_UPDATE] 🎨 Updating all project event colors to: \(newColor)")
-
-        // Fetch all calendar events for this company
-        let descriptor = FetchDescriptor<CalendarEvent>(
-            predicate: #Predicate<CalendarEvent> { event in
-                event.companyId == companyId
-            }
-        )
-
-        let allEvents = try context.fetch(descriptor)
-        var updatedCount = 0
-
-        // Update project-type events
-        for event in allEvents where event.type == .project {
-            if event.color != newColor {
-                print("[COLOR_UPDATE] 🎨 Updating '\(event.title)' from \(event.color) to \(newColor)")
-                event.color = newColor
-                updatedCount += 1
-            }
-        }
-
-        if updatedCount > 0 {
-            try context.save()
-            print("[COLOR_UPDATE] ✅ Updated \(updatedCount) project event colors")
-        } else {
-            print("[COLOR_UPDATE] ℹ️ No project events needed color updates")
-        }
+        print("[COLOR_UPDATE] ℹ️ Task-only scheduling migration: Project event color updates no longer needed")
+        print("[COLOR_UPDATE] ℹ️ All calendar events now inherit colors from their task types")
     }
 }
 

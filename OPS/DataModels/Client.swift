@@ -36,6 +36,7 @@ final class Client: Identifiable {
     // Sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
+    var createdAt: Date? // When the client was created (from Bubble)
 
     // Soft delete support
     var deletedAt: Date?

@@ -1617,8 +1617,8 @@ class DataController: ObservableObject {
                             UserDefaults.standard.string(forKey: "currentUserCompanyId")
             
             
-            // Get all projects
-            let descriptor = FetchDescriptor<Project>(sortBy: [SortDescriptor(\.startDate)])
+            // Get all projects (will sort in-memory since startDate is computed)
+            let descriptor = FetchDescriptor<Project>()
             let allProjects = try modelContext.fetch(descriptor)
             
             
@@ -1707,9 +1707,6 @@ class DataController: ObservableObject {
 
             // Filter events that overlap with the date range
             let filteredEvents = allEvents.filter { event in
-                // Skip inactive events
-                guard event.active else { return false }
-
                 // Check if event overlaps with the range
                 guard let eventStart = event.startDate else { return false }
                 let eventEnd = event.endDate ?? eventStart
@@ -1797,11 +1794,6 @@ class DataController: ObservableObject {
                     return false
                 }
                 passedDateFilter += 1
-
-                // Check if event is active (accounts for project scheduling mode)
-                if !event.active {
-                    return false
-                }
                 passedShouldDisplayFilter += 1
                 
                 // For Admin and Office Crew, show all company events
@@ -2036,10 +2028,9 @@ class DataController: ObservableObject {
                          userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
         
-        // Simple, reliable sort by start date
-        var descriptor = FetchDescriptor<Project>()
-        descriptor.sortBy = [SortDescriptor(\.startDate, order: .forward)]
-        
+        // Fetch all projects (sorting by computed startDate must be done in-memory)
+        let descriptor = FetchDescriptor<Project>()
+
         return try context.fetch(descriptor)
     }
     
@@ -2049,10 +2040,9 @@ class DataController: ObservableObject {
         }
         
         do {
-            // Fetch all projects, sorted by start date (most recent first)
-            var descriptor = FetchDescriptor<Project>()
-            descriptor.sortBy = [SortDescriptor(\.startDate, order: .reverse)]
-            
+            // Fetch all projects (sorting by computed startDate must be done in-memory)
+            let descriptor = FetchDescriptor<Project>()
+
             return try context.fetch(descriptor)
         } catch {
             return []
@@ -2531,10 +2521,8 @@ class DataController: ObservableObject {
         let projectId = project.id
         let taskIds = project.tasks.map { $0.id }
         let taskCalendarEventIds = project.tasks.compactMap { $0.calendarEvent?.id }
-        let projectCalendarEventId = project.primaryCalendarEvent?.id
 
         // Get references to all SwiftData objects we'll need to delete
-        let projectCalendarEvent = project.primaryCalendarEvent
         let tasksToDelete = Array(project.tasks) // Create array copy to avoid relationship issues
         let taskCalendarEvents = tasksToDelete.compactMap { $0.calendarEvent }
 
@@ -2548,20 +2536,10 @@ class DataController: ObservableObject {
             try await apiService.deleteTask(id: taskId)
         }
 
-        // STEP 3: Delete project's primary calendar event from Bubble
-        if let eventId = projectCalendarEventId {
-            try await apiService.deleteCalendarEvent(id: eventId)
-        }
-
-        // STEP 4: Delete project from Bubble
+        // STEP 3: Delete project from Bubble
         try await apiService.deleteProject(id: projectId)
 
-        // STEP 5: Delete everything from local SwiftData
-        // Delete the project's primary calendar event
-        if let event = projectCalendarEvent {
-            modelContext.delete(event)
-        }
-
+        // STEP 4: Delete everything from local SwiftData
         // Delete all task calendar events
         for event in taskCalendarEvents {
             modelContext.delete(event)
@@ -2606,16 +2584,15 @@ class DataController: ObservableObject {
         modelContext.delete(task)
         try modelContext.save()
 
-        // STEP 4: Update project dates if using task-based scheduling
-        if updateProject, let project = project, project.usesTaskBasedScheduling {
-            project.updateDatesFromTasks()
+        // STEP 4: Update project dates (automatically computed from remaining tasks)
+        if updateProject, let project = project {
             try modelContext.save()
 
-            // Sync updated dates to Bubble
+            // Sync updated computed dates to Bubble
             try await apiService.updateProjectDates(
                 projectId: project.id,
-                startDate: project.startDate,
-                endDate: project.endDate
+                startDate: project.computedStartDate,
+                endDate: project.computedEndDate
             )
         }
     }
@@ -2655,15 +2632,16 @@ class DataController: ObservableObject {
         print("[RESCHEDULE_PROJECT] Old dates: \(project.startDate?.description ?? "nil") - \(project.endDate?.description ?? "nil")")
         print("[RESCHEDULE_PROJECT] New dates: \(startDate.description) - \(endDate.description)")
 
-        // STEP 1: Update calendar event if provided or find it
-        let event = calendarEvent ?? project.primaryCalendarEvent
-        if let event = event {
+        // STEP 1: Update calendar event if provided
+        // Note: primaryCalendarEvent removed in task-only scheduling migration
+        // All calendar events are task-based now
+        if let event = calendarEvent {
             event.startDate = startDate
             event.endDate = endDate
             event.needsSync = true
             print("[RESCHEDULE_PROJECT] ✅ Calendar event updated locally")
         } else {
-            print("[RESCHEDULE_PROJECT] ⚠️ No calendar event found")
+            print("[RESCHEDULE_PROJECT] ⚠️ No calendar event provided")
         }
 
         // STEP 2: Update project dates
@@ -2684,7 +2662,7 @@ class DataController: ObservableObject {
         print("[RESCHEDULE_PROJECT] ✅ Project dates updated in Bubble")
 
         // STEP 5: Update calendar event in Bubble if it exists
-        if let event = event {
+        if let event = calendarEvent {
             let formatter = ISO8601DateFormatter()
             let startDateString = formatter.string(from: startDate)
             let endDateString = formatter.string(from: endDate)
@@ -3223,7 +3201,6 @@ class DataController: ObservableObject {
                 event.endDate = endDate
                 let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
                 event.duration = daysDiff + 1
-                event.active = true  // Mark as active when scheduled
                 event.needsSync = true
             },
             syncToAPI: {

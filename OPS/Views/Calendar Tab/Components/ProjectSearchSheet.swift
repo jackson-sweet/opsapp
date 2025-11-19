@@ -23,7 +23,8 @@ struct ProjectSearchSheet: View {
     @State private var selectedTeamMemberIds: Set<String> = []
     @State private var selectedTaskTypeIds: Set<String> = []
     @State private var selectedClientIds: Set<String> = []
-    @State private var selectedSchedulingTypes: Set<CalendarEventType> = []
+    // Removed: scheduling type filter (task-only scheduling migration)
+    // @State private var selectedSchedulingTypes: Set<ProjectEventType> = []
     @State private var teamMembers: [TeamMember] = []
     @State private var availableTaskTypes: [TaskType] = []
     @State private var availableClients: [Client] = []
@@ -32,7 +33,7 @@ struct ProjectSearchSheet: View {
     
     // Check if any filters are active
     private var hasActiveFilters: Bool {
-        !selectedStatuses.isEmpty || !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty || !selectedSchedulingTypes.isEmpty
+        !selectedStatuses.isEmpty || !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty // || !selectedSchedulingTypes.isEmpty
     }
     
     // Count of active filter categories
@@ -42,7 +43,7 @@ struct ProjectSearchSheet: View {
         if !selectedTeamMemberIds.isEmpty { count += 1 }
         if !selectedTaskTypeIds.isEmpty { count += 1 }
         if !selectedClientIds.isEmpty { count += 1 }
-        if !selectedSchedulingTypes.isEmpty { count += 1 }
+        // if !selectedSchedulingTypes.isEmpty { count += 1 }  // Removed (task-only scheduling migration)
         return count
     }
     
@@ -85,14 +86,14 @@ struct ProjectSearchSheet: View {
             }
         }
         
-        // Filter by scheduling types (multi-select)
-        if !selectedSchedulingTypes.isEmpty {
-            projects = projects.filter { project in
-                // Use effectiveEventType which defaults to .project if nil
-                let eventType = project.eventType ?? .project
-                return selectedSchedulingTypes.contains(eventType)
-            }
-        }
+        // Filter by scheduling types (multi-select) - Removed (task-only scheduling migration)
+        // if !selectedSchedulingTypes.isEmpty {
+        //     projects = projects.filter { project in
+        //         // Use effectiveEventType which defaults to .project if nil
+        //         let eventType = project.eventType ?? .project
+        //         return selectedSchedulingTypes.contains(eventType)
+        //     }
+        // }
         
         // Filter by search text
         if !searchText.isEmpty {
@@ -211,7 +212,7 @@ struct ProjectSearchSheet: View {
                 selectedTeamMemberIds: $selectedTeamMemberIds,
                 selectedTaskTypeIds: $selectedTaskTypeIds,
                 selectedClientIds: $selectedClientIds,
-                selectedSchedulingTypes: $selectedSchedulingTypes,
+                // selectedSchedulingTypes: $selectedSchedulingTypes,  // Removed (task-only scheduling migration)
                 availableTeamMembers: teamMembers,
                 availableTaskTypes: availableTaskTypes,
                 availableClients: availableClients

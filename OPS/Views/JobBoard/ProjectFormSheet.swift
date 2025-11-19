@@ -934,7 +934,7 @@ struct ProjectFormSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                .stroke(Color.white.opacity(0.25), lineWidth: 1)
         )
     }
 
@@ -1708,7 +1708,7 @@ struct ExpandableSection<Content: View>: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
             )
         }
     }

@@ -60,6 +60,10 @@ struct ClientFormSheet: View {
     @State private var showEmailError = false
     @State private var showPhoneError = false
 
+    // Notes editing
+    @State private var isEditingNotes = false
+    @State private var tempNotes: String = ""
+
     init(mode: Mode, prefilledName: String? = nil, onSave: @escaping (Client) -> Void) {
         self.mode = mode
         self.onSave = onSave
@@ -97,16 +101,16 @@ struct ClientFormSheet: View {
 
                                 Spacer()
 
-                                // De-emphasized Import from Contacts button
+                                // Minimalist Import from Contacts button
                                 if mode.isCreate {
                                     Button(action: { showingContactPicker = true }) {
                                         HStack(spacing: 4) {
                                             Image(systemName: "person.crop.circle")
-                                                .font(.caption)
-                                            Text("Import from contacts")
-                                                .font(OPSStyle.Typography.caption)
+                                                .font(.system(size: 10))
+                                            Text("IMPORT")
                                         }
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
                                 }
                             }
@@ -132,7 +136,7 @@ struct ClientFormSheet: View {
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
                                         )
                                         .onChange(of: name) { _, newValue in
                                             if mode.isCreate {
@@ -169,7 +173,7 @@ struct ClientFormSheet: View {
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(showEmailError ? Color.red.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
+                                                .stroke(showEmailError ? Color.red.opacity(0.5) : Color.white.opacity(0.2), lineWidth: 1)
                                         )
                                         .onChange(of: email) { _, _ in
                                             showEmailError = !isValidEmail
@@ -199,7 +203,7 @@ struct ClientFormSheet: View {
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(showPhoneError ? Color.red.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
+                                                .stroke(showPhoneError ? Color.red.opacity(0.5) : Color.white.opacity(0.2), lineWidth: 1)
                                         )
                                         .onChange(of: phone) { _, _ in
                                             showPhoneError = !isValidPhone
@@ -230,28 +234,56 @@ struct ClientFormSheet: View {
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    ZStack(alignment: .topLeading) {
-                                        if notes.isEmpty {
-                                            Text("Add notes...")
-                                                .font(OPSStyle.Typography.body)
-                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                                .padding(.top, 20)
-                                                .padding(.leading, 16)
-                                        }
+                                    VStack(spacing: 12) {
+                                        ZStack(alignment: .topLeading) {
+                                            if (isEditingNotes ? tempNotes : notes).isEmpty {
+                                                Text("Add notes...")
+                                                    .font(OPSStyle.Typography.body)
+                                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                    .padding(.top, 20)
+                                                    .padding(.leading, 16)
+                                            }
 
-                                        TextEditor(text: $notes)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                            .frame(minHeight: 80, maxHeight: 200)
-                                            .padding(12)
-                                            .background(Color.clear)
-                                            .scrollContentBackground(.hidden)
+                                            TextEditor(text: isEditingNotes ? $tempNotes : $notes)
+                                                .font(OPSStyle.Typography.body)
+                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                                .frame(minHeight: 80, maxHeight: 200)
+                                                .padding(12)
+                                                .background(Color.clear)
+                                                .scrollContentBackground(.hidden)
+                                                .onTapGesture {
+                                                    if !isEditingNotes {
+                                                        tempNotes = notes
+                                                        isEditingNotes = true
+                                                    }
+                                                }
+                                        }
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                                        )
+
+                                        if isEditingNotes {
+                                            HStack(spacing: 16) {
+                                                Spacer()
+
+                                                Button("CANCEL") {
+                                                    tempNotes = ""
+                                                    isEditingNotes = false
+                                                }
+                                                .font(OPSStyle.Typography.caption)
+                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                                Button("SAVE") {
+                                                    notes = tempNotes
+                                                    isEditingNotes = false
+                                                }
+                                                .font(OPSStyle.Typography.caption)
+                                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            }
+                                        }
                                     }
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                                    )
                                 }
                             }
                         }

@@ -60,6 +60,8 @@ struct TaskFormSheet: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showingError = false
+    @State private var isEditingNotes = false
+    @State private var tempNotes: String = ""
 
     private var isValid: Bool {
         selectedProjectId != nil && selectedTaskTypeId != nil
@@ -299,7 +301,7 @@ struct TaskFormSheet: View {
             .cornerRadius(5)
             .overlay(
                 RoundedRectangle(cornerRadius: 5)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
             )
         }
     }
@@ -321,7 +323,7 @@ struct TaskFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
                     )
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .font(OPSStyle.Typography.body)
@@ -414,7 +416,7 @@ struct TaskFormSheet: View {
             HStack(spacing: 0) {
                 // Colored left border (4pt width) - task type color
                 Rectangle()
-                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? Color.white.opacity(0.15))
+                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? Color.white.opacity(0.25))
                     .frame(width: 4)
 
                 Menu {
@@ -461,7 +463,7 @@ struct TaskFormSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
             )
         }
     }
@@ -509,7 +511,7 @@ struct TaskFormSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
             )
         }
     }
@@ -565,7 +567,7 @@ struct TaskFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
                     )
                 }
                 .disabled(selectedProjectId == nil)
@@ -578,29 +580,57 @@ struct TaskFormSheet: View {
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            ZStack(alignment: .topLeading) {
-                // Placeholder text
-                if taskNotes.isEmpty {
-                    Text("Add notes...")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.top, 20)
-                        .padding(.leading, 16)
-                }
+            VStack(spacing: 12) {
+                ZStack(alignment: .topLeading) {
+                    // Placeholder text
+                    if (isEditingNotes ? tempNotes : taskNotes).isEmpty {
+                        Text("Add notes...")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .padding(.top, 20)
+                            .padding(.leading, 16)
+                    }
 
-                TextEditor(text: $taskNotes)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(minHeight: 100, maxHeight: 200)
-                    .padding(12)
-                    .background(Color.clear)
-                    .scrollContentBackground(.hidden)
+                    TextEditor(text: isEditingNotes ? $tempNotes : $taskNotes)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(minHeight: 100, maxHeight: 200)
+                        .padding(12)
+                        .background(Color.clear)
+                        .scrollContentBackground(.hidden)
+                        .onTapGesture {
+                            if !isEditingNotes {
+                                tempNotes = taskNotes
+                                isEditingNotes = true
+                            }
+                        }
+                }
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
+
+                if isEditingNotes {
+                    HStack(spacing: 16) {
+                        Spacer()
+
+                        Button("CANCEL") {
+                            tempNotes = ""
+                            isEditingNotes = false
+                        }
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Button("SAVE") {
+                            taskNotes = tempNotes
+                            isEditingNotes = false
+                        }
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
             }
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
-            )
         }
     }
 

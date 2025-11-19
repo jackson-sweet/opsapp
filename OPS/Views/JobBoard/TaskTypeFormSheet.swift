@@ -72,214 +72,331 @@ struct TaskTypeFormSheet: View {
     ]
 
     private let availableColors: [(color: Color, hex: String)] = [
+        // Reds/Pinks
         (Color(hex: "ceb4b4")!, "ceb4b4"),
         (Color(hex: "b59090")!, "b59090"),
         (Color(hex: "8c6868")!, "8c6868"),
+        (Color(hex: "ceb4bb")!, "ceb4bb"),
+        (Color(hex: "b5909a")!, "b5909a"),
+        (Color(hex: "8c6871")!, "8c6871"),
+        // Oranges
         (Color(hex: "cebbb4")!, "cebbb4"),
         (Color(hex: "b59a90")!, "b59a90"),
         (Color(hex: "8c7168")!, "8c7168"),
         (Color(hex: "cec1b4")!, "cec1b4"),
         (Color(hex: "b5a390")!, "b5a390"),
         (Color(hex: "8c7a68")!, "8c7a68"),
+        // Yellows/Tans
         (Color(hex: "cec8b4")!, "cec8b4"),
         (Color(hex: "b5ac90")!, "b5ac90"),
         (Color(hex: "8c8368")!, "8c8368"),
         (Color(hex: "ceceb4")!, "ceceb4"),
         (Color(hex: "b5b590")!, "b5b590"),
         (Color(hex: "8c8c68")!, "8c8c68"),
+        // Yellow-Greens
         (Color(hex: "c8ceb4")!, "c8ceb4"),
         (Color(hex: "acb590")!, "acb590"),
         (Color(hex: "838c68")!, "838c68"),
         (Color(hex: "c1ceb4")!, "c1ceb4"),
         (Color(hex: "a3b590")!, "a3b590"),
         (Color(hex: "7a8c68")!, "7a8c68"),
+        // Greens
         (Color(hex: "bbceb4")!, "bbceb4"),
         (Color(hex: "9ab590")!, "9ab590"),
         (Color(hex: "718c68")!, "718c68"),
         (Color(hex: "b4ceb4")!, "b4ceb4"),
         (Color(hex: "90b590")!, "90b590"),
         (Color(hex: "688c68")!, "688c68"),
+        // Green-Cyans
         (Color(hex: "b4cebb")!, "b4cebb"),
         (Color(hex: "90b59a")!, "90b59a"),
         (Color(hex: "688c71")!, "688c71"),
         (Color(hex: "b4cec1")!, "b4cec1"),
         (Color(hex: "90b5a3")!, "90b5a3"),
         (Color(hex: "688c7a")!, "688c7a"),
+        // Cyans
         (Color(hex: "b4cec8")!, "b4cec8"),
         (Color(hex: "90b5ac")!, "90b5ac"),
         (Color(hex: "688c83")!, "688c83"),
         (Color(hex: "b4cece")!, "b4cece"),
         (Color(hex: "90b5b5")!, "90b5b5"),
         (Color(hex: "688c8c")!, "688c8c"),
+        // Cyan-Blues
         (Color(hex: "b4c8ce")!, "b4c8ce"),
         (Color(hex: "90acb5")!, "90acb5"),
         (Color(hex: "68838c")!, "68838c"),
         (Color(hex: "b4c1ce")!, "b4c1ce"),
         (Color(hex: "90a3b5")!, "90a3b5"),
         (Color(hex: "687a8c")!, "687a8c"),
+        // Blues
         (Color(hex: "b4bbce")!, "b4bbce"),
         (Color(hex: "909ab5")!, "909ab5"),
         (Color(hex: "68718c")!, "68718c"),
         (Color(hex: "b4b4ce")!, "b4b4ce"),
         (Color(hex: "9090b5")!, "9090b5"),
         (Color(hex: "68688c")!, "68688c"),
+        // Blue-Purples
         (Color(hex: "bbb4ce")!, "bbb4ce"),
         (Color(hex: "9a90b5")!, "9a90b5"),
         (Color(hex: "71688c")!, "71688c"),
         (Color(hex: "c1b4ce")!, "c1b4ce"),
         (Color(hex: "a390b5")!, "a390b5"),
         (Color(hex: "7a688c")!, "7a688c"),
+        // Purples
         (Color(hex: "c8b4ce")!, "c8b4ce"),
         (Color(hex: "ac90b5")!, "ac90b5"),
         (Color(hex: "83688c")!, "83688c"),
         (Color(hex: "ceb4ce")!, "ceb4ce"),
         (Color(hex: "b590b5")!, "b590b5"),
         (Color(hex: "8c688c")!, "8c688c"),
+        // Purple-Pinks
         (Color(hex: "ceb4c8")!, "ceb4c8"),
         (Color(hex: "b590ac")!, "b590ac"),
         (Color(hex: "8c6883")!, "8c6883"),
         (Color(hex: "ceb4c1")!, "ceb4c1"),
         (Color(hex: "b590a3")!, "b590a3"),
-        (Color(hex: "8c687a")!, "8c687a"),
-        (Color(hex: "ceb4bb")!, "ceb4bb"),
-        (Color(hex: "b5909a")!, "b5909a"),
-        (Color(hex: "8c6871")!, "8c6871")
+        (Color(hex: "8c687a")!, "8c687a")
     ]
 
     private var isValid: Bool {
         !taskTypeName.isEmpty
     }
 
-    var body: some View {
+    // MARK: - Preview Card
+    private var previewCard: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
-                .edgesIgnoringSafeArea(.all)
+            HStack(spacing: 0) {
+                // Colored left border (4pt width)
+                Rectangle()
+                    .fill(taskTypeColor)
+                    .frame(width: 4)
 
-            VStack(spacing: 0) {
-                SettingsHeader(
-                    title: "New Task Type",
-                    onBackTapped: { dismiss() }
-                )
-                .padding(.bottom, 8)
+                // Main content area
+                VStack(alignment: .leading, spacing: 8) {
+                    // Task type name (title)
+                    Text(taskTypeName.isEmpty ? "ENTER TASK TYPE NAME" : taskTypeName.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(taskTypeName.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                ScrollView {
-                    VStack(spacing: OPSStyle.Layout.spacing4) {
-                        // Name Field
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                            Text("TASK TYPE NAME *")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                    // Metadata row
+                    HStack(spacing: 12) {
+                        // Calendar icon + dash
+                        HStack(spacing: 4) {
+                            Image(systemName: OPSStyle.Icons.calendar)
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                            TextField("Enter task type name", text: $taskTypeName)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .autocorrectionDisabled(true)
-                                .textInputAutocapitalization(.words)
-                                .padding(12)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            Text("—")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
 
-                        // Icon Selection
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                            Text("ICON")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        // Team icon + 0
+                        HStack(spacing: 4) {
+                            Image(systemName: OPSStyle.Icons.personTwo)
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: OPSStyle.Layout.spacing2) {
-                                    ForEach(availableIcons, id: \.self) { icon in
-                                        IconOption(
-                                            icon: icon,
-                                            isSelected: taskTypeIcon == icon,
-                                            color: taskTypeColor,
-                                            isInUse: existingTaskTypes.contains { $0.icon == icon }
-                                        ) {
-                                            withAnimation(.spring(response: 0.3)) {
-                                                taskTypeIcon = icon
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            Text("0")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
 
-                        // Color Selection
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                            Text("COLOR")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 50))], spacing: OPSStyle.Layout.spacing2) {
-                                ForEach(availableColors, id: \.hex) { colorOption in
-                                    ColorOption(
-                                        color: colorOption.color,
-                                        isSelected: taskTypeColorHex == colorOption.hex,
-                                        isInUse: existingTaskTypes.contains { $0.color == colorOption.hex }
-                                    ) {
-                                        withAnimation(.spring(response: 0.3)) {
-                                            taskTypeColor = colorOption.color
-                                            taskTypeColorHex = colorOption.hex
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Preview
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                            Text("PREVIEW")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                            HStack {
-                                Circle()
-                                    .fill(taskTypeColor)
-                                    .frame(width: 12, height: 12)
-
-                                Image(systemName: taskTypeIcon)
-                                    .font(.system(size: 16))
-                                    .foregroundColor(taskTypeColor)
-
-                                Text(taskTypeName.isEmpty ? "Task Type Name" : taskTypeName)
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                Spacer()
-                            }
-                            .padding(OPSStyle.Layout.spacing3)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(taskTypeColor.opacity(0.3), lineWidth: 1)
-                            )
-                        }
+                        Spacer()
                     }
-                    .padding(OPSStyle.Layout.spacing3)
                 }
+                .padding(14)
+            }
 
+            // Status badge overlay - top right
+            VStack {
                 HStack {
                     Spacer()
 
+                    Text("BOOKED")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        )
+                        .padding(.trailing, 8)
+                        .padding(.top, 8)
+                }
+                Spacer()
+            }
+        }
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+        )
+    }
+
+    private var nameField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("TASK TYPE NAME")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            TextField("Enter task type name", text: $taskTypeName)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .autocorrectionDisabled(true)
+                .textInputAutocapitalization(.words)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
+        }
+    }
+
+    private var iconField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ICON")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(availableIcons, id: \.self) { icon in
+                        IconOption(
+                            icon: icon,
+                            isSelected: taskTypeIcon == icon,
+                            color: taskTypeColor,
+                            isInUse: existingTaskTypes.contains { $0.icon == icon }
+                        ) {
+                            withAnimation(.spring(response: 0.3)) {
+                                taskTypeIcon = icon
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var colorField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("COLOR")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 8), spacing: 8) {
+                ForEach(availableColors, id: \.hex) { colorOption in
+                    ColorOption(
+                        color: colorOption.color,
+                        isSelected: taskTypeColorHex == colorOption.hex,
+                        isInUse: existingTaskTypes.contains { $0.color == colorOption.hex }
+                    ) {
+                        withAnimation(.spring(response: 0.3)) {
+                            taskTypeColor = colorOption.color
+                            taskTypeColorHex = colorOption.hex
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var savingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.5)
+
+                Text("Creating Task Type...")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(.white)
+            }
+            .padding(32)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+        }
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                OPSStyle.Colors.background
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Preview card at top
+                        previewCard
+
+                        // Task Type Details section
+                        ExpandableSection(
+                            title: "TASK TYPE DETAILS",
+                            icon: "tag.fill",
+                            isExpanded: .constant(true),
+                            onDelete: nil
+                        ) {
+                            VStack(spacing: 16) {
+                                // Name Field
+                                nameField
+
+                                // Icon Selection
+                                iconField
+
+                                // Color Selection
+                                colorField
+                            }
+                        }
+                    }
+                    .padding()
+                    .padding(.bottom, 100)
+                }
+
+                if isSaving {
+                    savingOverlay
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("CANCEL") {
+                        dismiss()
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text("CREATE TASK TYPE")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button("SAVE") {
                         saveTaskType()
                     }
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(isValid && !isSaving ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .foregroundColor(isValid && !isSaving ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     .disabled(!isValid || isSaving)
-
-                    Spacer()
                 }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
             }
+            .interactiveDismissDisabled()
         }
-        .navigationBarHidden(true)
         .onAppear {
             loadExistingTaskTypes()
         }
@@ -291,11 +408,25 @@ struct TaskTypeFormSheet: View {
     }
 
     private func loadExistingTaskTypes() {
-        let descriptor = FetchDescriptor<TaskType>()
+        guard let companyId = dataController.currentUser?.companyId else {
+            print("[TASK_TYPE_FORM] ⚠️ No company ID found, cannot load existing task types")
+            return
+        }
+
+        // Fetch only non-deleted task types for the current company
+        var descriptor = FetchDescriptor<TaskType>(
+            predicate: #Predicate<TaskType> { taskType in
+                taskType.companyId == companyId && taskType.deletedAt == nil
+            }
+        )
+
         do {
             existingTaskTypes = try modelContext.fetch(descriptor)
+            print("[TASK_TYPE_FORM] 📋 Loaded \(existingTaskTypes.count) existing task types")
+            print("[TASK_TYPE_FORM] 📋 Icons in use: \(existingTaskTypes.compactMap { $0.icon })")
+            print("[TASK_TYPE_FORM] 📋 Colors in use: \(existingTaskTypes.map { $0.color })")
         } catch {
-            print("Error fetching task types: \(error)")
+            print("[TASK_TYPE_FORM] ❌ Error fetching task types: \(error)")
         }
     }
 
@@ -419,23 +550,28 @@ struct IconOption: View {
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(
-                                        isSelected ? color.opacity(0.3) : Color.white.opacity(0.1),
-                                        lineWidth: 1
+                                        isSelected ? color.opacity(0.3) : (isInUse && !isSelected ? Color.white : Color.white.opacity(0.1)),
+                                        lineWidth: isInUse && !isSelected ? 2 : 1
                                     )
                             )
                     )
 
                 if isInUse && !isSelected {
                     VStack {
-                        Spacer()
                         HStack {
                             Spacer()
-                            Circle()
-                                .fill(OPSStyle.Colors.tertiaryText)
-                                .frame(width: 8, height: 8)
-                                .padding(4)
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(Color.white)
+                                .background(
+                                    Circle()
+                                        .fill(OPSStyle.Colors.background)
+                                        .frame(width: 14, height: 14)
+                                )
                         }
+                        Spacer()
                     }
+                    .padding(2)
                 }
             }
         }
@@ -454,22 +590,40 @@ struct ColorOption: View {
                 Circle()
                     .fill(color)
                     .opacity(isInUse && !isSelected ? 0.3 : 1.0)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 32, height: 32)
                     .overlay(
                         Circle()
-                            .stroke(Color.white, lineWidth: isSelected ? 3 : 0)
+                            .stroke(Color.white, lineWidth: isSelected ? 2 : 0)
                     )
                     .overlay(
                         Circle()
-                            .stroke(color.opacity(0.5), lineWidth: isSelected ? 5 : 0)
+                            .stroke(color.opacity(0.5), lineWidth: isSelected ? 4 : 0)
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                isInUse && !isSelected ? Color.white : Color.clear,
+                                lineWidth: isInUse && !isSelected ? 2 : 0
+                            )
                     )
                     .scaleEffect(isSelected ? 1.1 : 1.0)
 
                 if isInUse && !isSelected {
-                    Circle()
-                        .fill(OPSStyle.Colors.tertiaryText)
-                        .frame(width: 8, height: 8)
-                        .offset(x: 14, y: 14)
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color.white)
+                                .background(
+                                    Circle()
+                                        .fill(OPSStyle.Colors.background)
+                                        .frame(width: 12, height: 12)
+                                )
+                        }
+                        Spacer()
+                    }
+                    .padding(1)
                 }
             }
         }

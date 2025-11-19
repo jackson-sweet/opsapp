@@ -12,9 +12,18 @@ struct TaskFormSheet: View {
     enum Mode {
         case create
         case edit(ProjectTask)
+        case draft(LocalTask?) // For creating tasks without a project yet
+        case editDraft(LocalTask)
 
         var isCreate: Bool {
             if case .create = self { return true }
+            if case .draft = self { return true }
+            return false
+        }
+
+        var isDraft: Bool {
+            if case .draft = self { return true }
+            if case .editDraft = self { return true }
             return false
         }
 
@@ -22,10 +31,17 @@ struct TaskFormSheet: View {
             if case .edit(let task) = self { return task }
             return nil
         }
+
+        var localTask: LocalTask? {
+            if case .draft(let task) = self { return task }
+            if case .editDraft(let task) = self { return task }
+            return nil
+        }
     }
 
     let mode: Mode
-    let onSave: (ProjectTask) -> Void
+    let onSave: ((ProjectTask) -> Void)?
+    let onSaveDraft: ((LocalTask) -> Void)?
     let preselectedProjectId: String?
 
     @Environment(\.dismiss) private var dismiss
@@ -56,15 +72,25 @@ struct TaskFormSheet: View {
     @State private var projectSearchText: String = ""
     @State private var showingProjectSuggestions = false
     @State private var showingTeamPicker = false
+    @State private var selectedStatus: TaskStatus = .booked
 
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showingError = false
-    @State private var isEditingNotes = false
+    @FocusState private var focusedField: TaskFormField?
     @State private var tempNotes: String = ""
 
+    enum TaskFormField {
+        case notes
+    }
+
     private var isValid: Bool {
-        selectedProjectId != nil && selectedTaskTypeId != nil
+        // In draft mode, only task type is required
+        if mode.isDraft {
+            return selectedTaskTypeId != nil
+        }
+        // In regular mode, both project and task type are required
+        return selectedProjectId != nil && selectedTaskTypeId != nil
     }
 
     private var selectedProject: Project? {
@@ -87,10 +113,12 @@ struct TaskFormSheet: View {
         }.sorted(by: { $0.title < $1.title })
     }
 
+    // Regular init for ProjectTask mode
     init(mode: Mode, preselectedProjectId: String? = nil, onSave: @escaping (ProjectTask) -> Void) {
         self.mode = mode
         self.preselectedProjectId = preselectedProjectId
         self.onSave = onSave
+        self.onSaveDraft = nil
 
         if case .edit(let task) = mode {
             _selectedProjectId = State(initialValue: task.projectId)
@@ -99,8 +127,31 @@ struct TaskFormSheet: View {
             _selectedTeamMemberIds = State(initialValue: Set(task.getTeamMemberIds()))
             _startDate = State(initialValue: task.calendarEvent?.startDate)
             _endDate = State(initialValue: task.calendarEvent?.endDate)
+            _selectedStatus = State(initialValue: task.status)
         } else if let projectId = preselectedProjectId {
             _selectedProjectId = State(initialValue: projectId)
+        }
+    }
+
+    // Draft init for LocalTask mode (for use in ProjectFormSheet)
+    init(draftMode: Mode, onSaveDraft: @escaping (LocalTask) -> Void) {
+        self.mode = draftMode
+        self.preselectedProjectId = nil
+        self.onSave = nil
+        self.onSaveDraft = onSaveDraft
+
+        if case .editDraft(let task) = draftMode {
+            _selectedTaskTypeId = State(initialValue: task.taskTypeId)
+            _selectedTeamMemberIds = State(initialValue: Set(task.teamMemberIds))
+            _startDate = State(initialValue: task.startDate)
+            _endDate = State(initialValue: task.endDate)
+            _selectedStatus = State(initialValue: task.status)
+        } else if case .draft(let task) = draftMode, let task = task {
+            _selectedTaskTypeId = State(initialValue: task.taskTypeId)
+            _selectedTeamMemberIds = State(initialValue: Set(task.teamMemberIds))
+            _startDate = State(initialValue: task.startDate)
+            _endDate = State(initialValue: task.endDate)
+            _selectedStatus = State(initialValue: task.status)
         }
     }
 
@@ -116,26 +167,26 @@ struct TaskFormSheet: View {
                         previewCard
 
                         // TASK DETAILS section - ALL FIELDS IN ONE SECTION
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("TASK DETAILS")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-
+                        ExpandableSection(
+                            title: "TASK DETAILS",
+                            icon: "checklist",
+                            isExpanded: .constant(true),
+                            onDelete: nil
+                        ) {
                             VStack(spacing: 16) {
-                                projectField
+                                // Only show project field if not in draft mode
+                                if !mode.isDraft {
+                                    projectField
+                                }
                                 taskTypeField
+                                statusField
                                 teamField
                                 datesField
-                                notesField
+                                // Notes only available when task has a project (not in draft mode)
+                                if !mode.isDraft {
+                                    notesField
+                                }
                             }
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
-                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                            )
                         }
                     }
                     .padding()
@@ -174,25 +225,44 @@ struct TaskFormSheet: View {
             .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showingScheduler) {
-            if let project = selectedProject, let startDate = startDate, let endDate = endDate {
-                CalendarSchedulerSheet(
-                    isPresented: $showingScheduler,
-                    itemType: .task(ProjectTask(
-                        id: UUID().uuidString,
-                        projectId: project.id,
-                        taskTypeId: selectedTaskTypeId ?? "",
-                        companyId: dataController.currentUser?.companyId ?? "",
-                        status: .booked
-                    )),
-                    currentStartDate: startDate,
-                    currentEndDate: endDate,
-                    onScheduleUpdate: { newStart, newEnd in
-                        self.startDate = newStart
-                        self.endDate = newEnd
-                    },
-                    preselectedTeamMemberIds: selectedTeamMemberIds.isEmpty ? nil : selectedTeamMemberIds
-                )
-                .environmentObject(dataController)
+            if let startDate = startDate, let endDate = endDate {
+                // In draft mode, we need a temporary project for the scheduler
+                if mode.isDraft {
+                    CalendarSchedulerSheet(
+                        isPresented: $showingScheduler,
+                        itemType: .draftTask(
+                            taskTypeId: selectedTaskTypeId ?? "",
+                            teamMemberIds: Array(selectedTeamMemberIds)
+                        ),
+                        currentStartDate: startDate,
+                        currentEndDate: endDate,
+                        onScheduleUpdate: { newStart, newEnd in
+                            self.startDate = newStart
+                            self.endDate = newEnd
+                        },
+                        preselectedTeamMemberIds: selectedTeamMemberIds.isEmpty ? nil : selectedTeamMemberIds
+                    )
+                    .environmentObject(dataController)
+                } else if let project = selectedProject {
+                    CalendarSchedulerSheet(
+                        isPresented: $showingScheduler,
+                        itemType: .task(ProjectTask(
+                            id: UUID().uuidString,
+                            projectId: project.id,
+                            taskTypeId: selectedTaskTypeId ?? "",
+                            companyId: dataController.currentUser?.companyId ?? "",
+                            status: .booked
+                        )),
+                        currentStartDate: startDate,
+                        currentEndDate: endDate,
+                        onScheduleUpdate: { newStart, newEnd in
+                            self.startDate = newStart
+                            self.endDate = newEnd
+                        },
+                        preselectedTeamMemberIds: selectedTeamMemberIds.isEmpty ? nil : selectedTeamMemberIds
+                    )
+                    .environmentObject(dataController)
+                }
             }
         }
         .sheet(isPresented: $showingCreateTaskType) {
@@ -225,93 +295,127 @@ struct TaskFormSheet: View {
 
     // MARK: - Preview Card
     private var previewCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // "PREVIEW" label
-            Text("PREVIEW")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-            // Preview card with live updates
+        // Preview card matching UniversalJobBoardCard task styling
+        ZStack {
             HStack(spacing: 0) {
                 // Colored left border (4pt width) - task type color
                 Rectangle()
-                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? OPSStyle.Colors.primaryAccent)
+                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.secondaryText } ?? OPSStyle.Colors.secondaryText)
                     .frame(width: 4)
 
-                HStack(alignment: .top, spacing: 12) {
-                    // Task content
-                    VStack(alignment: .leading, spacing: 6) {
-                        // Task type name (uppercase, bold)
-                        Text(selectedTaskType?.display.uppercased() ?? "SELECT TASK TYPE")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(selectedTaskType != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                // Main content area
+                VStack(alignment: .leading, spacing: 8) {
+                    // Task type name (title)
+                    Text(selectedTaskType?.display.uppercased() ?? "SELECT TASK TYPE")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(selectedTaskType != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // Project name (if selected)
+                    // Project title - client (if project selected and not in draft mode)
+                    if !mode.isDraft {
                         if let project = selectedProject {
-                            HStack(spacing: 4) {
-                                Image(systemName: "folder")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                Text(project.title)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                        }
-
-                        // Scheduled date (if selected)
-                        if let startDate = startDate {
-                            HStack(spacing: 4) {
-                                Image(systemName: "calendar")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                Text(formatDate(startDate))
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                        }
-
-                        // Team member avatars (if selected)
-                        if !selectedTeamMemberIds.isEmpty {
-                            let selectedMembers = uniqueTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }
-                            HStack(spacing: -8) {
-                                ForEach(selectedMembers.prefix(3), id: \.id) { member in
-                                    UserAvatar(teamMember: member, size: 24)
-                                }
-                                if selectedMembers.count > 3 {
-                                    Text("+\(selectedMembers.count - 3)")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        .padding(.leading, 4)
-                                }
-                            }
+                            Text("\(project.title) - \(project.effectiveClientName)")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .lineLimit(1)
+                        } else {
+                            Text("NO PROJECT SELECTED")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
                         }
                     }
 
-                    Spacer()
+                    // Metadata row with icons (matching UniversalJobBoardCard)
+                    HStack(spacing: 12) {
+                        // Calendar icon + date (always show)
+                        HStack(spacing: 4) {
+                            Image(systemName: OPSStyle.Icons.calendar)
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                    // Status badge (top-right) - always show "BOOKED" for new tasks
-                    Text("BOOKED")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(OPSStyle.Colors.primaryAccent.opacity(0.2))
-                        .cornerRadius(4)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                        )
+                            if let startDate = startDate {
+                                Text(formatDate(startDate))
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .lineLimit(1)
+                            } else {
+                                Text("—")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                        }
+
+                        // Team icon + count (always show)
+                        HStack(spacing: 4) {
+                            Image(systemName: OPSStyle.Icons.personTwo)
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            Text("\(selectedTeamMemberIds.count)")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+                    }
                 }
-                .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(14)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7)) // Semi-transparent to indicate preview
-            .cornerRadius(5)
-            .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
-            )
-        }
+
+            // Top right overlay - status badge and unscheduled badge
+            HStack{
+                Spacer()
+                VStack(alignment: .trailing) {
+                        // Status badge
+                        Text(selectedStatus.displayName.uppercased())
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(selectedStatus.color)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(selectedStatus.color.opacity(0.1))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(selectedStatus.color, lineWidth: 1)
+                            )
+                        
+                        Spacer()
+                        
+                        // Unscheduled badge (if no date)
+                        if startDate == nil {
+                            Text("UNSCHEDULED")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
+                                )
+                        }
+                        
+                    }
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 8)
+                
+            }
+            
+            }
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+        )
     }
 
     private var projectField: some View {
@@ -323,9 +427,11 @@ struct TaskFormSheet: View {
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
                     TextField("Search or select project", text: $projectSearchText, onEditingChanged: { isEditing in
-                        showingProjectSuggestions = isEditing
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showingProjectSuggestions = isEditing
+                        }
                     })
-                    .padding(.vertical, 12)
+                    .frame(height: selectedProject != nil ? 64 : 44)
                     .padding(.horizontal, 16)
                     .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -333,18 +439,21 @@ struct TaskFormSheet: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(Color.white.opacity(0.2), lineWidth: 1)
                     )
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(selectedProject != nil ? .clear : OPSStyle.Colors.primaryText)
                     .font(OPSStyle.Typography.body)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.words)
+                    .animation(.easeInOut(duration: 0.2), value: selectedProject != nil)
 
                     if showingProjectSuggestions && !filteredProjects.isEmpty {
                         VStack(spacing: 1) {
                             ForEach(filteredProjects.prefix(5)) { project in
                                 Button(action: {
-                                    selectedProjectId = project.id
-                                    projectSearchText = project.title
-                                    showingProjectSuggestions = false
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        selectedProjectId = project.id
+                                        projectSearchText = project.title
+                                        showingProjectSuggestions = false
+                                    }
                                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                                 }) {
                                     HStack {
@@ -372,7 +481,7 @@ struct TaskFormSheet: View {
                 }
 
                 if let project = selectedProject, !showingProjectSuggestions {
-                    HStack {
+                    HStack(alignment: .center) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(project.title)
                                 .font(OPSStyle.Typography.bodyBold)
@@ -383,15 +492,17 @@ struct TaskFormSheet: View {
                         }
                         Spacer()
                         Button(action: {
-                            selectedProjectId = nil
-                            projectSearchText = ""
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedProjectId = nil
+                                projectSearchText = ""
+                            }
                         }) {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
                     }
                     .padding()
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
             }
@@ -476,9 +587,52 @@ struct TaskFormSheet: View {
         }
     }
 
+    private var statusField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("STATUS")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Menu {
+                ForEach(TaskStatus.allCases.filter { $0 != .cancelled || dataController.currentUser?.role != .fieldCrew }, id: \.self) { status in
+                    Button(action: {
+                        selectedStatus = status
+                    }) {
+                        HStack {
+                            Text(status.displayName)
+                            if selectedStatus == status {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(selectedStatus.displayName)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
+            }
+        }
+    }
+
     private var teamField: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("ASSIGN TEAM (OPTIONAL)")
+            Text("ASSIGN TEAM")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -566,7 +720,7 @@ struct TaskFormSheet: View {
                         } else {
                             Text("Tap to Schedule")
                                 .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
 
                         Spacer()
@@ -584,7 +738,8 @@ struct TaskFormSheet: View {
                             .stroke(Color.white.opacity(0.25), lineWidth: 1)
                     )
                 }
-                .disabled(selectedProjectId == nil)
+                // In draft mode, always enabled. In regular mode, requires project
+                .disabled(!mode.isDraft && selectedProjectId == nil)
         }
     }
 
@@ -597,7 +752,7 @@ struct TaskFormSheet: View {
             VStack(spacing: 12) {
                 ZStack(alignment: .topLeading) {
                     // Placeholder text
-                    if (isEditingNotes ? tempNotes : taskNotes).isEmpty {
+                    if (focusedField == .notes ? tempNotes : taskNotes).isEmpty {
                         Text("Add notes...")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -605,40 +760,43 @@ struct TaskFormSheet: View {
                             .padding(.leading, 16)
                     }
 
-                    TextEditor(text: isEditingNotes ? $tempNotes : $taskNotes)
+                    TextEditor(text: focusedField == .notes ? $tempNotes : $taskNotes)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(minHeight: 100, maxHeight: 200)
                         .padding(12)
                         .background(Color.clear)
                         .scrollContentBackground(.hidden)
-                        .onTapGesture {
-                            if !isEditingNotes {
+                        .focused($focusedField, equals: .notes)
+                        .onChange(of: focusedField) { oldValue, newValue in
+                            if newValue == .notes && oldValue != .notes {
                                 tempNotes = taskNotes
-                                isEditingNotes = true
                             }
                         }
                 }
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        .stroke(
+                            focusedField == .notes ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.25),
+                            lineWidth: 1
+                        )
                 )
 
-                if isEditingNotes {
+                if focusedField == .notes {
                     HStack(spacing: 16) {
                         Spacer()
 
                         Button("CANCEL") {
                             tempNotes = ""
-                            isEditingNotes = false
+                            focusedField = nil
                         }
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                         Button("SAVE") {
                             taskNotes = tempNotes
-                            isEditingNotes = false
+                            focusedField = nil
                         }
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -673,6 +831,12 @@ struct TaskFormSheet: View {
     private func saveTask() {
         guard isValid else { return }
 
+        // Handle draft mode separately
+        if mode.isDraft {
+            saveDraftTask()
+            return
+        }
+
         isSaving = true
 
         Task {
@@ -690,7 +854,7 @@ struct TaskFormSheet: View {
                         projectId: selectedProjectId!,
                         taskTypeId: selectedTaskTypeId!,
                         companyId: dataController.currentUser?.companyId ?? "",
-                        status: .booked,
+                        status: selectedStatus,
                         taskColor: taskColor
                     )
 
@@ -707,6 +871,8 @@ struct TaskFormSheet: View {
                     modelContext.insert(task)
                 }
 
+                // Update task properties (for both create and edit modes)
+                task.status = selectedStatus
                 task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
                 task.setTeamMemberIds(Array(selectedTeamMemberIds))
 
@@ -852,7 +1018,7 @@ struct TaskFormSheet: View {
                     showingError = true
                     isSaving = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        onSave(task)
+                        onSave?(task)
                         dismiss()
                     }
                 } else {
@@ -861,7 +1027,7 @@ struct TaskFormSheet: View {
                     generator.notificationOccurred(.success)
 
                     isSaving = false
-                    onSave(task)
+                    onSave?(task)
 
                     // Brief delay for graceful dismissal
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -870,6 +1036,45 @@ struct TaskFormSheet: View {
                 }
             }
         }
+    }
+
+    private func saveDraftTask() {
+        guard let taskTypeId = selectedTaskTypeId else { return }
+
+        // Create or update LocalTask
+        var localTask: LocalTask
+        if case .editDraft(let existingTask) = mode {
+            // Create new LocalTask with updated values
+            localTask = LocalTask(
+                id: existingTask.id,
+                taskTypeId: taskTypeId,
+                customTitle: existingTask.customTitle,
+                status: selectedStatus,
+                teamMemberIds: Array(selectedTeamMemberIds)
+            )
+        } else {
+            localTask = LocalTask(
+                id: UUID(),
+                taskTypeId: taskTypeId,
+                customTitle: nil,
+                status: selectedStatus,
+                teamMemberIds: Array(selectedTeamMemberIds)
+            )
+        }
+
+        // Add dates to the local task
+        localTask.startDate = startDate
+        localTask.endDate = endDate
+
+        // Call the draft save callback
+        onSaveDraft?(localTask)
+
+        // Success haptic feedback
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+
+        // Dismiss the sheet
+        dismiss()
     }
 
     private func formatDate(_ date: Date) -> String {

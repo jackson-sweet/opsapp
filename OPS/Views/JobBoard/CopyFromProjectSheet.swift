@@ -424,12 +424,21 @@ struct CopyFromProjectSheet: View {
                     copiedData["notes"] = notes
                 }
             case "tasks":
-                // Copy task data (basic info only - no notes field)
+                // Copy task data including team members and dates
                 copiedData["tasks"] = project.tasks.map { task in
-                    [
+                    var taskDict: [String: Any] = [
                         "taskTypeId": task.taskTypeId,
-                        "status": task.status.rawValue
+                        "status": task.status.rawValue,
+                        "teamMemberIds": task.getTeamMemberIds()
                     ]
+                    // Include dates if the task has a calendar event
+                    if let startDate = task.calendarEvent?.startDate {
+                        taskDict["startDate"] = startDate
+                    }
+                    if let endDate = task.calendarEvent?.endDate {
+                        taskDict["endDate"] = endDate
+                    }
+                    return taskDict
                 }
             case "images":
                 // TODO: Image copying not implemented yet

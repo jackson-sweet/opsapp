@@ -60,9 +60,22 @@ struct ClientFormSheet: View {
     @State private var showEmailError = false
     @State private var showPhoneError = false
 
-    // Notes editing
-    @State private var isEditingNotes = false
+    // Focus states for input fields
+    @FocusState private var focusedField: ClientFormField?
+
+    // Temporary state for notes editing
     @State private var tempNotes: String = ""
+
+    // Section expansion
+    @State private var isClientDetailsExpanded = true
+
+    enum ClientFormField: Hashable {
+        case name
+        case email
+        case phone
+        case address
+        case notes
+    }
 
     init(mode: Mode, prefilledName: String? = nil, onSave: @escaping (Client) -> Void) {
         self.mode = mode
@@ -92,33 +105,17 @@ struct ClientFormSheet: View {
                         // PREVIEW CARD
                         previewCard
 
+                        // AVATAR PICKER (above section)
+                        avatarUploader
+
                         // CLIENT DETAILS Section - ALL FIELDS IN ONE SECTION
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("CLIENT DETAILS")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                                Spacer()
-
-                                // Minimalist Import from Contacts button
-                                if mode.isCreate {
-                                    Button(action: { showingContactPicker = true }) {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "person.crop.circle")
-                                                .font(.system(size: 10))
-                                            Text("IMPORT")
-                                        }
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    }
-                                }
-                            }
-
+                        ExpandableSection(
+                            title: "CLIENT DETAILS",
+                            icon: "person.text.rectangle",
+                            isExpanded: $isClientDetailsExpanded,
+                            onDelete: nil
+                        ) {
                             VStack(spacing: 16) {
-                                // Avatar Uploader
-                                avatarUploader
-
                                 // Name Field with Duplicate Detection
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("CLIENT NAME")
@@ -130,13 +127,17 @@ struct ClientFormSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .autocorrectionDisabled(true)
                                         .textInputAutocapitalization(.words)
+                                        .focused($focusedField, equals: .name)
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 16)
                                         .background(Color.clear)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                                .stroke(
+                                                    focusedField == .name ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
+                                                    lineWidth: 1
+                                                )
                                         )
                                         .onChange(of: name) { _, newValue in
                                             if mode.isCreate {
@@ -161,19 +162,23 @@ struct ClientFormSheet: View {
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    TextField("email@example.com", text: $email, prompt: Text("email@example.com").foregroundColor(OPSStyle.Colors.tertiaryText))
+                                    TextField("Email Address", text: $email)
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .keyboardType(.emailAddress)
                                         .autocapitalization(.none)
                                         .autocorrectionDisabled(true)
+                                        .focused($focusedField, equals: .email)
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 16)
                                         .background(Color.clear)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(showEmailError ? Color.red.opacity(0.5) : Color.white.opacity(0.2), lineWidth: 1)
+                                                .stroke(
+                                                    showEmailError ? Color.red.opacity(0.5) : (focusedField == .email ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2)),
+                                                    lineWidth: 1
+                                                )
                                         )
                                         .onChange(of: email) { _, _ in
                                             showEmailError = !isValidEmail
@@ -192,18 +197,22 @@ struct ClientFormSheet: View {
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    TextField("(555) 123-4567", text: $phone)
+                                    TextField("Phone Number", text: $phone)
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .keyboardType(.phonePad)
                                         .autocorrectionDisabled(true)
+                                        .focused($focusedField, equals: .phone)
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 16)
                                         .background(Color.clear)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(showPhoneError ? Color.red.opacity(0.5) : Color.white.opacity(0.2), lineWidth: 1)
+                                                .stroke(
+                                                    showPhoneError ? Color.red.opacity(0.5) : (focusedField == .phone ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2)),
+                                                    lineWidth: 1
+                                                )
                                         )
                                         .onChange(of: phone) { _, _ in
                                             showPhoneError = !isValidPhone
@@ -222,9 +231,12 @@ struct ClientFormSheet: View {
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    AddressSearchField(
+                                    AddressAutocompleteField(
                                         address: $address,
-                                        placeholder: "Start typing address..."
+                                        placeholder: "Enter client address",
+                                        onAddressSelected: { fullAddress, _ in
+                                            address = fullAddress
+                                        }
                                     )
                                 }
 
@@ -236,7 +248,7 @@ struct ClientFormSheet: View {
 
                                     VStack(spacing: 12) {
                                         ZStack(alignment: .topLeading) {
-                                            if (isEditingNotes ? tempNotes : notes).isEmpty {
+                                            if (focusedField == .notes ? tempNotes : notes).isEmpty {
                                                 Text("Add notes...")
                                                     .font(OPSStyle.Typography.body)
                                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -244,40 +256,44 @@ struct ClientFormSheet: View {
                                                     .padding(.leading, 16)
                                             }
 
-                                            TextEditor(text: isEditingNotes ? $tempNotes : $notes)
+                                            TextEditor(text: focusedField == .notes ? $tempNotes : $notes)
                                                 .font(OPSStyle.Typography.body)
                                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                                 .frame(minHeight: 80, maxHeight: 200)
                                                 .padding(12)
                                                 .background(Color.clear)
                                                 .scrollContentBackground(.hidden)
+                                                .focused($focusedField, equals: .notes)
                                                 .onTapGesture {
-                                                    if !isEditingNotes {
+                                                    if focusedField != .notes {
                                                         tempNotes = notes
-                                                        isEditingNotes = true
+                                                        focusedField = .notes
                                                     }
                                                 }
                                         }
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                                                .stroke(
+                                                    focusedField == .notes ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.25),
+                                                    lineWidth: 1
+                                                )
                                         )
 
-                                        if isEditingNotes {
+                                        if focusedField == .notes {
                                             HStack(spacing: 16) {
                                                 Spacer()
 
                                                 Button("CANCEL") {
                                                     tempNotes = ""
-                                                    isEditingNotes = false
+                                                    focusedField = nil
                                                 }
                                                 .font(OPSStyle.Typography.caption)
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                                 Button("SAVE") {
                                                     notes = tempNotes
-                                                    isEditingNotes = false
+                                                    focusedField = nil
                                                 }
                                                 .font(OPSStyle.Typography.caption)
                                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -285,6 +301,29 @@ struct ClientFormSheet: View {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // IMPORT FROM CONTACTS BUTTON (at bottom)
+                        if mode.isCreate {
+                            Button(action: { showingContactPicker = true }) {
+                                HStack {
+                                    Image(systemName: "person.crop.circle")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                    Text("IMPORT FROM CONTACTS")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(Color.white.opacity(0.4), lineWidth: 1)
+                                )
                             }
                         }
                     }
@@ -373,7 +412,7 @@ struct ClientFormSheet: View {
                         }
                     ),
                     allowsEditing: true,
-                    sourceType: .both,
+                    sourceType: .photoLibrary,
                     selectionLimit: 1
                 )
             }
@@ -413,7 +452,7 @@ struct ClientFormSheet: View {
                             .scaledToFill()
                             .frame(width: 80, height: 80)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
+                            .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 2))
                     } else {
                         Circle()
                             .fill(OPSStyle.Colors.cardBackgroundDark)
@@ -423,7 +462,7 @@ struct ClientFormSheet: View {
                                     .font(.system(size: 32))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
-                            .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
+                            .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 2))
                     }
                 }
             }
@@ -647,7 +686,7 @@ struct ClientFormSheet: View {
 
     private var previewCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     // Client name
                     Text(name.isEmpty ? "CLIENT NAME" : name.uppercased())
@@ -687,33 +726,36 @@ struct ClientFormSheet: View {
 
                 Spacer()
 
-                // Avatar on right side
+                // Avatar on right side - expands to fill vertical space
                 ZStack {
                     if let image = clientImage {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 48, height: 48)
+                            .frame(maxHeight: .infinity)
+                            .aspectRatio(1, contentMode: .fit)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
                     } else if !name.isEmpty {
                         // Show initials if name exists but no image
                         Circle()
                             .stroke(Color.white, lineWidth: 2)
-                            .frame(width: 48, height: 48)
+                            .frame(maxHeight: .infinity)
+                            .aspectRatio(1, contentMode: .fit)
                             .overlay(
                                 Text(String(name.prefix(1)).uppercased())
-                                    .font(.custom("Mohave-Bold", size: 20))
+                                    .font(.custom("Mohave-Bold", size: 24))
                                     .foregroundColor(.white)
                             )
                     } else {
                         // Placeholder
                         Circle()
                             .fill(OPSStyle.Colors.cardBackgroundDark)
-                            .frame(width: 48, height: 48)
+                            .frame(maxHeight: .infinity)
+                            .aspectRatio(1, contentMode: .fit)
                             .overlay(
                                 Image(systemName: "building.2")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: 24))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
                             .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))

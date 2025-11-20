@@ -416,6 +416,7 @@ Each track has a detailed implementation guide:
 | L | CONSOLIDATION_PLAN.md | Phase 6 |
 | M | CONSOLIDATION_PLAN.md | Phase 7 |
 | N | CONSOLIDATION_PLAN.md | Phases 3, 5, 8, 9 |
+| **O** | **COMPONENT_STANDARDIZATION.md** | **Full Document** |
 
 ---
 

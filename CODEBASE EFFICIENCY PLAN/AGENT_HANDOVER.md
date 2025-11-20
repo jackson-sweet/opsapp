@@ -293,6 +293,7 @@ Based on completion status and priorities:
 | **L** | ⬜ TODO | 8-10h | Organization | After others |
 | **M** | ⬜ TODO | 4-6h | Navigation | Last |
 | **N** | ⬜ TODO | 6-10h | Cleanup | Last |
+| **O** | ⬜ TODO | 12-16h | 100+ files | Requires A, E; recommend after D |
 
 ---
 

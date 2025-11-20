@@ -964,7 +964,7 @@ struct JobBoardCreateMenu: View {
             }
         }
         .sheet(isPresented: $showingCreateClient) {
-            ClientFormSheet(mode: .create) { _ in
+            ClientSheet(mode: .create) { _ in
                 dismiss()
             }
         }

@@ -1,14 +1,15 @@
 //
-//  ClientFormSheet.swift
+//  ClientSheet.swift
 //  OPS
 //
-//  Created by Jackson Sweet on 2025-09-26.
+//  Unified sheet for creating and editing clients
+//  Replaces ClientFormSheet and ClientEditSheet
 //
 
 import SwiftUI
 import ContactsUI
 
-struct ClientFormSheet: View {
+struct ClientSheet: View {
     enum Mode {
         case create
         case edit(Client)

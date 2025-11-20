@@ -319,13 +319,11 @@ struct ContactDetailView: View {
         }
         .sheet(isPresented: $showingClientEdit) {
             if let client = client {
-                ClientEditSheet(
-                    client: client,
-                    onSave: { name, email, phone, address in
-                        await saveClientChanges(name: name, email: email, phone: phone, address: address)
-                    },
-                    isPresented: $showingClientEdit
-                )
+                ClientSheet(mode: .edit(client)) { _ in
+                    // Client is already updated by ClientSheet
+                    showingClientEdit = false
+                }
+                .environmentObject(dataController)
             }
         }
         .sheet(isPresented: $showingCreateContact) {

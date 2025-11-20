@@ -127,7 +127,7 @@ struct FloatingActionMenu: View {
             }
         }
         .sheet(isPresented: $showingCreateClient) {
-            ClientFormSheet(mode: .create) { _ in }
+            ClientSheet(mode: .create) { _ in }
         }
         .sheet(isPresented: $showingCreateProject) {
             ProjectFormSheet(mode: .create) { _ in }

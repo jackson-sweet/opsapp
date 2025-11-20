@@ -292,7 +292,7 @@ struct ProjectFormSheet: View {
             .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showingCreateClient) {
-            ClientFormSheet(mode: .create, prefilledName: clientSearchText) { newClient in
+            ClientSheet(mode: .create, prefilledName: clientSearchText) { newClient in
                 selectedClientId = newClient.id
                 clientSearchText = newClient.name
             }

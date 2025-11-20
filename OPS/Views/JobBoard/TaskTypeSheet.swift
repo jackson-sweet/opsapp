@@ -1,15 +1,37 @@
 //
-//  TaskTypeFormSheet.swift
+//  TaskTypeSheet.swift
 //  OPS
 //
-//  Created by Assistant on 2025-09-26.
+//  Unified sheet for creating and editing task types
+//  Replaces TaskTypeFormSheet and TaskTypeEditSheet
 //
 
 import SwiftUI
 import SwiftData
 
-struct TaskTypeFormSheet: View {
-    let onSave: (TaskType) -> Void
+struct TaskTypeSheet: View {
+    // MARK: - Mode Configuration
+
+    enum Mode {
+        case create(onSave: (TaskType) -> Void)
+        case edit(taskType: TaskType, onSave: () -> Void)
+
+        var title: String {
+            switch self {
+            case .create: return "CREATE TASK TYPE"
+            case .edit: return "EDIT TASK TYPE"
+            }
+        }
+
+        var isEditing: Bool {
+            if case .edit = self { return true }
+            return false
+        }
+    }
+
+    // MARK: - Properties
+
+    let mode: Mode
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
@@ -149,188 +171,22 @@ struct TaskTypeFormSheet: View {
         (Color(hex: "ceb4ce")!, "ceb4ce"),
         (Color(hex: "b590b5")!, "b590b5"),
         (Color(hex: "8c688c")!, "8c688c"),
-        // Purple-Pinks
         (Color(hex: "ceb4c8")!, "ceb4c8"),
         (Color(hex: "b590ac")!, "b590ac"),
         (Color(hex: "8c6883")!, "8c6883"),
         (Color(hex: "ceb4c1")!, "ceb4c1"),
         (Color(hex: "b590a3")!, "b590a3"),
-        (Color(hex: "8c687a")!, "8c687a")
+        (Color(hex: "8c687a")!, "8c687a"),
+        (Color(hex: "ceb4bb")!, "ceb4bb"),
+        (Color(hex: "b5909a")!, "b5909a"),
+        (Color(hex: "8c6871")!, "8c6871")
     ]
 
     private var isValid: Bool {
         !taskTypeName.isEmpty
     }
 
-    // MARK: - Preview Card
-    private var previewCard: some View {
-        ZStack {
-            HStack(spacing: 0) {
-                // Colored left border (4pt width)
-                Rectangle()
-                    .fill(taskTypeColor)
-                    .frame(width: 4)
-
-                // Main content area
-                VStack(alignment: .leading, spacing: 8) {
-                    // Task type name (title)
-                    Text(taskTypeName.isEmpty ? "ENTER TASK TYPE NAME" : taskTypeName.uppercased())
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(taskTypeName.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    // Metadata row
-                    HStack(spacing: 12) {
-                        // Calendar icon + dash
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: 11))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            Text("—")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-
-                        // Team icon + 0
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: 11))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            Text("0")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-
-                        Spacer()
-                    }
-                }
-                .padding(14)
-            }
-
-            // Status badge overlay - top right
-            VStack {
-                HStack {
-                    Spacer()
-
-                    Text("BOOKED")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.1))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                        )
-                        .padding(.trailing, 8)
-                        .padding(.top, 8)
-                }
-                Spacer()
-            }
-        }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
-    }
-
-    private var nameField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TASK TYPE NAME")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            TextField("Enter task type name", text: $taskTypeName)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .autocorrectionDisabled(true)
-                .textInputAutocapitalization(.words)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .background(Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                )
-        }
-    }
-
-    private var iconField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("ICON")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(availableIcons, id: \.self) { icon in
-                        IconOption(
-                            icon: icon,
-                            isSelected: taskTypeIcon == icon,
-                            color: taskTypeColor,
-                            isInUse: existingTaskTypes.contains { $0.icon == icon }
-                        ) {
-                            withAnimation(.spring(response: 0.3)) {
-                                taskTypeIcon = icon
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var colorField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("COLOR")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 8), spacing: 8) {
-                ForEach(availableColors, id: \.hex) { colorOption in
-                    ColorOption(
-                        color: colorOption.color,
-                        isSelected: taskTypeColorHex == colorOption.hex,
-                        isInUse: existingTaskTypes.contains { $0.color == colorOption.hex }
-                    ) {
-                        withAnimation(.spring(response: 0.3)) {
-                            taskTypeColor = colorOption.color
-                            taskTypeColorHex = colorOption.hex
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var savingOverlay: some View {
-        ZStack {
-            OPSStyle.Colors.modalOverlay
-                .ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(1.5)
-
-                Text("Creating Task Type...")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
-            }
-            .padding(32)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-        }
-    }
+    // MARK: - Body
 
     var body: some View {
         NavigationView {
@@ -381,7 +237,7 @@ struct TaskTypeFormSheet: View {
                 }
 
                 ToolbarItem(placement: .principal) {
-                    Text("CREATE TASK TYPE")
+                    Text(mode.title)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -398,6 +254,15 @@ struct TaskTypeFormSheet: View {
             .interactiveDismissDisabled()
         }
         .onAppear {
+            // Load existing data if editing
+            if case .edit(let taskType, _) = mode {
+                taskTypeName = taskType.display
+                taskTypeIcon = taskType.icon ?? "checklist"
+                taskTypeColorHex = taskType.color
+                if let color = Color(hex: taskType.color) {
+                    taskTypeColor = color
+                }
+            }
             loadExistingTaskTypes()
         }
         .alert("Error", isPresented: $showingError) {
@@ -407,9 +272,130 @@ struct TaskTypeFormSheet: View {
         }
     }
 
+    // MARK: - View Components
+
+    private var previewCard: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Image(systemName: taskTypeIcon)
+                    .font(.system(size: 28))
+                    .foregroundColor(taskTypeColor)
+                    .frame(width: 56, height: 56)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(taskTypeColor.opacity(0.2))
+                    )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("PREVIEW")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Text(taskTypeName.isEmpty ? "Task Type Name" : taskTypeName)
+                        .font(OPSStyle.Typography.subtitle)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+        }
+    }
+
+    private var nameField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("NAME")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            TextField("Enter task type name", text: $taskTypeName)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .padding()
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                )
+        }
+    }
+
+    private var iconField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ICON")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
+                ForEach(availableIcons, id: \.self) { icon in
+                    IconOption(
+                        icon: icon,
+                        isSelected: taskTypeIcon == icon,
+                        color: taskTypeColor,
+                        isInUse: existingTaskTypes.contains(where: { $0.icon == icon }),
+                        action: {
+                            taskTypeIcon = icon
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private var colorField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("COLOR")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 8), spacing: 12) {
+                ForEach(availableColors.indices, id: \.self) { index in
+                    let colorPair = availableColors[index]
+                    ColorOption(
+                        color: colorPair.color,
+                        isSelected: taskTypeColorHex == colorPair.hex,
+                        isInUse: existingTaskTypes.contains(where: { $0.color == colorPair.hex }),
+                        action: {
+                            taskTypeColor = colorPair.color
+                            taskTypeColorHex = colorPair.hex
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private var savingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                ProgressView()
+                    .tint(OPSStyle.Colors.primaryAccent)
+
+                Text("Saving...")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+            .padding(32)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+        }
+    }
+
+    // MARK: - Methods
+
     private func loadExistingTaskTypes() {
         guard let companyId = dataController.currentUser?.companyId else {
-            print("[TASK_TYPE_FORM] ⚠️ No company ID found, cannot load existing task types")
+            print("[TASK_TYPE_SHEET] ⚠️ No company ID found, cannot load existing task types")
             return
         }
 
@@ -422,27 +408,37 @@ struct TaskTypeFormSheet: View {
 
         do {
             existingTaskTypes = try modelContext.fetch(descriptor)
-            print("[TASK_TYPE_FORM] 📋 Loaded \(existingTaskTypes.count) existing task types")
-            print("[TASK_TYPE_FORM] 📋 Icons in use: \(existingTaskTypes.compactMap { $0.icon })")
-            print("[TASK_TYPE_FORM] 📋 Colors in use: \(existingTaskTypes.map { $0.color })")
+            print("[TASK_TYPE_SHEET] 📋 Loaded \(existingTaskTypes.count) existing task types")
+            print("[TASK_TYPE_SHEET] 📋 Icons in use: \(existingTaskTypes.compactMap { $0.icon })")
+            print("[TASK_TYPE_SHEET] 📋 Colors in use: \(existingTaskTypes.map { $0.color })")
         } catch {
-            print("[TASK_TYPE_FORM] ❌ Error fetching task types: \(error)")
+            print("[TASK_TYPE_SHEET] ❌ Error fetching task types: \(error)")
         }
     }
 
     private func saveTaskType() {
+        switch mode {
+        case .create(let onSave):
+            saveNewTaskType(onSave: onSave)
+
+        case .edit(let taskType, let onSave):
+            saveEditedTaskType(taskType: taskType, onSave: onSave)
+        }
+    }
+
+    private func saveNewTaskType(onSave: @escaping (TaskType) -> Void) {
         guard let companyId = dataController.currentUser?.companyId else {
-            print("[TASK_TYPE_FORM] ❌ No company ID found")
+            print("[TASK_TYPE_SHEET] ❌ No company ID found")
             errorMessage = "No company ID found"
             showingError = true
             return
         }
 
-        print("[TASK_TYPE_FORM] 🔵 Starting task type creation")
-        print("[TASK_TYPE_FORM] Name: \(taskTypeName)")
-        print("[TASK_TYPE_FORM] Color: \(taskTypeColorHex)")
-        print("[TASK_TYPE_FORM] Icon: \(taskTypeIcon)")
-        print("[TASK_TYPE_FORM] Company ID: \(companyId)")
+        print("[TASK_TYPE_SHEET] 🔵 Starting task type creation")
+        print("[TASK_TYPE_SHEET] Name: \(taskTypeName)")
+        print("[TASK_TYPE_SHEET] Color: \(taskTypeColorHex)")
+        print("[TASK_TYPE_SHEET] Icon: \(taskTypeIcon)")
+        print("[TASK_TYPE_SHEET] Company ID: \(companyId)")
 
         isSaving = true
 
@@ -458,17 +454,17 @@ struct TaskTypeFormSheet: View {
                     modifiedDate: nil
                 )
 
-                print("[TASK_TYPE_FORM] 📤 Sending to Bubble API...")
+                print("[TASK_TYPE_SHEET] 📤 Sending to Bubble API...")
                 let createdTaskType = try await dataController.apiService.createTaskType(tempTaskType)
-                print("[TASK_TYPE_FORM] ✅ Bubble created task type with ID: \(createdTaskType.id)")
+                print("[TASK_TYPE_SHEET] ✅ Bubble created task type with ID: \(createdTaskType.id)")
 
                 // Link task type to company
-                print("[TASK_TYPE_FORM] 🔗 Linking task type to company...")
+                print("[TASK_TYPE_SHEET] 🔗 Linking task type to company...")
                 try await dataController.apiService.linkTaskTypeToCompany(
                     companyId: companyId,
                     taskTypeId: createdTaskType.id
                 )
-                print("[TASK_TYPE_FORM] ✅ Task type linked to company")
+                print("[TASK_TYPE_SHEET] ✅ Task type linked to company")
 
                 // Now create locally with the Bubble ID
                 await MainActor.run {
@@ -481,13 +477,13 @@ struct TaskTypeFormSheet: View {
                         icon: taskTypeIcon
                     )
 
-                    print("[TASK_TYPE_FORM] 💾 Saving to local database...")
+                    print("[TASK_TYPE_SHEET] 💾 Saving to local database...")
                     modelContext.insert(newTaskType)
 
                     do {
                         try modelContext.save()
-                        print("[TASK_TYPE_FORM] ✅ Local save successful")
-                        print("[TASK_TYPE_FORM] 🎉 Task type created: \(createdTaskType.id)")
+                        print("[TASK_TYPE_SHEET] ✅ Local save successful")
+                        print("[TASK_TYPE_SHEET] 🎉 Task type created: \(createdTaskType.id)")
 
                         // Success haptic feedback
                         let generator = UINotificationFeedbackGenerator()
@@ -500,7 +496,7 @@ struct TaskTypeFormSheet: View {
                             dismiss()
                         }
                     } catch {
-                        print("[TASK_TYPE_FORM] ❌ Local save failed: \(error)")
+                        print("[TASK_TYPE_SHEET] ❌ Local save failed: \(error)")
 
                         // Error haptic feedback
                         let generator = UINotificationFeedbackGenerator()
@@ -512,17 +508,56 @@ struct TaskTypeFormSheet: View {
                     }
                 }
             } catch {
-                print("[TASK_TYPE_FORM] ❌ API creation failed: \(error)")
                 await MainActor.run {
+                    print("[TASK_TYPE_SHEET] ❌ Failed to create task type: \(error)")
+
                     // Error haptic feedback
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.error)
 
-                    errorMessage = "Failed to create task type: \(error.localizedDescription)"
+                    errorMessage = error.localizedDescription
                     showingError = true
                     isSaving = false
                 }
             }
+        }
+    }
+
+    private func saveEditedTaskType(taskType: TaskType, onSave: @escaping () -> Void) {
+        isSaving = true
+
+        Task {
+            await MainActor.run {
+                taskType.display = taskTypeName
+                taskType.icon = taskTypeIcon
+                taskType.color = taskTypeColorHex
+                taskType.needsSync = true
+
+                do {
+                    try modelContext.save()
+
+                    // Success haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+
+                    onSave()
+
+                    // Brief delay for graceful dismissal
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
+                } catch {
+                    // Error haptic feedback
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+
+                    errorMessage = error.localizedDescription
+                    showingError = true
+                    isSaving = false
+                }
+            }
+
+            dataController.syncManager?.triggerBackgroundSync()
         }
     }
 }

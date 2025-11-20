@@ -186,9 +186,9 @@ struct TaskTypeDetailSheet: View {
             }
         }
         .sheet(isPresented: $showingEditForm) {
-            TaskTypeEditSheet(taskType: taskType) {
+            TaskTypeSheet(mode: .edit(taskType: taskType) {
                 showingEditForm = false
-            }
+            })
             .environmentObject(dataController)
         }
         .sheet(isPresented: $showingDeletionSheet) {

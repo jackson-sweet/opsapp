@@ -133,7 +133,7 @@ struct FloatingActionMenu: View {
             ProjectFormSheet(mode: .create) { _ in }
         }
         .sheet(isPresented: $showingCreateTaskType) {
-            TaskTypeFormSheet { _ in }
+            TaskTypeSheet(mode: .create { _ in })
         }
         .sheet(isPresented: $showingCreateTask) {
             TaskFormSheet(mode: .create) { _ in }

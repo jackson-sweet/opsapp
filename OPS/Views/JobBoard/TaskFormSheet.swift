@@ -263,9 +263,9 @@ struct TaskFormSheet: View {
             }
         }
         .sheet(isPresented: $showingCreateTaskType) {
-            TaskTypeFormSheet { newTaskType in
+            TaskTypeSheet(mode: .create { newTaskType in
                 selectedTaskTypeId = newTaskType.id
-            }
+            })
             .environmentObject(dataController)
         }
         .sheet(isPresented: $showingTeamPicker) {

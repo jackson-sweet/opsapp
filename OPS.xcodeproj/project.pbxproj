@@ -457,7 +457,7 @@
 				CODE_SIGN_ENTITLEMENTS = OPS/OPS.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2.0.3;
 				DEVELOPMENT_ASSET_PATHS = "\"OPS/Preview Content\"";
 				DEVELOPMENT_TEAM = X47H96M34K;
 				ENABLE_PREVIEWS = YES;
@@ -493,6 +493,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
 		};
@@ -504,7 +505,7 @@
 				CODE_SIGN_ENTITLEMENTS = OPS/OPS.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2.0.3;
 				DEVELOPMENT_ASSET_PATHS = "\"OPS/Preview Content\"";
 				DEVELOPMENT_TEAM = X47H96M34K;
 				ENABLE_PREVIEWS = YES;
@@ -540,6 +541,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
 		};

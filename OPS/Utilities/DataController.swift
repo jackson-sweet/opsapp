@@ -2519,6 +2519,7 @@ class DataController: ObservableObject {
 
         // Capture all necessary IDs before any deletion to avoid accessing invalidated objects
         let projectId = project.id
+        let projectTitle = project.title
         let taskIds = project.tasks.map { $0.id }
         let taskCalendarEventIds = project.tasks.compactMap { $0.calendarEvent?.id }
 
@@ -2526,20 +2527,9 @@ class DataController: ObservableObject {
         let tasksToDelete = Array(project.tasks) // Create array copy to avoid relationship issues
         let taskCalendarEvents = tasksToDelete.compactMap { $0.calendarEvent }
 
-        // STEP 1: Delete all task calendar events from Bubble
-        for eventId in taskCalendarEventIds {
-            try await apiService.deleteCalendarEvent(id: eventId)
-        }
+        // STEP 1: Delete from local SwiftData FIRST (UI updates immediately)
+        print("[DELETE_PROJECT] 🗑️ Deleting project '\(projectTitle)' locally (UI will update)")
 
-        // STEP 2: Delete all tasks from Bubble
-        for taskId in taskIds {
-            try await apiService.deleteTask(id: taskId)
-        }
-
-        // STEP 3: Delete project from Bubble
-        try await apiService.deleteProject(id: projectId)
-
-        // STEP 4: Delete everything from local SwiftData
         // Delete all task calendar events
         for event in taskCalendarEvents {
             modelContext.delete(event)
@@ -2555,6 +2545,48 @@ class DataController: ObservableObject {
 
         // Save changes
         try modelContext.save()
+        print("[DELETE_PROJECT] ✅ Project deleted from local database (UI updated)")
+
+        // STEP 2: Delete from Bubble in background
+        Task {
+            do {
+                // Delete all task calendar events from Bubble
+                print("[DELETE_PROJECT] 🗑️ Deleting \(taskCalendarEventIds.count) calendar events from Bubble...")
+                for eventId in taskCalendarEventIds {
+                    try await apiService.deleteCalendarEvent(id: eventId)
+                }
+                print("[DELETE_PROJECT] ✅ Calendar events deleted from Bubble")
+
+                // Delete all tasks from Bubble
+                print("[DELETE_PROJECT] 🗑️ Deleting \(taskIds.count) tasks from Bubble...")
+                for taskId in taskIds {
+                    try await apiService.deleteTask(id: taskId)
+                }
+                print("[DELETE_PROJECT] ✅ Tasks deleted from Bubble")
+
+                // Delete project from Bubble
+                print("[DELETE_PROJECT] 🗑️ Deleting project from Bubble...")
+                try await apiService.deleteProject(id: projectId)
+                print("[DELETE_PROJECT] ✅ Project '\(projectTitle)' deleted from Bubble")
+            } catch {
+                print("[DELETE_PROJECT] ❌ Error deleting project from Bubble: \(error)")
+                // Project is already deleted from UI, but will reappear on next sync if Bubble deletion failed
+                await MainActor.run {
+                    let content = UNMutableNotificationContent()
+                    content.title = "Delete Failed"
+                    content.body = "Project deleted locally but failed to sync. It may reappear on next sync."
+                    content.sound = .default
+
+                    let request = UNNotificationRequest(
+                        identifier: UUID().uuidString,
+                        content: content,
+                        trigger: nil
+                    )
+
+                    UNUserNotificationCenter.current().add(request)
+                }
+            }
+        }
     }
 
     /// Delete a task and its calendar event from both Bubble API and local storage
@@ -3192,6 +3224,10 @@ class DataController: ObservableObject {
     /// Update calendar event dates - SINGLE SOURCE OF TRUTH for calendar event updates
     @MainActor
     func updateCalendarEvent(event: CalendarEvent, startDate: Date, endDate: Date) async throws {
+        // Store task/project references before async operation
+        let task = event.task
+        let project = task?.project
+
         try await performSyncedOperation(
             item: event,
             operationName: "UPDATE_CALENDAR_EVENT",
@@ -3210,8 +3246,7 @@ class DataController: ObservableObject {
                 let updates: [String: Any] = [
                     BubbleFields.CalendarEvent.startDate: formatter.string(from: startDate),
                     BubbleFields.CalendarEvent.endDate: formatter.string(from: endDate),
-                    BubbleFields.CalendarEvent.duration: event.duration,
-                    BubbleFields.CalendarEvent.active: true
+                    BubbleFields.CalendarEvent.duration: event.duration
                 ]
 
                 try await self.apiService.updateCalendarEvent(id: event.id, updates: updates)
@@ -3220,9 +3255,96 @@ class DataController: ObservableObject {
             }
         )
 
+        // Recalculate task indices if this event is linked to a task
+        // This runs regardless of whether calendar sync succeeded
+        if let project = project {
+            do {
+                try await recalculateTaskIndices(for: project)
+            } catch {
+                print("[UPDATE_CALENDAR_EVENT] ⚠️ Failed to recalculate task indices: \(error)")
+            }
+        }
+
         // Notify calendar views to refresh
         await MainActor.run {
             calendarEventsDidChange.toggle()
+        }
+    }
+
+    // MARK: - Task Index Operations
+
+    /// Recalculate and update taskIndex for all tasks in a project
+    /// Tasks are ordered by startDate (earliest = 0), with unscheduled tasks at the end
+    @MainActor
+    func recalculateTaskIndices(for project: Project) async throws {
+        print("[TASK_INDEX] 🔢 Recalculating task indices for project: \(project.title)")
+
+        let allTasks = project.tasks
+
+        // Separate scheduled and unscheduled tasks
+        var scheduledTasks: [(task: ProjectTask, startDate: Date)] = []
+        var unscheduledTasks: [ProjectTask] = []
+
+        for task in allTasks {
+            if let calendarEvent = task.calendarEvent,
+               let startDate = calendarEvent.startDate {
+                scheduledTasks.append((task: task, startDate: startDate))
+            } else {
+                unscheduledTasks.append(task)
+            }
+        }
+
+        // Sort scheduled tasks by startDate (earliest first)
+        scheduledTasks.sort { $0.startDate < $1.startDate }
+
+        // Assign indices: scheduled tasks first (0, 1, 2...), then unscheduled
+        var currentIndex = 0
+        var tasksToSync: [(task: ProjectTask, index: Int)] = []
+
+        // Update scheduled tasks
+        for (task, _) in scheduledTasks {
+            if task.taskIndex != currentIndex {
+                print("[TASK_INDEX]   - Task '\(task.displayTitle)': \(task.taskIndex ?? -1) → \(currentIndex)")
+                task.taskIndex = currentIndex
+                task.needsSync = true
+                tasksToSync.append((task: task, index: currentIndex))
+            }
+            currentIndex += 1
+        }
+
+        // Update unscheduled tasks
+        for task in unscheduledTasks {
+            if task.taskIndex != currentIndex {
+                print("[TASK_INDEX]   - Task '\(task.displayTitle)' (unscheduled): \(task.taskIndex ?? -1) → \(currentIndex)")
+                task.taskIndex = currentIndex
+                task.needsSync = true
+                tasksToSync.append((task: task, index: currentIndex))
+            }
+            currentIndex += 1
+        }
+
+        print("[TASK_INDEX] ✅ Updated \(allTasks.count) task indices")
+
+        // Save changes locally
+        try modelContext?.save()
+
+        // Sync taskIndex to Bubble for all changed tasks
+        if !tasksToSync.isEmpty {
+            print("[TASK_INDEX] 🔄 Syncing \(tasksToSync.count) task indices to Bubble...")
+            for (task, index) in tasksToSync {
+                do {
+                    let updates: [String: Any] = [BubbleFields.Task.taskIndex: index]
+                    try await apiService.updateTask(id: task.id, updates: updates)
+                    task.needsSync = false
+                    task.lastSyncedAt = Date()
+                    print("[TASK_INDEX]   ✅ Synced taskIndex=\(index) for task '\(task.displayTitle)'")
+                } catch {
+                    print("[TASK_INDEX]   ⚠️ Failed to sync taskIndex for task '\(task.displayTitle)': \(error)")
+                    // Keep needsSync = true for background sync to retry
+                }
+            }
+            try modelContext?.save()
+            print("[TASK_INDEX] ✅ Bubble sync complete")
         }
     }
 

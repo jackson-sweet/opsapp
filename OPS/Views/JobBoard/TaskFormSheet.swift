@@ -874,7 +874,10 @@ struct TaskFormSheet: View {
                 task.setTeamMemberIds(Array(selectedTeamMemberIds))
 
                 if let calendarEvent = task.calendarEvent {
-                    calendarEvent.title = task.project?.effectiveClientName ?? task.displayTitle
+                    // CalendarEvent title: "Client Name - Project Name"
+                    if let project = task.project {
+                        calendarEvent.title = "\(project.effectiveClientName) - \(project.title)"
+                    }
                     calendarEvent.startDate = startDate
                     calendarEvent.endDate = endDate
                     if let start = startDate, let end = endDate {
@@ -974,6 +977,9 @@ struct TaskFormSheet: View {
                             teamMemberIds: teamMemberIds
                         )
                         print("[TASK_FORM] ✅ Project team members update complete")
+
+                        // Recalculate task indices for the project
+                        try await dataController.recalculateTaskIndices(for: project)
                     }
                 }
 

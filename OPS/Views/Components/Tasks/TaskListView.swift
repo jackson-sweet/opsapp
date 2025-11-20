@@ -388,34 +388,29 @@ struct TaskRow: View {
     private func deleteTask() {
         let taskName = task.displayTitle
 
+        // Store IDs and project before deleting
+        let taskId = task.id
+        let calendarEventId = task.calendarEvent?.id
+        let project = task.project
+
+        // STEP 1: Delete from UI immediately (optimistic deletion)
+        guard let modelContext = dataController.modelContext else { return }
+        modelContext.delete(task)
+        try? modelContext.save()
+        print("[DELETE_TASK] ✅ Task deleted from local database (UI updated)")
+
+        // STEP 2: Delete from Bubble in background
         Task {
             do {
-                // Store IDs and project before deleting
-                let taskId = task.id
-                let calendarEventId = task.calendarEvent?.id
-                let project = task.project
-
-                await MainActor.run {
-                    guard let modelContext = dataController.modelContext else { return }
-
-                    // Delete task from local database (cascade will handle calendar event)
-                    // Wrap in transaction with animations disabled to prevent parent sheet from dismissing
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        modelContext.delete(task)
-                        try? modelContext.save()
-                    }
-                }
-
                 // Delete calendar event from Bubble if it exists
                 if let eventId = calendarEventId {
-                    print("[DELETE_TASK] 🗑️ Deleting calendar event: \(eventId)")
+                    print("[DELETE_TASK] 🗑️ Deleting calendar event from Bubble: \(eventId)")
                     try await dataController.apiService.deleteCalendarEvent(id: eventId)
                     print("[DELETE_TASK] ✅ Calendar event deleted from Bubble")
                 }
 
-                // Then delete the task from Bubble
+                // Delete the task from Bubble
+                print("[DELETE_TASK] 🗑️ Deleting task from Bubble: \(taskId)")
                 try await dataController.apiService.deleteTask(id: taskId)
                 print("[DELETE_TASK] ✅ Task deleted from Bubble")
 
@@ -442,7 +437,22 @@ struct TaskRow: View {
                     scheduleDeletionNotification(itemType: "TASK", itemName: taskName)
                 }
             } catch {
-                print("[DELETE_TASK] ❌ Error deleting task: \(error)")
+                print("[DELETE_TASK] ❌ Error deleting task from Bubble: \(error)")
+                // Task is already deleted from UI, but will reappear on next sync if Bubble deletion failed
+                await MainActor.run {
+                    let content = UNMutableNotificationContent()
+                    content.title = "Delete Failed"
+                    content.body = "Task deleted locally but failed to sync. It may reappear on next sync."
+                    content.sound = .default
+
+                    let request = UNNotificationRequest(
+                        identifier: UUID().uuidString,
+                        content: content,
+                        trigger: nil
+                    )
+
+                    UNUserNotificationCenter.current().add(request)
+                }
             }
         }
     }

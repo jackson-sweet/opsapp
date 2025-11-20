@@ -92,7 +92,9 @@ struct JobBoardView: View {
                         )
                         .padding(.top, 12)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 12)
+                         
+                        
                     }
 
                     // Main content with slide transitions

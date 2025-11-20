@@ -25,7 +25,7 @@ extension APIService {
             ]
         ]
         
-        let events: [CalendarEventDTO] = try await fetchBubbleObjectsWithArrayConstraints(
+        let events: [CalendarEventDTO] = try await fetchBubbleObjectsWithArrayConstraintsPaginated(
             objectType: BubbleFields.Types.calendarEvent,
             constraints: constraints,
             sortField: BubbleFields.CalendarEvent.startDate
@@ -38,7 +38,7 @@ extension APIService {
     /// - Parameter projectId: The project ID
     /// - Returns: Array of calendar event DTOs
     func fetchProjectCalendarEvents(projectId: String) async throws -> [CalendarEventDTO] {
-        
+
         let constraints: [[String: Any]] = [
             [
                 "key": BubbleFields.CalendarEvent.projectId,
@@ -46,8 +46,8 @@ extension APIService {
                 "value": projectId
             ]
         ]
-        
-        return try await fetchBubbleObjectsWithArrayConstraints(
+
+        return try await fetchBubbleObjectsWithArrayConstraintsPaginated(
             objectType: BubbleFields.Types.calendarEvent,
             constraints: constraints,
             sortField: BubbleFields.CalendarEvent.startDate
@@ -82,13 +82,13 @@ extension APIService {
             ]
         ]
         
-        return try await fetchBubbleObjectsWithArrayConstraints(
+        return try await fetchBubbleObjectsWithArrayConstraintsPaginated(
             objectType: BubbleFields.Types.calendarEvent,
             constraints: constraints,
             sortField: BubbleFields.CalendarEvent.startDate
         )
     }
-    
+
     /// Fetch a single calendar event by ID
     /// - Parameter id: The calendar event ID
     /// - Returns: Calendar event DTO

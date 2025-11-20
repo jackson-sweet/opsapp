@@ -1698,7 +1698,8 @@ struct ProjectFormSheet: View {
         let endDate = localTask.endDate
         let calendarEventId = UUID().uuidString
 
-        let eventTitle = localTask.customTitle ?? taskType.display
+        // CalendarEvent title: "Client Name - Project Name"
+        let eventTitle = "\(project.effectiveClientName) - \(project.title)"
 
         // Task-only scheduling migration: type parameter removed
         let calendarEvent = CalendarEvent(
@@ -1762,6 +1763,13 @@ struct ProjectFormSheet: View {
                 calendarEvent.needsSync = true
                 try? modelContext.save()
             }
+        }
+
+        // Recalculate task indices for the project
+        do {
+            try await dataController.recalculateTaskIndices(for: project)
+        } catch {
+            print("[TASK_CREATE] ⚠️ Failed to recalculate task indices: \(error)")
         }
 
         print("[TASK_CREATE] ✅ Task creation complete")

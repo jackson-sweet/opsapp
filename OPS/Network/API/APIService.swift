@@ -690,7 +690,52 @@ class APIService {
         
         return wrapper.response.results
     }
-    
+
+    /// Fetch all objects using pagination (automatically handles multiple pages)
+    /// This function will keep fetching pages of 100 items until all items are retrieved
+    func fetchBubbleObjectsWithArrayConstraintsPaginated<T: Decodable>(
+        objectType: String,
+        constraints: [[String: Any]]?,
+        sortField: String? = nil,
+        sortOrder: String = "asc"
+    ) async throws -> [T] {
+        var allResults: [T] = []
+        var cursor = 0
+        let pageSize = 100
+        var pageNumber = 1
+
+        print("[PAGINATION] 📊 Starting paginated fetch for \(objectType)")
+
+        while true {
+            // Fetch one page
+            let pageResults: [T] = try await fetchBubbleObjectsWithArrayConstraints(
+                objectType: objectType,
+                constraints: constraints,
+                limit: pageSize,
+                cursor: cursor,
+                sortField: sortField,
+                sortOrder: sortOrder
+            )
+
+            let resultCount = pageResults.count
+            allResults.append(contentsOf: pageResults)
+
+            print("[PAGINATION] 📄 Page \(pageNumber): Fetched \(resultCount) \(objectType)s (Total: \(allResults.count))")
+
+            // If we got fewer than pageSize results, we've reached the end
+            if resultCount < pageSize {
+                print("[PAGINATION] ✅ Completed: Total \(allResults.count) \(objectType)s fetched across \(pageNumber) page(s)")
+                break
+            }
+
+            // Move to next page
+            cursor += pageSize
+            pageNumber += 1
+        }
+
+        return allResults
+    }
+
     /// Fetch a single object by ID
     /// - Parameters:
     ///   - objectType: The type of object to fetch

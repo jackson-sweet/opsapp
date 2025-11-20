@@ -59,10 +59,9 @@ extension APIService {
             ])
         }
 
-        let tasks: [TaskDTO] = try await fetchBubbleObjectsWithArrayConstraints(
+        let tasks: [TaskDTO] = try await fetchBubbleObjectsWithArrayConstraintsPaginated(
             objectType: BubbleFields.Types.task,
             constraints: constraints,
-            limit: 500,
             sortField: BubbleFields.Task.taskIndex
         )
 

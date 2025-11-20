@@ -55,10 +55,9 @@ extension APIService {
             ])
         }
 
-        return try await fetchBubbleObjectsWithArrayConstraints(
+        return try await fetchBubbleObjectsWithArrayConstraintsPaginated(
             objectType: BubbleFields.Types.project,
             constraints: constraints,
-            limit: 500,
             sortField: BubbleFields.Project.startDate
         )
     }

@@ -862,8 +862,7 @@ struct TaskDetailsView: View {
                     let updates: [String: Any] = [
                         BubbleFields.CalendarEvent.startDate: NSNull(),
                         BubbleFields.CalendarEvent.endDate: NSNull(),
-                        BubbleFields.CalendarEvent.duration: 0,
-                        BubbleFields.CalendarEvent.active: false
+                        BubbleFields.CalendarEvent.duration: 0
                     ]
 
                     try await dataController.apiService.updateCalendarEvent(

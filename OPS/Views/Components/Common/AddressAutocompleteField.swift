@@ -118,6 +118,12 @@ struct AddressAutocompleteField: View {
                 searchText = address
             }
         }
+        .onChange(of: address) { _, newValue in
+            // Sync binding changes to searchText (e.g., when "USE BILLING ADDRESS" is clicked)
+            if searchText != newValue {
+                searchText = newValue
+            }
+        }
         .onDisappear {
             completer.delegate = nil
         }

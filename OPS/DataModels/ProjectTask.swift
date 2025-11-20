@@ -99,6 +99,7 @@ final class ProjectTask {
     var taskColor: String  // Hex color code
     var taskNotes: String?
     var taskTypeId: String
+    var taskIndex: Int?  // Index for task ordering within project (based on startDate)
     var displayOrder: Int = 0
     var customTitle: String?  // Optional custom title for task (overrides taskType.display)
 

@@ -136,8 +136,13 @@ final class CalendarEvent {
 
     /// Create from a Task
     static func fromTask(_ task: ProjectTask, startDate: Date?, endDate: Date?) -> CalendarEvent {
-        // Use project's client name as the title
-        let eventTitle = task.project?.effectiveClientName ?? task.displayTitle
+        // CalendarEvent title: "Client Name - Project Name"
+        let eventTitle: String
+        if let project = task.project {
+            eventTitle = "\(project.effectiveClientName) - \(project.title)"
+        } else {
+            eventTitle = task.displayTitle
+        }
 
         print("[CAL_EVENT_FROM_TASK] 🎨 Creating calendar event from task")
         print("[CAL_EVENT_FROM_TASK] Task ID: \(task.id)")

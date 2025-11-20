@@ -837,6 +837,10 @@ class CentralizedSyncManager {
             for dto in dtos {
                 guard let modelEvent = dto.toModel() else {
                     print("[SYNC_CALENDAR] ⚠️ Failed to convert DTO to model for event \(dto.id)")
+                    print("[SYNC_CALENDAR]    - ProjectID: \(dto.projectId ?? "nil")")
+                    print("[SYNC_CALENDAR]    - TaskID: \(dto.taskId ?? "nil")")
+                    print("[SYNC_CALENDAR]    - CompanyID: \(dto.companyId ?? "nil")")
+                    print("[SYNC_CALENDAR]    - Title: \(dto.title ?? "nil")")
                     continue
                 }
 

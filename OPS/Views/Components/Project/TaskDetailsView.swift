@@ -309,7 +309,7 @@ struct TaskDetailsView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(Color.black.opacity(0.8))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .foregroundColor(.white)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
                 }
@@ -467,7 +467,7 @@ struct TaskDetailsView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
             .padding(.horizontal)
         }
@@ -594,7 +594,7 @@ struct TaskDetailsView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
             .padding(.horizontal)
         }
@@ -680,7 +680,7 @@ struct TaskDetailsView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
             }
             .padding(.horizontal)
@@ -736,7 +736,7 @@ struct TaskDetailsView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
     }

@@ -332,7 +332,7 @@ struct OrganizationSettingsView: View {
                 // Only show divider and action buttons for company admins
                 if isCompanyAdmin {
                     Divider()
-                        .background(Color.white.opacity(0.1))
+                        .background(OPSStyle.Colors.cardBackgroundDark)
                     
                     // Action buttons
                     HStack(spacing: 0) {
@@ -355,7 +355,7 @@ struct OrganizationSettingsView: View {
                         
                         Divider()
                             .frame(width: 1)
-                            .background(Color.white.opacity(0.1))
+                            .background(OPSStyle.Colors.cardBackgroundDark)
                         
                         // Change plan button
                         Button(action: {
@@ -636,7 +636,7 @@ struct OrganizationSettingsView: View {
                     .frame(width: 40, height: 40)
                     .overlay(
                         Circle()
-                            .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
+                            .strokeBorder(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
                     )
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -692,7 +692,7 @@ struct OrganizationSettingsView: View {
                             .frame(width: 80, height: 80)
                             .overlay(
                                 Circle()
-                                    .strokeBorder(Color.white.opacity(0.2), lineWidth: 2)
+                                    .strokeBorder(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
                             )
 
                         Text(selectedColor.toHex() ?? "#9CA3AF")

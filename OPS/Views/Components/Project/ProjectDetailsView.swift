@@ -814,7 +814,7 @@ struct ProjectDetailsView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
             .padding(.horizontal)
         }
@@ -952,7 +952,7 @@ struct ProjectDetailsView: View {
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .padding(.horizontal)
@@ -982,7 +982,7 @@ struct ProjectDetailsView: View {
         .background(OPSStyle.Colors.cardBackgroundDark)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal)

@@ -45,7 +45,7 @@ struct CalendarFilterView: View {
                         if !availableTeamMembers.isEmpty {
                             filterSection(
                                 title: "TEAM MEMBERS",
-                                icon: "person.2.fill"
+                                icon: OPSStyle.Icons.crew
                             ) {
                                 teamMembersContent
                             }
@@ -64,7 +64,7 @@ struct CalendarFilterView: View {
                         // Status Section
                         filterSection(
                             title: "STATUS",
-                            icon: "flag.fill"
+                            icon: OPSStyle.Icons.alert
                         ) {
                             statusContent
                         }
@@ -226,7 +226,7 @@ struct CalendarFilterView: View {
 
                     // Selection checkmark
                     if selectedTaskTypeIds.contains(taskType.id) {
-                        Image(systemName: "checkmark")
+                        Image(systemName: OPSStyle.Icons.checkmark)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -275,7 +275,7 @@ struct CalendarFilterView: View {
                     Spacer()
 
                     if selectedStatuses.contains(status) {
-                        Image(systemName: "checkmark")
+                        Image(systemName: OPSStyle.Icons.checkmark)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -318,7 +318,7 @@ struct CalendarFilterView: View {
 
             // Search field
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
+                Image(systemName: OPSStyle.Icons.search)
                     .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -332,7 +332,7 @@ struct CalendarFilterView: View {
                     Button(action: {
                         clientSearchText = ""
                     }) {
-                        Image(systemName: "xmark.circle.fill")
+                        Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                             .font(.system(size: 14))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -375,7 +375,7 @@ struct CalendarFilterView: View {
                         Text("SHOW MORE")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        Image(systemName: "chevron.down")
+                        Image(systemName: OPSStyle.Icons.chevronDown)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                         Spacer()
@@ -454,13 +454,13 @@ struct CalendarFilterView: View {
             }
             
             Spacer()
-            
+
             if isSelected && !isSpecial {
-                Image(systemName: "checkmark")
+                Image(systemName: OPSStyle.Icons.checkmark)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             } else if isSpecial && isSelected {
-                Image(systemName: "checkmark.circle.fill")
+                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: 16))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -489,7 +489,7 @@ struct CalendarFilterView: View {
 
                 Spacer()
 
-                Image(systemName: "xmark")
+                Image(systemName: OPSStyle.Icons.xmark)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -519,7 +519,7 @@ struct CalendarFilterView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if !selectedTeamMemberIds.isEmpty {
                         HStack {
-                            Image(systemName: "person.2.fill")
+                            Image(systemName: OPSStyle.Icons.crew)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             
@@ -531,7 +531,7 @@ struct CalendarFilterView: View {
                     
                     if !selectedTaskTypeIds.isEmpty {
                         HStack {
-                            Image(systemName: "checkmark.circle.fill")
+                            Image(systemName: OPSStyle.Icons.task)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             
@@ -543,7 +543,7 @@ struct CalendarFilterView: View {
                     
                     if !selectedClientIds.isEmpty {
                         HStack {
-                            Image(systemName: "building.2.fill")
+                            Image(systemName: OPSStyle.Icons.client)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -555,7 +555,7 @@ struct CalendarFilterView: View {
 
                     if !selectedStatuses.isEmpty {
                         HStack {
-                            Image(systemName: "flag.fill")
+                            Image(systemName: OPSStyle.Icons.alert)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 

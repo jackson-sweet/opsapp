@@ -135,7 +135,7 @@ struct TaskTypeDetailSheet: View {
                                     showingEditForm = true
                                 }) {
                                     HStack {
-                                        Image(systemName: "pencil")
+                                        Image(systemName: OPSStyle.Icons.pencil)
                                             .font(.system(size: 16))
                                         Text("EDIT TASK TYPE")
                                             .font(OPSStyle.Typography.bodyBold)
@@ -151,7 +151,7 @@ struct TaskTypeDetailSheet: View {
                                     showingDeletionSheet = true
                                 }) {
                                     HStack {
-                                        Image(systemName: "trash")
+                                        Image(systemName: OPSStyle.Icons.trash)
                                             .font(.system(size: 16))
                                         Text("DELETE TASK TYPE")
                                             .font(OPSStyle.Typography.bodyBold)

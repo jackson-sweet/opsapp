@@ -178,7 +178,7 @@ struct CalendarSchedulerSheet: View {
         VStack(alignment: .leading){
             Spacer()
             HStack(spacing: 12) {
-                Image(systemName: "calendar")
+                Image(systemName: OPSStyle.Icons.schedule)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 
@@ -216,7 +216,7 @@ struct CalendarSchedulerSheet: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             } icon: {
-                Image(systemName: "calendar")
+                Image(systemName: OPSStyle.Icons.schedule)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .font(.system(size: 14))
             }
@@ -255,7 +255,7 @@ struct CalendarSchedulerSheet: View {
     private var teamFilterToggle: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: showOnlyTeamEvents ? "person.2.fill" : "calendar")
+                Image(systemName: showOnlyTeamEvents ? OPSStyle.Icons.crew : OPSStyle.Icons.schedule)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .font(.system(size: 14))
 
@@ -297,7 +297,7 @@ struct CalendarSchedulerSheet: View {
     private var projectTasksFilterToggle: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: showOnlyProjectTasks ? "checklist" : "calendar")
+                Image(systemName: showOnlyProjectTasks ? OPSStyle.Icons.taskType : OPSStyle.Icons.schedule)
                     .foregroundColor(OPSStyle.Colors.secondaryAccent)
                     .font(.system(size: 14))
 

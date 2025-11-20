@@ -26,7 +26,7 @@ struct TaskListView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Section heading outside the card (matching ProjectDetailsView style)
             HStack {
-                Image(systemName: "hammer.circle")
+                Image(systemName: OPSStyle.Icons.task)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text("TASKS")
@@ -97,7 +97,7 @@ struct TaskListView: View {
                     showingTaskForm = true
                 }) {
                     VStack(spacing: 12) {
-                        Image(systemName: "hammer.circle")
+                        Image(systemName: OPSStyle.Icons.task)
                             .font(.system(size: 36))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 

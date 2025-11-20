@@ -50,7 +50,7 @@ struct APICallsDebugView: View {
                 // Header
                 HStack {
                     Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
+                        Image(systemName: OPSStyle.Icons.close)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -65,7 +65,7 @@ struct APICallsDebugView: View {
                     
                     HStack(spacing: 12) {
                         Button(action: { showClearDataConfirmation = true }) {
-                            Image(systemName: "trash")
+                            Image(systemName: OPSStyle.Icons.delete)
                                 .font(.system(size: 16))
                                 .foregroundColor(OPSStyle.Colors.errorStatus)
                         }

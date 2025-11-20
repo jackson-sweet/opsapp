@@ -261,7 +261,7 @@ struct SettingsView: View {
                     // Report issue button
                     NavigationLink(destination: ReportIssueView()) {
                         HStack {
-                            Image(systemName: "exclamationmark.triangle")
+                            Image(systemName: OPSStyle.Icons.alert)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                             
@@ -345,7 +345,7 @@ struct SettingsView: View {
             showingSearchSheet = true
         }) {
             HStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
+                Image(systemName: OPSStyle.Icons.search)
                     .font(.system(size: 18))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 

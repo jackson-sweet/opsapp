@@ -55,7 +55,7 @@ struct AppSettingsView: View {
                         SettingsRowCard(
                             title: "Map Settings",
                             description: "Customize map display and behavior",
-                            iconName: "map"
+                            iconName: OPSStyle.Icons.map
                         )
                     }
 
@@ -219,7 +219,7 @@ struct SettingsRowCard: View {
             Spacer()
             
             // Chevron
-            Image(systemName: "chevron.right")
+            Image(systemName: OPSStyle.Icons.chevronRight)
                 .font(.system(size: 14))
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }

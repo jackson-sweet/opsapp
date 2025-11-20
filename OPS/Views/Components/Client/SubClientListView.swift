@@ -58,7 +58,7 @@ struct SubClientListView: View {
             if client.subClients.isEmpty {
                 // Empty state
                 VStack(spacing: 12) {
-                    Image(systemName: "person.2")
+                    Image(systemName: OPSStyle.Icons.subClient)
                         .font(.system(size: 32))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -186,21 +186,21 @@ struct SubClientRow: View {
                 // Contact availability icons
                 HStack(spacing: 8) {
                     if subClient.phoneNumber != nil {
-                        Image(systemName: "phone")
+                        Image(systemName: OPSStyle.Icons.phone)
                             .font(OPSStyle.Typography.smallBody)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     } else {
-                        Image(systemName: "phone")
+                        Image(systemName: OPSStyle.Icons.phone)
                             .font(OPSStyle.Typography.smallBody)
                             .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.3))
                     }
-                    
+
                     if subClient.email != nil {
-                        Image(systemName: "envelope")
+                        Image(systemName: OPSStyle.Icons.envelope)
                             .font(OPSStyle.Typography.smallBody)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     } else {
-                        Image(systemName: "envelope")
+                        Image(systemName: OPSStyle.Icons.envelope)
                             .font(OPSStyle.Typography.smallBody)
                             .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.3))
                     }
@@ -255,7 +255,7 @@ struct SubClientRow: View {
                                     .fill(OPSStyle.Colors.cardBackground)
                                     .frame(width: 36, height: 36)
                                 
-                                Image(systemName: "envelope")
+                                Image(systemName: OPSStyle.Icons.envelope)
                                     .font(OPSStyle.Typography.smallBody)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -275,7 +275,7 @@ struct SubClientRow: View {
                             
                             // Email button
                             Button(action: onEmail) {
-                                Image(systemName: "envelope.fill")
+                                Image(systemName: OPSStyle.Icons.envelopeFill)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(.white)
                                     .frame(width: 44, height: 44)
@@ -295,7 +295,7 @@ struct SubClientRow: View {
                                     .fill(OPSStyle.Colors.cardBackground)
                                     .frame(width: 36, height: 36)
                                 
-                                Image(systemName: "envelope")
+                                Image(systemName: OPSStyle.Icons.envelope)
                                     .font(OPSStyle.Typography.smallBody)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
@@ -324,7 +324,7 @@ struct SubClientRow: View {
                                     .fill(OPSStyle.Colors.cardBackground)
                                     .frame(width: 36, height: 36)
                                 
-                                Image(systemName: "phone")
+                                Image(systemName: OPSStyle.Icons.phone)
                                     .font(OPSStyle.Typography.smallBody)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -345,7 +345,7 @@ struct SubClientRow: View {
                             HStack(spacing: 8) {
                                 // Call button
                                 Button(action: onCall) {
-                                    Image(systemName: "phone.fill")
+                                    Image(systemName: OPSStyle.Icons.phoneFill)
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(.white)
                                         .frame(width: 44, height: 44)
@@ -379,7 +379,7 @@ struct SubClientRow: View {
                                     .fill(OPSStyle.Colors.cardBackground)
                                     .frame(width: 36, height: 36)
                                 
-                                Image(systemName: "phone")
+                                Image(systemName: OPSStyle.Icons.phone)
                                     .font(OPSStyle.Typography.smallBody)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
@@ -408,7 +408,7 @@ struct SubClientRow: View {
                                     .fill(OPSStyle.Colors.cardBackground)
                                     .frame(width: 36, height: 36)
                                 
-                                Image(systemName: "location")
+                                Image(systemName: OPSStyle.Icons.address)
                                     .font(OPSStyle.Typography.smallBody)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -455,7 +455,7 @@ struct SubClientRow: View {
                             showingContactExportOptions = true
                         }) {
                             HStack {
-                                Image(systemName: "person.crop.circle.badge.plus")
+                                Image(systemName: OPSStyle.Icons.addContact)
                                     .font(OPSStyle.Typography.body)
                                 Text("Save \(subClient.name)")
                                     .font(OPSStyle.Typography.button)

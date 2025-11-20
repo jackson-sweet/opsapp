@@ -68,7 +68,7 @@ struct SettingsSearchSheet: View {
     private var searchBar: some View {
         HStack(spacing: 12) {
             // Magnifying glass icon
-            Image(systemName: "magnifyingglass")
+            Image(systemName: OPSStyle.Icons.search)
                 .font(.system(size: 18))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -85,7 +85,7 @@ struct SettingsSearchSheet: View {
                 Button(action: {
                     searchText = ""
                 }) {
-                    Image(systemName: "xmark.circle.fill")
+                    Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                         .font(.system(size: 18))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -105,7 +105,7 @@ struct SettingsSearchSheet: View {
 
     private var emptySearchState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: OPSStyle.Icons.search)
                 .font(.system(size: 48))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.top, 60)
@@ -127,7 +127,7 @@ struct SettingsSearchSheet: View {
 
     private var noResultsState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: OPSStyle.Icons.search)
                 .font(.system(size: 48))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.top, 60)
@@ -192,7 +192,7 @@ struct SettingsSearchSheet: View {
             Spacer()
 
             // Chevron
-            Image(systemName: "chevron.right")
+            Image(systemName: OPSStyle.Icons.chevronRight)
                 .font(.system(size: 14))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }

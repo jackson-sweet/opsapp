@@ -323,7 +323,7 @@ struct TaskTeamChangeSheet: View {
         VStack(spacing: 0) {
             ForEach(Array(task.teamMembers.enumerated()), id: \.element.id) { index, member in
                 HStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.personFill)
+                    Image(systemName: OPSStyle.Icons.crew)
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 20)

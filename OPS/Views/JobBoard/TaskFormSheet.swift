@@ -520,7 +520,7 @@ struct TaskFormSheet: View {
                     showingCreateTaskType = true
                 }) {
                     HStack(spacing: 4) {
-                        Image(systemName: "plus.circle.fill")
+                        Image(systemName: OPSStyle.Icons.add)
                         Text("NEW TYPE")
                     }
                     .font(OPSStyle.Typography.smallCaption)

@@ -15,7 +15,7 @@ struct TeamMembersCard: View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack {
-                Image(systemName: "person.2.circle")
+                Image(systemName: OPSStyle.Icons.crew)
                     .font(.system(size: 20))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 

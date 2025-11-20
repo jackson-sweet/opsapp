@@ -16,7 +16,7 @@ struct ClientInfoCard: View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack {
-                Image(systemName: "person.circle")
+                Image(systemName: OPSStyle.Icons.client)
                     .font(.system(size: 20))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
@@ -38,7 +38,7 @@ struct ClientInfoCard: View {
                 // Email
                 if let email = clientEmail, !email.isEmpty {
                     HStack(spacing: 8) {
-                        Image(systemName: "envelope")
+                        Image(systemName: OPSStyle.Icons.envelope)
                             .font(.system(size: 14))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         
@@ -56,7 +56,7 @@ struct ClientInfoCard: View {
                 // Phone
                 if let phone = clientPhone, !phone.isEmpty {
                     HStack(spacing: 8) {
-                        Image(systemName: "phone")
+                        Image(systemName: OPSStyle.Icons.phone)
                             .font(.system(size: 14))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         

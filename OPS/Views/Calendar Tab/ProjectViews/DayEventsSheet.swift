@@ -66,7 +66,7 @@ struct DayEventsSheet: View {
                 )
                 
                 Button(action: { dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
+                    Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }

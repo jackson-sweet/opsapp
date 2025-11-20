@@ -40,7 +40,7 @@ struct TaskListFilterSheet: View {
                     VStack(spacing: 20) {
                         filterSection(
                             title: "TASK STATUS",
-                            icon: "flag.fill"
+                            icon: OPSStyle.Icons.alert
                         ) {
                             statusContent
                         }
@@ -57,7 +57,7 @@ struct TaskListFilterSheet: View {
                         if !availableTeamMembers.isEmpty {
                             filterSection(
                                 title: "ASSIGNED TEAM MEMBERS",
-                                icon: "person.2.fill"
+                                icon: OPSStyle.Icons.crew
                             ) {
                                 teamMemberContent
                             }
@@ -353,7 +353,7 @@ struct TaskListFilterSheet: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if !selectedStatuses.isEmpty {
                         HStack {
-                            Image(systemName: "flag.fill")
+                            Image(systemName: OPSStyle.Icons.alert)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -377,7 +377,7 @@ struct TaskListFilterSheet: View {
 
                     if !selectedTeamMemberIds.isEmpty {
                         HStack {
-                            Image(systemName: "person.2.fill")
+                            Image(systemName: OPSStyle.Icons.crew)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 

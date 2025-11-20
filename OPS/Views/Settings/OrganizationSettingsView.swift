@@ -277,7 +277,7 @@ struct OrganizationSettingsView: View {
                             .count
                         
                         HStack(spacing: 4) {
-                            Image(systemName: "person.2.fill")
+                            Image(systemName: OPSStyle.Icons.personTwoFill)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             
@@ -292,7 +292,7 @@ struct OrganizationSettingsView: View {
                             if statusEnum == .trial, let trialEnd = company.trialEndDate {
                                 let days = Calendar.current.dateComponents([.day], from: Date(), to: trialEnd).day ?? 0
                                 HStack(spacing: 4) {
-                                    Image(systemName: "info.circle.fill")
+                                    Image(systemName: OPSStyle.Icons.info)
                                         .font(.system(size: 12))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     
@@ -302,7 +302,7 @@ struct OrganizationSettingsView: View {
                                 }
                             } else if statusEnum == .grace, let days = company.daysRemainingInGracePeriod {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
+                                    Image(systemName: OPSStyle.Icons.alert)
                                         .font(.system(size: 12))
                                         .foregroundColor(OPSStyle.Colors.warningStatus)
                                     
@@ -318,7 +318,7 @@ struct OrganizationSettingsView: View {
                     
                     // Action chevron (only for company admins)
                     if isCompanyAdmin {
-                        Image(systemName: "chevron.right")
+                        Image(systemName: OPSStyle.Icons.chevronRight)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -341,7 +341,7 @@ struct OrganizationSettingsView: View {
                             showSeatManagement = true
                         }) {
                             HStack {
-                                Image(systemName: "person.2")
+                                Image(systemName: OPSStyle.Icons.personTwo)
                                     .font(OPSStyle.Typography.caption)
                                 
                                 Text("Manage Seats")
@@ -437,7 +437,7 @@ struct OrganizationSettingsView: View {
     
     private var emptyTeamView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "person.3")
+            Image(systemName: OPSStyle.Icons.crew)
                 .font(OPSStyle.Typography.largeTitle)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             
@@ -656,7 +656,7 @@ struct OrganizationSettingsView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                         .scaleEffect(0.8)
                 } else {
-                    Image(systemName: "chevron.right")
+                    Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

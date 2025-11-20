@@ -916,7 +916,7 @@ struct DayDetailsSheet: View {
 
                 if calendarEvents.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "calendar")
+                        Image(systemName: OPSStyle.Icons.calendar)
                             .font(.system(size: 48))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -1047,7 +1047,7 @@ struct EventDetailCard: View {
                     }
 
                     HStack(spacing: 4) {
-                        Image(systemName: "calendar")
+                        Image(systemName: OPSStyle.Icons.calendar)
                             .font(.system(size: 12))
                         Text(dateRangeText)
                             .font(OPSStyle.Typography.smallCaption)
@@ -1057,7 +1057,7 @@ struct EventDetailCard: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
+                Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

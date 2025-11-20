@@ -54,7 +54,7 @@ struct CalendarEventsDebugView: View {
                 // Header
                 HStack {
                     Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
+                        Image(systemName: OPSStyle.Icons.close)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -68,7 +68,7 @@ struct CalendarEventsDebugView: View {
                     Spacer()
                     
                     Button(action: fetchEvents) {
-                        Image(systemName: "arrow.clockwise")
+                        Image(systemName: OPSStyle.Icons.sync)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -79,7 +79,7 @@ struct CalendarEventsDebugView: View {
                 // Search bar
                 HStack {
                     HStack {
-                        Image(systemName: "magnifyingglass")
+                        Image(systemName: OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         TextField("Search by ID, title, or project...", text: $searchText)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -87,7 +87,7 @@ struct CalendarEventsDebugView: View {
                             .textInputAutocapitalization(.never)
                         if !searchText.isEmpty {
                             Button(action: { searchText = "" }) {
-                                Image(systemName: "xmark.circle.fill")
+                                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                         }
@@ -130,7 +130,7 @@ struct CalendarEventsDebugView: View {
                 } else if let error = errorMessage {
                     Spacer()
                     VStack(spacing: 16) {
-                        Image(systemName: "exclamationmark.triangle")
+                        Image(systemName: OPSStyle.Icons.alert)
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                         Text("Error")
@@ -579,7 +579,7 @@ struct EventSearchSheet: View {
 
                                 if !eventId.isEmpty {
                                     Button(action: { eventId = "" }) {
-                                        Image(systemName: "xmark.circle.fill")
+                                        Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
                                 }
@@ -587,7 +587,7 @@ struct EventSearchSheet: View {
 
                             Button(action: searchEvent) {
                                 HStack {
-                                    Image(systemName: "magnifyingglass")
+                                    Image(systemName: OPSStyle.Icons.search)
                                     Text("Search Local & Bubble")
                                 }
                                 .font(OPSStyle.Typography.bodyBold)
@@ -602,7 +602,7 @@ struct EventSearchSheet: View {
 
                         if let error = errorMessage {
                             HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
+                                Image(systemName: OPSStyle.Icons.alert)
                                     .foregroundColor(OPSStyle.Colors.warningStatus)
                                 Text(error)
                                     .font(OPSStyle.Typography.caption)

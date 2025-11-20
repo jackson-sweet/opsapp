@@ -40,7 +40,7 @@ struct SchedulingTypeExplanationView: View {
 
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
-                                Image(systemName: "calendar")
+                                Image(systemName: OPSStyle.Icons.calendar)
                                     .font(.system(size: 24))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -98,7 +98,7 @@ struct SchedulingTypeExplanationView: View {
 
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
-                                Image(systemName: "checklist")
+                                Image(systemName: OPSStyle.Icons.checklist)
                                     .font(.system(size: 24))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 

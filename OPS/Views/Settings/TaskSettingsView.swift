@@ -89,7 +89,7 @@ struct TaskSettingsView: View {
                     Spacer()
                     
                     Button(action: { showingAddSheet = true }) {
-                        Image(systemName: "plus.circle.fill")
+                        Image(systemName: OPSStyle.Icons.plusCircleFill)
                             .font(.system(size: 24))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -252,7 +252,7 @@ struct TaskTypeRow: View {
                                 .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
                         )
                 } else {
-                    Image(systemName: "chevron.right")
+                    Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -490,7 +490,7 @@ struct EditTaskTypeSheet: View {
                         if !taskType.isDefault {
                             Button(action: { showingDeletionSheet = true }) {
                                 HStack {
-                                    Image(systemName: "trash")
+                                    Image(systemName: OPSStyle.Icons.trash)
                                         .font(.system(size: 16))
                                     Text("DELETE TASK TYPE")
                                         .font(OPSStyle.Typography.bodyBold)

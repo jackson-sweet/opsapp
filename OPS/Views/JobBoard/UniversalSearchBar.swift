@@ -59,7 +59,7 @@ struct UniversalSearchBar: View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
                 HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
+                    Image(systemName: OPSStyle.Icons.search)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .font(.system(size: 16))
 
@@ -72,7 +72,7 @@ struct UniversalSearchBar: View {
                         Button(action: {
                             searchText = ""
                         }) {
-                            Image(systemName: "xmark.circle.fill")
+                            Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .font(.system(size: 16))
                         }
@@ -93,7 +93,7 @@ struct UniversalSearchBar: View {
                             }
                         }
                     }) {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
+                        Image(systemName: OPSStyle.Icons.filter)
                             .font(.system(size: 24))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }

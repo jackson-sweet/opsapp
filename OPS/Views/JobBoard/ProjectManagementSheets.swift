@@ -509,7 +509,7 @@ struct TaskPickerForTeamChange: View {
                             showingTaskForm = true
                         }) {
                             HStack {
-                                Image(systemName: "plus.circle.fill")
+                                Image(systemName: OPSStyle.Icons.add)
                                     .font(.system(size: 18))
                                 Text("CREATE NEW TASK")
                                     .font(OPSStyle.Typography.bodyBold)
@@ -626,7 +626,7 @@ struct ProjectTeamChangeView: View {
         VStack(spacing: 0) {
             ForEach(Array(project.teamMembers.enumerated()), id: \.element.id) { index, member in
                 HStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.personFill)
+                    Image(systemName: OPSStyle.Icons.crew)
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 20)
@@ -882,7 +882,7 @@ struct TaskTeamChangeView: View {
             if let task = task {
                 ForEach(Array(task.teamMembers.enumerated()), id: \.element.id) { index, member in
                 HStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.personFill)
+                    Image(systemName: OPSStyle.Icons.crew)
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 20)

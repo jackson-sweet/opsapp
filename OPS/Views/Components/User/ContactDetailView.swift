@@ -577,7 +577,7 @@ struct ContactDetailView: View {
                                 .fill(OPSStyle.Colors.cardBackground)
                                 .frame(width: contactIconSize, height: contactIconSize)
                             
-                            Image(systemName: "envelope")
+                            Image(systemName: OPSStyle.Icons.envelope)
                                 .font(OPSStyle.Typography.smallBody)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -601,7 +601,7 @@ struct ContactDetailView: View {
                                 openURL(emailURL)
                             }
                         }) {
-                            Image(systemName: "envelope.fill")
+                            Image(systemName: OPSStyle.Icons.envelopeFill)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(.white)
                                 .frame(width: 44, height: 44)
@@ -620,7 +620,7 @@ struct ContactDetailView: View {
                                 .fill(OPSStyle.Colors.cardBackground)
                                 .frame(width: contactIconSize, height: contactIconSize)
                             
-                            Image(systemName: "envelope")
+                            Image(systemName: OPSStyle.Icons.envelope)
                                 .font(OPSStyle.Typography.smallBody)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
@@ -648,7 +648,7 @@ struct ContactDetailView: View {
                                 .fill(OPSStyle.Colors.cardBackground)
                                 .frame(width: contactIconSize, height: contactIconSize)
                             
-                            Image(systemName: "phone")
+                            Image(systemName: OPSStyle.Icons.phone)
                                 .font(OPSStyle.Typography.smallBody)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -674,7 +674,7 @@ struct ContactDetailView: View {
                                     openURL(phoneURL)
                                 }
                             }) {
-                                Image(systemName: "phone.fill")
+                                Image(systemName: OPSStyle.Icons.phoneFill)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(.white)
                                     .frame(width: 44, height: 44)
@@ -712,7 +712,7 @@ struct ContactDetailView: View {
                                 .fill(OPSStyle.Colors.cardBackground)
                                 .frame(width: contactIconSize, height: contactIconSize)
                             
-                            Image(systemName: "phone")
+                            Image(systemName: OPSStyle.Icons.phone)
                                 .font(OPSStyle.Typography.smallBody)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
@@ -748,7 +748,7 @@ struct ContactDetailView: View {
                                         .fill(OPSStyle.Colors.cardBackground)
                                         .frame(width: contactIconSize, height: contactIconSize)
                                     
-                                    Image(systemName: "location")
+                                    Image(systemName: OPSStyle.Icons.address)
                                         .font(OPSStyle.Typography.smallBody)
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
@@ -795,6 +795,7 @@ struct ContactDetailView: View {
                                     .fill(OPSStyle.Colors.cardBackground)
                                     .frame(width: contactIconSize, height: contactIconSize)
                                 
+                                // NOTE: location.slash does not have a semantic icon yet - using legacy
                                 Image(systemName: "location.slash")
                                     .font(OPSStyle.Typography.smallBody)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -830,7 +831,7 @@ struct ContactDetailView: View {
                             showingContactExportOptions = true
                         }) {
                             HStack {
-                                Image(systemName: "person.crop.circle.badge.plus")
+                                Image(systemName: OPSStyle.Icons.addContact)
                                     .font(OPSStyle.Typography.body)
                                 Text("Save to Contacts")
                                     .font(OPSStyle.Typography.button)
@@ -912,7 +913,7 @@ struct ContactDetailView: View {
                         showingCreateProject = true
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "plus")
+                            Image(systemName: OPSStyle.Icons.plus)
                                 .font(OPSStyle.Typography.smallCaption)
                             Text("Add")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -1027,7 +1028,7 @@ struct ContactDetailView: View {
                     showingCreateProject = true
                 }) {
                     VStack(spacing: 12) {
-                        Image(systemName: "folder.badge.plus")
+                        Image(systemName: OPSStyle.Icons.addProject)
                             .font(.system(size: 40))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 

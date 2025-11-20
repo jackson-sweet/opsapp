@@ -37,7 +37,7 @@ struct ClientSearchField: View {
         VStack(alignment: .leading, spacing: 0) {
             // Client input field
             HStack {
-                Image(systemName: "person.fill")
+                Image(systemName: OPSStyle.Icons.client)
                     .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 

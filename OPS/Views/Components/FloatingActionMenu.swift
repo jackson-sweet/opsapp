@@ -45,7 +45,7 @@ struct FloatingActionMenu: View {
                             // Floating menu items (shown when expanded)
                             if showCreateMenu {
                                 FloatingActionItem(
-                                    icon: "checklist",
+                                    icon: OPSStyle.Icons.taskType,
                                     label: "New Task Type",
                                     action: {
                                         showCreateMenu = false
@@ -55,7 +55,7 @@ struct FloatingActionMenu: View {
                                 .transition(.scale.combined(with: .opacity))
 
                                 FloatingActionItem(
-                                    icon: "checkmark.square.fill",
+                                    icon: OPSStyle.Icons.task,
                                     label: "Create Task",
                                     action: {
                                         showCreateMenu = false
@@ -65,7 +65,7 @@ struct FloatingActionMenu: View {
                                 .transition(.scale.combined(with: .opacity))
 
                                 FloatingActionItem(
-                                    icon: "folder.badge.plus",
+                                    icon: OPSStyle.Icons.project,
                                     label: "Create Project",
                                     action: {
                                         showCreateMenu = false
@@ -75,7 +75,7 @@ struct FloatingActionMenu: View {
                                 .transition(.scale.combined(with: .opacity))
 
                                 FloatingActionItem(
-                                    icon: "person.badge.plus",
+                                    icon: OPSStyle.Icons.client,
                                     label: "Create Client",
                                     action: {
                                         showCreateMenu = false

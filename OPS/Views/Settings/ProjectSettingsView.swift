@@ -39,7 +39,7 @@ struct SettingsRow: View {
             
             // Chevron
             if showChevron {
-                Image(systemName: "chevron.right")
+                Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

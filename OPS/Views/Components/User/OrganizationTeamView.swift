@@ -84,7 +84,7 @@ struct OrganizationTeamView: View {
                             Spacer()
                             
                             // Indicator
-                            Image(systemName: "chevron.right")
+                            Image(systemName: OPSStyle.Icons.chevronRight)
                                 .font(OPSStyle.Typography.smallBody)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
@@ -142,7 +142,7 @@ struct OrganizationFullTeamView: View {
                 VStack {
                     // Search field
                     HStack {
-                        Image(systemName: "magnifyingglass")
+                        Image(systemName: OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         
                         TextField("Search team members", text: $searchText)
@@ -162,6 +162,7 @@ struct OrganizationFullTeamView: View {
                             
                             if searchText.isEmpty {
                                 // No team members at all
+                                // NOTE: person.3.sequence.fill does not have a semantic icon - using legacy
                                 Image(systemName: "person.3.sequence.fill")
                                     .font(.system(size: 48))
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.5))
@@ -171,7 +172,7 @@ struct OrganizationFullTeamView: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             } else {
                                 // No search results
-                                Image(systemName: "magnifyingglass")
+                                Image(systemName: OPSStyle.Icons.search)
                                     .font(.system(size: 48))
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.5))
                                 

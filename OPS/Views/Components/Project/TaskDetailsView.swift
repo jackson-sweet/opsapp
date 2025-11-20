@@ -93,7 +93,7 @@ struct TaskDetailsView: View {
                         
                         // Breadcrumb navigation
                         HStack {
-                            Button(action: { 
+                            Button(action: {
                                 showingProjectDetails = true
                             }) {
                                 Text(project.title)
@@ -101,8 +101,8 @@ struct TaskDetailsView: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                     .lineLimit(1)
                             }
-                            
-                            Image(systemName: "chevron.right")
+
+                            Image(systemName: OPSStyle.Icons.chevronRight)
                                 .font(.system(size: 10))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             
@@ -257,7 +257,7 @@ struct TaskDetailsView: View {
         VStack(alignment: .leading, spacing: 16) {
             // Location section label
             HStack {
-                Image(systemName: "location.fill")
+                Image(systemName: OPSStyle.Icons.jobSite)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text("LOCATION")
@@ -301,6 +301,7 @@ struct TaskDetailsView: View {
                 // Directions button on map
                 Button(action: { openInMaps() }) {
                     HStack {
+                        // NOTE: Missing icon in OPSStyle - "arrow.triangle.turn.up.right.diamond.fill" (Directions/navigation icon for maps)
                         Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
                             .font(.system(size: 14))
                         
@@ -332,7 +333,7 @@ struct TaskDetailsView: View {
                 }) {
                     HStack {
                         infoRow(
-                            icon: "person",
+                            icon: OPSStyle.Icons.client,
                             title: "CLIENT",
                             value: project.effectiveClientName.uppercased(),
                             valueColor: OPSStyle.Colors.primaryText,
@@ -341,12 +342,12 @@ struct TaskDetailsView: View {
                         
                         // Contact indicators
                         HStack(spacing: 6) {
-                            Image(systemName: "phone.fill")
+                            Image(systemName: OPSStyle.Icons.phoneFill)
                                 .font(.system(size: 18))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.2)
-                            
-                            Image(systemName: "envelope.fill")
+
+                            Image(systemName: OPSStyle.Icons.envelopeFill)
                                 .font(.system(size: 18))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.2)
@@ -366,7 +367,7 @@ struct TaskDetailsView: View {
                     HStack(spacing: 0) {
                         // Scheduled date
                         HStack(spacing: 12) {
-                            Image(systemName: "calendar")
+                            Image(systemName: OPSStyle.Icons.calendar)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 24)
 
@@ -396,7 +397,7 @@ struct TaskDetailsView: View {
                         if task.status == .completed,
                            let completionDate = task.completionDate {
                             HStack(spacing: 12) {
-                                Image(systemName: "calendar.badge.checkmark")
+                                Image(systemName: OPSStyle.Icons.calendarBadgeCheckmark)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(width: 24)
 
@@ -415,7 +416,7 @@ struct TaskDetailsView: View {
 
                         // Chevron indicator for admin/office crew to show it's tappable
                         if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
-                            Image(systemName: "chevron.right")
+                            Image(systemName: OPSStyle.Icons.chevronRight)
                                 .font(.system(size: 14))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .padding(.trailing, 12)
@@ -431,7 +432,7 @@ struct TaskDetailsView: View {
                 // Task notes section
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Image(systemName: "note.text")
+                        Image(systemName: OPSStyle.Icons.notes)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 24)
 
@@ -441,7 +442,7 @@ struct TaskDetailsView: View {
 
                         Spacer()
 
-                        Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
+                        Image(systemName: isNotesExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
                             .font(.system(size: 14))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -479,7 +480,7 @@ struct TaskDetailsView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Section heading outside the card
             HStack {
-                Image(systemName: "person.2")
+                Image(systemName: OPSStyle.Icons.personTwo)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text("TEAM MEMBERS")
@@ -526,6 +527,7 @@ struct TaskDetailsView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Section heading
             HStack {
+                // NOTE: Missing icon in OPSStyle - "flag" (Status/flag icon for task status section)
                 Image(systemName: "flag")
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
@@ -550,7 +552,7 @@ struct TaskDetailsView: View {
                                     Circle()
                                         .fill(statusColor(for: status))
                                         .frame(width: 24, height: 24)
-                                    Image(systemName: "checkmark")
+                                    Image(systemName: OPSStyle.Icons.checkmark)
                                         .font(.system(size: 12, weight: .bold))
                                         .foregroundColor(.white)
                                 } else {
@@ -627,16 +629,18 @@ struct TaskDetailsView: View {
                     navigationCard(
                         title: "Previous",
                         task: prevTask,
+                        // NOTE: Missing icon in OPSStyle - "chevron.left.circle.fill" (Previous navigation with filled circle)
                         icon: "chevron.left.circle.fill",
                         alignment: .leading
                     )
                 }
-                
+
                 // Next task
                 if let nextTaskToShow = nextTask ?? fallbackNext {
                     navigationCard(
                         title: "Next",
                         task: nextTaskToShow,
+                        // NOTE: Missing icon in OPSStyle - "chevron.right.circle.fill" (Next navigation with filled circle)
                         icon: "chevron.right.circle.fill",
                         alignment: .trailing
                     )
@@ -653,24 +657,24 @@ struct TaskDetailsView: View {
                 showingProjectDetails = true
             }) {
                 HStack {
-                    Image(systemName: "folder.fill")
+                    Image(systemName: OPSStyle.Icons.project)
                         .font(.system(size: 20))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    
+
                     VStack(alignment: .leading, spacing: 2) {
                         Text("VIEW PROJECT")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
+
                         Text(project.title.uppercased())
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .lineLimit(1)
                     }
-                    
+
                     Spacer()
-                    
-                    Image(systemName: "chevron.right")
+
+                    Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -1056,21 +1060,21 @@ struct TaskDetailsView: View {
             Image(systemName: icon)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: 24)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                
+
                 Text(value)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(valueColor)
             }
-            
+
             Spacer()
-            
+
             if showChevron {
-                Image(systemName: "chevron.right")
+                Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -1163,13 +1167,14 @@ struct TaskDetailsView: View {
     private func statusIcon(for status: TaskStatus) -> String {
         switch status {
         case .booked:
-            return "calendar"
+            return OPSStyle.Icons.calendar
         case .inProgress:
+            // NOTE: Missing icon in OPSStyle - "hammer.fill" (In-progress status icon)
             return "hammer.fill"
         case .completed:
-            return "checkmark"
+            return OPSStyle.Icons.checkmark
         case .cancelled:
-            return "xmark"
+            return OPSStyle.Icons.xmark
         }
     }
     
@@ -1308,7 +1313,7 @@ struct TaskDetailsView: View {
         VStack {
             if showingSaveNotification {
                 HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: OPSStyle.Icons.complete)
                         .foregroundColor(OPSStyle.Colors.successStatus)
                     
                     Text("Notes saved")

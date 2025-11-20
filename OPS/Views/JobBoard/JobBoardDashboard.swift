@@ -663,7 +663,7 @@ struct DirectionalDragCard: View {
     private var leftMetadata: some View {
         HStack(spacing: 4) {
             if let startDate = project.startDate {
-                Image(systemName: "calendar")
+                Image(systemName: OPSStyle.Icons.calendar)
                     .font(.system(size: 10))
                 Text(DateHelper.fullDateString(from: startDate))
                     .font(OPSStyle.Typography.smallCaption)
@@ -676,7 +676,7 @@ struct DirectionalDragCard: View {
         VStack(alignment: .trailing, spacing: 2) {
             if !project.teamMembers.isEmpty {
                 HStack(spacing: 4) {
-                    Image(systemName: "person.2")
+                    Image(systemName: OPSStyle.Icons.personTwo)
                         .font(.system(size: 10))
                     Text("\(project.teamMembers.count)")
                         .font(OPSStyle.Typography.smallCaption)
@@ -686,7 +686,7 @@ struct DirectionalDragCard: View {
             // Task-only scheduling migration: All projects use tasks
             if !project.tasks.isEmpty {
                 HStack(spacing: 4) {
-                    Image(systemName: "checklist")
+                    Image(systemName: OPSStyle.Icons.task)
                         .font(.system(size: 10))
                     Text("\(project.tasks.count)")
                         .font(OPSStyle.Typography.smallCaption)
@@ -698,7 +698,7 @@ struct DirectionalDragCard: View {
             if let startDate = project.startDate, let endDate = project.endDate {
                 let days = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
                 HStack(spacing: 4) {
-                    Image(systemName: "clock")
+                    Image(systemName: OPSStyle.Icons.clock)
                         .font(.system(size: 10))
                     Text(days == 0 ? "SAME DAY" : "\(days)d")
                         .font(OPSStyle.Typography.smallCaption)
@@ -792,7 +792,7 @@ struct DraggingCardOverlay: View {
 
                         HStack(spacing: 4) {
                             if let startDate = project.startDate {
-                                Image(systemName: "calendar")
+                                Image(systemName: OPSStyle.Icons.calendar)
                                     .font(.system(size: 10))
                                 Text(DateHelper.fullDateString(from: startDate))
                                     .font(OPSStyle.Typography.smallCaption)
@@ -806,7 +806,7 @@ struct DraggingCardOverlay: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         if !project.teamMembers.isEmpty {
                             HStack(spacing: 4) {
-                                Image(systemName: "person.2")
+                                Image(systemName: OPSStyle.Icons.personTwo)
                                     .font(.system(size: 10))
                                 Text("\(project.teamMembers.count)")
                                     .font(OPSStyle.Typography.smallCaption)
@@ -816,7 +816,7 @@ struct DraggingCardOverlay: View {
                         // Task-only scheduling migration: All projects use tasks
                         if !project.tasks.isEmpty {
                             HStack(spacing: 4) {
-                                Image(systemName: "checklist")
+                                Image(systemName: OPSStyle.Icons.task)
                                     .font(.system(size: 10))
                                 Text("\(project.tasks.count)")
                                     .font(OPSStyle.Typography.smallCaption)
@@ -828,7 +828,7 @@ struct DraggingCardOverlay: View {
                         if let startDate = project.startDate, let endDate = project.endDate {
                             let days = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
                             HStack(spacing: 4) {
-                                Image(systemName: "clock")
+                                Image(systemName: OPSStyle.Icons.clock)
                                     .font(.system(size: 10))
                                 Text(days == 0 ? "SAME DAY" : "\(days)d")
                                     .font(OPSStyle.Typography.smallCaption)

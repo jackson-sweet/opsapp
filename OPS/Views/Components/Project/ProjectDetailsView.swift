@@ -255,7 +255,7 @@ struct ProjectDetailsView: View {
                             editedTitle = project.title
                             isEditingTitle = true
                         }) {
-                            Image(systemName: "pencil")
+                            Image(systemName: OPSStyle.Icons.pencil)
                                 .font(.system(size: 14))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -469,7 +469,7 @@ struct ProjectDetailsView: View {
         VStack(alignment: .leading, spacing: 16) {
             // Location section label
             HStack {
-                Image(systemName: "location.fill")
+                Image(systemName: OPSStyle.Icons.jobSite)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text("LOCATION")
@@ -509,7 +509,7 @@ struct ProjectDetailsView: View {
                                 isEditingAddress = true
                             }
                         }) {
-                            Image(systemName: "pencil")
+                            Image(systemName: OPSStyle.Icons.pencil)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -645,9 +645,10 @@ struct ProjectDetailsView: View {
                     )
                 }) {
                     HStack {
+                        // NOTE: Missing icon in OPSStyle - "arrow.triangle.turn.up.right.diamond.fill" (directions)
                         Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
                             .font(.system(size: 14))
-                        
+
                         Text("Directions")
                             .font(OPSStyle.Typography.smallCaption)
                     }
@@ -684,12 +685,12 @@ struct ProjectDetailsView: View {
                         
                         // Always show contact indicators with availability status
                         HStack(spacing: 6) {
-                            Image(systemName: "phone.fill")
+                            Image(systemName: OPSStyle.Icons.phoneFill)
                                 .font(.system(size: 18))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.2)
-                            
-                            Image(systemName: "envelope.fill")
+
+                            Image(systemName: OPSStyle.Icons.envelopeFill)
                                 .font(.system(size: 18))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.2)
@@ -704,7 +705,7 @@ struct ProjectDetailsView: View {
                 HStack(spacing: 0) {
                     // Start date (show computed date from tasks)
                     HStack(spacing: 12) {
-                        Image(systemName: "calendar")
+                        Image(systemName: OPSStyle.Icons.schedule)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 24)
 
@@ -731,7 +732,7 @@ struct ProjectDetailsView: View {
                        let startDate = project.computedStartDate,
                        endDate >= startDate {
                         HStack(spacing: 12) {
-                            Image(systemName: "calendar.badge.checkmark")
+                            Image(systemName: OPSStyle.Icons.calendarBadgeCheckmark)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 24)
 
@@ -756,7 +757,7 @@ struct ProjectDetailsView: View {
                 if let description = project.projectDescription, !description.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Image(systemName: "text.alignleft")
+                            Image(systemName: OPSStyle.Icons.description)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 24)
                             
@@ -778,7 +779,7 @@ struct ProjectDetailsView: View {
                 // Notes section
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Image(systemName: "note.text")
+                        Image(systemName: OPSStyle.Icons.notes)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 24)
 
@@ -845,9 +846,9 @@ struct ProjectDetailsView: View {
             }
             
             Spacer()
-            
+
             if showChevron {
-                Image(systemName: "chevron.right")
+                Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -861,7 +862,7 @@ struct ProjectDetailsView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Section heading with icon and edit button
             HStack {
-                Image(systemName: "person.2.fill")
+                Image(systemName: OPSStyle.Icons.crew)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text("TEAM MEMBERS")
@@ -906,7 +907,7 @@ struct ProjectDetailsView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Section heading with icon
             HStack {
-                Image(systemName: "photo")
+                Image(systemName: OPSStyle.Icons.photo)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text("PROJECT PHOTOS")
@@ -963,6 +964,7 @@ struct ProjectDetailsView: View {
     // Empty state when no photos
     private var emptyPhotosView: some View {
         VStack(spacing: 16) {
+            // NOTE: Missing icon in OPSStyle - "photo.on.rectangle.angled" (empty photo state)
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 36))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1004,6 +1006,7 @@ struct ProjectDetailsView: View {
             
             // Photo count indicator
             HStack {
+                // NOTE: Missing icon in OPSStyle - "photo.stack" (photo count indicator)
                 Image(systemName: "photo.stack")
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .font(.system(size: 14))
@@ -1043,6 +1046,7 @@ struct ProjectDetailsView: View {
             showingImagePicker = true
         }) {
             HStack(spacing: 8) {
+                // NOTE: Missing icon in OPSStyle - "plus.viewfinder" (add photos)
                 Image(systemName: "plus.viewfinder")
                     .font(.system(size: 16, weight: .medium))
 
@@ -1085,9 +1089,10 @@ struct ProjectDetailsView: View {
     private var saveNotificationContent: some View {
         VStack {
             Spacer()
-            
+
+
             HStack {
-                Image(systemName: "checkmark.circle.fill")
+                Image(systemName: OPSStyle.Icons.complete)
                     .foregroundColor(OPSStyle.Colors.successStatus)
                     .font(.system(size: 16))
                 
@@ -1691,6 +1696,7 @@ struct AddressEditorSheet: View {
                 }
 
                 VStack(spacing: 4) {
+                    // NOTE: Missing icon in OPSStyle - "scope" (address editor crosshair)
                     Image(systemName: "scope")
                         .font(.system(size: 32))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -1888,7 +1894,7 @@ struct FullScreenPhotoViewer: View {
                 // Top bar with close button and counter
                 HStack {
                     Button(action: onDismiss) {
-                        Image(systemName: "xmark")
+                        Image(systemName: OPSStyle.Icons.xmark)
                             .font(.system(size: 22, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(12)
@@ -2008,7 +2014,7 @@ struct ZoomablePhotoView: View {
                     }
                 } else {
                     VStack {
-                        Image(systemName: "exclamationmark.triangle")
+                        Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
                             .font(.system(size: 40))
                             .foregroundColor(.gray)
                         

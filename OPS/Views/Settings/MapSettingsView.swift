@@ -228,9 +228,9 @@ struct MapSettingsView: View {
                           OPSStyle.Colors.errorStatus.opacity(0.2))
                     .frame(width: 48, height: 48)
                 
-                Image(systemName: locationManager.authorizationStatus == .authorizedAlways || 
-                                  locationManager.authorizationStatus == .authorizedWhenInUse ? 
-                      "location.fill" : "location.slash.fill")
+                Image(systemName: locationManager.authorizationStatus == .authorizedAlways ||
+                                  locationManager.authorizationStatus == .authorizedWhenInUse ?
+                      OPSStyle.Icons.locationFill : "location.slash.fill")
                     .font(.system(size: 24))
                     .foregroundColor(locationManager.authorizationStatus == .authorizedAlways || 
                                      locationManager.authorizationStatus == .authorizedWhenInUse ? 

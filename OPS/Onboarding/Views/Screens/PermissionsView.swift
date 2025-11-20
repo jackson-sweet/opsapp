@@ -187,7 +187,7 @@ struct LocationPermissionPhase: View {
             // Info box
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "info.circle.fill")
+                    Image(systemName: OPSStyle.Icons.info)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .font(OPSStyle.Typography.body)
                     
@@ -318,7 +318,7 @@ struct NotificationPermissionPhase: View {
             // Info box
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "info.circle.fill")
+                    Image(systemName: OPSStyle.Icons.info)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .font(OPSStyle.Typography.body)
                     

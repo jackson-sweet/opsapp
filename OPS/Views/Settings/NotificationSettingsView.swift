@@ -136,8 +136,8 @@ struct NotificationSettingsView: View {
                           OPSStyle.Colors.errorStatus.opacity(0.2))
                     .frame(width: 48, height: 48)
                 
-                Image(systemName: notificationManager.isNotificationsEnabled ? 
-                      "bell.fill" : "bell.slash.fill")
+                Image(systemName: notificationManager.isNotificationsEnabled ?
+                      OPSStyle.Icons.bellFill : "bell.slash.fill")
                     .font(.system(size: 24))
                     .foregroundColor(notificationManager.isNotificationsEnabled ? 
                                    OPSStyle.Colors.successStatus : 
@@ -396,7 +396,7 @@ struct DaySelector: View {
                     value = day
                 } label: {
                     if value == day {
-                        Label("\(day) days", systemImage: "checkmark")
+                        Label("\(day) days", systemImage: OPSStyle.Icons.checkmark)
                     } else {
                         Text("\(day) days")
                     }
@@ -423,7 +423,7 @@ struct DaySelector: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                     
-                    Image(systemName: "chevron.down")
+                    Image(systemName: OPSStyle.Icons.chevronDown)
                         .font(.system(size: 10))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

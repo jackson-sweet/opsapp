@@ -39,7 +39,7 @@ struct TeamRoleAssignmentSheet: View {
                                 // Header message
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack(spacing: 8) {
-                                        Image(systemName: "exclamationmark.triangle.fill")
+                                        Image(systemName: OPSStyle.Icons.alert)
                                             .font(.system(size: 20))
                                             .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -140,6 +140,7 @@ struct TeamRoleAssignmentSheet: View {
 
     private var emptyView: some View {
         VStack(spacing: 16) {
+            // NOTE: person.3.sequence.fill does not have a semantic icon - using legacy
             Image(systemName: "person.3.sequence.fill")
                 .font(.system(size: 48))
                 .foregroundColor(OPSStyle.Colors.secondaryText)

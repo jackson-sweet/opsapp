@@ -18,6 +18,7 @@ struct TeamRoleManagementView: View {
             showingFullManagementSheet = true
         }) {
             HStack(spacing: 12) {
+                // NOTE: person.2.badge.gearshape does not have a semantic icon - using legacy
                 Image(systemName: "person.2.badge.gearshape")
                     .font(.system(size: 20))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -35,7 +36,7 @@ struct TeamRoleManagementView: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
+                Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -93,7 +94,7 @@ struct TeamRoleManagementSheet: View {
                     } else {
                         // Search bar
                         HStack {
-                            Image(systemName: "magnifyingglass")
+                            Image(systemName: OPSStyle.Icons.search)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
                             TextField("Search team members", text: $searchText)
@@ -227,7 +228,7 @@ struct TeamRoleManagementSheet: View {
 
     private var emptySearchView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: OPSStyle.Icons.search)
                 .font(.system(size: 48))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -352,7 +353,7 @@ struct TeamMemberRoleEditRow: View {
                 Spacer()
 
                 // Chevron
-                Image(systemName: "chevron.right")
+                Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -465,7 +466,7 @@ struct RolePickerSheet: View {
                 Spacer()
 
                 if currentRole == role {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                         .font(.system(size: 24))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }

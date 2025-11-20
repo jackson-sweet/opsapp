@@ -56,7 +56,7 @@ struct DatePickerPopover: View {
                 Button {
                     moveToPreviousMonth()
                 } label: {
-                    Image(systemName: "chevron.left")
+                    Image(systemName: OPSStyle.Icons.chevronLeft)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(8)
@@ -73,7 +73,7 @@ struct DatePickerPopover: View {
                 Button {
                     moveToNextMonth()
                 } label: {
-                    Image(systemName: "chevron.right")
+                    Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(8)
@@ -150,7 +150,7 @@ struct DatePickerPopover: View {
                 Button {
                     moveToPreviousYear()
                 } label: {
-                    Image(systemName: "chevron.left")
+                    Image(systemName: OPSStyle.Icons.chevronLeft)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(8)
@@ -169,7 +169,7 @@ struct DatePickerPopover: View {
                 Button {
                     moveToNextYear()
                 } label: {
-                    Image(systemName: "chevron.right")
+                    Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(8)

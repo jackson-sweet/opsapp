@@ -17,7 +17,7 @@ struct LocationCard: View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack {
-                Image(systemName: "mappin.circle")
+                Image(systemName: OPSStyle.Icons.address)
                     .font(.system(size: 20))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 

@@ -120,7 +120,7 @@ struct CopyFromProjectSheet: View {
             if showingOverwriteWarning {
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
+                        Image(systemName: OPSStyle.Icons.alert)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                             .font(.system(size: 14))
 
@@ -149,7 +149,7 @@ struct CopyFromProjectSheet: View {
         VStack(spacing: 0) {
             // Search bar
             HStack {
-                Image(systemName: "magnifyingglass")
+                Image(systemName: OPSStyle.Icons.search)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 TextField("Search projects...", text: $searchText)
@@ -161,7 +161,7 @@ struct CopyFromProjectSheet: View {
                     Button(action: {
                         searchText = ""
                     }) {
-                        Image(systemName: "xmark.circle.fill")
+                        Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
@@ -349,7 +349,7 @@ struct CopyFromProjectSheet: View {
             }
         }) {
             HStack {
-                Image(systemName: selectedFields.contains(field.id) ? "checkmark.square.fill" : "square")
+                Image(systemName: selectedFields.contains(field.id) ? OPSStyle.Icons.checkmarkSquareFill : OPSStyle.Icons.square)
                     .foregroundColor(selectedFields.contains(field.id) ? OPSStyle.Colors.primaryAccent : (field.hasData ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.tertiaryText.opacity(0.3)))
                     .font(.system(size: 20))
 
@@ -370,7 +370,7 @@ struct CopyFromProjectSheet: View {
 
                 // Show warning icon if field is already populated
                 if populatedFields.contains(field.id) && field.hasData {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image(systemName: OPSStyle.Icons.alert)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                         .font(.system(size: 14))
                 }

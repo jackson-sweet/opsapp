@@ -222,14 +222,14 @@ struct ProjectTeamView: View {
         Button(action: {
             toggleMemberSelection(memberId: memberId)
         }) {
-            Image(systemName: selectedMemberIds.contains(memberId) ? "checkmark.circle.fill" : "circle")
+            Image(systemName: selectedMemberIds.contains(memberId) ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
                 .font(.system(size: 24))
                 .foregroundColor(selectedMemberIds.contains(memberId) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
         }
     }
 
     private var chevronIndicator: some View {
-        Image(systemName: "chevron.right")
+        Image(systemName: OPSStyle.Icons.chevronRight)
             .font(.system(size: 14))
             .foregroundColor(OPSStyle.Colors.secondaryText)
     }
@@ -277,7 +277,7 @@ struct ProjectTeamView: View {
             Button(action: {
                 toggleMemberSelection(memberId: member.id)
             }) {
-                Image(systemName: selectedMemberIds.contains(member.id) ? "checkmark.circle.fill" : "plus.circle")
+                Image(systemName: selectedMemberIds.contains(member.id) ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.plusCircle)
                     .font(.system(size: 24))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -429,7 +429,7 @@ struct FullTeamListView: View {
                                 
                                 Spacer()
                                 
-                                Image(systemName: "chevron.right")
+                                Image(systemName: OPSStyle.Icons.chevronRight)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                     .font(OPSStyle.Typography.smallBody)
                             }

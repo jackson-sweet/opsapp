@@ -125,7 +125,7 @@ struct RelinkTasksToProjectsView: View {
         ZStack {
             HStack {
                 Button(action: { dismiss() }) {
-                    Image(systemName: "xmark")
+                    Image(systemName: OPSStyle.Icons.close)
                         .font(.system(size: 20))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }

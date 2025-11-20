@@ -167,7 +167,7 @@ struct CompanyCodeInputView: View {
                         
                         // Code explanation with icon
                         HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "info.circle.fill")
+                            Image(systemName: OPSStyle.Icons.info)
                                 .foregroundColor(primaryTextColor.opacity(0.7))
                                 .font(OPSStyle.Typography.caption)
                             

@@ -78,7 +78,7 @@ struct ComingSoonView: View {
                                 .padding(.bottom, 4)
                             
                             HStack(spacing: 12) {
-                                Image(systemName: "clock")
+                                Image(systemName: OPSStyle.Icons.clock)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     .frame(width: 24)

@@ -46,7 +46,7 @@ struct ProjectSearchFilterView: View {
                         // Status Section
                         filterSection(
                             title: "PROJECT STATUS",
-                            icon: "flag.fill"
+                            icon: OPSStyle.Icons.alert
                         ) {
                             statusContent
                         }
@@ -55,7 +55,7 @@ struct ProjectSearchFilterView: View {
                         if !availableTeamMembers.isEmpty {
                             filterSection(
                                 title: "TEAM MEMBERS",
-                                icon: "person.2.fill"
+                                icon: OPSStyle.Icons.crew
                             ) {
                                 teamMembersContent
                             }
@@ -154,7 +154,7 @@ struct ProjectSearchFilterView: View {
                         Spacer()
                         
                         if selectedStatuses.contains(status) {
-                            Image(systemName: "checkmark")
+                            Image(systemName: OPSStyle.Icons.checkmark)
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -350,9 +350,9 @@ struct ProjectSearchFilterView: View {
             }
             
             Spacer()
-            
+
             if isSelected && !isSpecial {
-                Image(systemName: "checkmark")
+                Image(systemName: OPSStyle.Icons.checkmark)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -374,7 +374,7 @@ struct ProjectSearchFilterView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if !selectedStatuses.isEmpty {
                         HStack {
-                            Image(systemName: "flag.fill")
+                            Image(systemName: OPSStyle.Icons.alert)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             
@@ -386,7 +386,7 @@ struct ProjectSearchFilterView: View {
                     
                     if !selectedTeamMemberIds.isEmpty {
                         HStack {
-                            Image(systemName: "person.2.fill")
+                            Image(systemName: OPSStyle.Icons.crew)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             
@@ -398,7 +398,7 @@ struct ProjectSearchFilterView: View {
                     
                     if !selectedTaskTypeIds.isEmpty {
                         HStack {
-                            Image(systemName: "checkmark.circle.fill")
+                            Image(systemName: OPSStyle.Icons.task)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             
@@ -410,7 +410,7 @@ struct ProjectSearchFilterView: View {
                     
                     if !selectedClientIds.isEmpty {
                         HStack {
-                            Image(systemName: "building.2.fill")
+                            Image(systemName: OPSStyle.Icons.client)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             

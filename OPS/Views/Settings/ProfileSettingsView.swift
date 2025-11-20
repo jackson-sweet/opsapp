@@ -348,7 +348,7 @@ struct ProfileSettingsView: View {
                     }
                 } else {
                     VStack(spacing: 24) {
-                        Image(systemName: "checkmark.circle.fill")
+                        Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                             .font(OPSStyle.Typography.largeTitle)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .padding(.top, 20)
@@ -401,7 +401,7 @@ struct ProfileSettingsView: View {
                         deleteConfirmationText = ""
                         deleteError = nil
                     }) {
-                        Image(systemName: "xmark")
+                        Image(systemName: OPSStyle.Icons.xmark)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(width: 44, height: 44)
@@ -411,7 +411,7 @@ struct ProfileSettingsView: View {
                 .padding(.top, 20)
                 
                 // Icon
-                Image(systemName: "exclamationmark.triangle")
+                Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
                     .font(.system(size: 60))
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                     .padding(.top, 10)

@@ -165,7 +165,7 @@ struct NotificationPrioritySelector: View {
                             
                             // Selection indicator
                             if selectedPriority == priority {
-                                Image(systemName: "checkmark")
+                                Image(systemName: OPSStyle.Icons.checkmark)
                                     .font(.system(size: 16, weight: .bold))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }

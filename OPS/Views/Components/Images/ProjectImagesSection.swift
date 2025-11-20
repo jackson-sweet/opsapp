@@ -58,10 +58,10 @@ struct ProjectImagesSection: View {
     // Empty state view
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: "camera")
+            Image(systemName: OPSStyle.Icons.photo)
                 .font(.system(size: 32))
                 .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-            
+
             Text("No photos added yet")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)

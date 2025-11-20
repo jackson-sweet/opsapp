@@ -102,6 +102,7 @@ struct CompanyTeamMemberListRow: View {
                             UIApplication.shared.open(url)
                         }
                     }) {
+                        // NOTE: envelope.circle.fill does not have a semantic icon - using legacy
                         Image(systemName: "envelope.circle.fill")
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.secondaryAccent.opacity(0.8))
@@ -115,6 +116,7 @@ struct CompanyTeamMemberListRow: View {
                             UIApplication.shared.open(url)
                         }
                     }) {
+                        // NOTE: phone.circle.fill does not have a semantic icon - using legacy
                         Image(systemName: "phone.circle.fill")
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.secondaryAccent)

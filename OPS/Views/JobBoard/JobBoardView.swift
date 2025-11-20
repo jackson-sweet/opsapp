@@ -202,13 +202,13 @@ enum JobBoardSection: String, CaseIterable {
     var icon: String {
         switch self {
         case .dashboard:
-            return "chart.bar"
+            return "chart.bar" // NOTE: No semantic equivalent yet
         case .clients:
-            return "person.2"
+            return OPSStyle.Icons.crew
         case .projects:
-            return "folder"
+            return OPSStyle.Icons.project
         case .tasks:
-            return "checklist"
+            return OPSStyle.Icons.task
         }
     }
 }
@@ -260,7 +260,7 @@ struct JobBoardDashboardOld: View {
             // Stats cards
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 StatCard(title: "ACTIVE PROJECTS", value: "\(activeProjectCount)", icon: "folder.fill", color: OPSStyle.Colors.primaryAccent)
-                StatCard(title: "TOTAL CLIENTS", value: "\(clientCount)", icon: "person.2.fill", color: .green)
+                StatCard(title: "TOTAL CLIENTS", value: "\(clientCount)", icon: OPSStyle.Icons.client, color: .green)
             }
             
             HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -388,7 +388,7 @@ struct JobBoardClientsPreview: View {
             let clients = dataController.getAllClients(for: dataController.currentUser?.companyId ?? "")
             if clients.isEmpty {
                 JobBoardEmptyState(
-                    icon: "person.2.fill",
+                    icon: OPSStyle.Icons.crew,
                     title: "No Clients Yet",
                     subtitle: "Add your first client to get started"
                 )
@@ -434,7 +434,7 @@ struct JobBoardProjectsPreview: View {
             let projects = dataController.getAllProjects()
             if projects.isEmpty {
                 JobBoardEmptyState(
-                    icon: "folder.fill",
+                    icon: OPSStyle.Icons.project,
                     title: "No Projects Yet",
                     subtitle: "Create your first project to get started"
                 )
@@ -577,7 +577,7 @@ struct JobBoardTasksView: View {
 
             if allTasks.isEmpty {
                 JobBoardEmptyState(
-                    icon: "checklist",
+                    icon: OPSStyle.Icons.task,
                     title: "No Tasks Yet",
                     subtitle: "Create tasks from projects to get started"
                 )
@@ -913,18 +913,18 @@ struct JobBoardCreateMenu: View {
 
                     VStack(spacing: 0) {
                         CreateMenuItem(
-                            icon: "person.badge.plus.fill",
+                            icon: OPSStyle.Icons.addContact,
                             title: "New Client",
                             action: {
                                 showingCreateClient = true
                             }
                         )
-                        
+
                         Divider()
                             .background(OPSStyle.Colors.secondaryText.opacity(0.2))
-                        
+
                         CreateMenuItem(
-                            icon: "folder.badge.plus",
+                            icon: OPSStyle.Icons.addProject,
                             title: "New Project",
                             action: {
                                 showingCreateProject = true
@@ -935,7 +935,7 @@ struct JobBoardCreateMenu: View {
                             .background(OPSStyle.Colors.secondaryText.opacity(0.2))
 
                         CreateMenuItem(
-                            icon: "checklist",
+                            icon: OPSStyle.Icons.task,
                             title: "New Task Type",
                             action: {
                                 // TODO: Navigate to create task type

@@ -193,7 +193,7 @@ struct TaskTypeDeletionSheet: View {
                 }
             }) {
                 HStack {
-                    Image(systemName: bulkDeleteAll ? "xmark" : "trash")
+                    Image(systemName: bulkDeleteAll ? OPSStyle.Icons.close : OPSStyle.Icons.delete)
                         .font(OPSStyle.Typography.body)
                     Text(bulkDeleteAll ? "Don't Delete All Tasks" : "Delete All Tasks")
                         .font(OPSStyle.Typography.bodyBold)
@@ -374,7 +374,7 @@ struct TaskReassignmentRow: View {
             if markedForDeletion {
                 Button(action: onToggleDelete) {
                     HStack {
-                        Image(systemName: "xmark")
+                        Image(systemName: OPSStyle.Icons.close)
                             .font(.system(size: 14))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
 
@@ -401,7 +401,7 @@ struct TaskReassignmentRow: View {
                     )
 
                     Button(action: onToggleDelete) {
-                        Image(systemName: "trash")
+                        Image(systemName: OPSStyle.Icons.delete)
                             .font(.system(size: 16))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 44, height: 44)

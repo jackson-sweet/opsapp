@@ -1,0 +1,1347 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project OPS.xcodeproj -scheme OPS -sdk iphonesimulator -destination "platform=iOS Simulator,id=8DD46212-3457-40EA-8C5C-9EAB0B5512CD" build
+
+Build settings from command line:
+    SDKROOT = iphonesimulator26.0
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  GTMAppAuth: https://github.com/google/GTMAppAuth.git @ 4.1.1
+  GoogleUtilities: https://github.com/google/GoogleUtilities.git @ 8.1.0
+  AppCheck: https://github.com/google/app-check.git @ 11.2.0
+  Stripe: https://github.com/stripe/stripe-ios @ 24.23.1
+  GTMSessionFetcher: https://github.com/google/gtm-session-fetcher.git @ 3.5.0
+  AppAuth: https://github.com/openid/AppAuth-iOS.git @ 1.7.6
+  GoogleSignIn: https://github.com/google/GoogleSignIn-iOS @ 8.0.0
+  Promises: https://github.com/google/promises.git @ 2.4.0
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS Simulator, arch:arm64, id:8DD46212-3457-40EA-8C5C-9EAB0B5512CD, OS:18.3.1, name:iPhone 16 Pro }
+{ platform:iOS Simulator, arch:x86_64, id:8DD46212-3457-40EA-8C5C-9EAB0B5512CD, OS:18.3.1, name:iPhone 16 Pro }
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (66 targets)
+    Target 'OPS' in project 'OPS'
+        ➜ Explicit dependency on target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'StripeApplePay' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePaymentsUI' in project 'Stripe'
+        ➜ Explicit dependency on target 'GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'StripeFinancialConnections' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCardScan' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeConnect' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePaymentSheet' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeIdentity' in project 'Stripe'
+    Target 'StripeIdentity' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeIdentity' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeIdentity' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCameraCore' in project 'Stripe'
+    Target 'StripeIdentity' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeIdentity' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCameraCore' in project 'Stripe'
+    Target 'StripeCameraCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+    Target 'Stripe_StripeIdentity' in project 'Stripe' (no dependencies)
+    Target 'StripePaymentSheet' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePaymentSheet' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripePaymentSheet' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe3DS2' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePaymentsUI' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeApplePay' in project 'Stripe'
+    Target 'StripePaymentSheet' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripePaymentSheet' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe3DS2' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePaymentsUI' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeApplePay' in project 'Stripe'
+    Target 'Stripe_StripePaymentSheet' in project 'Stripe' (no dependencies)
+    Target 'Stripe' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_Stripe' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe3DS2' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeApplePay' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePaymentsUI' in project 'Stripe'
+    Target 'Stripe' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_Stripe' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe3DS2' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeApplePay' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePaymentsUI' in project 'Stripe'
+    Target 'Stripe_Stripe' in project 'Stripe' (no dependencies)
+    Target 'StripeConnect' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeConnect' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeConnect' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeFinancialConnections' in project 'Stripe'
+    Target 'StripeConnect' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeConnect' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeFinancialConnections' in project 'Stripe'
+    Target 'Stripe_StripeConnect' in project 'Stripe' (no dependencies)
+    Target 'StripeCardScan' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCardScan' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeCardScan' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+    Target 'StripeCardScan' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeCardScan' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+    Target 'Stripe_StripeCardScan' in project 'Stripe' (no dependencies)
+    Target 'StripeFinancialConnections' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeFinancialConnections' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeFinancialConnections' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+    Target 'StripeFinancialConnections' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeFinancialConnections' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+    Target 'Stripe_StripeFinancialConnections' in project 'Stripe' (no dependencies)
+    Target 'GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GoogleSignIn_GoogleSignInSwift' in project 'GoogleSignIn' (no dependencies)
+    Target 'StripePaymentsUI' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePaymentsUI' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripePaymentsUI' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe3DS2' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+    Target 'StripePaymentsUI' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripePaymentsUI' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe3DS2' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeUICore' in project 'Stripe'
+    Target 'StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeUICore' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+    Target 'Stripe_StripeUICore' in project 'Stripe' (no dependencies)
+    Target 'Stripe_StripePaymentsUI' in project 'Stripe' (no dependencies)
+    Target 'StripeApplePay' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeApplePay' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+    Target 'StripeApplePay' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+    Target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuthCore' in project 'AppAuth'
+    Target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher' (no dependencies)
+    Target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth' (no dependencies)
+    Target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULUserDefaults' in project 'GoogleUtilities'
+    Target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULUserDefaults' in project 'GoogleUtilities'
+    Target 'GULUserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
+    Target 'GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
+    Target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Logger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+    Target 'GoogleUtilities_GoogleUtilities-Logger' in project 'GoogleUtilities' (no dependencies)
+    Target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities' (no dependencies)
+    Target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+    Target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+    Target 'third-party-IsAppEncrypted' in project 'GoogleUtilities' (no dependencies)
+    Target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities' (no dependencies)
+    Target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'Promises_FBLPromises' in project 'Promises'
+    Target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'Promises_FBLPromises' in project 'Promises'
+    Target 'Promises_FBLPromises' in project 'Promises' (no dependencies)
+    Target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuthCore' in project 'AppAuth'
+    Target 'AppAuth_AppAuthCore' in project 'AppAuth' (no dependencies)
+    Target 'AppAuth_AppAuth' in project 'AppAuth' (no dependencies)
+    Target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn' (no dependencies)
+    Target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe3DS2' in project 'Stripe'
+    Target 'StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripePayments' in project 'Stripe'
+        ➜ Explicit dependency on target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe3DS2' in project 'Stripe'
+    Target 'Stripe3DS2' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_Stripe3DS2' in project 'Stripe'
+    Target 'Stripe_Stripe3DS2' in project 'Stripe' (no dependencies)
+    Target 'StripeCore' in project 'Stripe'
+        ➜ Explicit dependency on target 'Stripe_StripeCore' in project 'Stripe'
+    Target 'Stripe_StripeCore' in project 'Stripe' (no dependencies)
+    Target 'Stripe_StripePayments' in project 'Stripe' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -x objective-c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/ibtool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Preview Content/Preview Assets.xcassets /Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ReadFileContents /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/share/docc/features.json
+
+Build description signature: 7856ce5f1d7ad1efc3265dff7af7d105
+Build description path: /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/XCBuildData/7856ce5f1d7ad1efc3265dff7af7d105.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeIdentity.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeIdentity.build/empty-Stripe_StripeIdentity.plist (in target 'Stripe_StripeIdentity' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeIdentity.build/empty-Stripe_StripeIdentity.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeIdentity.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeFinancialConnections.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeFinancialConnections.build/empty-Stripe_StripeFinancialConnections.plist (in target 'Stripe_StripeFinancialConnections' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeFinancialConnections.build/empty-Stripe_StripeFinancialConnections.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeFinancialConnections.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeConnect.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeConnect.build/empty-Stripe_StripeConnect.plist (in target 'Stripe_StripeConnect' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeConnect.build/empty-Stripe_StripeConnect.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeConnect.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeCardScan.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeCardScan.build/empty-Stripe_StripeCardScan.plist (in target 'Stripe_StripeCardScan' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeCardScan.build/empty-Stripe_StripeCardScan.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeCardScan.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeCore.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeCore.build/empty-Stripe_StripeCore.plist (in target 'Stripe_StripeCore' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeCore.build/empty-Stripe_StripeCore.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeCore.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripePayments.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripePayments.build/empty-Stripe_StripePayments.plist (in target 'Stripe_StripePayments' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripePayments.build/empty-Stripe_StripePayments.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripePayments.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Promises_FBLPromises.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Promises.build/Debug-iphonesimulator/Promises_FBLPromises.build/empty-Promises_FBLPromises.plist (in target 'Promises_FBLPromises' from project 'Promises')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/promises
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Promises.build/Debug-iphonesimulator/Promises_FBLPromises.build/empty-Promises_FBLPromises.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Promises_FBLPromises.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.build/empty-GoogleUtilities_GoogleUtilities-UserDefaults.plist (in target 'GoogleUtilities_GoogleUtilities-UserDefaults' from project 'GoogleUtilities')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.build/empty-GoogleUtilities_GoogleUtilities-UserDefaults.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.build/empty-GoogleUtilities_GoogleUtilities-Logger.plist (in target 'GoogleUtilities_GoogleUtilities-Logger' from project 'GoogleUtilities')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.build/empty-GoogleUtilities_GoogleUtilities-Logger.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.build/empty-GoogleUtilities_GoogleUtilities-Environment.plist (in target 'GoogleUtilities_GoogleUtilities-Environment' from project 'GoogleUtilities')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.build/empty-GoogleUtilities_GoogleUtilities-Environment.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.build/empty-GoogleSignIn_GoogleSignInSwift.plist (in target 'GoogleSignIn_GoogleSignInSwift' from project 'GoogleSignIn')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleSignIn-iOS
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.build/empty-GoogleSignIn_GoogleSignInSwift.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.build/empty-GoogleSignIn_GoogleSignIn.plist (in target 'GoogleSignIn_GoogleSignIn' from project 'GoogleSignIn')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleSignIn-iOS
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.build/empty-GoogleSignIn_GoogleSignIn.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GTMSessionFetcher.build/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.build/empty-GTMSessionFetcher_GTMSessionFetcherCore.plist (in target 'GTMSessionFetcher_GTMSessionFetcherCore' from project 'GTMSessionFetcher')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/gtm-session-fetcher
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GTMSessionFetcher.build/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.build/empty-GTMSessionFetcher_GTMSessionFetcherCore.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GTMAppAuth.build/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.build/empty-GTMAppAuth_GTMAppAuth.plist (in target 'GTMAppAuth_GTMAppAuth' from project 'GTMAppAuth')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GTMAppAuth
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GTMAppAuth.build/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.build/empty-GTMAppAuth_GTMAppAuth.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/AppAuth_AppAuthCore.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuthCore.build/empty-AppAuth_AppAuthCore.plist (in target 'AppAuth_AppAuthCore' from project 'AppAuth')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/AppAuth-iOS
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuthCore.build/empty-AppAuth_AppAuthCore.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/AppAuth_AppAuthCore.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/AppAuth_AppAuth.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuth.build/empty-AppAuth_AppAuth.plist (in target 'AppAuth_AppAuth' from project 'AppAuth')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/AppAuth-iOS
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuth.build/empty-AppAuth_AppAuth.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/AppAuth_AppAuth.bundle/Info.plist
+
+SwiftDriver OPS normal arm64 com.apple.xcode.tools.swift.compiler (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name OPS -Onone -enforce-exclusivity\=checked @/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/OPS.SwiftFileList -DDEBUG -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuth.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Logger.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Environment.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/third-party-IsAppEncrypted.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-UserDefaults.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppCheckCore.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuthCore.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GTMSessionFetcherCore.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleSignIn.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/Stripe3DS2.modulemap -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -target arm64-apple-ios17.6-simulator -g -module-cache-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache -output-file-map /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/OPS-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/OPS.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/OPS_const_extract_protocols.json -Xcc -iquote -Xcc /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/OPS-generated-files.hmap -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/OPS-own-target-headers.hmap -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/OPS-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS-c3cc2abb764fabbf8cef7b77dc6f4524-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/OPS-project-headers.hmap -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuth -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/promises/Sources/FBLPromises/include -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Logger/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Environment/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities/third_party/IsAppEncrypted/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/UserDefaults/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/app-check/AppCheckCore/Sources/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuthCore -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/gtm-session-fetcher/Sources/Core/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleSignIn-iOS/GoogleSignIn/Sources/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios/Stripe3DS2/Stripe3DS2/include -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/DerivedSources-normal/arm64 -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/DerivedSources/arm64 -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/OPS-Swift.h -working-directory /Users/jacksonsweet/Desktop/OPS\ APP/OPS -experimental-emit-module-separately -disable-cmo
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeUICore.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeUICore.build/empty-Stripe_StripeUICore.plist (in target 'Stripe_StripeUICore' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeUICore.build/empty-Stripe_StripeUICore.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripeUICore.build/assetcatalog_generated_info.plist -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripeUICore.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_Stripe.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_Stripe.build/empty-Stripe_Stripe.plist (in target 'Stripe_Stripe' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_Stripe.build/empty-Stripe_Stripe.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_Stripe.build/assetcatalog_generated_info.plist -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_Stripe.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_Stripe3DS2.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_Stripe3DS2.build/empty-Stripe_Stripe3DS2.plist (in target 'Stripe_Stripe3DS2' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_Stripe3DS2.build/empty-Stripe_Stripe3DS2.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_Stripe3DS2.build/assetcatalog_generated_info.plist -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_Stripe3DS2.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripePaymentSheet.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripePaymentSheet.build/empty-Stripe_StripePaymentSheet.plist (in target 'Stripe_StripePaymentSheet' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripePaymentSheet.build/empty-Stripe_StripePaymentSheet.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripePaymentSheet.build/assetcatalog_generated_info.plist -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripePaymentSheet.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripePaymentsUI.bundle/Info.plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripePaymentsUI.build/empty-Stripe_StripePaymentsUI.plist (in target 'Stripe_StripePaymentsUI' from project 'Stripe')
+    cd /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios
+    builtin-infoPlistUtility /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripePaymentsUI.build/empty-Stripe_StripePaymentsUI.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/Stripe.build/Debug-iphonesimulator/Stripe_StripePaymentsUI.build/assetcatalog_generated_info.plist -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/Stripe_StripePaymentsUI.bundle/Info.plist
+
+CompileStoryboard /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/LaunchScreen.storyboard (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    /Applications/Xcode.app/Contents/Developer/usr/bin/ibtool --errors --warnings --notices --module OPS --output-partial-info-plist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/LaunchScreen-SBPartialInfo.plist --auto-activate-custom-fonts --target-device iphone --minimum-deployment-target 17.6 --output-format human-readable-text /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/LaunchScreen.storyboard --compilation-directory /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build
+
+SwiftCompile normal arm64 Compiling\ OnboardingModels.swift,\ OnboardingService.swift,\ OnboardingViewModel.swift,\ AnimatedOPSLogo.swift,\ OnboardingComponents.swift,\ OnboardingHeader.swift,\ BillingInfoView.swift,\ CompanyAddressView.swift,\ CompanyBasicInfoView.swift,\ CompanyCodeDisplayView.swift,\ CompanyCodeInputView.swift,\ CompanyContactView.swift,\ CompanyDetailsView.swift,\ CompletionView.swift,\ EmailView.swift,\ FieldSetupView.swift,\ OrganizationJoinView.swift,\ PermissionsView.swift,\ TeamInvitesView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Models/OnboardingModels.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Services/OnboardingService.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/ViewModels/OnboardingViewModel.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Components/AnimatedOPSLogo.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Components/OnboardingComponents.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Components/OnboardingHeader.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/BillingInfoView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyAddressView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyBasicInfoView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyCodeDisplayView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyCodeInputView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyContactView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyDetailsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompletionView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/EmailView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/FieldSetupView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/OrganizationJoinView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/PermissionsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/TeamInvitesView.swift (in target 'OPS' from project 'OPS')
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Models/OnboardingModels.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Services/OnboardingService.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/ViewModels/OnboardingViewModel.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Components/AnimatedOPSLogo.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Components/OnboardingComponents.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Components/OnboardingHeader.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/BillingInfoView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyAddressView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyBasicInfoView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyCodeDisplayView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyCodeInputView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyContactView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompanyDetailsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/CompletionView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/EmailView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/FieldSetupView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/OrganizationJoinView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/PermissionsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/TeamInvitesView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 Compiling\ UserInfoView.swift,\ UserTypeSelectionView.swift,\ WelcomeGuideView.swift,\ WelcomeView.swift,\ OnboardingContainerView.swift,\ OnboardingFlowPreview.swift,\ OnboardingPresenter.swift,\ OnboardingPreviewHelpers.swift,\ ButtonStyles.swift,\ CardStyles.swift,\ ProjectSearchFilterView.swift,\ ProjectSearchSheet.swift,\ SegmentedBorder.swift,\ WeekDayCell.swift,\ DayEventsSheet.swift,\ ProjectListView.swift,\ MonthGridView.swift,\ ClientInfoCard.swift,\ LocationCard.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/UserInfoView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/UserTypeSelectionView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/WelcomeGuideView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/WelcomeView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/OnboardingContainerView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/OnboardingFlowPreview.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/OnboardingPresenter.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/OnboardingPreviewHelpers.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Styles/Components/ButtonStyles.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Styles/Components/CardStyles.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/Components/ProjectSearchFilterView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/Components/ProjectSearchSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/Components/SegmentedBorder.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/Components/WeekDayCell.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/ProjectViews/DayEventsSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/ProjectViews/ProjectListView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/MonthGridView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Cards/ClientInfoCard.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Cards/LocationCard.swift (in target 'OPS' from project 'OPS')
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/UserInfoView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/UserTypeSelectionView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/WelcomeGuideView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/Screens/WelcomeView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/OnboardingContainerView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/OnboardingFlowPreview.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/OnboardingPresenter.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Views/OnboardingPreviewHelpers.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Styles/Components/ButtonStyles.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Styles/Components/CardStyles.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/Components/ProjectSearchFilterView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/Components/ProjectSearchSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/Components/SegmentedBorder.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/Components/WeekDayCell.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/ProjectViews/DayEventsSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/ProjectViews/ProjectListView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Calendar\ Tab/MonthGridView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Cards/ClientInfoCard.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Cards/LocationCard.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 Compiling\ SubClientDTO.swift,\ TaskDTO.swift,\ TaskStatusOptionDTO.swift,\ TaskTypeDTO.swift,\ UserDTO.swift,\ CalendarEventEndpoints.swift,\ ClientEndpoints.swift,\ CompanyEndpoints.swift,\ ProjectEndpoints.swift,\ TaskEndpoints.swift,\ TaskTypeEndpoints.swift,\ UserEndpoints.swift,\ BackgroundTaskManager.swift,\ CentralizedSyncManager.swift,\ ConnectivityMonitor.swift,\ ImageSyncManager.swift,\ PresignedURLUploadService.swift,\ S3UploadService.swift,\ OnboardingCoordinator.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/SubClientDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskStatusOptionDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskTypeDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/UserDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CalendarEventEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ClientEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CompanyEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskTypeEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/UserEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/BackgroundTaskManager.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ConnectivityMonitor.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ImageSyncManager.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/PresignedURLUploadService.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/S3UploadService.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Coordinators/OnboardingCoordinator.swift (in target 'OPS' from project 'OPS')
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -c -filelist /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/sources-1 -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/SubClientDTO.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskDTO.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskStatusOptionDTO.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskTypeDTO.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/UserDTO.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CalendarEventEndpoints.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ClientEndpoints.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CompanyEndpoints.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskTypeEndpoints.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/UserEndpoints.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/BackgroundTaskManager.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ConnectivityMonitor.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ImageSyncManager.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/PresignedURLUploadService.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/S3UploadService.swift -primary-file /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Coordinators/OnboardingCoordinator.swift -supplementary-output-file-map /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/supplementaryOutputs-1 -emit-localized-strings -emit-localized-strings-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64 -target arm64-apple-ios17.6-simulator -module-can-import-version DeveloperToolsSupport 23.0.4 23.0.4 -module-can-import-version SwiftUI 7.0.84.1 7.0.84 -module-can-import-version UIKit 9088.1.113 9088.1.113 -disable-cross-import-overlay-search -swift-module-cross-import AuthenticationServices /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Cryptexes/OS/System/Library/Frameworks/AuthenticationServices.framework/Modules/AuthenticationServices.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import AuthenticationServices /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/AuthenticationServices.framework/Modules/AuthenticationServices.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import MapKit /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/MapKit.framework/Modules/MapKit.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PassKit /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/PassKit.framework/Modules/PassKit.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/WidgetKit.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/WidgetKit.swiftoverlay -swift-module-cross-import SwiftData /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/SwiftData.framework/Modules/SwiftData.swiftcrossimport/CoreData.swiftoverlay -swift-module-cross-import SwiftData /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/SwiftData.framework/Modules/SwiftData.swiftcrossimport/SwiftUI.swiftoverlay -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libAppIntentsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#AppIntentsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libFoundationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#FoundationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libObservationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#ObservationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libPreviewsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#PreviewsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftDataMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftDataMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftUIMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libTipKitMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#TipKitMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/OPS-dependencies-1.json -Xllvm -aarch64-use-tbi -enable-objc-interop -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -I /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator -no-color-diagnostics -Xcc -fno-color-diagnostics -enable-testing -g -debug-info-format\=dwarf -dwarf-version\=4 -module-cache-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -profile-generate -profile-coverage-mapping -swift-version 5 -enforce-exclusivity\=checked -Onone -D DEBUG -serialize-debugging-options -const-gather-protocols-file /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/OPS_const_extract_protocols.json -enable-experimental-feature DebugDescriptionMacro -enable-bare-slash-regex -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/jacksonsweet/Desktop/OPS\ APP/OPS -enable-anonymous-context-mangled-names -file-compilation-dir /Users/jacksonsweet/Desktop/OPS\ APP/OPS -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuth.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Logger.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Environment.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/third-party-IsAppEncrypted.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-UserDefaults.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppCheckCore.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuthCore.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GTMSessionFetcherCore.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleSignIn.modulemap -Xcc -fmodule-map-file\=/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/Stripe3DS2.modulemap -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/swift-overrides.hmap -Xcc -iquote -Xcc /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/OPS-generated-files.hmap -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/OPS-own-target-headers.hmap -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/OPS-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS-c3cc2abb764fabbf8cef7b77dc6f4524-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/OPS-project-headers.hmap -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuth -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/promises/Sources/FBLPromises/include -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Logger/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Environment/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities/third_party/IsAppEncrypted/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/UserDefaults/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/app-check/AppCheckCore/Sources/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuthCore -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/gtm-session-fetcher/Sources/Core/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/GoogleSignIn-iOS/GoogleSignIn/Sources/Public -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/SourcePackages/checkouts/stripe-ios/Stripe3DS2/Stripe3DS2/include -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/DerivedSources-normal/arm64 -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/DerivedSources/arm64 -Xcc -I/Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/DerivedSources -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name OPS -frontend-parseable-output -disable-clang-spi -target-sdk-version 26.0 -target-sdk-name iphonesimulator26.0 -clang-target arm64-apple-ios26.0-simulator -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/SubClientDTO.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskDTO.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskStatusOptionDTO.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskTypeDTO.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/UserDTO.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/CalendarEventEndpoints.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/ClientEndpoints.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/CompanyEndpoints.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/ProjectEndpoints.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskEndpoints.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskTypeEndpoints.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/UserEndpoints.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/BackgroundTaskManager.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/CentralizedSyncManager.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/ConnectivityMonitor.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/ImageSyncManager.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/PresignedURLUploadService.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/S3UploadService.o -o /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/OnboardingCoordinator.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/SubClientDTO.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskDTO.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskStatusOptionDTO.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskTypeDTO.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/UserDTO.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/CalendarEventEndpoints.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/ClientEndpoints.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/CompanyEndpoints.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/ProjectEndpoints.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskEndpoints.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/TaskTypeEndpoints.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/UserEndpoints.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/BackgroundTaskManager.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/CentralizedSyncManager.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/ConnectivityMonitor.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/ImageSyncManager.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/PresignedURLUploadService.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/S3UploadService.o -index-unit-output-path /OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/arm64/OnboardingCoordinator.o -index-store-path /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Index.noindex/DataStore -index-system-modules
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/SubClientDTO.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskDTO.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskStatusOptionDTO.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskTypeDTO.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/UserDTO.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CalendarEventEndpoints.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/CalendarEventEndpoints.swift:152:13: warning: initialization of immutable value 'dateFormatter' was never used; consider replacing with assignment to '_' or removing it
+        let dateFormatter = ISO8601DateFormatter()
+        ~~~~^~~~~~~~~~~~~
+        _
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ClientEndpoints.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/ClientEndpoints.swift:49:13: warning: immutable value 'client' was never used; consider replacing with '_' or removing it
+        for client in clients.prefix(5) { // Log first 5 for debugging
+            ^~~~~~
+            _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/ClientEndpoints.swift:76:13: warning: immutable value 'subClient' was never used; consider replacing with '_' or removing it
+        for subClient in subClients.prefix(5) {
+            ^~~~~~~~~
+            _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/ClientEndpoints.swift:104:13: warning: immutable value 'client' was never used; consider replacing with '_' or removing it
+        for client in clients.prefix(5) { // Log first 5 for debugging
+            ^~~~~~
+            _
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CompanyEndpoints.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift:103:16: warning: value 'result' was defined but never used; consider replacing with boolean test
+        if let result = response.response.result {
+           ~~~~^~~~~~~~~
+                                                 != nil
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift:105:16: warning: value 'message' was defined but never used; consider replacing with boolean test
+        if let message = response.response.message {
+           ~~~~^~~~~~~~~~
+                                                   != nil
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift:107:16: warning: value 'responseStatus' was defined but never used; consider replacing with boolean test
+        if let responseStatus = response.response.status {
+           ~~~~^~~~~~~~~~~~~~~~~
+                                                         != nil
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift:563:17: warning: initialization of immutable value 'response' was never used; consider replacing with assignment to '_' or removing it
+            let response = try await executeRequest(
+            ~~~~^~~~~~~~
+            _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift:577:17: warning: immutable value 'project' was never used; consider replacing with '_' or removing it
+            let project: ProjectDTO = try await executeRequest(
+                ^~~~~~~
+                _
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift:71:13: warning: initialization of immutable value 'scheduled' was never used; consider replacing with assignment to '_' or removing it
+        let scheduled = tasks.filter { $0.status == "Booked" }
+        ~~~~^~~~~~~~~
+        _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift:72:13: warning: initialization of immutable value 'inProgress' was never used; consider replacing with assignment to '_' or removing it
+        let inProgress = tasks.filter { $0.status == "In Progress" }
+        ~~~~^~~~~~~~~~
+        _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift:73:13: warning: initialization of immutable value 'completed' was never used; consider replacing with assignment to '_' or removing it
+        let completed = tasks.filter { $0.status == "Completed" }
+        ~~~~^~~~~~~~~
+        _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift:74:13: warning: initialization of immutable value 'cancelled' was never used; consider replacing with assignment to '_' or removing it
+        let cancelled = tasks.filter { $0.status == "Cancelled" }
+        ~~~~^~~~~~~~~
+        _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift:78:13: warning: initialization of immutable value 'projectIds' was never used; consider replacing with assignment to '_' or removing it
+        let projectIds = Set(tasks.compactMap { $0.projectId })
+        ~~~~^~~~~~~~~~
+        _
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskTypeEndpoints.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/UserEndpoints.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/BackgroundTaskManager.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:437:25: warning: initialization of immutable value 'formatter' was never used; consider replacing with assignment to '_' or removing it
+                    let formatter = ISO8601DateFormatter()
+                    ~~~~^~~~~~~~~
+                    _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:1061:17: warning: immutable value 'defaultProjectColor' was never used; consider removing it
+            let defaultProjectColor: String
+                ^
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:1852:20: warning: immutable value 'image' was never used; consider replacing with '_' or removing it
+               let image = UIImage(data: imageData) {
+               ~~~~^~~~~
+               _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:2038:13: warning: initialization of immutable value 'oneYearAgo' was never used; consider replacing with assignment to '_' or removing it
+        let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date())!
+        ~~~~^~~~~~~~~~
+        _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:2113:13: warning: initialization of immutable value 'thirtyDaysAgo' was never used; consider replacing with assignment to '_' or removing it
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        ~~~~^~~~~~~~~~~~~
+        _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:2114:13: warning: initialization of immutable value 'oneYearAgo' was never used; consider replacing with assignment to '_' or removing it
+        let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date())!
+        ~~~~^~~~~~~~~~
+        _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:2160:13: warning: initialization of immutable value 'thirtyDaysAgo' was never used; consider replacing with assignment to '_' or removing it
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        ~~~~^~~~~~~~~~~~~
+        _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:2189:13: warning: initialization of immutable value 'thirtyDaysAgo' was never used; consider replacing with assignment to '_' or removing it
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        ~~~~^~~~~~~~~~~~~
+        _
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ConnectivityMonitor.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ImageSyncManager.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/ImageSyncManager.swift:110:22: warning: immutable value 'index' was never used; consider replacing with '_' or removing it
+                for (index, url) in imageURLs.enumerated() {
+                     ^~~~~
+                     _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/ImageSyncManager.swift:110:29: warning: immutable value 'url' was never used; consider replacing with '_' or removing it
+                for (index, url) in imageURLs.enumerated() {
+                            ^~~
+                            _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/ImageSyncManager.swift:123:24: warning: value 'bodyString' was defined but never used; consider replacing with boolean test
+                if let bodyString = String(data: requestBodyData, encoding: .utf8) {
+                   ~~~~^~~~~~~~~~~~~
+                                                                                   != nil
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/ImageSyncManager.swift:143:24: warning: value 'responseString' was defined but never used; consider replacing with boolean test
+                if let responseString = String(data: data, encoding: .utf8) {
+                   ~~~~^~~~~~~~~~~~~~~~~
+                                                                            != nil
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/ImageSyncManager.swift:147:28: warning: value 'errorBody' was defined but never used; consider replacing with boolean test
+                    if let errorBody = String(data: data, encoding: .utf8) {
+                       ~~~~^~~~~~~~~~~~
+                                                                           != nil
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/ImageSyncManager.swift:215:13: warning: initialization of immutable value 'sizeInMB' was never used; consider replacing with assignment to '_' or removing it
+        let sizeInMB = Double(imageData.count) / (1024 * 1024)
+        ~~~~^~~~~~~~
+        _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/ImageSyncManager.swift:284:37: warning: result of call to 'deleteImage(localID:)' is unused
+            ImageFileManager.shared.deleteImage(localID: urlString)
+                                    ^          ~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/ImageSyncManager.swift:478:13: warning: initialization of immutable value 'count' was never used; consider replacing with assignment to '_' or removing it
+        let count = pendingUploads.count
+        ~~~~^~~~~
+        _
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/PresignedURLUploadService.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/PresignedURLUploadService.swift:78:17: warning: initialization of immutable value 'sizeInMB' was never used; consider replacing with assignment to '_' or removing it
+            let sizeInMB = Double(imageData.count) / (1024 * 1024)
+            ~~~~^~~~~~~~
+            _
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/PresignedURLUploadService.swift:225:16: warning: value 'bodyString' was defined but never used; consider replacing with boolean test
+        if let bodyString = String(data: requestData, encoding: .utf8) {
+           ~~~~^~~~~~~~~~~~~
+                                                                       != nil
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/PresignedURLUploadService.swift:235:16: warning: value 'responseString' was defined but never used; consider replacing with boolean test
+        if let responseString = String(data: data, encoding: .utf8) {
+           ~~~~^~~~~~~~~~~~~~~~~
+                                                                    != nil
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/PresignedURLUploadService.swift:345:31: warning: immutable value 'responseString' was never used; consider replacing with '_' or removing it
+        if !data.isEmpty, let responseString = String(data: data, encoding: .utf8) {
+                          ~~~~^~~~~~~~~~~~~~
+                          _
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/S3UploadService.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/S3UploadService.swift:60:17: warning: initialization of immutable value 'sizeInMB' was never used; consider replacing with assignment to '_' or removing it
+            let sizeInMB = Double(imageData.count) / (1024 * 1024)
+            ~~~~^~~~~~~~
+            _
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Coordinators/OnboardingCoordinator.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+@__swiftmacro_3OPS0033CentralizedSyncManagerswift_DbGHjfMX440_35_9PredicatefMf3_.swift:2:26: error: cannot convert value of type 'PredicateExpressions.Equal<PredicateExpressions.KeyPath<PredicateExpressions.Variable<TaskType>, String>, PredicateExpressions.KeyPath<PredicateExpressions.Value<ProjectTask>, String>>' to closure result type 'any StandardPredicateExpression<Bool>'
+    PredicateExpressions.build_Equal(
+    ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jacksonsweet/Desktop/OPS APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift:441:36: note: in expansion of macro 'Predicate' here
+                        predicate: #Predicate { $0.id == task.taskTypeId }
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ OPS (in target 'OPS' from project 'OPS')
+
+EmitSwiftModule normal arm64 (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 Compiling\ FeatureRequestView.swift,\ NotificationSettingsControls.swift,\ ProjectNotificationPreferences.swift,\ ReportIssueView.swift,\ SettingsComponents.swift,\ AppSettingsView.swift,\ ComingSoonView.swift,\ DataStorageSettingsView.swift,\ MapSettingsView.swift,\ NotificationSettingsView.swift,\ OrganizationSettingsView.swift,\ ProfileSettingsView.swift,\ ProjectSettingsView.swift,\ SchedulingTypeExplanationView.swift,\ SecuritySettingsView.swift,\ SettingsSearchSheet.swift,\ TaskSettingsView.swift,\ WhatsNewView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/FeatureRequestView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/NotificationSettingsControls.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/ProjectNotificationPreferences.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/ReportIssueView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/SettingsComponents.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/AppSettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/ComingSoonView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/DataStorageSettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/MapSettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/NotificationSettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/OrganizationSettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/ProfileSettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/ProjectSettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/SchedulingTypeExplanationView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/SecuritySettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/SettingsSearchSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/TaskSettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/WhatsNewView.swift (in target 'OPS' from project 'OPS')
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/FeatureRequestView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/NotificationSettingsControls.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/ProjectNotificationPreferences.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/ReportIssueView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/Components/SettingsComponents.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/AppSettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/ComingSoonView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/DataStorageSettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/MapSettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/NotificationSettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/OrganizationSettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/ProfileSettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/ProjectSettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/SchedulingTypeExplanationView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/SecuritySettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/SettingsSearchSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/TaskSettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Settings/WhatsNewView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 Compiling\ ProjectActionBar.swift,\ ProjectCard.swift,\ ProjectCarousel.swift,\ ProjectDetailsView.swift,\ ProjectHeader.swift,\ ProjectSheetContainer.swift,\ TaskCompletionChecklistSheet.swift,\ TaskDetailsView.swift,\ CalendarSchedulerSheet.swift,\ SyncStatusIndicator.swift,\ TaskListView.swift,\ TeamRoleAssignmentSheet.swift,\ TeamRoleManagementView.swift,\ CompanyTeamMembersListView.swift,\ ContactDetailView.swift,\ OrganizationTeamView.swift,\ ProjectTeamView.swift,\ TaskTeamView.swift,\ TeamMemberListView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectActionBar.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectCard.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectCarousel.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectDetailsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectHeader.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectSheetContainer.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/TaskCompletionChecklistSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/TaskDetailsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Scheduling/CalendarSchedulerSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Sync/SyncStatusIndicator.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Tasks/TaskListView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Team/TeamRoleAssignmentSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Team/TeamRoleManagementView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/CompanyTeamMembersListView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/ContactDetailView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/OrganizationTeamView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/ProjectTeamView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/TaskTeamView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/TeamMemberListView.swift (in target 'OPS' from project 'OPS')
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectActionBar.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectCard.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectCarousel.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectDetailsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectHeader.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/ProjectSheetContainer.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/TaskCompletionChecklistSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Project/TaskDetailsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Scheduling/CalendarSchedulerSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Sync/SyncStatusIndicator.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Tasks/TaskListView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Team/TeamRoleAssignmentSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Team/TeamRoleManagementView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/CompanyTeamMembersListView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/ContactDetailView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/OrganizationTeamView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/ProjectTeamView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/TaskTeamView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/TeamMemberListView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 Compiling\ GracePeriodBanner.swift,\ PlanSelectionView.swift,\ PlanSelectionView+CheckoutSession.swift,\ SeatManagementView.swift,\ SubscriptionLockoutView.swift,\ ForgotPasswordView.swift,\ LoginView.swift,\ MainTabView.swift,\ NetworkStatusIndicator.swift,\ ScheduleView.swift,\ SettingsView.swift,\ SimplePINEntryView.swift,\ SplashScreen.swift,\ AppDelegate.swift,\ AppState.swift,\ ContentView.swift,\ OPSApp.swift,\ GeneratedAssetSymbols.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/GracePeriodBanner.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/PlanSelectionView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/PlanSelectionView+CheckoutSession.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/SeatManagementView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/SubscriptionLockoutView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/ForgotPasswordView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/LoginView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/MainTabView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/NetworkStatusIndicator.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/ScheduleView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/SettingsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/SimplePINEntryView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/SplashScreen.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/AppDelegate.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/AppState.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/ContentView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/OPSApp.swift /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'OPS' from project 'OPS')
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/GracePeriodBanner.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/PlanSelectionView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/PlanSelectionView+CheckoutSession.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/SeatManagementView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Subscription/SubscriptionLockoutView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/ForgotPasswordView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/LoginView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/MainTabView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/NetworkStatusIndicator.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/ScheduleView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/SettingsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/SimplePINEntryView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/SplashScreen.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/AppDelegate.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/AppState.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/ContentView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/OPSApp.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Library/Developer/Xcode/DerivedData/OPS-czavgtmnvamasvcjgszzuulfcsxj/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 Compiling\ NotesCard.swift,\ TeamMembersCard.swift,\ ClientEditSheet.swift,\ ClientSearchField.swift,\ SubClientEditSheet.swift,\ SubClientListView.swift,\ AddressAutocompleteField.swift,\ AddressSearchField.swift,\ AppHeader.swift,\ CompanyTeamListView.swift,\ ContactDetailSheet.swift,\ CustomAlert.swift,\ CustomTabBar.swift,\ ExpandableNotesView.swift,\ ImageSyncProgressView.swift,\ LocationPermissionView.swift,\ NavigationBanner.swift,\ NavigationControlsView.swift,\ NotificationBanner.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Cards/NotesCard.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Cards/TeamMembersCard.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Client/ClientEditSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Client/ClientSearchField.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Client/SubClientEditSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Client/SubClientListView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/AddressAutocompleteField.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/AddressSearchField.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/AppHeader.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/CompanyTeamListView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/ContactDetailSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/CustomAlert.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/CustomTabBar.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/ExpandableNotesView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/ImageSyncProgressView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/LocationPermissionView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/NavigationBanner.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/NavigationControlsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/NotificationBanner.swift (in target 'OPS' from project 'OPS')
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Cards/NotesCard.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Cards/TeamMembersCard.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Client/ClientEditSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Client/ClientSearchField.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Client/SubClientEditSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Client/SubClientListView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/AddressAutocompleteField.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/AddressSearchField.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/AppHeader.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/CompanyTeamListView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/ContactDetailSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/CustomAlert.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/CustomTabBar.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/ExpandableNotesView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/ImageSyncProgressView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/LocationPermissionView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/NavigationBanner.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/NavigationControlsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/NotificationBanner.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 Compiling\ UserProfileCard.swift,\ CompanyAvatar.swift,\ FloatingActionMenu.swift,\ OptionalSectionPill.swift,\ ProfileImageUploader.swift,\ UserAvatar.swift,\ APICallsDebugView.swift,\ CalendarEventsDebugView.swift,\ ClearDataView.swift,\ DeveloperDashboard.swift,\ RelinkCalendarEventsView.swift,\ RelinkTasksToProjectsView.swift,\ TaskListDebugView.swift,\ TaskTestView.swift,\ TaskTypesDebugView.swift,\ HomeContentView.swift,\ HomeView.swift,\ ClientDeletionSheet.swift,\ ClientFormSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/UserProfileCard.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/CompanyAvatar.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/FloatingActionMenu.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/OptionalSectionPill.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/ProfileImageUploader.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/UserAvatar.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/APICallsDebugView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/CalendarEventsDebugView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/ClearDataView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/DeveloperDashboard.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/RelinkCalendarEventsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/RelinkTasksToProjectsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/TaskListDebugView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/TaskTestView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/TaskTypesDebugView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Home/HomeContentView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Home/HomeView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/JobBoard/ClientDeletionSheet.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/JobBoard/ClientFormSheet.swift (in target 'OPS' from project 'OPS')
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/User/UserProfileCard.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/CompanyAvatar.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/FloatingActionMenu.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/OptionalSectionPill.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/ProfileImageUploader.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/UserAvatar.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/APICallsDebugView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/CalendarEventsDebugView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/ClearDataView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/DeveloperDashboard.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/RelinkCalendarEventsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/RelinkTasksToProjectsView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/TaskListDebugView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/TaskTestView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Debug/TaskTypesDebugView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Home/HomeContentView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Home/HomeView.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/JobBoard/ClientDeletionSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/JobBoard/ClientFormSheet.swift (in target 'OPS' from project 'OPS')
+    cd /Users/jacksonsweet/Desktop/OPS\ APP/OPS
+    
+
+SwiftCompile normal arm64 Compiling\ PushInMessage.swift,\ RefreshIndicator.swift,\ StorageOptionSlider.swift,\ TabBarBackground.swift,\ TacticalLoadingBar.swift,\ ContactCreatorView.swift,\ ContactPicker.swift,\ ContactUpdater.swift,\ EventCarousel.swift,\ ImagePicker.swift,\ ImagePickerView.swift,\ ProjectImagesSection.swift,\ ProjectImagesSimple.swift,\ ProjectImageView.swift,\ ProjectPhotosGrid.swift,\ MiniMapView.swift,\ ProjectMapAnnotation.swift,\ ProjectMapView.swift,\ RouteDirectionsView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/PushInMessage.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/RefreshIndicator.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/StorageOptionSlider.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/TabBarBackground.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Common/TacticalLoadingBar.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Contact/ContactCreatorView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Contact/ContactPicker.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Contact/ContactUpdater.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Event/EventCarousel.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Images/ImagePicker.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Images/ImagePickerView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Images/ProjectImagesSection.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Images/ProjectImagesSimple.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Images/ProjectImageView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Images/ProjectPhotosGrid.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Map/MiniMapView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Map/ProjectMapAnnotation.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Map/ProjectMapView.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Views/Components/Map/RouteDirectionsView.swift (in target 'OPS' from project 'OPS')
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	SwiftCompile normal arm64 Compiling\ SubClientDTO.swift,\ TaskDTO.swift,\ TaskStatusOptionDTO.swift,\ TaskTypeDTO.swift,\ UserDTO.swift,\ CalendarEventEndpoints.swift,\ ClientEndpoints.swift,\ CompanyEndpoints.swift,\ ProjectEndpoints.swift,\ TaskEndpoints.swift,\ TaskTypeEndpoints.swift,\ UserEndpoints.swift,\ BackgroundTaskManager.swift,\ CentralizedSyncManager.swift,\ ConnectivityMonitor.swift,\ ImageSyncManager.swift,\ PresignedURLUploadService.swift,\ S3UploadService.swift,\ OnboardingCoordinator.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/SubClientDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskStatusOptionDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskTypeDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/UserDTO.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CalendarEventEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ClientEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CompanyEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskTypeEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/UserEndpoints.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/BackgroundTaskManager.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ConnectivityMonitor.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ImageSyncManager.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/PresignedURLUploadService.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/S3UploadService.swift /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Coordinators/OnboardingCoordinator.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/SubClientDTO.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskDTO.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskStatusOptionDTO.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/TaskTypeDTO.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/DTOs/UserDTO.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CalendarEventEndpoints.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ClientEndpoints.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/CompanyEndpoints.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/ProjectEndpoints.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskEndpoints.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/TaskTypeEndpoints.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Endpoints/UserEndpoints.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/BackgroundTaskManager.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/Sync/CentralizedSyncManager.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ConnectivityMonitor.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/ImageSyncManager.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/PresignedURLUploadService.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Network/S3UploadService.swift (in target 'OPS' from project 'OPS')
+	SwiftCompile normal arm64 /Users/jacksonsweet/Desktop/OPS\ APP/OPS/OPS/Onboarding/Coordinators/OnboardingCoordinator.swift (in target 'OPS' from project 'OPS')
+	Building project OPS with scheme OPS
+(21 failures)

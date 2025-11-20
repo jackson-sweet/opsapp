@@ -27,7 +27,7 @@ struct TaskListDebugView: View {
                 // Header
                 HStack {
                     Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
+                        Image(systemName: OPSStyle.Icons.close)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -41,7 +41,7 @@ struct TaskListDebugView: View {
                     Spacer()
                     
                     Button(action: fetchTasks) {
-                        Image(systemName: "arrow.clockwise")
+                        Image(systemName: OPSStyle.Icons.sync)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -57,7 +57,7 @@ struct TaskListDebugView: View {
                 } else if let error = errorMessage {
                     Spacer()
                     VStack(spacing: 16) {
-                        Image(systemName: "exclamationmark.triangle")
+                        Image(systemName: OPSStyle.Icons.alert)
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                         Text("Error")

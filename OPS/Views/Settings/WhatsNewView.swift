@@ -89,7 +89,7 @@ struct WhatsNewView: View {
                             
                             NavigationLink(destination: FeatureRequestView()) {
                                 HStack {
-                                    Image(systemName: "envelope.fill")
+                                    Image(systemName: OPSStyle.Icons.envelopeFill)
                                         .font(.system(size: 18))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     
@@ -99,7 +99,7 @@ struct WhatsNewView: View {
                                     
                                     Spacer()
                                     
-                                    Image(systemName: "chevron.right")
+                                    Image(systemName: OPSStyle.Icons.chevronRight)
                                         .font(.system(size: 14))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
@@ -244,7 +244,7 @@ struct FeatureCategorySection: View {
                         .cornerRadius(4)
                     
                     // Expand/collapse chevron
-                    Image(systemName: "chevron.right")
+                    Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))

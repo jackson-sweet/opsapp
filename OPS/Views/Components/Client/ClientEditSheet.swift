@@ -43,7 +43,7 @@ struct ClientEditSheet: View {
                         VStack(spacing: 16) {
                             // Name field (required)
                             VStack(alignment: .leading, spacing: 8) {
-                                Label("Name *", systemImage: "person")
+                                Label("Name *", systemImage: OPSStyle.Icons.teamMember)
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
@@ -60,7 +60,7 @@ struct ClientEditSheet: View {
                             
                             // Email field
                             VStack(alignment: .leading, spacing: 8) {
-                                Label("Email", systemImage: "envelope")
+                                Label("Email", systemImage: OPSStyle.Icons.envelope)
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
@@ -78,7 +78,7 @@ struct ClientEditSheet: View {
                             
                             // Phone field
                             VStack(alignment: .leading, spacing: 8) {
-                                Label("Phone", systemImage: "phone")
+                                Label("Phone", systemImage: OPSStyle.Icons.phone)
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
@@ -95,7 +95,7 @@ struct ClientEditSheet: View {
                             
                             // Address field with autocomplete
                             VStack(alignment: .leading, spacing: 8) {
-                                Label("Address", systemImage: "location")
+                                Label("Address", systemImage: OPSStyle.Icons.address)
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
@@ -119,7 +119,7 @@ struct ClientEditSheet: View {
                             showingContactPicker = true
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "person.crop.circle.badge.plus")
+                                Image(systemName: OPSStyle.Icons.addContact)
                                 Text("Import from Contacts")
                             }
                             .font(OPSStyle.Typography.button)

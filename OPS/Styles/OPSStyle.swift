@@ -301,6 +301,8 @@ enum OPSStyle {
         static let share = "square.and.arrow.up"            // THE icon for Share
         static let filter = "line.horizontal.3.decrease.circle" // THE icon for Filter
         static let sort = "arrow.up.arrow.down.circle"      // THE icon for Sort
+        static let addContact = "person.crop.circle.badge.plus" // THE icon for Add from Contacts
+        static let addProject = "folder.badge.plus"         // THE icon for Create Project
 
         // Status & State
         static let complete = "checkmark.circle.fill"       // THE icon for Complete
@@ -324,6 +326,7 @@ enum OPSStyle {
 
         static let calendar = "calendar"
         static let calendarFill = "calendar.fill"
+        static let calendarBadgeCheckmark = "calendar.badge.checkmark"
         static let person = "person"
         static let personFill = "person.fill"
         static let personTwo = "person.2"
@@ -344,6 +347,7 @@ enum OPSStyle {
         static let checkmarkSquareFill = "checkmark.square.fill"
         static let checkmarkCircle = "checkmark.circle"
         static let checkmarkCircleFill = "checkmark.circle.fill"
+        static let circle = "circle"
         static let square = "square"
         static let squareFill = "square.fill"
         static let xmark = "xmark"
@@ -386,6 +390,8 @@ enum OPSStyle {
         static let photoFill = "photo.fill"
         static let camera = "camera"
         static let cameraFill = "camera.fill"
+        static let clock = "clock"
+        static let copy = "doc.on.doc"
     }
 }
 

@@ -317,7 +317,7 @@ struct DataStorageSettingsView: View {
                         VStack(spacing: 16) {
                             SettingsButton(
                                 title: "Clear Image Cache",
-                                icon: "photo",
+                                icon: OPSStyle.Icons.photo,
                                 style: .secondary,
                                 action: {
                                     clearImageCache()
@@ -326,7 +326,7 @@ struct DataStorageSettingsView: View {
                             
                             SettingsButton(
                                 title: "Clear All Offline Data",
-                                icon: "trash",
+                                icon: OPSStyle.Icons.trash,
                                 style: .destructive,
                                 action: {
                                     clearAllOfflineData()

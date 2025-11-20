@@ -45,7 +45,7 @@ struct ClientListView: View {
         VStack(spacing: 0) {
             if clients.isEmpty {
                 JobBoardEmptyState(
-                    icon: "person.2.fill",
+                    icon: OPSStyle.Icons.crew,
                     title: "No Clients Yet",
                     subtitle: "Add your first client to get started"
                 )

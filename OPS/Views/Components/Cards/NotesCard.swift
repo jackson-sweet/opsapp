@@ -20,7 +20,7 @@ struct NotesCard: View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack {
-                Image(systemName: "note.text")
+                Image(systemName: OPSStyle.Icons.notes)
                     .font(.system(size: 20))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
@@ -32,7 +32,7 @@ struct NotesCard: View {
                 
                 if isEditable {
                     Button(action: toggleEdit) {
-                        Image(systemName: isEditing ? "checkmark.circle.fill" : "pencil.circle")
+                        Image(systemName: isEditing ? OPSStyle.Icons.complete : OPSStyle.Icons.pencilCircle)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }

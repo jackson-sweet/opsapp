@@ -251,8 +251,8 @@ enum OPSStyle {
             // Page indicator fade: transparent to dark to opaque (used by JobBoardDashboard page indicators)
             static let pageIndicatorFade = LinearGradient(
                 colors: [Color.clear, Color.black.opacity(0.8), Color.black],
-                startPoint: .leading,
-                endPoint: .trailing
+                startPoint: .top,
+                endPoint: .bottom
             )
         }
     }
@@ -433,6 +433,15 @@ struct IconActionButton: ViewModifier {
     }
 }
 
+struct DisabledButtonStyle: ViewModifier {
+    let isDisabled: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isDisabled ? 0.7 : 1.0)
+    }
+}
+
 // Legacy status badge - use the new StatusBadge component for new code
 struct LegacyStatusBadge: View {
     let status: Status
@@ -465,7 +474,12 @@ extension View {
     func iconButtonStyle() -> some View {
         self.modifier(IconActionButton())
     }
-    
+
+    // Apply disabled button styling (reduces opacity when disabled)
+    func disabledButtonStyle(isDisabled: Bool) -> some View {
+        self.modifier(DisabledButtonStyle(isDisabled: isDisabled))
+    }
+
     // Deprecated - use opsCardStyle() from CardStyles.swift
     func cardStyle() -> some View {
         self.padding()

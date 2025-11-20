@@ -246,10 +246,7 @@ struct LoginView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .frame(height: OPSStyle.Layout.touchTargetStandard)
-                            .background(
-                                username.isEmpty || password.isEmpty || isLoggingIn ?
-                                Color.white.opacity(0.7) : Color.white
-                            )
+                            .background(Color.white)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 !isLoggingIn ?
@@ -261,6 +258,7 @@ struct LoginView: View {
                                         .padding(.trailing, 20)
                                 } : nil
                             )
+                            .disabledButtonStyle(isDisabled: isLoggingIn || username.isEmpty || password.isEmpty)
                         }
                         .disabled(isLoggingIn || username.isEmpty || password.isEmpty)
                         .padding(.top, 20)

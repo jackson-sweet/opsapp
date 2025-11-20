@@ -26,14 +26,21 @@ struct FloatingActionMenu: View {
         ZStack {
             // Dimmed overlay when menu is open
             if showCreateMenu {
-                OPSStyle.Colors.modalOverlay
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            showCreateMenu = false
-                        }
+                LinearGradient(
+                    colors: [Color(OPSStyle.Colors.background).opacity(0.85), .clear],
+                    startPoint: .trailing,
+                    endPoint: .leading
+                )
+                .ignoresSafeArea()
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.3), value: showCreateMenu)
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        showCreateMenu = false
                     }
+                }
             }
+            
 
             if canShowFAB {
                 VStack {
@@ -41,7 +48,7 @@ struct FloatingActionMenu: View {
                     HStack {
                         Spacer()
 
-                        VStack(alignment: .trailing, spacing: 16) {
+                        VStack(alignment: .trailing, spacing: 24) {
                             // Floating menu items (shown when expanded)
                             if showCreateMenu {
                                 FloatingActionItem(
@@ -52,7 +59,9 @@ struct FloatingActionMenu: View {
                                         showingCreateTaskType = true
                                     }
                                 )
-                                .transition(.scale.combined(with: .opacity))
+                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .animation(.easeInOut(duration: 0.3).delay(0.8), value: showCreateMenu)
 
                                 FloatingActionItem(
                                     icon: OPSStyle.Icons.task,
@@ -62,7 +71,9 @@ struct FloatingActionMenu: View {
                                         showingCreateTask = true
                                     }
                                 )
-                                .transition(.scale.combined(with: .opacity))
+                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .animation(.easeInOut(duration: 0.3).delay(0.6), value: showCreateMenu)
 
                                 FloatingActionItem(
                                     icon: OPSStyle.Icons.project,
@@ -72,7 +83,9 @@ struct FloatingActionMenu: View {
                                         showingCreateProject = true
                                     }
                                 )
-                                .transition(.scale.combined(with: .opacity))
+                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .animation(.easeInOut(duration: 0.3).delay(0.4), value: showCreateMenu)
 
                                 FloatingActionItem(
                                     icon: OPSStyle.Icons.client,
@@ -82,12 +95,14 @@ struct FloatingActionMenu: View {
                                         showingCreateClient = true
                                     }
                                 )
-                                .transition(.scale.combined(with: .opacity))
+                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .animation(.easeInOut(duration: 0.3).delay(0.2), value: showCreateMenu)
                             }
 
                             // Main plus button
                             Button(action: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
                                     showCreateMenu.toggle()
                                 }
                             }) {
@@ -96,12 +111,12 @@ struct FloatingActionMenu: View {
                                     .foregroundColor(OPSStyle.Colors.buttonText)
                                     .rotationEffect(.degrees(showCreateMenu ? 225 : 0))
                                     .frame(width: 64, height: 64)
-                                    .background(.ultraThinMaterial)
+                                    .background(.ultraThinMaterial.opacity(0.8))
                                     .clipShape(Circle())
                                     .shadow(color: OPSStyle.Colors.background.opacity(0.4), radius: 8, x: 0, y: 4)
                                     .overlay {
                                         Circle()
-                                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 2)
+                                            .stroke(OPSStyle.Colors.buttonText, lineWidth: 2)
                                     }
                             }
                         }
@@ -125,32 +140,4 @@ struct FloatingActionMenu: View {
         }
     }
 }
-/*
-struct FloatingActionItem: View {
-    let icon: String
-    let label: String
-    let action: () -> Void
 
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Text(label.uppercased())
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(width: 48, height: 48)
-                    .background(.clear)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(OPSStyle.Colors.secondaryText.opacity(1), lineWidth: 1)
-                    )
-                    .shadow(color: OPSStyle.Colors.background.opacity(0.3), radius: 4, x: 0, y: 2)
-            }
-        }
-    }
-}
-*/

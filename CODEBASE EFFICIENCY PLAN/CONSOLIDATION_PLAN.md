@@ -92,6 +92,49 @@ Should I replace this with OPSStyle.Colors.primaryText?
 
 ---
 
+### Rule 3: Semantic Colors, Not Generic Colors
+
+**⚠️ CRITICAL PRINCIPLE**: OPSStyle.Colors must use **semantic (context-specific) naming**, not generic color names.
+
+**✅ CORRECT - Semantic naming**:
+```swift
+static let cardBorder = Color.white.opacity(0.1)        // For card borders
+static let secondaryText = Color("TextSecondary")        // For secondary text
+static let inputFieldBorder = Color.white.opacity(0.2)  // For input field borders
+```
+
+**❌ WRONG - Generic naming**:
+```swift
+static let lightGray = Color.white.opacity(0.1)  // Too generic - what is it for?
+static let gray60 = Color("TextSecondary")        // Color value, not purpose
+```
+
+**Key Principle**: Even if two colors have **identical RGB values**, they must be **separate definitions** if they serve different semantic purposes.
+
+**Example**:
+```swift
+// Both might be Color.white.opacity(0.1), but serve different purposes
+static let cardBorder = Color.white.opacity(0.1)        // Card structure
+static let disabledOverlay = Color.white.opacity(0.1)  // Disabled state
+static let divider = Color.white.opacity(0.1)          // Section dividers
+```
+
+This allows each to evolve independently as design requirements change.
+
+**When migrating colors**:
+1. **Identify the PURPOSE** of the color, not just its value
+2. **Check if a semantic color exists** for that purpose
+3. **If NO appropriate semantic color exists**:
+   - **STOP** and ask the user: "No semantic color exists for [purpose]. Should I add `OPSStyle.Colors.[semanticName]`?"
+   - **WAIT** for approval to add the new color
+   - **Add with clear comment** explaining the semantic purpose
+4. **Only then** migrate the hardcoded color
+
+**Bad**: Forcing `.white` text on a button to use `cardBorder` just because they're both white
+**Good**: Creating `buttonTextOnAccent` if buttons need a specific text color
+
+---
+
 ## ⚠️ CRITICAL UPDATE - Comprehensive Audit Completed
 
 **November 18, 2025**: Comprehensive line-by-line audit of all 283 Swift files reveals **significantly larger scope** than initially estimated.
@@ -359,7 +402,23 @@ static let successStatus = Color(hex: "#A5B368")
 
 ### Task 2.2: Migrate Hardcoded Colors - File by File
 
-**Execute for each file below:**
+**⚠️ CRITICAL**: Follow Rule 3 (Semantic Colors) - identify the PURPOSE of each color, not just its value.
+
+**Process for each file**:
+
+1. **Read the file** to understand context
+2. **Analyze each hardcoded color**:
+   - What element is it styling? (Text, Icon, Background, Border, Shape, etc.)
+   - What is its semantic purpose? (Primary content, secondary info, card structure, status indicator, etc.)
+   - What opacity? (Solid vs. semi-transparent)
+3. **Categorize replacements**:
+   - **Clear patterns** (auto-fix): `Text(...).foregroundColor(.white)` → `primaryText`
+   - **Ambiguous cases** (need approval): `Circle().fill(.white)` → Purpose unclear
+   - **No semantic color exists** (elevate to user): Create new semantic color
+4. **Present batch summary**: "File X: 12 clear fixes, 3 need approval, 1 needs new color"
+5. **Apply after approval**
+
+---
 
 #### File: `OPS/Views/Components/Common/PushInMessage.swift`
 
@@ -369,10 +428,14 @@ Color(hex: "#FF6B6B")
 Color(red: 0.95, green: 0.95, blue: 0.97)
 ```
 
+**Semantic Analysis**:
+- `#FF6B6B` → Error/alert color for message background
+- `rgb(0.95, 0.95, 0.97)` → Light background for message container
+
 **Replace**:
 ```swift
-OPSStyle.Colors.errorStatus
-OPSStyle.Colors.cardBackground
+OPSStyle.Colors.errorStatus      // Semantic: error message background
+OPSStyle.Colors.cardBackground   // Semantic: message container background
 ```
 
 ---
@@ -381,17 +444,35 @@ OPSStyle.Colors.cardBackground
 
 **Find**: All instances of `Color(hex:`, `.opacity()` on backgrounds
 
-**Replace**: With appropriate OPSStyle.Colors constants
+**Replace**: With appropriate **semantic** OPSStyle.Colors constants
 
-**Pattern**:
-- `Color.white.opacity(0.1)` → `OPSStyle.Colors.cardBorder`
-- `Color.black.opacity(0.8)` → `OPSStyle.Colors.cardBackgroundDark`
-- Any hex colors → find closest OPSStyle color
+**Pattern Examples**:
+- `Color.white.opacity(0.1)` on card border → `OPSStyle.Colors.cardBorder` ✅ (semantic: card structure)
+- `Color.white.opacity(0.1)` on divider → Ask: "Create `OPSStyle.Colors.divider`?" 🤔
+- `Color.black.opacity(0.8)` on background → `OPSStyle.Colors.cardBackgroundDark` ✅ (semantic: card background)
+- `Text(...).foregroundColor(.white)` → `OPSStyle.Colors.primaryText` ✅ (semantic: primary text)
+- `Circle().fill(.white)` → Ask: "What is this circle for? Purpose unclear" 🤔
+
+**If no semantic color exists**:
+```
+⚠️ NEW SEMANTIC COLOR NEEDED
+
+FILE: ProjectManagementSheets.swift line 245
+ELEMENT: Divider line between sections
+CURRENT: Color.white.opacity(0.15)
+PURPOSE: Section separator/divider
+
+No existing semantic color for dividers.
+Should I add: OPSStyle.Colors.divider = Color.white.opacity(0.15) ?
+
+Note: This is semantically different from cardBorder even if the value is similar.
+```
 
 ---
 
-#### Files with Hardcoded Colors (20 total):
+#### Files with Hardcoded Colors (20 high-priority + 80+ remaining):
 
+**High-Priority (20 files)**:
 1. `OPS/Views/Components/Common/PushInMessage.swift`
 2. `OPS/Views/JobBoard/ProjectManagementSheets.swift`
 3. `OPS/Views/JobBoard/ProjectFormSheet.swift`
@@ -413,11 +494,11 @@ OPSStyle.Colors.cardBackground
 19. `OPS/Views/Debug/RelinkCalendarEventsView.swift`
 20. `OPS/Views/Components/Tasks/TaskDetailsView.swift`
 
-**For each file**:
-1. Read the file
-2. Identify all hardcoded colors (hex, RGB, opacity)
-3. Replace with appropriate OPSStyle.Colors constant
-4. Verify no background uses .opacity() - use solid colors
+**Approach**:
+- Start with high-priority files (most color violations)
+- Process file-by-file with batch review
+- Build semantic color vocabulary as we discover needs
+- Then expand to remaining 80+ files with established patterns
 
 ---
 

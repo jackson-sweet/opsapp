@@ -426,7 +426,7 @@ struct TaskDetailsView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .id(refreshTrigger)  // Force refresh when dates change
-                .disabled(!(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew))
+                .allowsHitTesting(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew)
                 
                 // Task notes section
                 VStack(alignment: .leading, spacing: 8) {

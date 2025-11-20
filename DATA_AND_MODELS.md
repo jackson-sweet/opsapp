@@ -2,7 +2,7 @@
 
 **Purpose**: This document provides Claude (AI assistant) with complete context on OPS app data architecture, SwiftData models, Bubble field mappings, and data handling patterns. This enables accurate code generation and debugging without introducing data integrity issues.
 
-**Last Updated**: November 18, 2025
+**Last Updated**: November 19, 2025
 
 ---
 

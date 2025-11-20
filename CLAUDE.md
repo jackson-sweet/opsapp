@@ -49,22 +49,55 @@ When working on the OPS codebase, reference these consolidated documentation fil
 
 ---
 
-## Recent Implementation Updates (August 2025)
+## Recent Implementation Updates (November 2025)
 
-### CalendarEvent-Centric Architecture
+### Form Sheet UI Consistency & Progressive Disclosure
+- **ProjectFormSheet Dynamic Section Reordering**: Sections automatically move to top when opened via pill buttons
+- **Auto-scroll to Opened Sections**: Smooth scrolling with delay to position expanded sections at top of view
+- **Unified Input Card Layout**: All form inputs grouped into single card sections across ProjectFormSheet, TaskFormSheet, ClientFormSheet
+- **Consistent Button Placement**: Save/Cancel buttons and secondary actions (Copy from Project, Import from Contacts) positioned at bottom
+- **Border Consistency**: All form sheets use `Color.white.opacity(0.1)` for card borders
+
+### Job Board Enhancements
+- **UniversalJobCard Badge Logic**:
+  - Shows unscheduled badge if project has no tasks
+  - Excludes completed/cancelled tasks from badge calculation
+  - Hides badge if all tasks are completed/cancelled
+- **ClientFormSheet Avatar Sizing**: Fixed preview card avatar to 56×56pt for better visual balance
+- **TaskFormSheet Notes Field**: Always visible in all modes with full Save/Cancel functionality, syncs to Bubble
+
+### Field Crew Job Board Access (Major Feature)
+- **Tab Bar Access**: Job Board tab now visible to all user roles (admin, office crew, and field crew)
+- **Role-Based UI**: Section picker hidden for field crew, only dashboard view accessible
+- **Project Filtering**: Field crew see only projects where they're assigned as team members
+- **Status Update Permissions**: Field crew can update project and task statuses
+- **Task Visibility**: All tasks for assigned projects remain visible to field crew
+
+### Loading Overlay System
+- **AppState.isLoadingProjects**: New published property tracks home view loading state
+- **UI Hiding During Load**: Tab bar and floating action button fade out when projects are loading
+- **Z-Index Management**: Loading overlay set to z-index 999 to appear above all content
+- **Console Loading Improvements**: Increased version text padding to 48pt for better spacing
+
+### TaskDetailsView Field Crew Permissions
+- **Visual Consistency**: Dates section maintains normal appearance for all user roles (not greyed out)
+- **Interaction Control**: Uses `.allowsHitTesting()` instead of `.disabled()` to prevent field crew editing
+- **Permission Indicators**: Chevron only shows for admin/office crew who can edit dates
+
+### CalendarEvent-Centric Architecture (August 2025)
 - **CalendarEvents as Single Source of Truth**: All calendar display logic now flows through CalendarEvent entities
-- **Filtering Based on Project Scheduling Mode**: 
+- **Filtering Based on Project Scheduling Mode**:
   - If `project.eventType == .project`, only project-level CalendarEvents are displayed
   - If `project.eventType == .task`, only task-level CalendarEvents are displayed
 - **shouldDisplay Property**: CalendarEvent.shouldDisplay handles complex filtering logic based on project scheduling mode
 
-### TaskDetailsView Implementation
+### TaskDetailsView Implementation (August 2025)
 - **Matches ProjectDetailsView Structure**: Header with status badge, breadcrumb navigation, and color stripe
 - **Reusable Card Components**: LocationCard, ClientInfoCard, NotesCard, TeamMembersCard
 - **Navigation Between Tasks**: Previous/Next task cards at bottom for easy navigation
-- **Status Updates**: Haptic feedback on status changes, respects user permissions (no cancel for field crew)
+- **Status Updates**: Haptic feedback on status changes, respects user permissions
 
-### UI Consistency Updates
+### UI Consistency Foundation (August 2025)
 - **Card Styling**: All cards use `OPSStyle.Colors.cardBackgroundDark` with white 10% opacity border
 - **Section Headers**: Icons + uppercase text in `OPSStyle.Typography.captionBold`
 - **Info Rows**: Consistent pattern with icon, title/value stack, and optional chevron

@@ -1,593 +1,462 @@
-# OPS Codebase Efficiency Plan - Master Guide
+# OPS Codebase Efficiency Plan - Implementation Guide
 
-**Last Updated**: November 19, 2025
-**For**: Implementation agents
-
----
-
-## Quick Start for Agents
-
-**If you're a fresh agent tasked with implementing these improvements**, start here:
-
-1. **Read this README first** - Understand the full scope and track priorities
-2. **READ [PROJECTFORMSHEET_AUTHORITY.md](./PROJECTFORMSHEET_AUTHORITY.md)** - **MANDATORY** styling authority
-3. **Choose your track** based on priority (see Track Priority Matrix below)
-4. **Read the corresponding implementation guide** (detailed step-by-step instructions)
-5. **Reference audit documents** as needed for context
+**Last Updated**: 2025-11-20
+**For**: Agents implementing consolidation work
 
 ---
 
-## 🚨 CRITICAL RULES FOR ALL AGENTS
+## Quick Start for New Agents
 
-### Rule 1: ProjectFormSheet is the Styling Authority
+**If you're starting fresh on this codebase**:
 
-**File**: `OPS/Views/JobBoard/ProjectFormSheet.swift` (overhauled November 16, 2025)
-
-This file contains the **authoritative patterns** for:
-- ✅ Section card styling (ExpandableSection component)
-- ✅ Navigation bar styling (toolbar with CANCEL/Title/ACTION)
-- ✅ Input field styling (TextField patterns)
-- ✅ TextEditor styling (with Cancel/Save buttons on focus)
-
-**READ [PROJECTFORMSHEET_AUTHORITY.md](./PROJECTFORMSHEET_AUTHORITY.md) BEFORE implementing any UI consolidation tracks.**
-
-When you find conflicting implementations:
-- 👍 **KEEP** ProjectFormSheet's version
-- 👎 **MIGRATE** other files to match ProjectFormSheet
-- ⚠️ **NEVER DELETE** ProjectFormSheet's patterns
+1. ✅ **Read this README** (you are here) - Understand principles and approach
+2. ✅ **Read AGENT_HANDOVER.md** - See what's been completed and current status
+3. ✅ **Choose your track** from the uncompleted tracks
+4. ✅ **Read the track's implementation guide** (referenced in handover)
+5. ✅ **Update AGENT_HANDOVER.md** when you complete your session
 
 ---
 
-### Rule 2: ALWAYS Ask Before Deleting Duplicates
+## 🎯 Core Philosophy: Semantic Consolidation, Not Blind Replacement
 
-**⚠️ MANDATORY**: When consolidating duplicate code, you MUST ask the user before deleting ANY duplicate.
+### The Wrong Approach (Don't Do This):
+```swift
+// ❌ BAD: Creating a unique OPSStyle definition for every hardcoded value
+// CalendarView.swift
+.border(Color.white.opacity(0.1))  →  OPSStyle.Colors.calendarProjectCardBorder
 
-**Process**:
-1. **STOP** when you find two versions of the same pattern
-2. **DOCUMENT** both versions with file paths and line numbers
-3. **ASK THE USER** which version to keep
-4. **WAIT** for user confirmation
-5. **ONLY THEN** delete the rejected version
+// JobBoardView.swift
+.border(Color.white.opacity(0.15)) →  OPSStyle.Colors.jobBoardProjectCardBorder
 
-**Example Question Format**:
-```
-⚠️ DUPLICATE FOUND: [Pattern Name]
+// ProjectDetailsView.swift
+.border(Color.white.opacity(0.2))  →  OPSStyle.Colors.projectDetailsCardBorder
 
-VERSION A: [File.swift] lines X-Y
-[Code snippet]
-
-VERSION B: [OtherFile.swift] lines X-Y
-[Code snippet]
-
-DIFFERENCES:
-- [List differences]
-
-RECOMMENDATION: [Your recommendation based on PROJECTFORMSHEET_AUTHORITY.md]
-
-Which version should I keep?
-1. Keep Version A, delete Version B
-2. Keep Version B, delete Version A
-3. Keep both (explain why they differ)
+// Result: 3 separate color definitions that all do the same thing!
 ```
 
-**NEVER assume**. Even if ProjectFormSheet is the authority, ASK THE USER before deleting code.
-
----
-
-### Rule 3: Commit Often, Verify Always
-
-- ✅ Commit after each file migration (not at end of track)
-- ✅ Build and test after each major change
-- ✅ Use descriptive commit messages
-- ✅ Include line counts in commits ("Saved 42 lines")
-
----
-
-## Overview
-
-This efficiency plan consolidates **~8,500 lines of duplicate code** across 283 Swift files through 6 parallel improvement tracks.
-
-### Total Scope
-
-| Category | Current State | Target State | Savings | Effort |
-|----------|---------------|--------------|---------|--------|
-| **Hardcoded Styling** | 5,077 instances in 150+ files | Centralized in OPSStyle | ~2,600 violations fixed | 44-57h |
-| **Business Logic Duplication** | 906 lines of duplicate patterns | Centralized methods | 906 lines saved | 15-21h |
-| **Sheet Navigation** | 37 duplicate toolbars | 1 modifier | 555 lines saved | 10-15h |
-| **Advanced Templates** | 16 duplicate implementations | 5 generic components | 2,925 lines saved | 28-41h |
-| **DataController** | 3,687 lines monolithic | ~800 + extensions | Better organization | 8-10h |
-| **Folder Structure** | Inconsistent organization | Feature-based | Easier navigation | 4-6h |
-| **TOTAL** | **~11,000 lines duplication** | **Consolidated** | **~8,500 lines saved** | **109-150h** |
-
----
-
-## Track Priority Matrix
-
-Execute tracks in this recommended order (or choose based on your priorities):
-
-### Priority 1: Foundation (MUST DO FIRST)
-These tracks lay the groundwork for everything else.
-
-#### Track A: Expand OPSStyle Definitions
-**Status**: 🔴 Blocking
-**Effort**: 4-6 hours
-**Impact**: Enables all styling migration
-**Guide**: `OPSSTYLE_GAPS_AND_STANDARDIZATION.md` → Part 2
-
-**Why First**: You cannot migrate hardcoded colors/icons/layouts until OPSStyle has the missing definitions.
-
-**Deliverables**:
-- ✅ Add 8 missing colors to `OPSStyle.Colors`
-- ✅ Add ~200 missing icons to `OPSStyle.Icons`
-- ✅ Add corner radius variants to `OPSStyle.Layout`
-- ✅ Add opacity enum to `OPSStyle.Layout`
-- ✅ Add shadow enum to `OPSStyle.Layout`
-
-**Verification**: Build succeeds, all new constants accessible.
-
----
-
-### Priority 2: High-Impact Quick Wins (RECOMMENDED NEXT)
-These provide immediate value with reasonable effort.
-
-#### Track B: Sheet Navigation Toolbar Template
-**Status**: 🟡 Independent
-**Effort**: 10-15 hours
-**Impact**: 555 lines saved across 37 files
-**ROI**: ⭐⭐⭐⭐⭐ (Excellent)
-**Guide**: `TEMPLATE_STANDARDIZATION.md` → Part 1
-
-**Deliverables**:
-- ✅ Create `StandardSheetToolbar.swift`
-- ✅ Migrate 37 files to use `.standardSheetToolbar()` modifier
-- ✅ Delete duplicate toolbar code
-
-**Verification**: All sheets have consistent navigation, no duplicate code.
-
----
-
-#### Track C: Notification & Alert Consolidation
-**Status**: 🟡 Independent
-**Effort**: 4-6 hours
-**Impact**: 156 lines saved + consistent UX
-**ROI**: ⭐⭐⭐⭐⭐ (Excellent)
-**Guide**: `ARCHITECTURAL_DUPLICATION_AUDIT.md` → Part 5, Priority 1
-
-**Deliverables**:
-- ✅ Add notification methods to AppState
-- ✅ Migrate 52 files from `.alert()` to `NotificationBanner`
-- ✅ Remove duplicate @State errorMessage/showingError
-
-**Verification**: All errors/successes use NotificationBanner, 52 files updated.
-
----
-
-#### Track D: Form/Edit Sheet Merging
-**Status**: 🟡 Independent
-**Effort**: 6-9 hours
-**Impact**: 1,065 lines saved
-**ROI**: ⭐⭐⭐⭐⭐ (Excellent - best effort-to-savings ratio)
-**Guide**: `ADDITIONAL_SHEET_CONSOLIDATIONS.md` → Section 3
-
-**Deliverables**:
-- ✅ Merge TaskTypeFormSheet + TaskTypeEditSheet → TaskTypeSheet
-- ✅ Merge ClientFormSheet + ClientEditSheet → ClientSheet
-- ✅ Merge SubClientFormSheet + SubClientEditSheet → SubClientSheet
-- ✅ Delete 3 redundant files
-
-**Verification**: All form/edit flows work with merged sheets, 6 files → 3 files.
-
----
-
-### Priority 3: Major Migrations (AFTER FOUNDATION)
-Large-scope work that requires Track A completion.
-
-#### Track E: Hardcoded Colors Migration
-**Status**: 🔴 Requires Track A
-**Effort**: 15-20 hours
-**Impact**: ~815 color violations fixed
-**Guide**: `CONSOLIDATION_PLAN.md` → Phase 2
-
-**Prerequisites**: Track A must be complete (OPSStyle colors expanded)
-
-**Deliverables**:
-- ✅ Migrate ~815 color violations to OPSStyle.Colors
-- ✅ Fix self-violating components (FormInputs, ButtonStyles, NotificationBanner)
-- ✅ Update 100+ files
-
-**Verification**: Grep searches return minimal hardcoded color usage.
-
----
-
-#### Track F: Hardcoded Icons Migration
-**Status**: 🔴 Requires Track A
-**Effort**: 20-25 hours
-**Impact**: ~438 icon violations fixed
-**Guide**: `CONSOLIDATION_PLAN.md` → Phase 4
-
-**Prerequisites**: Track A must be complete (OPSStyle icons expanded)
-
-**Deliverables**:
-- ✅ Migrate 438 hardcoded icon strings to OPSStyle.Icons
-- ✅ Update 122 files
-
-**Verification**: Grep searches show all icons use `OPSStyle.Icons.*`.
-
----
-
-### Priority 4: Advanced Consolidation (OPTIONAL BUT HIGH VALUE)
-Complex generic components with major long-term benefits.
-
-#### Track G: Generic Filter Sheet Template
-**Status**: 🟡 Independent
-**Effort**: 10-14 hours
-**Impact**: 850 lines saved, consistent filter UX
-**ROI**: ⭐⭐⭐⭐ (Very Good)
-**Guide**: `ADDITIONAL_SHEET_CONSOLIDATIONS.md` → Section 2
-
-**Deliverables**:
-- ✅ Create generic `FilterSheet<SortOption>`
-- ✅ Migrate 4 filter sheets to use template
-- ✅ Delete 4 redundant files
-
-**Verification**: All filters work identically, 4 files deleted.
-
----
-
-#### Track H: Generic Deletion Sheet Template
-**Status**: 🟡 Independent
-**Effort**: 8-12 hours
-**Impact**: 700 lines saved
-**ROI**: ⭐⭐⭐⭐ (Very Good)
-**Guide**: `ADDITIONAL_SHEET_CONSOLIDATIONS.md` → Section 1
-
-**Deliverables**:
-- ✅ Create generic `DeletionSheet<Item, Child, Reassignment>`
-- ✅ Migrate 3 deletion sheets
-- ✅ Delete 3 redundant files
-
-**Verification**: All deletion flows work with template, 3 files deleted.
-
----
-
-#### Track I: Generic Search Field Component
-**Status**: 🟡 Independent
-**Effort**: 4-6 hours
-**Impact**: 310 lines saved
-**ROI**: ⭐⭐⭐⭐ (Very Good)
-**Guide**: `ADDITIONAL_SHEET_CONSOLIDATIONS.md` → Section 4
-
-**Deliverables**:
-- ✅ Create generic `SearchField<Item>`
-- ✅ Migrate 3 custom search fields
-- ✅ Delete duplicate implementations
-
-**Verification**: All search fields use generic component.
-
----
-
-### Priority 5: Architectural Improvements (AFTER MAJOR WORK)
-Foundational improvements with broad impact.
-
-#### Track J: DataController CRUD Methods
-**Status**: 🟡 Independent
-**Effort**: 6-8 hours
-**Impact**: Eliminate 99 direct save() calls
-**Guide**: `ARCHITECTURAL_DUPLICATION_AUDIT.md` → Part 5, Priority 2
-
-**Deliverables**:
-- ✅ Add createProject, updateProject, deleteProject to DataController
-- ✅ Add createTask, updateTask, deleteTask to DataController
-- ✅ Add createClient, updateClient, deleteClient to DataController
-- ✅ Migrate 99 direct save() calls
-- ✅ Remove ProjectsViewModel.updateProjectStatus (use SyncManager)
-
-**Verification**: All model persistence goes through DataController, no direct saves.
-
----
-
-#### Track K: Loading & Confirmation Modifiers
-**Status**: 🟡 Independent
-**Effort**: 3-4 hours
-**Impact**: ~600 lines saved
-**Guide**: `ARCHITECTURAL_DUPLICATION_AUDIT.md` → Part 5, Priority 3
-
-**Deliverables**:
-- ✅ Create `.loadingOverlay()` modifier
-- ✅ Create `.deleteConfirmation()` modifier
-- ✅ Migrate 30+ loading ZStacks
-- ✅ Migrate 15+ delete confirmations
-
-**Verification**: All loading/confirmation use modifiers.
-
----
-
-### Priority 6: Remaining Cleanup (FINAL POLISH)
-Smaller improvements and organization.
-
-#### Track L: DataController Refactor
-**Status**: 🟡 Independent
-**Effort**: 8-10 hours
-**Impact**: Better organization (3,687 lines → extensions)
-**Guide**: `CONSOLIDATION_PLAN.md` → Phase 6
-
-**Deliverables**:
-- ✅ Split DataController into 7 extension files
-- ✅ Core: ~200 lines
-- ✅ Extensions: Auth, Sync, Projects, Tasks, Calendar, Cleanup, Migration
-
-**Verification**: All functionality preserved, better file organization.
-
----
-
-#### Track M: Folder Reorganization
-**Status**: 🟡 Independent (but do LAST)
-**Effort**: 4-6 hours
-**Impact**: Easier navigation
-**Guide**: `CONSOLIDATION_PLAN.md` → Phase 7
-
-**Deliverables**:
-- ✅ Reorganize Views folder (143 files)
-- ✅ Feature-based structure (Features/, Components/, etc.)
-- ✅ Update Xcode project
-
-**Verification**: All files in logical locations, project builds.
-
----
-
-#### Track N: Remaining Migrations
-**Status**: 🔴 Requires Track A
-**Effort**: 25-30 hours
-**Impact**: Complete OPSStyle adoption
-**Guide**: `CONSOLIDATION_PLAN.md` → Phases 3, 5, 8, 9
-
-**Includes**:
-- Fonts migration (Phase 3): 1-2 hours
-- Print statement removal (Phase 5): 2-3 hours
-- Dead code removal (Phase 8): 2-3 hours
-- Documentation updates (Phase 9): 2-3 hours
-- Padding/cornerRadius migration (optional): 20+ hours
-
-**Verification**: Comprehensive grep searches show OPSStyle adoption.
-
----
-
-## Recommended Implementation Sequences
-
-### Sequence A: Maximum ROI (Fastest Value)
-**Best for**: Getting quick wins, building momentum
-
-1. Track B (Sheet Toolbars) - 10-15h → 555 lines
-2. Track D (Form/Edit Merge) - 6-9h → 1,065 lines
-3. Track C (Notifications) - 4-6h → 156 lines + UX
-4. Track I (Search Fields) - 4-6h → 310 lines
-
-**Total**: 24-36 hours, **~2,086 lines saved**, immediate user experience improvements
-
----
-
-### Sequence B: Foundation-First (Systematic)
-**Best for**: Enabling all future work, preventing rework
-
-1. Track A (Expand OPSStyle) - 4-6h → Unblocks everything
-2. Track E (Colors) - 15-20h → 815 violations
-3. Track F (Icons) - 20-25h → 438 violations
-4. Track B (Sheet Toolbars) - 10-15h → 555 lines
-5. Track C (Notifications) - 4-6h → 156 lines
-6. Track D (Form/Edit Merge) - 6-9h → 1,065 lines
-
-**Total**: 59-81 hours, **~3,029 fixes**, complete OPSStyle adoption
-
----
-
-### Sequence C: Full Consolidation (Comprehensive)
-**Best for**: Complete codebase overhaul
-
-Execute ALL tracks in priority order (A → N)
-
-**Total**: 109-150 hours, **~8,500 lines saved**, fully modernized codebase
-
----
-
-## Document Reference Guide
-
-### 🚨 MUST READ FIRST
-
-| Document | Purpose | When to Read |
-|----------|---------|--------------|
-| **PROJECTFORMSHEET_AUTHORITY.md** | **MANDATORY** - Defines authoritative styling patterns | **READ BEFORE implementing ANY UI consolidation track** |
-
-### Implementation Guides (Step-by-Step Instructions)
-
-| Document | Purpose | When to Read |
-|----------|---------|--------------|
-| **CONSOLIDATION_PLAN.md** | Main styling migration (9 phases) | Tracks A, E, F, L, M, N |
-| **TEMPLATE_STANDARDIZATION.md** | UI component templates | Track B |
-| **ARCHITECTURAL_DUPLICATION_AUDIT.md** | Business logic consolidation | Tracks C, J, K |
-| **ADDITIONAL_SHEET_CONSOLIDATIONS.md** | Advanced generic templates | Tracks D, G, H, I |
-
-### Reference Documents (Context & Analysis)
-
-| Document | Purpose | When to Read |
-|----------|---------|--------------|
-| **HARDCODED_VALUES_AUDIT.md** | Scope and metrics of hardcoded styling | For context on Tracks A, E, F |
-| **OPSSTYLE_GAPS_AND_STANDARDIZATION.md** | Missing OPSStyle definitions analysis | Required reading for Track A |
-
----
-
-## Track Dependency Graph
-
+### The Right Approach (Do This):
+```swift
+// ✅ GOOD: Consolidate similar values into ONE semantic definition
+// All project cards should have the same border for visual consistency
+.border(OPSStyle.Colors.projectCardBorder)  // Used everywhere
+
+// OPSStyle.swift
+static let projectCardBorder = Color.white.opacity(0.2)  // Unified value
 ```
-Legend: A → B means "B requires A to be complete first"
 
-Foundation Layer:
-  Track A (Expand OPSStyle)
-    ├→ Track E (Colors Migration)
-    ├→ Track F (Icons Migration)
-    └→ Track N (Remaining Migrations)
+**Why?**
+- **Visual Consistency**: All project cards look the same
+- **Maintainability**: Change once, updates everywhere
+- **Fewer Definitions**: 1 color instead of 10+
+- **Semantic Clarity**: The NAME describes the PURPOSE, not the value
 
-Independent Tracks (No dependencies):
-  Track B (Sheet Toolbars)
-  Track C (Notifications)
-  Track D (Form/Edit Merge)
-  Track G (Filter Template)
-  Track H (Deletion Template)
-  Track I (Search Field)
-  Track J (DataController CRUD)
-  Track K (Loading Modifiers)
-  Track L (DataController Refactor)
+---
 
-Final Track (Do Last):
-  Track M (Folder Reorganization)
-    ← Depends on all other tracks being complete
+## 🚨 Critical Principle: PURPOSE Over VALUE
+
+When you find hardcoded styling, ask yourself:
+
+### "What is this being used FOR?"
+
+**NOT**: "What is the color value?"
+**BUT**: "What purpose does this color serve?"
+
+### Examples:
+
+#### Example 1: Card Borders
+```swift
+// Found in codebase:
+// File A: .stroke(Color.white.opacity(0.1))  on RoundedRectangle (project card)
+// File B: .stroke(Color.white.opacity(0.15)) on RoundedRectangle (project card)
+// File C: .stroke(Color.white.opacity(0.2))  on RoundedRectangle (project card)
+// File D: .stroke(Color.white.opacity(0.25)) on RoundedRectangle (project card)
+
+// Question: What PURPOSE do these serve?
+// Answer: All are card borders on project/task cards
+
+// Decision: CONSOLIDATE to ONE semantic color
+// OPSStyle.Colors.cardBorder = Color.white.opacity(0.2)  // Middle value
+
+// Replace ALL with:
+.stroke(OPSStyle.Colors.cardBorder)
+```
+
+#### Example 2: Icons - Semantic Mapping
+```swift
+// Found in codebase:
+// ProjectListView.swift
+Image(systemName: "folder")           // Shows a project
+
+// CalendarView.swift
+Image(systemName: "folder.fill")      // Shows a project
+
+// JobBoardView.swift
+Image(systemName: "folder.badge.plus") // Create project button
+
+// Question: What PURPOSE do these serve?
+// Answer: All represent PROJECT entities or PROJECT actions
+
+// Decision: Use SEMANTIC icon, not raw SF Symbol name
+Image(systemName: OPSStyle.Icons.project)      // For project entities
+Image(systemName: OPSStyle.Icons.addProject)   // For create project action
+
+// Why? "folder" is generic. "project" is semantic and clear.
+```
+
+#### Example 3: Text Colors
+```swift
+// Found in codebase:
+// File A: .foregroundColor(.white)  on project title
+// File B: .foregroundColor(.white)  on task title
+// File C: .foregroundColor(.white)  on client name
+// File D: .foregroundColor(.white)  on button text
+
+// Question: What PURPOSE do these serve?
+// Answer: All are PRIMARY TEXT on dark backgrounds
+
+// Decision: CONSOLIDATE to existing semantic color
+.foregroundColor(OPSStyle.Colors.primaryText)
+
+// Already defined in OPSStyle as Color("TextPrimary")
 ```
 
 ---
 
-## Progress Tracking
+## 🧠 When to Consolidate vs When to Create Unique
 
-Use this checklist format to track your implementation:
+### Consolidate When:
+✅ **Same UI element type** (e.g., all card borders)
+✅ **Same visual purpose** (e.g., all primary text)
+✅ **Slightly different values** (0.1 vs 0.15 vs 0.2 - unintentional variation)
+✅ **Should look consistent** (all project cards should match)
 
-### Track A: Expand OPSStyle ⬜
-- ⬜ Add 8 colors to OPSStyle.Colors
-- ⬜ Add ~200 icons to OPSStyle.Icons
-- ⬜ Add Layout.Opacity enum
-- ⬜ Add Layout.Shadow enum
-- ⬜ Add corner radius variants
-- ⬜ Build succeeds
-- ⬜ All constants accessible
+### Create Unique When:
+❌ **Different semantic purpose** (card border ≠ input field border)
+❌ **Intentionally different** (primary text ≠ disabled text)
+❌ **Different context** (onboarding light theme ≠ main dark theme)
+❌ **User customizable** (task type colors chosen by user)
 
-### Track B: Sheet Toolbars ⬜
-- ⬜ Create StandardSheetToolbar.swift
-- ⬜ Migrate 37 files
-- ⬜ Delete duplicate code
-- ⬜ All sheets work correctly
+### Examples:
 
-### Track C: Notifications ⬜
-- ⬜ Add methods to AppState
-- ⬜ Migrate 52 files to NotificationBanner
-- ⬜ Remove duplicate @State
-- ⬜ Consistent error/success UX
+#### Consolidate:
+```swift
+// All serve the same purpose → consolidate
+CalendarView: Card border 0.1
+JobBoard: Card border 0.15
+ProjectDetails: Card border 0.2
+→ OPSStyle.Colors.cardBorder = 0.2
+```
 
-... (continue for each track)
+#### Don't Consolidate (Create Unique):
+```swift
+// Different purposes → keep separate
+Card border 0.2              → OPSStyle.Colors.cardBorder
+Input field border 0.3       → OPSStyle.Colors.inputFieldBorder  (different purpose!)
+Disabled overlay 0.1         → OPSStyle.Colors.disabledOverlay   (different purpose!)
+```
 
 ---
 
-## Verification Strategy
+## 🤔 Decision Tree: When Unsure
 
-After completing each track:
+### Step 1: Identify the Element
+What is being styled?
+- Card border
+- Text color
+- Icon
+- Shadow
+- Background
+- etc.
 
-### 1. Build Verification
+### Step 2: Identify the Purpose
+Why is it being styled this way?
+- Primary content
+- Secondary information
+- Disabled state
+- Error indicator
+- Success indicator
+- etc.
+
+### Step 3: Check Existing Semantic Colors
+Does OPSStyle already have a color for this purpose?
+- YES → Use it
+- NO → Go to Step 4
+
+### Step 4: Check Similar Usage in Codebase
+Are there other places doing the same thing?
+- YES, same purpose → Consolidate to ONE new semantic color
+- NO, unique case → Ask user before creating unique definition
+
+### Step 5: Name Semantically
+Create a name that describes the PURPOSE, not the value:
+- ✅ `cardBorder` (describes purpose: border for cards)
+- ✅ `disabledText` (describes purpose: text that is disabled)
+- ❌ `lightGray` (describes value, not purpose)
+- ❌ `opacity02` (describes value, not purpose)
+
+### Step 6: When in Doubt, ASK THE USER
+```
+⚠️ CONSOLIDATION DECISION NEEDED
+
+Found similar usages:
+- File A: Card border uses Color.white.opacity(0.1)
+- File B: Card border uses Color.white.opacity(0.2)
+- File C: Divider uses Color.white.opacity(0.15)
+
+Should I:
+1. Consolidate ALL to OPSStyle.Colors.cardBorder (0.2)?
+2. Keep cardBorder (0.2) separate from divider (0.15)?
+3. Something else?
+
+My recommendation: [Your analysis]
+```
+
+---
+
+## 📋 Consolidation Workflow (Step-by-Step)
+
+### For Color Migration:
+
+1. **Find hardcoded color**
+   ```swift
+   .foregroundColor(.white)
+   ```
+
+2. **Identify purpose from context**
+   ```swift
+   // Context: Title text on dark background
+   Text(project.title)
+       .foregroundColor(.white)  ← This is PRIMARY TEXT
+   ```
+
+3. **Check if semantic color exists**
+   ```swift
+   // OPSStyle.Colors.primaryText exists? YES
+   ```
+
+4. **Replace**
+   ```swift
+   Text(project.title)
+       .foregroundColor(OPSStyle.Colors.primaryText)
+   ```
+
+5. **Build & verify**
+   ```bash
+   # Build in Xcode, check that UI looks correct
+   ```
+
+### For Icon Migration:
+
+1. **Find hardcoded icon**
+   ```swift
+   Image(systemName: "folder.fill")
+   ```
+
+2. **Identify purpose from context**
+   ```swift
+   // Context: Displaying a project in the job board
+   Image(systemName: "folder.fill")
+       .foregroundColor(project.status.color)
+   // Purpose: This represents a PROJECT entity
+   ```
+
+3. **Check if semantic icon exists**
+   ```swift
+   // OPSStyle.Icons.project exists? YES
+   ```
+
+4. **Replace with semantic icon**
+   ```swift
+   Image(systemName: OPSStyle.Icons.project)
+       .foregroundColor(project.status.color)
+   ```
+
+5. **If semantic icon doesn't exist**
+   ```swift
+   // Option A: Leave NOTE comment
+   // NOTE: Missing semantic icon - "folder.fill" represents project
+   Image(systemName: "folder.fill")
+
+   // Option B: Add to OPSStyle.Icons if it's a common concept
+   // In OPSStyle.swift:
+   static let project = "folder.fill"  // THE icon for Project entities
+   ```
+
+6. **Build & verify**
+
+---
+
+## 🔍 Pattern Recognition Examples
+
+### Pattern: Multiple Opacities for Same Purpose
+
+**Found**:
+```swift
+// Card borders across 15 files:
+File 1: .opacity(0.1)
+File 2: .opacity(0.1)
+File 3: .opacity(0.15)
+File 4: .opacity(0.2)
+File 5: .opacity(0.2)
+File 6: .opacity(0.2)
+...
+File 15: .opacity(0.25)
+```
+
+**Analysis**:
+- All are card borders (same PURPOSE)
+- Values range from 0.1 to 0.25 (likely unintentional variation)
+- Most common value: 0.2 (appears 6 times)
+
+**Decision**:
+```swift
+// Consolidate to ONE
+OPSStyle.Colors.cardBorder = Color.white.opacity(0.2)
+
+// Replace all 15 instances with:
+.stroke(OPSStyle.Colors.cardBorder)
+```
+
+**Result**:
+- 15 hardcoded values → 1 semantic color
+- Visual consistency improved
+- Easy to adjust globally
+
+---
+
+### Pattern: Same SF Symbol, Different Contexts
+
+**Found**:
+```swift
+// "person.2" used in 8 places:
+Context 1: Team members assigned to project  → Crew
+Context 2: Client contacts                   → Client
+Context 3: Organization team view            → Team/Crew
+Context 4: Create team member button         → Add team member
+```
+
+**Analysis**:
+- Same SF Symbol, but DIFFERENT semantic meanings
+- Context determines which semantic icon to use
+
+**Decision**:
+```swift
+// Don't consolidate to one - use semantic icons based on context
+Context 1: OPSStyle.Icons.crew          // For project teams
+Context 2: OPSStyle.Icons.client        // For client entities
+Context 3: OPSStyle.Icons.teamMember    // For individual team members
+Context 4: OPSStyle.Icons.addTeamMember // For add team member action
+```
+
+**Result**:
+- Semantic clarity: Icons match their meaning
+- Easier to update: Change "crew" icon everywhere without affecting "client" icon
+- Self-documenting code
+
+---
+
+## 🚨 Critical Rules
+
+### Rule 1: ALWAYS Ask Before Deleting
+When you find duplicate code:
+1. **STOP** - Don't delete yet
+2. **COMPARE** - Check for differences
+3. **DOCUMENT** - Note file paths and line numbers
+4. **ASK USER** - Which version to keep
+5. **WAIT** - Get confirmation
+6. **THEN DELETE** - Only after approval
+
+### Rule 2: Semantic Names Only
+Never create names based on values:
+- ❌ `white01` (value-based)
+- ❌ `opacity02` (value-based)
+- ❌ `lightGray` (value-based)
+- ✅ `cardBorder` (purpose-based)
+- ✅ `disabledText` (purpose-based)
+- ✅ `projectCardBorder` (purpose-based, context-specific)
+
+### Rule 3: Consolidate Similar Values
+When multiple files use slightly different values for the SAME purpose:
+- Find the most common value OR middle value
+- Consolidate all to that value
+- Document the consolidation
+
+### Rule 4: Build & Test Frequently
+- Build after every 5-10 files migrated
+- Test UI visually to ensure no regressions
+- Commit working increments
+
+### Rule 5: Leave Breadcrumbs
+When you can't find a semantic equivalent:
+```swift
+// NOTE: Missing semantic icon - "arrow.up.circle" represents upload
+Image(systemName: "arrow.up.circle")
+```
+This helps the next agent (or you later) identify gaps in OPSStyle.
+
+---
+
+## 📚 Track Implementation Guides
+
+Each track has a detailed implementation guide:
+
+| Track | Guide Document | Section |
+|-------|---------------|---------|
+| A | OPSSTYLE_GAPS_AND_STANDARDIZATION.md | Part 2 |
+| B | TEMPLATE_STANDARDIZATION.md | Part 1 |
+| C | ARCHITECTURAL_DUPLICATION_AUDIT.md | Part 5, Priority 1 |
+| D | ADDITIONAL_SHEET_CONSOLIDATIONS.md | Section 3 |
+| E | CONSOLIDATION_PLAN.md | Phase 2 |
+| F | CONSOLIDATION_PLAN.md | Phase 4 |
+| G | ADDITIONAL_SHEET_CONSOLIDATIONS.md | Section 2 |
+| H | ADDITIONAL_SHEET_CONSOLIDATIONS.md | Section 1 |
+| I | ADDITIONAL_SHEET_CONSOLIDATIONS.md | Section 4 |
+| J | ARCHITECTURAL_DUPLICATION_AUDIT.md | Part 5, Priority 2 |
+| K | ARCHITECTURAL_DUPLICATION_AUDIT.md | Part 5, Priority 3 |
+| L | CONSOLIDATION_PLAN.md | Phase 6 |
+| M | CONSOLIDATION_PLAN.md | Phase 7 |
+| N | CONSOLIDATION_PLAN.md | Phases 3, 5, 8, 9 |
+
+---
+
+## 🎯 Summary: Key Takeaways
+
+1. **Purpose over value** - Name things by what they DO, not what they ARE
+2. **Consolidate similar** - Don't create 10 definitions when 1 will do
+3. **Semantic first** - Use meaningful names (.project, .task) not generic ones (.folder, .checklist)
+4. **Ask when unsure** - Better to ask than to create bad definitions
+5. **Build frequently** - Catch issues early
+6. **Update handover** - Help the next agent
+
+---
+
+## 🔧 Verification Commands
+
+### Check for remaining hardcoded colors:
 ```bash
-# Project must build without errors
-xcodebuild -project OPS.xcodeproj -scheme OPS build
+# Should return minimal results after Track E
+grep -r "Color\.white\.opacity\|Color\.black\.opacity" --include="*.swift" OPS/Views | grep -v "OPSStyle.swift"
 ```
 
-### 2. Grep Verification
+### Check for remaining hardcoded icons:
 ```bash
-# Example: Verify no hardcoded colors after Track E
-grep -r "\.foregroundColor(\.white)" --include="*.swift" OPS
-grep -r "\.background(\.black)" --include="*.swift" OPS
-
-# Should return minimal results (only legitimate uses)
+# Should return <20 after Track F
+grep -r 'systemName: "' --include="*.swift" OPS/Views | grep -v "OPSStyle.Icons" | wc -l
 ```
 
-### 3. Functional Testing
-- Run app in simulator
-- Test affected features
-- Verify UI consistency
-- Check error scenarios
-
-### 4. Git Commit
+### Check for remaining hardcoded fonts:
 ```bash
-git add .
-git commit -m "Complete Track X: [Track Name]
-
-- Achievement 1
-- Achievement 2
-- Lines saved: X
-
-🤖 Generated with Claude Code"
+# Should return 0 after Track N (fonts)
+grep -r "\.font(\.custom(" --include="*.swift" OPS/Views | grep -v "OPSStyle.swift"
 ```
 
 ---
 
-## Getting Help
+**Remember**: We're not just replacing hardcoded values—we're creating a **semantic design system** that makes the codebase easier to maintain, understand, and evolve.
 
-### If You Get Stuck
-
-1. **Read the detailed guide** for your track (see Document Reference Guide)
-2. **Check prerequisites** - Does your track require another track first?
-3. **Review the audit docs** for context on what you're fixing
-4. **Build frequently** - Catch errors early
-5. **Commit often** - Easy to revert if needed
-
-### Common Issues
-
-**Issue**: "OPSStyle.Colors.errorText" not found
-**Solution**: Track A not complete - expand OPSStyle first
-
-**Issue**: Build fails after migration
-**Solution**: Check imports, verify file paths, ensure no circular dependencies
-
-**Issue**: Too many files to migrate
-**Solution**: Start with 1-2 files, verify pattern works, then batch migrate
+**Good luck!** 🚀
 
 ---
 
-## Success Criteria
-
-### Per-Track Success
-- ✅ All deliverables completed
-- ✅ Project builds without errors
-- ✅ No new warnings introduced
-- ✅ Functionality verified in simulator
-- ✅ Changes committed to git
-
-### Overall Success
-- ✅ ~8,500 lines of duplicate code eliminated
-- ✅ Consistent OPSStyle adoption
-- ✅ Centralized business logic
-- ✅ Generic, reusable components
-- ✅ Better code organization
-- ✅ Easier maintenance going forward
-
----
-
-## Time Estimates
-
-### By Priority Level
-
-| Priority | Tracks | Effort Range | Value |
-|----------|--------|--------------|-------|
-| **Priority 1** (Foundation) | A | 4-6h | 🔴 Blocking |
-| **Priority 2** (Quick Wins) | B, C, D | 20-30h | ⭐⭐⭐⭐⭐ Excellent ROI |
-| **Priority 3** (Major Migrations) | E, F | 35-45h | 🔴 High Impact |
-| **Priority 4** (Advanced) | G, H, I | 22-32h | ⭐⭐⭐⭐ Very Good ROI |
-| **Priority 5** (Architectural) | J, K | 9-12h | ⭐⭐⭐ Good Long-term |
-| **Priority 6** (Cleanup) | L, M, N | 39-49h | ⭐⭐ Polish |
-| **TOTAL** | All Tracks | **109-150h** | Complete modernization |
-
----
-
-## Questions for User
-
-Before starting, clarify with the user:
-
-1. **Which sequence do you want?** (A: Maximum ROI, B: Foundation-First, C: Full Consolidation)
-2. **Any tracks to skip?** (e.g., skip Track M if folder structure is fine)
-3. **Any tracks to prioritize?** (e.g., urgent need for consistent notifications)
-4. **Time constraints?** (helps choose between sequences)
-
----
-
-**Ready to Begin?**
-
-1. Choose your implementation sequence (A, B, or C)
-2. Start with the first track in that sequence
-3. Read the corresponding implementation guide
-4. Execute step-by-step
-5. Verify and commit
-6. Move to next track
-
-Good luck! 🚀
+**Last Updated**: 2025-11-20
+**Read Next**: AGENT_HANDOVER.md to see current progress

@@ -400,23 +400,46 @@ static let successStatus = Color(hex: "#A5B368")
 
 ---
 
-### Task 2.2: Migrate Hardcoded Colors - File by File
+### Task 2.2: Migrate Hardcoded Colors - Batch Pattern Matching
 
 **⚠️ CRITICAL**: Follow Rule 3 (Semantic Colors) - identify the PURPOSE of each color, not just its value.
 
-**Process for each file**:
+**Process - Batch Analysis (20 files at a time)**:
 
-1. **Read the file** to understand context
-2. **Analyze each hardcoded color**:
-   - What element is it styling? (Text, Icon, Background, Border, Shape, etc.)
-   - What is its semantic purpose? (Primary content, secondary info, card structure, status indicator, etc.)
-   - What opacity? (Solid vs. semi-transparent)
-3. **Categorize replacements**:
-   - **Clear patterns** (auto-fix): `Text(...).foregroundColor(.white)` → `primaryText`
-   - **Ambiguous cases** (need approval): `Circle().fill(.white)` → Purpose unclear
-   - **No semantic color exists** (elevate to user): Create new semantic color
-4. **Present batch summary**: "File X: 12 clear fixes, 3 need approval, 1 needs new color"
-5. **Apply after approval**
+1. **Analyze batch of 20 files** to find all hardcoded colors
+2. **Group by pattern** across all files:
+   - Same color + same element type + same context = one pattern
+   - Example: "Color.white.opacity(0.1) on RoundedRectangle borders" appears in 15 files
+3. **Categorize patterns**:
+   - **Clear patterns** (auto-fix): Common semantic purposes already in OPSStyle
+   - **New patterns** (need decision): Same usage across multiple files, but no semantic color exists
+   - **Unique cases** (need approval): One-off usages that don't fit patterns
+4. **Present pattern summary once**:
+   ```
+   BATCH 1 (Files 1-20) - Pattern Analysis:
+
+   CLEAR PATTERNS (auto-fix):
+   - Text(...).foregroundColor(.white) → primaryText (found in 18/20 files, 45 instances)
+   - Color.white.opacity(0.1) on card borders → cardBorder (found in 12/20 files, 28 instances)
+
+   NEW SEMANTIC COLORS NEEDED (ask once):
+   - Color.white.opacity(0.15) on Divider() (found in 8/20 files, 15 instances)
+     → Should I create OPSStyle.Colors.divider?
+   - Color.black.opacity(0.5) on overlay backgrounds (found in 5/20 files, 8 instances)
+     → Should I create OPSStyle.Colors.modalOverlay?
+
+   UNIQUE CASES (need approval):
+   - Circle().fill(.white) in UniversalJobBoardCard.swift line 442 (1 instance)
+     → Purpose unclear, what is this circle for?
+   ```
+5. **Get approval for all patterns in batch**
+6. **Apply across all files at once**
+
+**Benefits of batch approach**:
+- Ask once per pattern, not once per file
+- Discover cross-file patterns
+- More efficient decision-making
+- Consistent application
 
 ---
 

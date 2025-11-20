@@ -138,7 +138,7 @@ struct TeamRoleManagementSheet: View {
                         if hasChanges {
                             VStack(spacing: 0) {
                                 Divider()
-                                    .background(Color.white.opacity(0.1))
+                                    .background(OPSStyle.Colors.separator)
 
                                 HStack(spacing: 12) {
                                     // Cancel changes button
@@ -154,7 +154,7 @@ struct TeamRoleManagementSheet: View {
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                                             )
                                     }
                                     .disabled(isSaving)
@@ -362,7 +362,7 @@ struct TeamMemberRoleEditRow: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(hasChanged ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(hasChanged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
             )
         }
@@ -477,7 +477,7 @@ struct RolePickerSheet: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(currentRole == role ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(currentRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
         .buttonStyle(PlainButtonStyle())

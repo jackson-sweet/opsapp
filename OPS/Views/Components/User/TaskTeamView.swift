@@ -42,7 +42,7 @@ struct TaskTeamView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
         .sheet(isPresented: $showingTeamMemberDetails) {
             if let selectedMember = selectedTeamMember {
@@ -168,7 +168,7 @@ struct TaskTeamView: View {
     private var availableMembersSection: some View {
         Group {
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.separator)
                 .padding(.vertical, 8)
 
             Text("ADD TEAM MEMBERS")

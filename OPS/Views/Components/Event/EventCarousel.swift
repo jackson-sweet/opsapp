@@ -236,7 +236,7 @@ struct EventCardView: View {
                             HStack(spacing: 12) {
                                 ForEach(0..<totalCount, id: \.self) { index in
                                     Circle()
-                                        .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.5))
+                                        .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder)
                                         .frame(width: 13, height: 13)
                                 }
                             }
@@ -264,7 +264,7 @@ struct EventCardView: View {
             if event.task?.status == .completed {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
-                    Color.black.opacity(0.5)
+                    OPSStyle.Colors.modalOverlay
                         .frame(width: 362, height: 100)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
 

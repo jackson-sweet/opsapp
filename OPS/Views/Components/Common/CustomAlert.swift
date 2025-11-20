@@ -35,7 +35,7 @@ struct CustomAlertModifier: ViewModifier {
             content
 
             if alert != nil {
-                Color.black.opacity(0.4)
+                OPSStyle.Colors.modalOverlay
                     .ignoresSafeArea()
                     .transition(.opacity)
 

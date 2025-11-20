@@ -282,7 +282,7 @@ struct CalendarSchedulerSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
         .padding(.horizontal, 20)
         .onChange(of: showOnlyTeamEvents) { _ in
@@ -324,7 +324,7 @@ struct CalendarSchedulerSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
         .padding(.horizontal, 20)
         .onChange(of: showOnlyProjectTasks) { _ in
@@ -446,7 +446,7 @@ struct CalendarSchedulerSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 

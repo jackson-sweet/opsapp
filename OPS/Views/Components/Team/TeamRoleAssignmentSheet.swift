@@ -81,7 +81,7 @@ struct TeamRoleAssignmentSheet: View {
                         // Fixed save button at bottom
                         VStack(spacing: 0) {
                             Divider()
-                                .background(Color.white.opacity(0.1))
+                                .background(OPSStyle.Colors.separator)
 
                             Button(action: {
                                 Task {
@@ -299,7 +299,7 @@ struct TeamMemberRoleRow: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(selectedRole == role ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
         .buttonStyle(PlainButtonStyle())

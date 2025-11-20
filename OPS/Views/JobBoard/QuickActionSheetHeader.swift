@@ -48,7 +48,7 @@ struct QuickActionSheetHeader: View {
             .background(OPSStyle.Colors.cardBackgroundDark)
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.separator)
         }
     }
 }
@@ -133,7 +133,7 @@ struct QuickActionContextHeader: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
     }

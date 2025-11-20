@@ -32,7 +32,7 @@ struct ImageSyncProgressView: View {
                             ZStack(alignment: .leading) {
                                 // Background
                                 RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.white.opacity(0.1))
+                                    .fill(OPSStyle.Colors.separator)
                                     .frame(height: 4)
                                 
                                 // Progress

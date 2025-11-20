@@ -97,7 +97,7 @@ struct SettingsSearchSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(isSearchFocused ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(isSearchFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 
@@ -202,7 +202,7 @@ struct SettingsSearchSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
         .padding(.horizontal, 20)
     }

@@ -26,7 +26,7 @@ struct FloatingActionMenu: View {
         ZStack {
             // Dimmed overlay when menu is open
             if showCreateMenu {
-                Color.black.opacity(0.4)
+                OPSStyle.Colors.modalOverlay
                     .ignoresSafeArea()
                     .onTapGesture {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {

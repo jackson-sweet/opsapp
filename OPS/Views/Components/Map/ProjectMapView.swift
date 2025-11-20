@@ -132,7 +132,7 @@ struct ProjectMapView: View {
                                 Circle()
                                     .fill(OPSStyle.Colors.cardBackground.opacity(0.8))
                                     .frame(width: 44, height: 44)
-                                    .shadow(color: Color.black.opacity(0.3), radius: 3, x: 0, y: 2)
+                                    .shadow(color: OPSStyle.Colors.shadowColor, radius: 3, x: 0, y: 2)
                                 
                                 Image(systemName: "location.fill")
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)

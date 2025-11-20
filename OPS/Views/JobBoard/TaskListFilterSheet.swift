@@ -117,7 +117,7 @@ struct TaskListFilterSheet: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.cardBackgroundDark)
 
             ForEach(availableStatuses, id: \.self) { status in
                 HStack(spacing: 12) {
@@ -148,7 +148,7 @@ struct TaskListFilterSheet: View {
 
                 if status != availableStatuses.last {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 20)
                 }
             }
@@ -167,7 +167,7 @@ struct TaskListFilterSheet: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.cardBackgroundDark)
 
             ForEach(availableTaskTypes, id: \.id) { taskType in
                 HStack(spacing: 12) {
@@ -205,7 +205,7 @@ struct TaskListFilterSheet: View {
 
                 if taskType.id != availableTaskTypes.last?.id {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 20)
                 }
             }
@@ -224,7 +224,7 @@ struct TaskListFilterSheet: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.cardBackgroundDark)
 
             ForEach(availableTeamMembers, id: \.id) { member in
                 filterRow(
@@ -237,7 +237,7 @@ struct TaskListFilterSheet: View {
 
                 if member.id != availableTeamMembers.last?.id {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 40)
                 }
             }
@@ -269,7 +269,7 @@ struct TaskListFilterSheet: View {
 
                 if option != TaskSortOption.allCases.last {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 40)
                 }
             }
@@ -301,7 +301,7 @@ struct TaskListFilterSheet: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
             )
             .padding(.horizontal, 20)

@@ -145,7 +145,7 @@ struct CalendarFilterView: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
             )
         }
@@ -163,9 +163,9 @@ struct CalendarFilterView: View {
             ) {
                 selectedTeamMemberIds.removeAll()
             }
-            
+
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.separator)
             
             // Individual team members
             ForEach(availableTeamMembers, id: \.id) { member in
@@ -179,7 +179,7 @@ struct CalendarFilterView: View {
                 
                 if member.id != availableTeamMembers.last?.id {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 16)
                 }
             }
@@ -200,7 +200,7 @@ struct CalendarFilterView: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.separator)
 
             // Individual task types
             ForEach(availableTaskTypes, id: \.id) { taskType in
@@ -240,7 +240,7 @@ struct CalendarFilterView: View {
 
                 if taskType.id != availableTaskTypes.last?.id {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 16)
                 }
             }
@@ -260,7 +260,7 @@ struct CalendarFilterView: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.separator)
 
             ForEach(Status.allCases, id: \.self) { status in
                 HStack(spacing: 12) {
@@ -293,7 +293,7 @@ struct CalendarFilterView: View {
 
                 if status != Status.allCases.last {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 16)
                 }
             }
@@ -314,7 +314,7 @@ struct CalendarFilterView: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.separator)
 
             // Search field
             HStack(spacing: 8) {
@@ -343,7 +343,7 @@ struct CalendarFilterView: View {
             .background(OPSStyle.Colors.background.opacity(0.5))
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.separator)
 
             // Individual clients (filtered)
             ForEach(filteredClients, id: \.id) { client in
@@ -357,7 +357,7 @@ struct CalendarFilterView: View {
 
                 if client.id != filteredClients.last?.id {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 16)
                 }
             }
@@ -365,7 +365,7 @@ struct CalendarFilterView: View {
             // Show More button
             if hasMoreClients {
                 Divider()
-                    .background(Color.white.opacity(0.1))
+                    .background(OPSStyle.Colors.separator)
 
                 Button(action: {
                     displayedClientCount += 5
@@ -500,7 +500,7 @@ struct CalendarFilterView: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
             )
         }

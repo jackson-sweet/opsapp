@@ -36,7 +36,7 @@ struct MiniMapView: View {
                             Image(systemName: "pin")
                                 .font(.system(size: 28, weight: .semibold))
                                 .foregroundColor(Color.white)
-                                .shadow(color: Color.black.opacity(0.5), radius: 3, x: 0, y: 2)
+                                .shadow(color: OPSStyle.Colors.shadowColor, radius: 3, x: 0, y: 2)
                         }
                     }
                     .mapStyle(mapStyle())
@@ -78,7 +78,7 @@ struct MiniMapView: View {
                             .padding(8)
                             .background(OPSStyle.Colors.primaryAccent)
                             .clipShape(Circle())
-                            .shadow(color: Color.black.opacity(0.3), radius: 3, x: 1, y: 1)
+                            .shadow(color: OPSStyle.Colors.shadowColor, radius: 3, x: 1, y: 1)
                             .padding(12)
                     }
                 }
@@ -86,7 +86,7 @@ struct MiniMapView: View {
         }
         .frame(height: 180)
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-        .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+        .shadow(color: OPSStyle.Colors.shadowColor, radius: 4, x: 0, y: 2)
     }
     
     // Helper to create region

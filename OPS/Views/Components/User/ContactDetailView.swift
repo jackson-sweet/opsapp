@@ -148,7 +148,7 @@ struct ContactDetailView: View {
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                                     )
                                     .padding(.horizontal)
                                     .transition(.asymmetric(
@@ -221,7 +221,7 @@ struct ContactDetailView: View {
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                                     )
                                     .padding(.horizontal)
                                     .transition(.asymmetric(
@@ -232,7 +232,7 @@ struct ContactDetailView: View {
                             }
                             .padding(.top, 8)
                         }
-                        
+
                         // Role information with improved card styling
                         // Only show role section if not a client
                         if !isClient {
@@ -681,7 +681,7 @@ struct ContactDetailView: View {
                                     .background(Color.clear)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white, lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
                                     )
                             }
                             
@@ -699,7 +699,7 @@ struct ContactDetailView: View {
                                     .background(Color.clear)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white, lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
                                     )
                             }
                         }
@@ -781,7 +781,7 @@ struct ContactDetailView: View {
                                         .background(Color.clear)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(Color.white, lineWidth: 1)
+                                                .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
                                         )
                                 }
                             }
@@ -1016,7 +1016,7 @@ struct ContactDetailView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
                 .opacity(showFullContact ? 1 : 0)
                 .offset(y: showFullContact ? 0 : 20)
@@ -1049,7 +1049,7 @@ struct ContactDetailView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
                 .opacity(showFullContact ? 1 : 0)
                 .offset(y: showFullContact ? 0 : 20)
@@ -1098,7 +1098,7 @@ struct ContactDetailView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
             .opacity(showFullContact ? 1 : 0)
             .offset(y: showFullContact ? 0 : 20)

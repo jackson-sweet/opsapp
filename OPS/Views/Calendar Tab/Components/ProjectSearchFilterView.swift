@@ -135,7 +135,7 @@ struct ProjectSearchFilterView: View {
             }
             
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.cardBackgroundDark)
             
             // Individual statuses
             ForEach(availableStatuses, id: \.self) { status in
@@ -169,7 +169,7 @@ struct ProjectSearchFilterView: View {
                 
                 if status != availableStatuses.last {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 40)
                 }
             }
@@ -189,7 +189,7 @@ struct ProjectSearchFilterView: View {
             }
             
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.cardBackgroundDark)
             
             // Individual team members
             ForEach(availableTeamMembers, id: \.id) { member in
@@ -203,7 +203,7 @@ struct ProjectSearchFilterView: View {
                 
                 if member.id != availableTeamMembers.last?.id {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 40)
                 }
             }
@@ -223,7 +223,7 @@ struct ProjectSearchFilterView: View {
             }
             
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.cardBackgroundDark)
             
             // Individual task types
             ForEach(availableTaskTypes, id: \.id) { taskType in
@@ -252,7 +252,7 @@ struct ProjectSearchFilterView: View {
                 
                 if taskType.id != availableTaskTypes.last?.id {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 40)
                 }
             }
@@ -272,7 +272,7 @@ struct ProjectSearchFilterView: View {
             }
             
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.cardBackgroundDark)
             
             // Individual clients
             ForEach(availableClients, id: \.id) { client in
@@ -286,7 +286,7 @@ struct ProjectSearchFilterView: View {
                 
                 if client.id != availableClients.last?.id {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 40)
                 }
             }
@@ -322,7 +322,7 @@ struct ProjectSearchFilterView: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
             )
             .padding(.horizontal, 20)

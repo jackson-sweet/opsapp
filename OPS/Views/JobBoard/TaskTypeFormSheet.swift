@@ -259,7 +259,7 @@ struct TaskTypeFormSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
         }
     }
@@ -314,7 +314,7 @@ struct TaskTypeFormSheet: View {
 
     private var savingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            OPSStyle.Colors.modalOverlay
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {

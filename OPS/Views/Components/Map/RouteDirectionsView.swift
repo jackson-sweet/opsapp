@@ -103,10 +103,10 @@ struct RouteDirectionsView: View {
                                     .fixedSize(horizontal: false, vertical: true) // Allow text to wrap
                             }
                             .padding(.horizontal)
-                            
+
                             if index < directions.count - 2 {
                                 Divider()
-                                    .background(Color.white.opacity(0.2))
+                                    .background(OPSStyle.Colors.inputFieldBorder)
                                     .padding(.horizontal)
                             }
                         }
@@ -177,7 +177,7 @@ struct RouteDirectionsView: View {
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .fill(OPSStyle.Colors.cardBackground.opacity(0.95))
-                .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
+                .shadow(color: OPSStyle.Colors.shadowColor, radius: 8, x: 0, y: 4)
         )
     }
 }

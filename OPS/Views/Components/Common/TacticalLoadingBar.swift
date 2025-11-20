@@ -25,8 +25,8 @@ struct TacticalLoadingBar: View {
         barWidth: CGFloat = 2,
         barHeight: CGFloat = 6,
         spacing: CGFloat = 4,
-        emptyColor: Color = Color.white.opacity(0.2),
-        fillColor: Color = Color.white.opacity(0.6)
+        emptyColor: Color = OPSStyle.Colors.inputFieldBorder,
+        fillColor: Color = OPSStyle.Colors.primaryText
     ) {
         self.progress = min(max(progress, 0.0), 1.0) // Clamp between 0 and 1
         self.barCount = barCount
@@ -71,8 +71,8 @@ struct TacticalLoadingBarAnimated: View {
         barWidth: CGFloat = 2,
         barHeight: CGFloat = 6,
         spacing: CGFloat = 4,
-        emptyColor: Color = Color.white.opacity(0.2),
-        fillColor: Color = Color.white.opacity(0.6)
+        emptyColor: Color = OPSStyle.Colors.inputFieldBorder,
+        fillColor: Color = OPSStyle.Colors.primaryText
     ) {
         self.barCount = barCount
         self.barWidth = barWidth

@@ -82,7 +82,7 @@ struct NotificationBanner: View {
                     .overlay(type.backgroundColor.opacity(0.85))
             )
         }
-        .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
+        .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, x: 0, y: 5)
         .transition(.asymmetric(
             insertion: .move(edge: .top),
             removal: .move(edge: .top)

@@ -299,7 +299,7 @@ struct HomeContentView: View {
     private var loadingOverlay: some View {
         ZStack {
             // Semi-transparent black background
-            Color.black.opacity(0.85)
+            OPSStyle.Colors.cardBackgroundDark
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
@@ -422,7 +422,7 @@ struct HomeContentView: View {
                 
                 ZStack {
                     // Semi-transparent background
-                    Color.black.opacity(0.6)
+                    OPSStyle.Colors.modalOverlay
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
                     

@@ -70,7 +70,7 @@ struct AddressAutocompleteField: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isFocused ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.15), lineWidth: 1)
+                    .stroke(isFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.separator, lineWidth: 1)
             )
             
             // Search results

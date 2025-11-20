@@ -30,7 +30,7 @@ struct SyncStatusIndicator: View {
             )
             .overlay(
                 Capsule()
-                    .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
             )
         } else if dataController.isSyncing {
             HStack(spacing: 8) {
@@ -132,7 +132,7 @@ struct SyncRestoredAlert: View {
                             .frame(width: 24, height: 24)
                             .background(
                                 Circle()
-                                    .fill(Color.white.opacity(0.05))
+                                    .fill(OPSStyle.Colors.cardBackground)
                             )
                     }
                 }
@@ -158,10 +158,10 @@ struct SyncRestoredAlert: View {
                 .overlay(
                     Rectangle()
                         .frame(height: 1)
-                        .foregroundColor(Color.white.opacity(0.1)),
+                        .foregroundColor(OPSStyle.Colors.separator),
                     alignment: .bottom
                 )
-                .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 4)
+                .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, x: 0, y: 4)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .onAppear {
                     // Auto-dismiss after 4 seconds

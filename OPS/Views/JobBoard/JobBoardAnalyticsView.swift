@@ -108,7 +108,7 @@ struct TimeFrameSelector: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 }
@@ -251,7 +251,7 @@ struct ProjectStatusChart: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 }
@@ -283,7 +283,7 @@ struct StatusBar: View {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white.opacity(0.05))
+                        .fill(OPSStyle.Colors.cardBackground)
 
                     RoundedRectangle(cornerRadius: 4)
                         .fill(status.color)
@@ -395,7 +395,7 @@ struct TaskCompletionTrend: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 }
@@ -467,7 +467,7 @@ struct ClientDistributionCard: View {
 
                         if item.client != topClients.last?.client {
                             Divider()
-                                .background(Color.white.opacity(0.05))
+                                .background(OPSStyle.Colors.cardBackground)
                         }
                     }
                 }
@@ -478,7 +478,7 @@ struct ClientDistributionCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 }
@@ -539,7 +539,7 @@ struct TeamPerformanceCard: View {
 
                         if item.member.id != topPerformers.last?.member.id {
                             Divider()
-                                .background(Color.white.opacity(0.05))
+                                .background(OPSStyle.Colors.cardBackground)
                         }
                     }
                 }
@@ -550,7 +550,7 @@ struct TeamPerformanceCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 }
@@ -592,7 +592,7 @@ struct RevenueAnalysisCard: View {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.white.opacity(0.05))
+                            .fill(OPSStyle.Colors.cardBackground)
 
                         RoundedRectangle(cornerRadius: 4)
                             .fill(OPSStyle.Colors.successStatus)
@@ -612,7 +612,7 @@ struct RevenueAnalysisCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 }

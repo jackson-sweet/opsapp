@@ -153,7 +153,7 @@ struct ProjectMapAnnotation: View {
             Image(systemName: markerSymbol)
                 .font(.system(size: markerSize, weight: .semibold))
                 .foregroundColor(markerColor)
-                .shadow(color: Color.black.opacity(0.5), radius: 2, x: 0, y: 2)
+                .shadow(color: OPSStyle.Colors.shadowColor, radius: 2, x: 0, y: 2)
         }
         // Use an extremely large hit area for better touch recognition
         .contentShape(Rectangle())

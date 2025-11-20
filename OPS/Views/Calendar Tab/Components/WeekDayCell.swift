@@ -59,9 +59,9 @@ struct WeekDayCell: View {
                             Spacer()
                             ZStack {
                                 Circle()
-                                    .fill(Color.white.opacity(0.8))
+                                    .fill(Color.white.opacity(0.9))
                                     .frame(width: 16, height: 16)
-                                
+
                                 Text("\(newEventCount)")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(Color.black)

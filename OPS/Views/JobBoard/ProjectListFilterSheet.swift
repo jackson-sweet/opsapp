@@ -106,7 +106,7 @@ struct ProjectListFilterSheet: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.separator)
 
             ForEach(availableStatuses, id: \.self) { status in
                 HStack(spacing: 12) {
@@ -137,7 +137,7 @@ struct ProjectListFilterSheet: View {
 
                 if status != availableStatuses.last {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 20)
                 }
             }
@@ -156,7 +156,7 @@ struct ProjectListFilterSheet: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.separator)
 
             ForEach(availableTeamMembers, id: \.id) { member in
                 filterRow(
@@ -169,7 +169,7 @@ struct ProjectListFilterSheet: View {
 
                 if member.id != availableTeamMembers.last?.id {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 40)
                 }
             }
@@ -201,7 +201,7 @@ struct ProjectListFilterSheet: View {
 
                 if option != ProjectSortOption.allCases.last {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBackground)
                         .padding(.leading, 40)
                 }
             }
@@ -233,7 +233,7 @@ struct ProjectListFilterSheet: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
             )
             .padding(.horizontal, 20)

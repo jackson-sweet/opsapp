@@ -52,7 +52,7 @@ struct ProjectImageView: View {
                                 .padding(4)
                                 .background(Color.red)
                                 .clipShape(Circle())
-                                .shadow(color: Color.black.opacity(0.5), radius: 2, x: 0, y: 1)
+                                .shadow(color: OPSStyle.Colors.shadowColor, radius: 2, x: 0, y: 1)
                                 .padding(6)
                         }
                         

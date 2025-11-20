@@ -125,12 +125,8 @@ struct JobBoardDashboard: View {
                 .padding(.bottom, 120)
                 .padding(.top, 20)
 
-            LinearGradient(
-                gradient: Gradient(colors: [Color.black.opacity(0.8), Color.clear]),
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: 74)
+            OPSStyle.Layout.Gradients.carouselFadeLeft
+                .frame(width: 74)
 
             Spacer()
         }
@@ -175,12 +171,8 @@ struct JobBoardDashboard: View {
         HStack(spacing: 0) {
             Spacer()
 
-            LinearGradient(
-                gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.8)]),
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: 74)
+            OPSStyle.Layout.Gradients.carouselFadeRight
+                .frame(width: 74)
 
             Rectangle()
                 .fill(color.opacity(isActive ? 1.0 : 0.6))
@@ -263,17 +255,13 @@ struct JobBoardDashboard: View {
             Spacer()
 
             ZStack {
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.8), Color.black]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 180)
+                OPSStyle.Layout.Gradients.pageIndicatorFade
+                    .frame(height: 180)
 
                 HStack(spacing: 6) {
                     ForEach(statuses.indices, id: \.self) { index in
                         Rectangle()
-                            .fill(currentPageIndex == index ? statuses[index].color : Color.white.opacity(0.2))
+                            .fill(currentPageIndex == index ? statuses[index].color : OPSStyle.Colors.pageIndicatorInactive)
                             .frame(width: 20, height: 2)
                     }
                     .padding(.bottom, 120)

@@ -152,7 +152,7 @@ struct UserAvatar: View {
             // Loading indicator
             if isLoading {
                 Circle()
-                    .fill(Color.black.opacity(0.3))
+                    .fill(OPSStyle.Colors.avatarOverlay)
                     .frame(width: size, height: size)
                     .overlay(
                         ProgressView()

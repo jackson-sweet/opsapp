@@ -532,7 +532,7 @@ struct TaskFormSheet: View {
             HStack(spacing: 0) {
                 // Colored left border (4pt width) - task type color
                 Rectangle()
-                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? Color.white.opacity(0.25))
+                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? OPSStyle.Colors.cardBorder)
                     .frame(width: 4)
 
                 Menu {

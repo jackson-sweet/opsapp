@@ -406,7 +406,7 @@ struct ProjectSearchSheet: View {
                         .fill(searchInTasks ? OPSStyle.Colors.cardBackgroundDark.opacity(0.8) : OPSStyle.Colors.cardBackgroundDark)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent.opacity(0.2) : Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent.opacity(0.2) : OPSStyle.Colors.cardBorder, lineWidth: 1)
                         )
                 )
             }
@@ -477,7 +477,7 @@ struct ProjectSearchSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
             }
             .padding(.horizontal)
@@ -543,7 +543,7 @@ struct ProjectSearchSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
             }
             .padding(.horizontal)
@@ -610,7 +610,7 @@ struct ProjectSearchSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
             }
             .padding(.horizontal)

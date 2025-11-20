@@ -222,7 +222,7 @@ struct SeatManagementView: View {
                 ZStack(alignment: .leading) {
                     // Background track
                     Rectangle()
-                        .fill(Color.white.opacity(0.1))
+                        .fill(OPSStyle.Colors.subtleBackground)
                         .frame(height: 2)
                     
                     // Progress fill
@@ -279,7 +279,7 @@ struct SeatManagementView: View {
                     // Divider between rows
                     if user.id != allTeamMembers.last?.id {
                         Divider()
-                            .background(Color.white.opacity(0.05))
+                            .background(OPSStyle.Colors.subtleBackground)
                             .padding(.horizontal, 24)
                     }
                 }

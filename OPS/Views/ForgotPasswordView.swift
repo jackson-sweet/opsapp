@@ -18,7 +18,7 @@ struct ForgotPasswordView: View {
     var body: some View {
         ZStack {
             // Background
-            Color.black.opacity(0.8)
+            OPSStyle.Colors.darkBackground
                 .edgesIgnoringSafeArea(.all)
                 .onTapGesture {
                     isPresented = false
@@ -65,7 +65,7 @@ struct ForgotPasswordView: View {
                                 .textFieldStyle(PlainTextFieldStyle())
                             
                             Rectangle()
-                                .fill(!email.isEmpty ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.3))
+                                .fill(!email.isEmpty ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder)
                                 .frame(height: 1)
                                 .animation(.easeInOut(duration: 0.2), value: email.isEmpty)
                         }
@@ -147,7 +147,7 @@ struct ForgotPasswordView: View {
                             .frame(height: 56)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.pageIndicatorInactive, lineWidth: 1)
                             )
                     }
                     .padding(.horizontal, 24)
@@ -161,7 +161,7 @@ struct ForgotPasswordView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
             .padding(.horizontal, 40)
         }

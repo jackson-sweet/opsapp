@@ -766,7 +766,7 @@ struct LoginSuccessView: View {
     var body: some View {
         ZStack {
             // Pure black background with subtle opacity
-            Color.black.opacity(0.95)
+            OPSStyle.Colors.darkBackground
                 .edgesIgnoringSafeArea(.all)
             
             // Tactical content container
@@ -843,7 +843,7 @@ struct LoginSuccessView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: 1)
             )
             .padding(.horizontal, 60)
             .scaleEffect(showCheckmark ? 1 : 0.95)

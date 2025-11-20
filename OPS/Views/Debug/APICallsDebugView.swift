@@ -131,7 +131,7 @@ struct APICallsDebugView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8)
-                            .background(Color.black.opacity(0.3))
+                            .background(OPSStyle.Colors.avatarOverlay)
                             .cornerRadius(8)
                     }
                     .frame(height: 200)

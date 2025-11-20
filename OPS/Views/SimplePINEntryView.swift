@@ -25,7 +25,7 @@ struct SimplePINEntryView: View {
         var borderColor: Color {
             switch self {
             case .neutral:
-                return Color.white.opacity(0.3)
+                return OPSStyle.Colors.pinDotNeutral
             case .success:
                 return OPSStyle.Colors.successStatus
             case .error:
@@ -231,9 +231,9 @@ struct PINDigitBox: View {
         }
         // Show active state with brighter border when field is focused
         if isActive {
-            return isFilled ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.8)
+            return isFilled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.pinDotActive
         }
-        return isFilled ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.3)
+        return isFilled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.pinDotNeutral
     }
     
     private var borderWidth: CGFloat {

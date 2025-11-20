@@ -45,7 +45,7 @@ struct GracePeriodBanner: View {
                                 .padding(.vertical, 4)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 2)
-                                        .stroke(Color.black.opacity(0.5), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.darkBorder, lineWidth: 1)
                                 )
                         }
                     }
@@ -57,7 +57,7 @@ struct GracePeriodBanner: View {
                 
                 // Separator - thinner line
                 Rectangle()
-                    .fill(Color.black.opacity(0.3))
+                    .fill(OPSStyle.Colors.darkBorder)
                     .frame(height: 1)
             }
             .sheet(isPresented: $showPlanSelection) {

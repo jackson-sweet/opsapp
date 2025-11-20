@@ -84,7 +84,7 @@ struct TaskCompletionChecklistSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 
@@ -99,7 +99,7 @@ struct TaskCompletionChecklistSheet: View {
                     taskChecklistRow(task: task)
                     if task.id != project.tasks.filter({ $0.status != .completed }).last?.id {
                         Divider()
-                            .background(Color.white.opacity(0.1))
+                            .background(OPSStyle.Colors.subtleBackground)
                     }
                 }
             }
@@ -118,7 +118,7 @@ struct TaskCompletionChecklistSheet: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .stroke(taskStates[task.id] == true ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2), lineWidth: 1.5)
+                        .stroke(taskStates[task.id] == true ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1.5)
                         .frame(width: 20, height: 20)
 
                     if taskStates[task.id] == true {
@@ -155,7 +155,7 @@ struct TaskCompletionChecklistSheet: View {
     private var completeButtonSection: some View {
         VStack(spacing: 0) {
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.subtleBackground)
 
             Button(action: {
                 completeAllTasksAndProject()
@@ -168,7 +168,7 @@ struct TaskCompletionChecklistSheet: View {
                     .background(Color.clear)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(allTasksComplete ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(allTasksComplete ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
             }
             .disabled(!allTasksComplete)

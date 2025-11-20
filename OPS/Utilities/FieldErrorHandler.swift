@@ -95,7 +95,7 @@ enum FieldErrorHandler {
                 Spacer()
             }
             .padding()
-            .background(Color.black.opacity(0.8))
+            .background(OPSStyle.Colors.darkBackground)
             .cornerRadius(8)
             .padding(.horizontal)
         }

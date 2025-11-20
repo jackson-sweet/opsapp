@@ -174,7 +174,7 @@ struct PlanSelectionView: View {
         if isPollingSubscriptionStatus {
             ZStack {
                 // Pure black background with subtle opacity
-                Color.black.opacity(0.95)
+                OPSStyle.Colors.darkBackground
                     .ignoresSafeArea()
                     .transition(.opacity)
                 
@@ -307,7 +307,7 @@ struct PlanSelectionView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
                 .padding(.horizontal, 24)
                 .scaleEffect(isPollingSubscriptionStatus ? 1.0 : 0.95)
@@ -368,7 +368,7 @@ struct PlanSelectionView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
     }
@@ -434,11 +434,11 @@ struct PlanSelectionView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
     }
-    
+
     // MARK: - Promo Code Section
     
     private var promoCodeSection: some View {
@@ -487,13 +487,13 @@ struct PlanSelectionView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 12)
-                            .background(Color.white.opacity(0.05))
+                            .background(OPSStyle.Colors.subtleBackground)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(
                                         validatedPromoCode != nil ? OPSStyle.Colors.warningStatus.opacity(0.3) :
-                                        Color.white.opacity(0.1),
+                                        OPSStyle.Colors.cardBorder,
                                         lineWidth: 1
                                     )
                             )
@@ -531,7 +531,7 @@ struct PlanSelectionView: View {
                                 }
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .frame(width: 80, height: 40)
-                                .background(Color.white.opacity(0.1))
+                                .background(OPSStyle.Colors.subtleBackground)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             } else {
                                 Text("APPLY")
@@ -548,7 +548,7 @@ struct PlanSelectionView: View {
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                             .stroke(
                                                 promoCode.isEmpty ?
-                                                Color.white.opacity(0.1) :
+                                                OPSStyle.Colors.cardBorder :
                                                 Color.clear,
                                                 lineWidth: 1
                                             )
@@ -1581,14 +1581,14 @@ struct PlanCard: View {
                 .padding(.vertical, isCurrentPlan ? 8 : 14)
                 .padding(.bottom, isCurrentPlan ? 14 : 0)
             }
-            .background(isSelected ? Color.white.opacity(0.05) : Color.clear)
+            .background(isSelected ? OPSStyle.Colors.subtleBackground : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(
-                        isSelected ? Color.white.opacity(0.5) :
-                        isCurrentPlan ? Color.white.opacity(0.3) :
-                        Color.white.opacity(0.1),
+                        isSelected ? OPSStyle.Colors.pageIndicatorInactive :
+                        isCurrentPlan ? OPSStyle.Colors.pinDotNeutral :
+                        OPSStyle.Colors.cardBorder,
                         lineWidth: isSelected ? 2 : 1
                     )
             )

@@ -168,7 +168,7 @@ struct ProfileImageUploader: View {
             // Upload overlay when uploading
             if isUploading {
                 Circle()
-                    .fill(Color.black.opacity(0.5))
+                    .fill(OPSStyle.Colors.modalOverlay)
                     .overlay(
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -178,7 +178,7 @@ struct ProfileImageUploader: View {
             // Loading overlay when downloading image
             if isLoadingImage {
                 Circle()
-                    .fill(Color.black.opacity(0.3))
+                    .fill(OPSStyle.Colors.avatarOverlay)
                     .overlay(
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -227,7 +227,7 @@ struct ProfileImageUploader: View {
             // Upload overlay when uploading
             if isUploading {
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color.black.opacity(0.5))
+                    .fill(OPSStyle.Colors.modalOverlay)
                     .overlay(
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -237,7 +237,7 @@ struct ProfileImageUploader: View {
             // Loading overlay when downloading image
             if isLoadingImage {
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color.black.opacity(0.3))
+                    .fill(OPSStyle.Colors.avatarOverlay)
                     .overlay(
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))

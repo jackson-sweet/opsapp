@@ -41,10 +41,11 @@ enum OPSStyle {
         static let statusBackground = Color("StatusBackground") // Status badge background
 
         // Border colors
-        static let cardBorder = Color.white.opacity(0.1) // Standard card border
+        static let cardBorder = Color.white.opacity(0.2) // Standard card border (consolidated from 0.1, 0.15, 0.2 variations)
         static let cardBorderSubtle = Color.white.opacity(0.05) // Subtle card border for less prominent cards
         static let inputFieldBorder = Color.white.opacity(0.2) // Input fields, text editors, form controls, avatar circles
         static let buttonBorder = Color.white.opacity(0.4) // Secondary action buttons
+        static let darkBorder = Color.black.opacity(0.5) // Dark borders; used by GracePeriodBanner
         
         // Text colors
         static let primaryText = Color("TextPrimary") // White
@@ -77,16 +78,24 @@ enum OPSStyle {
 
         // Overlays & Loading
         static let modalOverlay = Color.black.opacity(0.5)  // Modal and loading overlay backgrounds
+        static let imageOverlay = Color.black.opacity(0.7)  // Photo/image overlays (for thumbnails, photo grids)
+        static let avatarOverlay = Color.black.opacity(0.3) // Avatar badge overlays
         static let loadingSpinner = Color("TextPrimary")    // Loading spinner/ProgressView tint (white)
 
         // Calendar-specific
         static let todayHighlight = Color("AccentPrimary").opacity(0.5)  // Today's date background in calendar
 
-        // Shadows
-        static let shadowColor = Color.black.opacity(0.3)  // Standard shadow
+        // UI State Indicators
+        static let pageIndicatorInactive = Color.white.opacity(0.5) // Inactive page indicator dots in carousels
+        static let pinDotNeutral = Color.white.opacity(0.3) // PIN entry neutral/inactive state; also used by TacticalLoadingBar empty color
+        static let pinDotActive = Color.white.opacity(0.8)  // PIN entry active state; also used by TacticalLoadingBar fill color
 
-        // Separators
+        // Shadows
+        static let shadowColor = Color.black.opacity(0.15)  // Standard shadow (consolidated from 0.15, 0.3, 0.5 variations)
+
+        // Separators & Subtle Backgrounds
         static let separator = Color.white.opacity(0.15)  // For divider lines
+        static let subtleBackground = Color.white.opacity(0.1) // Subtle row backgrounds within cards (consolidated from 0.05, 0.1 variations)
         
         // Gradients
         static let backgroundGradient = LinearGradient(
@@ -214,6 +223,37 @@ enum OPSStyle {
             static let card = (color: Color.black.opacity(0.1), radius: 4.0, x: 0.0, y: 2.0)
             static let elevated = (color: Color.black.opacity(0.2), radius: 8.0, x: 0.0, y: 4.0)
             static let floating = (color: Color.black.opacity(0.3), radius: 12.0, x: 0.0, y: 6.0)
+        }
+
+        // Gradient presets
+        enum Gradients {
+            // Header fade: opaque to transparent (used by HomeContentView header)
+            static let headerFade = LinearGradient(
+                colors: [Color.black.opacity(1), Color.black.opacity(0)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Carousel left fade: dark to transparent (used by JobBoardDashboard carousel)
+            static let carouselFadeLeft = LinearGradient(
+                colors: [Color.black.opacity(0.8), Color.clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+
+            // Carousel right fade: transparent to dark (used by JobBoardDashboard carousel)
+            static let carouselFadeRight = LinearGradient(
+                colors: [Color.clear, Color.black.opacity(0.8)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+
+            // Page indicator fade: transparent to dark to opaque (used by JobBoardDashboard page indicators)
+            static let pageIndicatorFade = LinearGradient(
+                colors: [Color.clear, Color.black.opacity(0.8), Color.black],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
         }
     }
     

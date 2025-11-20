@@ -25,7 +25,7 @@ struct OPSCardStyle {
                 .padding(padding)
                 .background(OPSStyle.Colors.cardBackground)
                 .cornerRadius(cornerRadius)
-                .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
+                .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, x: 0, y: 4)
         }
     }
     

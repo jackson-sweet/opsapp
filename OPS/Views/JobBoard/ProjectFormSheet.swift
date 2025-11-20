@@ -1030,11 +1030,11 @@ struct ProjectFormSheet: View {
                                             .frame(width: 24, height: 24)
                                             .background(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                    .fill(Color.black.opacity(0.7))
+                                                    .fill(OPSStyle.Colors.imageOverlay)
                                             )
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                                                    .stroke(OPSStyle.Colors.pinDotNeutral, lineWidth: 1)
                                             )
                                     }
                                     .padding(6)

@@ -63,7 +63,7 @@ struct ProjectCard: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .padding()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.7))
+                        .background(OPSStyle.Colors.imageOverlay)
                         .foregroundColor(Color.red)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
@@ -74,7 +74,7 @@ struct ProjectCard: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .padding()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.7))
+                        .background(OPSStyle.Colors.imageOverlay)
                         .foregroundColor(OPSStyle.Colors.secondaryAccent)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }

@@ -55,8 +55,8 @@ struct ProjectPhotosGrid: View {
                                         // Show a subtle delete icon overlay during long press
                                         ZStack {
                                             if longPressingPhotoIndex == index {
-                                                Color.black.opacity(0.5)
-                                                
+                                                OPSStyle.Colors.modalOverlay
+
                                                 Image(systemName: "trash")
                                                     .font(.system(size: 30))
                                                     .foregroundColor(.white)
@@ -116,7 +116,7 @@ struct ProjectPhotosGrid: View {
                 // Loading overlay when processing image
                 if processingImage {
                     ZStack {
-                        Color.black.opacity(0.7)
+                        OPSStyle.Colors.imageOverlay
                         VStack {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
@@ -261,7 +261,7 @@ struct PhotoThumbnail: View {
                                 .padding(2)
                                 .background(Color.red)
                                 .clipShape(Circle())
-                                .shadow(color: Color.black.opacity(0.5), radius: 1, x: 0, y: 1)
+                                .shadow(color: OPSStyle.Colors.shadowColor, radius: 1, x: 0, y: 1)
                                 .padding(4)
                         }
                         

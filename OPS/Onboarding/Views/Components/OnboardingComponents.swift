@@ -204,7 +204,7 @@ struct InputFieldLabel: View {
     var body: some View {
         Text(label)
             .font(OPSStyle.Typography.captionBold)
-            .foregroundColor(.white.opacity(0.7))
+            .foregroundColor(OPSStyle.Colors.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -336,7 +336,7 @@ struct OnboardingNavigationButtons: View {
                 .frame(height: 52)
                 .frame(maxWidth: .infinity)
                 .background(isPrimaryDisabled || isLoading ?
-                           (isLightTheme ? OPSStyle.Colors.primaryAccent.opacity(0.7) : Color.white.opacity(0.7)) :
+                           (isLightTheme ? OPSStyle.Colors.primaryAccent.opacity(0.7) : OPSStyle.Colors.secondaryText) :
                            (isLightTheme ? OPSStyle.Colors.primaryAccent : Color.white))
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }

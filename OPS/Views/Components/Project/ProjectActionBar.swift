@@ -133,7 +133,7 @@ struct ProjectActionBar: View {
             Group {
                 if processingImage {
                     ZStack {
-                        Color.black.opacity(0.7)
+                        OPSStyle.Colors.imageOverlay
                         VStack {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))

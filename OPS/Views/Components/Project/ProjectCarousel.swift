@@ -185,7 +185,7 @@ struct ProjectCardView: View {
                         HStack(spacing: 12) {
                             ForEach(0..<totalCount, id: \.self) { index in
                                 Circle()
-                                    .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.5))
+                                    .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.pageIndicatorInactive)
                                     .frame(width: 13, height: 13)
                             }
                         }
@@ -239,7 +239,7 @@ struct ProjectCardView: View {
                             .font(OPSStyle.Typography.bodyBold)
                             .padding()
                             .frame(width: 362, height: 85)
-                            .background(Color.black.opacity(0.7))
+                            .background(OPSStyle.Colors.imageOverlay)
                             .foregroundColor(Color.red)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
@@ -250,7 +250,7 @@ struct ProjectCardView: View {
                             .font(OPSStyle.Typography.bodyBold)
                             .padding()
                             .frame(width: 362, height: 85)
-                            .background(Color.black.opacity(0.7))
+                            .background(OPSStyle.Colors.imageOverlay)
                             .foregroundColor(OPSStyle.Colors.secondaryAccent)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
@@ -262,7 +262,7 @@ struct ProjectCardView: View {
                 Text("Long press to view details")
                     .font(OPSStyle.Typography.cardBody)
                     .padding(8)
-                    .background(Color.black.opacity(0.7))
+                    .background(OPSStyle.Colors.imageOverlay)
                     .foregroundColor(Color.white)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .position(x: 362/2, y: 85-20)

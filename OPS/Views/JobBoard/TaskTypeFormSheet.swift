@@ -550,7 +550,7 @@ struct IconOption: View {
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(
-                                        isSelected ? color.opacity(0.3) : (isInUse && !isSelected ? Color.white : Color.white.opacity(0.1)),
+                                        isSelected ? color.opacity(0.3) : (isInUse && !isSelected ? Color.white : OPSStyle.Colors.cardBorder),
                                         lineWidth: isInUse && !isSelected ? 2 : 1
                                     )
                             )

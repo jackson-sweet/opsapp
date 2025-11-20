@@ -101,7 +101,7 @@ struct ProjectHeader: View {
             }
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
         )
-        .shadow(color: Color.black.opacity(0.3), radius: 10, y: 5)
+        .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, y: 5)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }

@@ -133,6 +133,51 @@ This allows each to evolve independently as design requirements change.
 **Bad**: Forcing `.white` text on a button to use `cardBorder` just because they're both white
 **Good**: Creating `buttonTextOnAccent` if buttons need a specific text color
 
+### Rule 3.1: Consolidate Similar UI Elements to Single Semantic Color
+
+**⚠️ CRITICAL**: When the SAME type of UI element uses SLIGHTLY DIFFERENT opacity values across different files, they should be **consolidated to ONE semantic color**.
+
+**Example - Job/Task Card Borders**:
+- File 1: Task card border uses `Color.white.opacity(0.2)`
+- File 2: Task card border uses `Color.white.opacity(0.3)`
+- File 3: Project card border uses `Color.white.opacity(0.25)`
+
+**❌ WRONG Approach**: Create three separate colors
+```swift
+static let taskCardBorder02 = Color.white.opacity(0.2)
+static let taskCardBorder03 = Color.white.opacity(0.3)
+static let projectCardBorder025 = Color.white.opacity(0.25)
+```
+
+**✅ CORRECT Approach**: Create ONE semantic color for the shared purpose
+```swift
+static let jobCardBorder = Color.white.opacity(0.2)  // Used for all project/task card borders
+```
+
+**Why**: These small opacity variations (0.2 vs 0.3 vs 0.25) are likely unintentional inconsistencies, not deliberate design choices. Consolidating them:
+- Ensures visual consistency across the app
+- Reduces the number of semantic colors needed
+- Makes future design updates easier (change once, applies everywhere)
+
+**When migrating**:
+1. **Identify the SEMANTIC PURPOSE**: "What is this color used for?" (e.g., card border, input field border, divider)
+2. **Group by PURPOSE, not by VALUE**: All card borders should use the same semantic color
+3. **Choose ONE representative opacity**: Usually the most common value or middle value
+4. **If unsure which elements are "the same purpose"**: **ASK THE USER** before consolidating
+
+**Example Question Format**:
+```
+⚠️ CONSOLIDATION DECISION NEEDED
+
+I found these similar usages:
+- ProjectCard.swift:45 - Card border uses Color.white.opacity(0.2)
+- TaskCard.swift:89 - Card border uses Color.white.opacity(0.3)
+- EventCard.swift:112 - Card border uses Color.white.opacity(0.25)
+
+Should these all use the same semantic color `jobCardBorder`?
+If yes, which opacity value should I use? (0.2, 0.25, or 0.3)
+```
+
 ---
 
 ## ⚠️ CRITICAL UPDATE - Comprehensive Audit Completed

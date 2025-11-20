@@ -507,7 +507,7 @@ struct PlanSummaryCard: View {
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText.opacity(0.5))
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(isSelected ? Color.white.opacity(0.05) : OPSStyle.Colors.cardBackground)
+            .background(isSelected ? OPSStyle.Colors.subtleBackground : OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

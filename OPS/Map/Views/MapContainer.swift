@@ -239,7 +239,7 @@ struct MapContainer: View {
 struct LocationPermissionOverlay: View {
     var body: some View {
         ZStack {
-            Color.black.opacity(0.6)
+            OPSStyle.Colors.imageOverlay
                 .ignoresSafeArea()
             
             VStack(spacing: 24) {

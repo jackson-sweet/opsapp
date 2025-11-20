@@ -170,13 +170,9 @@ struct HomeContentView: View {
             // Top gradient overlay
             Color(.black)
                 .frame(height: 80)
-            
-            LinearGradient(
-                colors: [Color.black.opacity(1), Color.black.opacity(0)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 300)
+
+            OPSStyle.Layout.Gradients.headerFade
+                .frame(height: 300)
             
             Spacer()
         }
@@ -309,8 +305,8 @@ struct HomeContentView: View {
                     barWidth: 2,
                     barHeight: 6,
                     spacing: 4,
-                    emptyColor: Color.white.opacity(0.2),
-                    fillColor: Color.white.opacity(0.6)
+                    emptyColor: OPSStyle.Colors.pinDotNeutral,
+                    fillColor: OPSStyle.Colors.pinDotActive
                 )
 
                 // Loading text

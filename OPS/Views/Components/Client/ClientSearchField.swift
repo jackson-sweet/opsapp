@@ -75,7 +75,7 @@ struct ClientSearchField: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
 
             // Suggestions dropdown
@@ -123,9 +123,9 @@ struct ClientSearchField: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
-                .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
+                .shadow(color: OPSStyle.Colors.shadowColor, radius: 8, x: 0, y: 4)
                 .padding(.top, 4)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }

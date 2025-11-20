@@ -16,7 +16,7 @@ struct LocationPermissionView: View {
     var body: some View {
         ZStack {
             // Semi-transparent background
-            Color.black.opacity(0.7)
+            OPSStyle.Colors.imageOverlay
                 .ignoresSafeArea()
             
             VStack(spacing: 24) {

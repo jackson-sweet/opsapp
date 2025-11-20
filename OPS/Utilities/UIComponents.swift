@@ -146,7 +146,7 @@ struct LoadingView: View {
             if isFullScreen {
                 OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
             } else {
-                Color.black.opacity(0.4)
+                OPSStyle.Colors.modalOverlay
                     .edgesIgnoringSafeArea(.all)
             }
 

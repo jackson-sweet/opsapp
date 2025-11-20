@@ -72,7 +72,7 @@ struct SubClientListView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
             } else {
                 // Sub-client list
@@ -529,7 +529,7 @@ struct SubClientRow: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
         .animation(.easeInOut(duration: 0.3), value: isExpanded)
         .sheet(isPresented: $showingCreateContact) {

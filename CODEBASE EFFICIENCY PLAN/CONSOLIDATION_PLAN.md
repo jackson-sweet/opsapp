@@ -473,19 +473,31 @@ OPSStyle.Colors.cardBackground
 
 ## Phase 4: Migrate Hardcoded Icons
 
+**🎯 SEMANTIC ICON UPDATE (Nov 19, 2025)**: Track A implemented a semantic icon approach with 45 OPS domain icons + 30 generic symbols. Migration strategy updated to prioritize semantic icons over raw SF Symbol names.
+
 **⚠️ CRITICAL UPDATE**: Comprehensive audit reveals **498 icon instances** across **122 files**, not 207 instances. See `HARDCODED_VALUES_AUDIT.md` for complete breakdown.
 
 **Actual scope**:
 - Total `systemName:` usage: **498 instances**
-- OPSStyle.Icons defined: **~60 icons**
+- OPSStyle.Icons defined (original): **~60 icons**
+- OPSStyle.Icons defined (after Track A): **~75 icons (45 semantic + 30 generic)**
 - **Hardcoded violations**: **~438 instances** (88% violation rate)
-- **Estimated effort**: 20-25 hours (requires adding ~200 icons to OPSStyle first)
+- **Estimated effort**: 15-20 hours (reduced due to semantic standardization)
 
 ### Task 4.1: Update OPSStyle.Icons with Missing Icons
 
 **File**: `OPS/Styles/OPSStyle.swift`
 
-**Action**: Add to Icons struct any SF Symbols found in code but not defined. Search codebase for `Image(systemName: "` and catalog all unique icons.
+**✅ COMPLETED in Track A**: OPSStyle.Icons now includes:
+- **45 semantic OPS domain icons** - Use these FIRST (e.g., `OPSStyle.Icons.project`, `.task`, `.client`)
+- **30 generic SF Symbols** - Use only when semantic icons don't fit
+
+**Migration Priority**:
+1. **Use semantic icons** - If the icon represents a core OPS concept (project, task, client, etc.), use the semantic icon
+2. **Use generic symbols** - Only for generic UI elements (shapes, navigation)
+3. **Add to semantic section** - If a new domain concept needs an icon, add it to the semantic section
+
+**Action**: ~~Add to Icons struct any SF Symbols found in code but not defined.~~ Already completed. Focus on migration to semantic icons.
 
 **Common icons to ensure exist**:
 ```swift
@@ -544,18 +556,32 @@ struct Icons {
 
 ---
 
-### Task 4.2: Migrate Icon Strings - High Frequency Files (207 instances)
+### Task 4.2: Migrate Icon Strings - High Frequency Files (438 instances)
 
-**Strategy**: Use find-and-replace with regex for each file
+**Strategy**: Semantic-first migration - understand the icon's purpose, then use the appropriate semantic icon
 
-**Pattern**:
+**Pattern** (Semantic Approach):
 ```swift
-// FIND:
+// FIND (context: client list):
 Image(systemName: "person.circle")
 
-// REPLACE WITH:
-Image(systemName: OPSStyle.Icons.personCircle)
+// REPLACE WITH (semantic):
+Image(systemName: OPSStyle.Icons.client)  // Uses semantic icon, not raw SF Symbol name
+
+// FIND (context: team member):
+Image(systemName: "person.fill")
+
+// REPLACE WITH (semantic):
+Image(systemName: OPSStyle.Icons.teamMember)  // Semantic clarity
+
+// FIND (generic navigation):
+Image(systemName: "chevron.right")
+
+// REPLACE WITH (generic symbol - OK since it's not domain-specific):
+Image(systemName: OPSStyle.Icons.forward)  // Or use .chevronUp from generic catalog
 ```
+
+**Key Principle**: Prefer semantic icons (`OPSStyle.Icons.project`) over generic symbols (`OPSStyle.Icons.folderFill`)
 
 **Files to update (by category)**:
 

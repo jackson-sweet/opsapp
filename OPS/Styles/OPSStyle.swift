@@ -55,6 +55,26 @@ enum OPSStyle {
         static let warningStatus = Color("StatusWarning") // Yellow/Orange
         static let errorStatus = Color("StatusError") // Red (#FF3B30)
         static let inactiveStatus = Color("StatusInactive") // Gray (#8E8E93)
+
+        // Status text colors (for foreground, not background)
+        // Reuse existing status asset colors for text as well
+        static let errorText = Color("StatusError")     // Same as errorStatus - works for both bg and text
+        static let successText = Color("StatusSuccess") // Same as successStatus - works for both bg and text
+        static let warningText = Color("StatusWarning") // Same as warningStatus - works for both bg and text
+
+        // UI state colors
+        static let disabledText = Color("TextTertiary") // Reuse tertiaryText for disabled state
+        static let placeholderText = Color(red: 0.6, green: 0.6, blue: 0.6)  // #999999 (medium gray)
+
+        // Button-specific colors
+        static let buttonText = Color.white  // For text on accent backgrounds
+        static let invertedText = Color.black  // For light-on-dark inversions
+
+        // Shadows
+        static let shadowColor = Color.black.opacity(0.3)  // Standard shadow
+
+        // Separators
+        static let separator = Color.white.opacity(0.15)  // For divider lines
         
         // Gradients
         static let backgroundGradient = LinearGradient(
@@ -147,7 +167,7 @@ enum OPSStyle {
         static let spacing3 = 16.0
         static let spacing4 = 24.0
         static let spacing5 = 32.0
-        
+
         // Content padding
         static let contentPadding = EdgeInsets(
             top: spacing3,
@@ -155,15 +175,34 @@ enum OPSStyle {
             bottom: spacing3,
             trailing: spacing3
         )
-        
+
         // Touch targets - Minimum 44×44 as per Apple HIG, but we go larger for field use
         static let touchTargetMin = 44.0
         static let touchTargetStandard = 56.0
         static let touchTargetLarge = 64.0
-        
-        // Radius
-        static let cornerRadius = 5.0
-        static let buttonRadius = 5.0
+
+        // Corner radius variants
+        static let cornerRadius = 5.0       // Standard corner radius
+        static let buttonRadius = 5.0       // Button corner radius
+        static let smallCornerRadius = 2.5  // For badges, small UI elements
+        static let cardCornerRadius = 8.0   // For larger cards
+        static let largeCornerRadius = 12.0 // For modals, sheets
+
+        // Opacity presets
+        enum Opacity {
+            static let subtle = 0.1   // Disabled, very light overlays
+            static let light = 0.3    // Light overlays
+            static let medium = 0.5   // Medium overlays
+            static let strong = 0.7   // Strong overlays
+            static let heavy = 0.9    // Almost opaque
+        }
+
+        // Shadow presets
+        enum Shadow {
+            static let card = (color: Color.black.opacity(0.1), radius: 4.0, x: 0.0, y: 2.0)
+            static let elevated = (color: Color.black.opacity(0.2), radius: 8.0, x: 0.0, y: 4.0)
+            static let floating = (color: Color.black.opacity(0.3), radius: 12.0, x: 0.0, y: 6.0)
+        }
     }
     
     // MARK: - Animation
@@ -174,6 +213,63 @@ enum OPSStyle {
 
     // MARK: - Icons
     enum Icons {
+        // MARK: - OPS Domain Semantic Icons
+        // These are THE standardized icons for core OPS concepts
+        // Always use these for their designated purpose to maintain consistency
+
+        // Core entities
+        static let project = "folder.fill"                  // THE icon for Projects
+        static let task = "checklist"                       // THE icon for Tasks
+        static let taskType = "tag.fill"                    // THE icon for Task Types
+        static let client = "person.circle.fill"            // THE icon for Clients
+        static let subClient = "person.2.fill"              // THE icon for Sub-clients
+        static let teamMember = "person.fill"               // THE icon for Team Members
+        static let crew = "person.3.fill"                   // THE icon for Crews/Teams
+
+        // Scheduling & Time
+        static let schedule = "calendar.badge.clock"        // THE icon for Scheduling
+        static let deadline = "calendar.badge.exclamationmark" // THE icon for Deadlines
+        static let duration = "clock.fill"                  // THE icon for Duration/Time
+
+        // Location & Site
+        static let jobSite = "location.fill"                // THE icon for Job Sites
+        static let address = "mappin.and.ellipse"           // THE icon for Addresses
+
+        // Content & Media
+        static let notes = "note.text"                      // THE icon for Notes
+        static let description = "text.alignleft"           // THE icon for Description
+        static let photos = "photo.on.rectangle"            // THE icon for Photos
+        static let documents = "doc.text.fill"              // THE icon for Documents
+
+        // Actions
+        static let add = "plus.circle.fill"                 // THE icon for Add/Create
+        static let edit = "pencil.circle.fill"              // THE icon for Edit
+        static let delete = "trash.fill"                    // THE icon for Delete
+        static let sync = "arrow.triangle.2.circlepath"     // THE icon for Sync
+        static let share = "square.and.arrow.up"            // THE icon for Share
+        static let filter = "line.horizontal.3.decrease.circle" // THE icon for Filter
+        static let sort = "arrow.up.arrow.down.circle"      // THE icon for Sort
+
+        // Status & State
+        static let complete = "checkmark.circle.fill"       // THE icon for Complete
+        static let incomplete = "circle"                    // THE icon for Incomplete
+        static let inProgress = "clock.arrow.circlepath"    // THE icon for In Progress (if needed)
+        static let alert = "exclamationmark.triangle.fill"  // THE icon for Alerts/Warnings
+        static let error = "xmark.octagon.fill"             // THE icon for Errors
+        static let info = "info.circle.fill"                // THE icon for Information
+
+        // System
+        static let settings = "gearshape.fill"              // THE icon for Settings
+        static let search = "magnifyingglass"               // THE icon for Search
+        static let menu = "line.3.horizontal"               // THE icon for Menu
+        static let close = "xmark"                          // THE icon for Close/Dismiss
+        static let back = "chevron.left"                    // THE icon for Back navigation
+        static let forward = "chevron.right"                // THE icon for Forward navigation
+
+        // MARK: - Legacy SF Symbols (Currently in Use)
+        // These are used in existing code - during Track F migration, replace with semantic icons above
+        // Example: Replace `OPSStyle.Icons.calendar` with `OPSStyle.Icons.schedule`
+
         static let calendar = "calendar"
         static let calendarFill = "calendar.fill"
         static let person = "person"
@@ -222,6 +318,7 @@ enum OPSStyle {
         static let ellipsis = "ellipsis"
         static let ellipsisCircle = "ellipsis.circle"
         static let ellipsisCircleFill = "ellipsis.circle.fill"
+        static let listBullet = "list.bullet"
         static let trash = "trash"
         static let trashFill = "trash.fill"
         static let pencil = "pencil"
@@ -233,7 +330,6 @@ enum OPSStyle {
         static let magnifyingglassCircle = "magnifyingglass.circle"
         static let magnifyingglassCircleFill = "magnifyingglass.circle.fill"
         static let bellFill = "bell.fill"
-        static let listBullet = "list.bullet"
         static let photo = "photo"
         static let photoFill = "photo.fill"
         static let camera = "camera"

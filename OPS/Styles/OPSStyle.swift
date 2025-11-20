@@ -43,6 +43,8 @@ enum OPSStyle {
         // Border colors
         static let cardBorder = Color.white.opacity(0.1) // Standard card border
         static let cardBorderSubtle = Color.white.opacity(0.05) // Subtle card border for less prominent cards
+        static let inputFieldBorder = Color.white.opacity(0.2) // Input fields, text editors, form controls, avatar circles
+        static let buttonBorder = Color.white.opacity(0.4) // Secondary action buttons
         
         // Text colors
         static let primaryText = Color("TextPrimary") // White
@@ -62,6 +64,9 @@ enum OPSStyle {
         static let successText = Color("StatusSuccess") // Same as successStatus - works for both bg and text
         static let warningText = Color("StatusWarning") // Same as warningStatus - works for both bg and text
 
+        // Status background colors (for banner/alert backgrounds)
+        static let warningBackground = Color("StatusWarning").opacity(0.1) // Warning banner backgrounds
+
         // UI state colors
         static let disabledText = Color("TextTertiary") // Reuse tertiaryText for disabled state
         static let placeholderText = Color(red: 0.6, green: 0.6, blue: 0.6)  // #999999 (medium gray)
@@ -69,6 +74,13 @@ enum OPSStyle {
         // Button-specific colors
         static let buttonText = Color.white  // For text on accent backgrounds
         static let invertedText = Color.black  // For light-on-dark inversions
+
+        // Overlays & Loading
+        static let modalOverlay = Color.black.opacity(0.5)  // Modal and loading overlay backgrounds
+        static let loadingSpinner = Color("TextPrimary")    // Loading spinner/ProgressView tint (white)
+
+        // Calendar-specific
+        static let todayHighlight = Color("AccentPrimary").opacity(0.5)  // Today's date background in calendar
 
         // Shadows
         static let shadowColor = Color.black.opacity(0.3)  // Standard shadow

@@ -15,9 +15,12 @@ import SwiftData
 class AppState: ObservableObject {
     @Published var activeProjectID: String?
     @Published var activeTaskID: String? // Store only task ID, not the model
-    
+
     // New flag to differentiate between showing details and starting project
     @Published var isViewingDetailsOnly: Bool = false
+
+    // Track when home view is loading projects
+    @Published var isLoadingProjects: Bool = false
     
     var isInProjectMode: Bool {
         // Only consider in project mode if we're not just viewing details
@@ -135,6 +138,7 @@ class AppState: ObservableObject {
         self.isViewingDetailsOnly = false
         self.activeProjectID = nil
         self.activeTaskID = nil
+        self.isLoadingProjects = false
     }
     
     // Helper method to dismiss project details without exiting project mode

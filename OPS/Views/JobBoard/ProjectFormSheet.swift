@@ -203,15 +203,27 @@ struct ProjectFormSheet: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(spacing: 24) {
-                        // PREVIEW CARD
-                        previewCard
+                    ScrollViewReader { proxy in
+                        VStack(spacing: 24) {
+                            // PREVIEW CARD
+                            previewCard
 
-                        // MANDATORY FIELDS (always visible)
-                        mandatoryFieldsSection
+                            // MANDATORY FIELDS (always visible)
+                            mandatoryFieldsSection
 
-                        // OPTIONAL SECTIONS
-                        optionalSectionsArea
+                            // OPTIONAL SECTIONS
+                            optionalSectionsArea
+                                .onChange(of: sectionOrder) { _, _ in
+                                    // Scroll to the first section in the order (most recently opened)
+                                    if let firstSection = sectionOrder.first {
+                                        // Small delay to allow expansion animation to complete
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            withAnimation {
+                                                proxy.scrollTo(firstSection, anchor: .top)
+                                            }
+                                        }
+                                    }
+                                }
 
                         // COPY FROM BUTTON (at bottom)
                         if mode.isCreate {
@@ -238,6 +250,7 @@ struct ProjectFormSheet: View {
                     }
                     .padding()
                     .padding(.bottom, 24)
+                    }
                 }
 
                 if isSaving {
@@ -612,22 +625,27 @@ struct ProjectFormSheet: View {
                 case .address:
                     if isAddressExpanded {
                         addressSection
+                            .id(OptionalSection.address)
                     }
                 case .description:
                     if isDescriptionExpanded {
                         descriptionSection
+                            .id(OptionalSection.description)
                     }
                 case .notes:
                     if isNotesExpanded {
                         notesSection
+                            .id(OptionalSection.notes)
                     }
                 case .tasks:
                     if isTasksExpanded {
                         tasksSection
+                            .id(OptionalSection.tasks)
                     }
                 case .photos:
                     if isPhotosExpanded {
                         photosSection
+                            .id(OptionalSection.photos)
                     }
                 }
             }

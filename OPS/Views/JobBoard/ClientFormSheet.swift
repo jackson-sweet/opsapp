@@ -726,36 +726,33 @@ struct ClientFormSheet: View {
 
                 Spacer()
 
-                // Avatar on right side - expands to fill vertical space
+                // Avatar on right side
                 ZStack {
                     if let image = clientImage {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
-                            .frame(maxHeight: .infinity)
-                            .aspectRatio(1, contentMode: .fit)
+                            .frame(width: 56, height: 56)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
                     } else if !name.isEmpty {
                         // Show initials if name exists but no image
                         Circle()
                             .stroke(Color.white, lineWidth: 2)
-                            .frame(maxHeight: .infinity)
-                            .aspectRatio(1, contentMode: .fit)
+                            .frame(width: 56, height: 56)
                             .overlay(
                                 Text(String(name.prefix(1)).uppercased())
-                                    .font(.custom("Mohave-Bold", size: 24))
+                                    .font(.custom("Mohave-Bold", size: 22))
                                     .foregroundColor(.white)
                             )
                     } else {
                         // Placeholder
                         Circle()
                             .fill(OPSStyle.Colors.cardBackgroundDark)
-                            .frame(maxHeight: .infinity)
-                            .aspectRatio(1, contentMode: .fit)
+                            .frame(width: 56, height: 56)
                             .overlay(
                                 Image(systemName: "building.2")
-                                    .font(.system(size: 24))
+                                    .font(.system(size: 22))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
                             .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))

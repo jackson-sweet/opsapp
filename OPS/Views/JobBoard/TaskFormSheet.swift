@@ -182,10 +182,7 @@ struct TaskFormSheet: View {
                                 statusField
                                 teamField
                                 datesField
-                                // Notes only available when task has a project (not in draft mode)
-                                if !mode.isDraft {
-                                    notesField
-                                }
+                                notesField
                             }
                         }
                     }

@@ -60,6 +60,8 @@ struct HomeContentView: View {
             // 4. Loading overlay
             if isLoading {
                 loadingOverlay
+                    .transition(.opacity)
+                    .zIndex(999)
             }
 
             // 5. Initial sync loading screen - shows on first login

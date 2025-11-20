@@ -140,6 +140,10 @@ struct HomeView: View {
                 loadTodaysProjects()
             }
         }
+        // Sync loading state with appState
+        .onChange(of: isLoading) { _, newValue in
+            appState.isLoadingProjects = newValue
+        }
         // Use onReceive with NotificationCenter for location changes
         .onReceive(NotificationCenter.default.publisher(for: .locationDidChange)) { _ in
             if inProgressManager.isRouting, 

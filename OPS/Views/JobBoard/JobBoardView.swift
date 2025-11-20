@@ -22,10 +22,9 @@ struct JobBoardView: View {
     @State private var isPreloadingClients = false
     @State private var hasPreloadedClients = false
 
-    // Permission check
-    private var hasAccess: Bool {
-        guard let currentUser = dataController.currentUser else { return false }
-        return currentUser.role == .admin || currentUser.role == .officeCrew
+    // Permission checks
+    private var isFieldCrew: Bool {
+        return dataController.currentUser?.role == .fieldCrew
     }
 
     private var isAdmin: Bool {
@@ -60,13 +59,19 @@ struct JobBoardView: View {
 
                 VStack(spacing: 0) {
 
-                    // Section selector
-                    JobBoardSectionSelector(selectedSection: $selectedSection)
-                        .padding(.top, 70) // Account for header
-                        .onChange(of: selectedSection) { oldValue, newValue in
-                            previousSection = oldValue
-                        }
-                        .padding(.horizontal, 16)
+                    // Section selector (hidden for field crew)
+                    if !isFieldCrew {
+                        JobBoardSectionSelector(selectedSection: $selectedSection)
+                            .padding(.top, 70) // Account for header
+                            .onChange(of: selectedSection) { oldValue, newValue in
+                                previousSection = oldValue
+                            }
+                            .padding(.horizontal, 16)
+                    } else {
+                        // Add spacing for field crew to account for header
+                        Spacer()
+                            .frame(height: 70)
+                    }
 
                     // Universal search bar
                     if selectedSection != .dashboard {

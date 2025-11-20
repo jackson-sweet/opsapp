@@ -101,7 +101,7 @@ struct TacticalInitialLoadingView: View {
                 Text("[ VERSION \(AppConfiguration.AppInfo.version.uppercased()) ]")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.bottom, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, 48)
             }
         }
         .onAppear {

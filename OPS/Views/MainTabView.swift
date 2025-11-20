@@ -49,11 +49,8 @@ struct MainTabView: View {
             TabItem(iconName: "house.fill")
         ]
 
-        // Add Job Board tab for admin and office crew only
-        // Use the tracked userRole state to ensure reactivity
-        if userRole == .admin || userRole == .officeCrew {
-            baseTabs.append(TabItem(iconName: "briefcase.fill"))
-        }
+        // Add Job Board tab for all users (admin, office crew, and field crew)
+        baseTabs.append(TabItem(iconName: "briefcase.fill"))
 
         // Add Schedule and Settings for all users
         baseTabs.append(contentsOf: [
@@ -95,30 +92,18 @@ struct MainTabView: View {
 
             // Content views with transition - each complete view slides as a unit
             ZStack {
-                if tabCount == 4 { // Admin/Office Crew with Job Board
-                    switch selectedTab {
-                    case 0:
-                        HomeView()
-                    case 1:
-                        JobBoardView()
-                    case 2:
-                        ScheduleView()
-                    case 3:
-                        SettingsView()
-                    default:
-                        HomeView()
-                    }
-                } else { // Field Crew without Job Board
-                    switch selectedTab {
-                    case 0:
-                        HomeView()
-                    case 1:
-                        ScheduleView()
-                    case 2:
-                        SettingsView()
-                    default:
-                        HomeView()
-                    }
+                // All users now have Job Board access
+                switch selectedTab {
+                case 0:
+                    HomeView()
+                case 1:
+                    JobBoardView()
+                case 2:
+                    ScheduleView()
+                case 3:
+                    SettingsView()
+                default:
+                    HomeView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -150,12 +135,13 @@ struct MainTabView: View {
             }
             .ignoresSafeArea(.all, edges: .bottom)
             .preferredColorScheme(.dark)
-            .opacity(keyboardIsShowing || dataController.isPerformingInitialSync ? 0 : 1)
+            .opacity(keyboardIsShowing || dataController.isPerformingInitialSync || appState.isLoadingProjects ? 0 : 1)
             .animation(.easeInOut(duration: 0.25), value: keyboardIsShowing)
             .animation(.easeInOut(duration: 0.25), value: dataController.isPerformingInitialSync)
+            .animation(.easeInOut(duration: 0.25), value: appState.isLoadingProjects)
 
-            // Floating action menu - visible across all tabs except Settings and during initial sync (Office Crew and Admin only)
-            if !isSettingsTab && !dataController.isPerformingInitialSync {
+            // Floating action menu - visible across all tabs except Settings and during initial sync/loading
+            if !isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects {
                 FloatingActionMenu()
                     .environmentObject(dataController)
             }

@@ -1367,8 +1367,23 @@ struct UniversalJobBoardCard: View {
 
     // Helper function to determine if UNSCHEDULED badge should be shown
     private func shouldShowUnscheduledBadge(for project: Project) -> Bool {
-        // Task-only scheduling migration: Check if any tasks are unscheduled
-        let unscheduledTasks = project.tasks.filter { task in
+        // If project has no tasks, show unscheduled badge
+        if project.tasks.isEmpty {
+            return true
+        }
+
+        // Filter out completed and cancelled tasks from unscheduled calculation
+        let relevantTasks = project.tasks.filter { task in
+            task.status != .completed && task.status != .cancelled
+        }
+
+        // If all tasks are completed/cancelled, don't show badge
+        if relevantTasks.isEmpty {
+            return false
+        }
+
+        // Check if any relevant tasks are unscheduled
+        let unscheduledTasks = relevantTasks.filter { task in
             task.calendarEvent?.startDate == nil
         }
         return !unscheduledTasks.isEmpty

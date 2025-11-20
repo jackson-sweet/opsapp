@@ -396,8 +396,18 @@ struct JobBoardDashboard: View {
     }
 
     private func projectsForStatus(_ status: Status) -> [Project] {
-        allProjects.filter { $0.status == status }
-            .sorted { ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast) }
+        var filteredProjects = allProjects.filter { $0.status == status }
+
+        // Field crew only sees projects they're assigned to
+        if let currentUser = dataController.currentUser, currentUser.role == .fieldCrew {
+            filteredProjects = filteredProjects.filter { project in
+                project.teamMembers.contains { user in
+                    user.id == currentUser.id
+                }
+            }
+        }
+
+        return filteredProjects.sorted { ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast) }
     }
 
     private func getPreviousStatus() -> Status? {

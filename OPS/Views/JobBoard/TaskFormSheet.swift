@@ -434,7 +434,7 @@ struct TaskFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
                     )
                     .foregroundColor(selectedProject != nil ? .clear : OPSStyle.Colors.primaryText)
                     .font(OPSStyle.Typography.body)
@@ -472,7 +472,7 @@ struct TaskFormSheet: View {
                         }
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
+                        .shadow(color: OPSStyle.Colors.shadowColor, radius: 8, x: 0, y: 4)
                         .padding(.top, 4)
                     }
                 }
@@ -579,7 +579,7 @@ struct TaskFormSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
     }
@@ -621,7 +621,7 @@ struct TaskFormSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
             }
         }
@@ -675,7 +675,7 @@ struct TaskFormSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
         }
@@ -732,7 +732,7 @@ struct TaskFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
                 }
                 // In draft mode, always enabled. In regular mode, requires project
@@ -775,7 +775,7 @@ struct TaskFormSheet: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
-                            focusedField == .notes ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.25),
+                            focusedField == .notes ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
                             lineWidth: 1
                         )
                 )
@@ -805,12 +805,12 @@ struct TaskFormSheet: View {
 
     private var savingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            OPSStyle.Colors.modalOverlay
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.loadingSpinner))
                     .scaleEffect(1.5)
 
                 Text("Creating Task...")

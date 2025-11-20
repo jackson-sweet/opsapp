@@ -243,7 +243,7 @@ struct ProjectFormSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.4), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
                                 )
                             }
                         }
@@ -411,7 +411,7 @@ struct ProjectFormSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
         )
     }
 
@@ -443,7 +443,7 @@ struct ProjectFormSheet: View {
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(
-                        focusedField == .client ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
+                        focusedField == .client ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
                         lineWidth: 1
                     )
             )
@@ -482,7 +482,7 @@ struct ProjectFormSheet: View {
 
                             if client.id != matchingClients.prefix(5).last?.id {
                                 Divider()
-                                    .background(Color.white.opacity(0.1))
+                                    .background(OPSStyle.Colors.cardBorder)
                             }
                         }
                     }
@@ -491,7 +491,7 @@ struct ProjectFormSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
                 )
             }
         }
@@ -516,7 +516,7 @@ struct ProjectFormSheet: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
-                            focusedField == .title ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.15),
+                            focusedField == .title ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
                             lineWidth: 1
                         )
                 )
@@ -566,7 +566,7 @@ struct ProjectFormSheet: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
-                            isStatusMenuFocused ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
+                            isStatusMenuFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
                             lineWidth: 1
                         )
                 )
@@ -730,7 +730,7 @@ struct ProjectFormSheet: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
-                                focusedField == .description ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
+                                focusedField == .description ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
                                 lineWidth: 1
                             )
                     )
@@ -792,7 +792,7 @@ struct ProjectFormSheet: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
-                                focusedField == .notes ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
+                                focusedField == .notes ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
                                 lineWidth: 1
                             )
                     )
@@ -992,7 +992,7 @@ struct ProjectFormSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 
@@ -1093,17 +1093,17 @@ struct ProjectFormSheet: View {
 
     private var savingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            OPSStyle.Colors.modalOverlay
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.loadingSpinner))
                     .scaleEffect(1.5)
 
                 Text("Saving Project...")
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .padding(32)
             .background(OPSStyle.Colors.cardBackgroundDark)
@@ -1813,7 +1813,7 @@ struct ExpandableSection<Content: View>: View {
 
                 // Divider between header and content
                 Divider()
-                    .background(Color.white.opacity(0.1))
+                    .background(OPSStyle.Colors.cardBorder)
 
                 // Content area
                 VStack(spacing: 0) {
@@ -1826,7 +1826,7 @@ struct ExpandableSection<Content: View>: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
     }

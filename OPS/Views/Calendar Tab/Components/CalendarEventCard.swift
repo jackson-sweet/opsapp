@@ -190,7 +190,7 @@ struct CalendarEventCard: View {
             if event.task?.status == .completed {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
-                    Color.black.opacity(0.5)
+                    OPSStyle.Colors.modalOverlay
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
 
                     // Completed badge

@@ -464,13 +464,13 @@ struct StatusColumn: View {
         .overlay(
             HStack(spacing: 0) {
                 Rectangle()
-                    .fill(Color.white.opacity(0.1))
+                    .fill(OPSStyle.Colors.separator)
                     .frame(width: 1)
 
                 Spacer()
 
                 Rectangle()
-                    .fill(Color.white.opacity(0.1))
+                    .fill(OPSStyle.Colors.separator)
                     .frame(width: 1)
             }
             .padding(.horizontal, 4)
@@ -489,7 +489,7 @@ struct StatusColumn: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
             Rectangle()
-                .fill(Color.white.opacity(0.2))
+                .fill(OPSStyle.Colors.separator)
                 .frame(height: 1)
 
             Text("[ \(projects.count) ]")
@@ -531,7 +531,7 @@ struct StatusColumn: View {
         VStack(spacing: 8) {
             Image(systemName: "folder")
                 .font(.system(size: 28))
-                .foregroundColor(Color.white.opacity(0.1))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Text("No Projects")
                 .font(OPSStyle.Typography.caption)
@@ -860,7 +860,7 @@ struct DraggingCardOverlay: View {
             .frame(width: 256)
             .fixedSize(horizontal: false, vertical: true)
             .scaleEffect(0.98)
-            .shadow(color: Color.black.opacity(0.3), radius: 12, x: 0, y: 4)
+            .shadow(color: OPSStyle.Colors.shadowColor, radius: 12, x: 0, y: 4)
             .position(x: dragLocation.x, y: dragLocation.y - 120)
             .transition(dropTransition)
             .allowsHitTesting(false)

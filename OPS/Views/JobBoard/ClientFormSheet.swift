@@ -135,7 +135,7 @@ struct ClientFormSheet: View {
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
-                                                    focusedField == .name ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2),
+                                                    focusedField == .name ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
                                                     lineWidth: 1
                                                 )
                                         )
@@ -176,7 +176,7 @@ struct ClientFormSheet: View {
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
-                                                    showEmailError ? Color.red.opacity(0.5) : (focusedField == .email ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2)),
+                                                    showEmailError ? Color.red.opacity(0.5) : (focusedField == .email ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
                                                     lineWidth: 1
                                                 )
                                         )
@@ -210,7 +210,7 @@ struct ClientFormSheet: View {
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
-                                                    showPhoneError ? Color.red.opacity(0.5) : (focusedField == .phone ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.2)),
+                                                    showPhoneError ? Color.red.opacity(0.5) : (focusedField == .phone ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
                                                     lineWidth: 1
                                                 )
                                         )
@@ -275,7 +275,7 @@ struct ClientFormSheet: View {
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
-                                                    focusedField == .notes ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.25),
+                                                    focusedField == .notes ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
                                                     lineWidth: 1
                                                 )
                                         )
@@ -322,7 +322,7 @@ struct ClientFormSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.4), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
                                 )
                             }
                         }
@@ -452,7 +452,7 @@ struct ClientFormSheet: View {
                             .scaledToFill()
                             .frame(width: 80, height: 80)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 2))
+                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2))
                     } else {
                         Circle()
                             .fill(OPSStyle.Colors.cardBackgroundDark)
@@ -462,7 +462,7 @@ struct ClientFormSheet: View {
                                     .font(.system(size: 32))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
-                            .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 2))
+                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2))
                     }
                 }
             }
@@ -734,7 +734,7 @@ struct ClientFormSheet: View {
                             .scaledToFill()
                             .frame(width: 56, height: 56)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
+                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2))
                     } else if !name.isEmpty {
                         // Show initials if name exists but no image
                         Circle()
@@ -755,7 +755,7 @@ struct ClientFormSheet: View {
                                     .font(.system(size: 22))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
-                            .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 2))
+                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2))
                     }
                 }
             }
@@ -765,7 +765,7 @@ struct ClientFormSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
         }
     }

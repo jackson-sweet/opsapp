@@ -73,7 +73,7 @@ struct ProjectStatusChangeSheet: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                             )
                         }
 
@@ -94,7 +94,7 @@ struct ProjectStatusChangeSheet: View {
 
                                     if status != Status.allCases.last {
                                         Divider()
-                                            .background(Color.white.opacity(0.05))
+                                            .background(OPSStyle.Colors.cardBorderSubtle)
                                     }
                                 }
                             }
@@ -269,7 +269,7 @@ struct SchedulingModeConversionSheet: View {
                         }
                     }
                     .padding(OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
 
                     // Explanation
@@ -304,7 +304,7 @@ struct SchedulingModeConversionSheet: View {
                         Button(action: performConversion) {
                             if isConverting {
                                 ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.loadingSpinner))
                             } else {
                                 Text("CONVERT")
                             }
@@ -492,7 +492,7 @@ struct TaskPickerForTeamChange: View {
 
                                     if index < project.tasks.count - 1 {
                                         Divider()
-                                            .background(Color.white.opacity(0.05))
+                                            .background(OPSStyle.Colors.cardBorderSubtle)
                                     }
                                 }
                             }
@@ -500,7 +500,7 @@ struct TaskPickerForTeamChange: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                             )
                         }
 
@@ -648,7 +648,7 @@ struct ProjectTeamChangeView: View {
 
                 if index < project.teamMembers.count - 1 {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBorderSubtle)
                 }
             }
         }
@@ -704,7 +704,7 @@ struct ProjectTeamChangeView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
             }
         }
@@ -904,7 +904,7 @@ struct TaskTeamChangeView: View {
 
                 if index < task.teamMembers.count - 1 {
                     Divider()
-                        .background(Color.white.opacity(0.05))
+                        .background(OPSStyle.Colors.cardBorderSubtle)
                 }
             }
             }
@@ -953,7 +953,7 @@ struct TaskTeamChangeView: View {
 
                         if member.id != availableMembers.last?.id {
                             Divider()
-                                .background(Color.white.opacity(0.05))
+                                .background(OPSStyle.Colors.cardBorderSubtle)
                         }
                     }
                 }
@@ -961,7 +961,7 @@ struct TaskTeamChangeView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
             }
         }
@@ -1071,7 +1071,7 @@ struct JBPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(OPSStyle.Typography.bodyBold)
-            .foregroundColor(.white)
+            .foregroundColor(OPSStyle.Colors.invertedText)
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .background(OPSStyle.Colors.primaryAccent)
@@ -1090,7 +1090,7 @@ struct JBSecondaryButtonStyle: ButtonStyle {
             .background(OPSStyle.Colors.cardBackgroundDark)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
             )
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)

@@ -102,7 +102,7 @@ struct PushInMessage: View {
                                 .frame(width: 24, height: 24)
                                 .background(
                                     Circle()
-                                        .fill(Color.white.opacity(0.05))
+                                        .fill(OPSStyle.Colors.cardBackgroundDark)
                                 )
                         }
                     }
@@ -135,10 +135,10 @@ struct PushInMessage: View {
                 .overlay(
                     Rectangle()
                         .frame(height: 1)
-                        .foregroundColor(Color.white.opacity(0.1)),
+                        .foregroundColor(OPSStyle.Colors.cardBorder),
                     alignment: .bottom
                 )
-                .shadow(color: Color.black, radius: 10, x: 0, y: 4)
+                .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, x: 0, y: 4)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .onAppear {
                     // Auto-dismiss after specified duration

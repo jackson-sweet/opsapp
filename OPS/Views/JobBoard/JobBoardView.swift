@@ -181,9 +181,9 @@ struct FloatingActionItem: View {
                     .clipShape(Circle())
                     .overlay(
                         Circle()
-                            .stroke(OPSStyle.Colors.secondaryText.opacity(1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.secondaryText, lineWidth: 1)
                     )
-                    .shadow(color: OPSStyle.Colors.background.opacity(0.3), radius: 4, x: 0, y: 2)
+                    .shadow(color: OPSStyle.Colors.shadowColor, radius: 4, x: 0, y: 2)
                 
             }
            
@@ -297,7 +297,7 @@ struct JobBoardDashboardOld: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         
                         Divider()
-                            .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                            .background(OPSStyle.Colors.separator)
                     }
                 }
                 .background(OPSStyle.Colors.cardBackgroundDark)

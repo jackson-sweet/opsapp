@@ -322,7 +322,7 @@ struct JBFilterChip: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
-                                isSelected ? Color.white.opacity(0.1) : Color.clear,
+                                isSelected ? OPSStyle.Colors.cardBorder : Color.clear,
                                 lineWidth: 1
                             )
                     )

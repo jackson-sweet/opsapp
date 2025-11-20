@@ -93,12 +93,16 @@ struct FloatingActionMenu: View {
                             }) {
                                 Image(systemName: "plus")
                                     .font(.system(size: 30))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     .rotationEffect(.degrees(showCreateMenu ? 225 : 0))
                                     .frame(width: 64, height: 64)
                                     .background(.ultraThinMaterial)
                                     .clipShape(Circle())
                                     .shadow(color: OPSStyle.Colors.background.opacity(0.4), radius: 8, x: 0, y: 4)
+                                    .overlay {
+                                        Circle()
+                                            .stroke(OPSStyle.Colors.tertiaryText, lineWidth: 2)
+                                    }
                             }
                         }
                         .padding(.trailing, 36)

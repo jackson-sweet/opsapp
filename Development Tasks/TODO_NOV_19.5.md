@@ -96,3 +96,42 @@ Each time user presses 'add', system is duplicating the photos to be added.
 ### Notes Field
 - Needs to have Save and Cancel buttons when focused
 - Refer to ProjectFormSheet text editor sections (Description and Notes)
+
+---
+
+# NEW ITEMS - November 19.6, 2025
+
+## ProjectFormSheet
+
+### Auto-scroll to Opened Section
+- When pill is pressed and section is opened, scroll to position that section in view
+
+---
+
+## UniversalJobCard (Project)
+
+### Unscheduled Badge Logic
+- If project has no tasks, show unscheduled badge
+- If a task is status completed or cancelled, it should not be considered for unscheduled calculation
+
+---
+
+## ClientFormSheet
+
+### Avatar Size in Preview Card
+- Avatar in preview is way too big
+- Should not be taller than the text on the left side
+
+---
+
+## TaskFormSheet
+
+### Task Notes Field
+- Need to add task notes field back
+
+---
+
+## Job Board
+
+### Employee Tab
+- Create job board tab for employees

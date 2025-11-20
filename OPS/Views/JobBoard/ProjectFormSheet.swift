@@ -87,6 +87,17 @@ struct ProjectFormSheet: View {
     @State private var isDatesExpanded = false
     @State private var isPhotosExpanded = false
 
+    // Section ordering - tracks which sections appear first
+    @State private var sectionOrder: [OptionalSection] = [.address, .description, .notes, .tasks, .photos]
+
+    enum OptionalSection: CaseIterable, Hashable {
+        case address
+        case description
+        case notes
+        case tasks
+        case photos
+    }
+
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showingError = false
@@ -173,6 +184,16 @@ struct ProjectFormSheet: View {
                 _isAddressExpanded = State(initialValue: true)
             }
         }
+    }
+
+    // MARK: - Helper Functions
+
+    /// Move a section to the top of the display order when it's opened
+    private func bringSectionToTop(_ section: OptionalSection) {
+        // Remove the section from its current position
+        sectionOrder.removeAll { $0 == section }
+        // Insert it at the beginning
+        sectionOrder.insert(section, at: 0)
     }
 
     var body: some View {
@@ -555,50 +576,60 @@ struct ProjectFormSheet: View {
             OptionalSectionPillGroup(pills: [
                 (title: "SITE ADDRESS", icon: "mappin.circle", isExpanded: isAddressExpanded, action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        bringSectionToTop(.address)
                         isAddressExpanded = true
                     }
                 }),
                 (title: "DESCRIPTION", icon: "text.alignleft", isExpanded: isDescriptionExpanded, action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        bringSectionToTop(.description)
                         isDescriptionExpanded = true
                     }
                 }),
                 (title: "NOTES", icon: "note.text", isExpanded: isNotesExpanded, action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        bringSectionToTop(.notes)
                         isNotesExpanded = true
                     }
                 }),
                 (title: "ADD TASKS", icon: "checklist", isExpanded: isTasksExpanded, action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        bringSectionToTop(.tasks)
                         isTasksExpanded = true
                     }
                 }),
                 (title: "PHOTOS", icon: "photo", isExpanded: isPhotosExpanded, action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        bringSectionToTop(.photos)
                         isPhotosExpanded = true
                     }
                 })
             ])
 
-            // Expanded sections
-            if isAddressExpanded {
-                addressSection
-            }
-
-            if isDescriptionExpanded {
-                descriptionSection
-            }
-
-            if isNotesExpanded {
-                notesSection
-            }
-
-            if isTasksExpanded {
-                tasksSection
-            }
-
-            if isPhotosExpanded {
-                photosSection
+            // Expanded sections - displayed in dynamic order
+            ForEach(sectionOrder, id: \.self) { section in
+                switch section {
+                case .address:
+                    if isAddressExpanded {
+                        addressSection
+                    }
+                case .description:
+                    if isDescriptionExpanded {
+                        descriptionSection
+                    }
+                case .notes:
+                    if isNotesExpanded {
+                        notesSection
+                    }
+                case .tasks:
+                    if isTasksExpanded {
+                        tasksSection
+                    }
+                case .photos:
+                    if isPhotosExpanded {
+                        photosSection
+                    }
+                }
             }
         }
     }

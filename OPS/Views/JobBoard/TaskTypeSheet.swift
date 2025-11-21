@@ -221,10 +221,6 @@ struct TaskTypeSheet: View {
                     .padding()
                     .padding(.bottom, 100)
                 }
-
-                if isSaving {
-                    savingOverlay
-                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -270,6 +266,7 @@ struct TaskTypeSheet: View {
         } message: {
             Text(errorMessage ?? "An error occurred")
         }
+        .loadingOverlay(isPresented: $isSaving, message: "Saving...")
     }
 
     // MARK: - View Components
@@ -369,25 +366,6 @@ struct TaskTypeSheet: View {
                     )
                 }
             }
-        }
-    }
-
-    private var savingOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.5)
-                .ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                ProgressView()
-                    .tint(OPSStyle.Colors.primaryAccent)
-
-                Text("Saving...")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-            .padding(32)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
 

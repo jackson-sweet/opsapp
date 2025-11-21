@@ -222,31 +222,15 @@ struct TaskTypeSheet: View {
                     .padding(.bottom, 100)
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("CANCEL") {
-                        dismiss()
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-
-                ToolbarItem(placement: .principal) {
-                    Text(mode.title)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("SAVE") {
-                        saveTaskType()
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(isValid && !isSaving ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    .disabled(!isValid || isSaving)
-                }
-            }
+            .standardSheetToolbar(
+                title: mode.title,
+                actionText: "Save",
+                isActionEnabled: isValid,
+                isSaving: isSaving,
+                showProgressOnSave: false,
+                onCancel: { dismiss() },
+                onAction: { saveTaskType() }
+            )
             .interactiveDismissDisabled()
         }
         .onAppear {

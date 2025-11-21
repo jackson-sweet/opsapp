@@ -189,36 +189,15 @@ struct TaskFormSheet: View {
                     .padding()
                     .padding(.bottom, 100)
                 }
-
-                if isSaving {
-                    savingOverlay
-                }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("CANCEL") {
-                        dismiss()
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-
-                ToolbarItem(placement: .principal) {
-                    Text(mode.isCreate ? "CREATE TASK" : "EDIT TASK")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(mode.isCreate ? "CREATE" : "SAVE") {
-                        saveTask()
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(isValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    .disabled(!isValid || isSaving)
-                }
-            }
+            .standardSheetToolbar(
+                title: mode.isCreate ? "Create Task" : "Edit Task",
+                actionText: mode.isCreate ? "Create" : "Save",
+                isActionEnabled: isValid,
+                isSaving: isSaving,
+                onCancel: { dismiss() },
+                onAction: { saveTask() }
+            )
             .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showingScheduler) {
@@ -286,6 +265,7 @@ struct TaskFormSheet: View {
                 projectSearchText = selectedProject.title
             }
         }
+        .loadingOverlay(isPresented: $isSaving, message: "Saving...")
     }
 
     // MARK: - Sections
@@ -800,26 +780,6 @@ struct TaskFormSheet: View {
                     }
                 }
             }
-        }
-    }
-
-    private var savingOverlay: some View {
-        ZStack {
-            OPSStyle.Colors.modalOverlay
-                .ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.loadingSpinner))
-                    .scaleEffect(1.5)
-
-                Text("Creating Task...")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
-            }
-            .padding(32)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
 

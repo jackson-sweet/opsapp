@@ -332,38 +332,14 @@ struct ClientSheet: View {
                     .padding(.bottom, 100)
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("CANCEL") {
-                        dismiss()
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .disabled(isSaving)
-                }
-
-                ToolbarItem(placement: .principal) {
-                    Text(mode.isCreate ? "CREATE CLIENT" : "EDIT CLIENT")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: saveClient) {
-                        if isSaving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                                .scaleEffect(0.8)
-                        } else {
-                            Text(mode.isCreate ? "CREATE" : "SAVE")
-                                .font(OPSStyle.Typography.bodyBold)
-                        }
-                    }
-                    .foregroundColor(isFormValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    .disabled(!isFormValid || isSaving)
-                }
-            }
+            .standardSheetToolbar(
+                title: mode.isCreate ? "Create Client" : "Edit Client",
+                actionText: mode.isCreate ? "Create" : "Save",
+                isActionEnabled: isFormValid,
+                isSaving: isSaving,
+                onCancel: { dismiss() },
+                onAction: { saveClient() }
+            )
             .interactiveDismissDisabled()
             .alert("Error", isPresented: $showingError) {
                 Button("OK") {

@@ -252,10 +252,6 @@ struct ProjectFormSheet: View {
                     .padding(.bottom, 24)
                     }
                 }
-
-                if isSaving {
-                    savingOverlay
-                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -343,6 +339,7 @@ struct ProjectFormSheet: View {
                 selectedStatus = defaultProjectStatus
             }
         }
+        .loadingOverlay(isPresented: $isSaving, message: "Saving...")
     }
 
     // MARK: - Mandatory Fields Section
@@ -1088,26 +1085,6 @@ struct ProjectFormSheet: View {
                     showingImagePicker = false
                 }
             )
-        }
-    }
-
-    private var savingOverlay: some View {
-        ZStack {
-            OPSStyle.Colors.modalOverlay
-                .ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.loadingSpinner))
-                    .scaleEffect(1.5)
-
-                Text("Saving Project...")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-            .padding(32)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
 

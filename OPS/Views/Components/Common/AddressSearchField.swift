@@ -28,11 +28,18 @@ struct AddressSearchField: View {
         VStack(alignment: .leading, spacing: 0) {
             // Address input field
             TextField(placeholder, text: $address)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .font(OPSStyle.Layout.SearchField.textFont)
+                .foregroundColor(OPSStyle.Layout.SearchField.textColor)
+                .padding(OPSStyle.Layout.SearchField.inputPadding)
+                .background(OPSStyle.Layout.SearchField.inputBackground)
+                .cornerRadius(OPSStyle.Layout.SearchField.inputCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.SearchField.inputCornerRadius)
+                        .stroke(
+                            OPSStyle.Layout.SearchField.inputBorderColor,
+                            lineWidth: OPSStyle.Layout.SearchField.inputBorderWidth
+                        )
+                )
                 .focused($isFocused)
                 .onChange(of: address) { newValue in
                     if !newValue.isEmpty && isFocused {
@@ -51,45 +58,57 @@ struct AddressSearchField: View {
             // Suggestions dropdown
             if showingSuggestions && !searchResults.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(searchResults.prefix(5), id: \.self) { item in
+                    ForEach(searchResults.prefix(OPSStyle.Layout.SearchField.dropdownMaxResults), id: \.self) { item in
                         Button(action: {
                             selectAddress(item)
                         }) {
                             VStack(alignment: .leading, spacing: 4) {
                                 if let name = item.name {
                                     Text(name)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .font(OPSStyle.Layout.SearchField.rowTitleFont)
+                                        .foregroundColor(OPSStyle.Layout.SearchField.rowTitleColor)
                                         .lineLimit(1)
                                 }
 
                                 let placemark = item.placemark
                                 Text(formatAddress(placemark))
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .font(OPSStyle.Layout.SearchField.rowSubtitleFont)
+                                    .foregroundColor(OPSStyle.Layout.SearchField.rowSubtitleColor)
                                     .lineLimit(2)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, OPSStyle.Layout.SearchField.rowPaddingHorizontal)
+                            .padding(.vertical, OPSStyle.Layout.SearchField.rowPaddingVertical)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        
-                        if item != searchResults.prefix(5).last {
+
+                        if item != searchResults.prefix(OPSStyle.Layout.SearchField.dropdownMaxResults).last {
                             Divider()
-                                .background(OPSStyle.Colors.tertiaryText.opacity(0.3))
+                                .background(OPSStyle.Layout.SearchField.dividerColor)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .shadow(color: OPSStyle.Colors.shadowColor, radius: 8, x: 0, y: 4)
-                .padding(.top, 4)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .background(OPSStyle.Layout.SearchField.dropdownBackground)
+                .cornerRadius(OPSStyle.Layout.SearchField.dropdownCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.SearchField.dropdownCornerRadius)
+                        .stroke(
+                            OPSStyle.Layout.SearchField.dropdownBorderColor,
+                            lineWidth: OPSStyle.Layout.SearchField.dropdownBorderWidth
+                        )
+                )
+                .shadow(
+                    color: OPSStyle.Layout.SearchField.dropdownShadowColor,
+                    radius: OPSStyle.Layout.SearchField.dropdownShadowRadius,
+                    x: OPSStyle.Layout.SearchField.dropdownShadowOffset.width,
+                    y: OPSStyle.Layout.SearchField.dropdownShadowOffset.height
+                )
+                .padding(.top, OPSStyle.Layout.SearchField.dropdownTopPadding)
+                .transition(OPSStyle.Layout.SearchField.transition)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: showingSuggestions)
+        .animation(OPSStyle.Layout.SearchField.animationCurve, value: showingSuggestions)
     }
     
     private func searchForAddress(_ query: String) {

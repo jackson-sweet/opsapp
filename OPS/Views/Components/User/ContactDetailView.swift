@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import MapKit
 
 /// Detail view for displaying contact information for users, team members, and clients
@@ -15,11 +16,13 @@ struct ContactDetailView: View {
     let teamMember: TeamMember?
     let client: Client?
     let project: Project? // Optional project reference for client updates
-    
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
-    
+    @Query private var allClients: [Client]
+
     @State private var showFullContact = false // For animating contact display
     @State private var showingClientEdit = false
     @State private var showingClientDeletion = false
@@ -390,13 +393,206 @@ struct ContactDetailView: View {
         }
         .sheet(isPresented: $showingClientDeletion) {
             if let client = client {
-                ClientDeletionSheet(client: client)
-                    .onDisappear {
-                        if let modelContext = dataController.modelContext,
-                           modelContext.model(for: client.id) == nil {
-                            dismiss()
+                DeletionSheet(
+                    item: client,
+                    itemType: "Client",
+                    childItems: client.projects.sorted { $0.title < $1.title },
+                    childType: "Project",
+                    availableReassignments: allClients,
+                    getItemDisplay: { client in
+                        AnyView(
+                            Text(client.name)
+                                .font(OPSStyle.Typography.title)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        )
+                    },
+                    filterAvailableItems: { clients in
+                        clients.filter {
+                            $0.id != client.id &&
+                            !$0.id.contains("-") // Filter out UUIDs - only show Bubble-synced clients
                         }
+                    },
+                    getChildId: { $0.id },
+                    getReassignmentId: { $0.id },
+                    renderReassignmentRow: { project, selectedId, markedForDeletion, available, onToggleDelete in
+                        AnyView(
+                            ProjectReassignmentRow(
+                                project: project,
+                                selectedClientId: selectedId,
+                                markedForDeletion: markedForDeletion,
+                                availableClients: available,
+                                onToggleDelete: onToggleDelete
+                            )
+                        )
+                    },
+                    renderSearchField: { selectedId, available in
+                        AnyView(
+                            SearchField(
+                                selectedId: selectedId,
+                                items: available,
+                                placeholder: "Search for client",
+                                leadingIcon: OPSStyle.Icons.client,
+                                getId: { $0.id },
+                                getDisplayText: { $0.name },
+                                getSubtitle: { client in
+                                    client.projects.count > 0
+                                        ? "\(client.projects.count) project\(client.projects.count == 1 ? "" : "s")"
+                                        : nil
+                                }
+                            )
+                        )
+                    },
+                    onDelete: { client, reassignments, deletions in
+                        // Step 1: Handle projects (reassign or delete via API)
+                        let clientProjects = client.projects.sorted { $0.title < $1.title }
+                        let availableClients = allClients.filter {
+                            $0.id != client.id &&
+                            !$0.id.contains("-")
+                        }
+
+                        // Bulk mode check - if all assignments are the same
+                        let uniqueAssignments = Set(reassignments.values)
+                        if uniqueAssignments.count == 1, let bulkClientId = uniqueAssignments.first {
+                            // Bulk reassignment
+                            if let newClient = availableClients.first(where: { $0.id == bulkClientId }) {
+                                print("🔄 Bulk reassigning \(clientProjects.count) projects to client: \(newClient.name) (\(bulkClientId))")
+
+                                var projectIds: [String] = []
+                                for project in clientProjects {
+                                    print("  📋 Updating project: \(project.title) (\(project.id))")
+                                    let updates = ["Client": bulkClientId]
+                                    let bodyData = try JSONSerialization.data(withJSONObject: updates)
+                                    let _: EmptyResponse = try await dataController.apiService.executeRequest(
+                                        endpoint: "api/1.1/obj/Project/\(project.id)",
+                                        method: "PATCH",
+                                        body: bodyData,
+                                        requiresAuth: false
+                                    )
+                                    print("  ✅ Project \(project.title) updated successfully")
+                                    projectIds.append(project.id)
+                                    project.client = newClient
+                                    project.clientId = newClient.id
+                                    project.needsSync = false
+                                    project.lastSyncedAt = Date()
+                                }
+
+                                // Fetch current client state from Bubble
+                                print("🔄 Fetching current state of client \(newClient.name) from Bubble")
+                                let clientDTO: ClientDTO = try await dataController.apiService.executeRequest(
+                                    endpoint: "api/1.1/obj/Client/\(bulkClientId)",
+                                    method: "GET",
+                                    body: nil,
+                                    requiresAuth: false
+                                )
+                                let currentProjectsList = clientDTO.projectsList ?? []
+                                print("  Current projects in Bubble: \(currentProjectsList.count)")
+
+                                var updatedProjectsList = currentProjectsList
+                                for projectId in projectIds where !updatedProjectsList.contains(projectId) {
+                                    updatedProjectsList.append(projectId)
+                                }
+                                print("  Updated projects list count: \(updatedProjectsList.count)")
+
+                                print("🔄 Updating client \(newClient.name) Projects List")
+                                let clientUpdates = ["Projects List": updatedProjectsList]
+                                let clientBodyData = try JSONSerialization.data(withJSONObject: clientUpdates)
+                                let _: EmptyResponse = try await dataController.apiService.executeRequest(
+                                    endpoint: "api/1.1/obj/Client/\(bulkClientId)",
+                                    method: "PATCH",
+                                    body: clientBodyData,
+                                    requiresAuth: false
+                                )
+                                print("✅ Client \(newClient.name) updated with new projects list")
+                                print("✅ All \(clientProjects.count) projects reassigned")
+                            }
+                        } else if deletions.count == clientProjects.count {
+                            // Bulk delete all
+                            for project in clientProjects {
+                                try await dataController.deleteProject(project)
+                            }
+                        } else {
+                            // Individual mode
+                            var clientProjectMap: [String: [String]] = [:]
+
+                            for project in clientProjects {
+                                if deletions.contains(project.id) {
+                                    try await dataController.deleteProject(project)
+                                } else if let newClientId = reassignments[project.id],
+                                   let newClient = availableClients.first(where: { $0.id == newClientId }) {
+                                    print("  📋 Individual: Updating project \(project.title) to client \(newClient.name)")
+                                    let updates = ["Client": newClientId]
+                                    let bodyData = try JSONSerialization.data(withJSONObject: updates)
+                                    let _: EmptyResponse = try await dataController.apiService.executeRequest(
+                                        endpoint: "api/1.1/obj/Project/\(project.id)",
+                                        method: "PATCH",
+                                        body: bodyData,
+                                        requiresAuth: false
+                                    )
+                                    print("  ✅ Project \(project.title) updated successfully")
+                                    project.client = newClient
+                                    project.clientId = newClient.id
+                                    project.needsSync = false
+                                    project.lastSyncedAt = Date()
+
+                                    if clientProjectMap[newClientId] == nil {
+                                        clientProjectMap[newClientId] = []
+                                    }
+                                    clientProjectMap[newClientId]?.append(project.id)
+                                }
+                            }
+
+                            // Update each affected client's projects list
+                            for (clientId, projectIds) in clientProjectMap {
+                                if let targetClient = availableClients.first(where: { $0.id == clientId }) {
+                                    print("🔄 Fetching current state of client \(targetClient.name) from Bubble")
+                                    let clientDTO: ClientDTO = try await dataController.apiService.executeRequest(
+                                        endpoint: "api/1.1/obj/Client/\(clientId)",
+                                        method: "GET",
+                                        body: nil,
+                                        requiresAuth: false
+                                    )
+                                    let currentProjectsList = clientDTO.projectsList ?? []
+                                    print("  Current projects in Bubble: \(currentProjectsList.count)")
+
+                                    var updatedProjectsList = currentProjectsList
+                                    for projectId in projectIds where !updatedProjectsList.contains(projectId) {
+                                        updatedProjectsList.append(projectId)
+                                    }
+                                    print("  Updated projects list count: \(updatedProjectsList.count)")
+
+                                    print("🔄 Updating client \(targetClient.name) Projects List")
+                                    let clientUpdates = ["Projects List": updatedProjectsList]
+                                    let clientBodyData = try JSONSerialization.data(withJSONObject: clientUpdates)
+                                    let _: EmptyResponse = try await dataController.apiService.executeRequest(
+                                        endpoint: "api/1.1/obj/Client/\(clientId)",
+                                        method: "PATCH",
+                                        body: clientBodyData,
+                                        requiresAuth: false
+                                    )
+                                    print("✅ Client \(targetClient.name) updated with new projects list")
+                                }
+                            }
+                        }
+
+                        // Step 2: Save project changes locally
+                        try modelContext.save()
+
+                        // Step 3: Delete the client
+                        try await dataController.deleteClient(client)
+
+                        // Step 4: Trigger sync
+                        print("🔄 Triggering sync to refresh client/project relationships from Bubble")
+                        try? await dataController.syncManager.manualFullSync()
+                        print("✅ Sync completed")
                     }
+                )
+                .environmentObject(dataController)
+                .onDisappear {
+                    if let modelContext = dataController.modelContext,
+                       modelContext.model(for: client.id) == nil {
+                        dismiss()
+                    }
+                }
             }
         }
     }

@@ -255,6 +255,57 @@ enum OPSStyle {
                 endPoint: .bottom
             )
         }
+
+        // SearchField styling configuration
+        enum SearchField {
+            // Input field styling
+            static let inputPadding: CGFloat = 12
+            static let inputBackground = OPSStyle.Colors.cardBackgroundDark
+            static let inputCornerRadius = OPSStyle.Layout.cornerRadius
+            static let inputBorderColor = OPSStyle.Colors.cardBorder
+            static let inputBorderWidth: CGFloat = 1
+
+            // Icon styling
+            static let iconSize: CGFloat = 14
+            static let iconColor = OPSStyle.Colors.secondaryText
+            static let clearButtonSize: CGFloat = 16
+            static let clearButtonColor = OPSStyle.Colors.tertiaryText
+
+            // Text styling
+            static let textFont = OPSStyle.Typography.body
+            static let textColor = OPSStyle.Colors.primaryText
+            static let placeholderColor = OPSStyle.Colors.placeholderText
+
+            // Suggestions dropdown styling
+            static let dropdownBackground = OPSStyle.Colors.cardBackgroundDark
+            static let dropdownCornerRadius = OPSStyle.Layout.cornerRadius
+            static let dropdownBorderColor = OPSStyle.Colors.cardBorder
+            static let dropdownBorderWidth: CGFloat = 1
+            static let dropdownShadowColor = OPSStyle.Colors.shadowColor
+            static let dropdownShadowRadius: CGFloat = 8
+            static let dropdownShadowOffset = CGSize(width: 0, height: 4)
+            static let dropdownTopPadding: CGFloat = 4
+            static let dropdownMaxResults = 5
+
+            // Suggestion row styling
+            static let rowPaddingHorizontal: CGFloat = 16
+            static let rowPaddingVertical: CGFloat = 12
+            static let rowTitleFont = OPSStyle.Typography.body
+            static let rowTitleColor = OPSStyle.Colors.primaryText
+            static let rowSubtitleFont = OPSStyle.Typography.caption
+            static let rowSubtitleColor = OPSStyle.Colors.secondaryText
+            static let rowIconSize: CGFloat = 14
+            static let rowCheckmarkSize: CGFloat = 14
+            static let rowCheckmarkColor = OPSStyle.Colors.primaryAccent
+
+            // Divider styling
+            static let dividerColor = OPSStyle.Colors.tertiaryText.opacity(0.3)
+
+            // Animation
+            static let animationDuration: CGFloat = 0.2
+            static let animationCurve = SwiftUI.Animation.easeInOut(duration: 0.2)
+            static let transition = AnyTransition.opacity.combined(with: .move(edge: .top))
+        }
     }
     
     // MARK: - Animation

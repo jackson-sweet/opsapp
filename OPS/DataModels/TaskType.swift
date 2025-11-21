@@ -10,7 +10,7 @@ import SwiftData
 
 /// TaskType model - reusable task templates for a company
 @Model
-final class TaskType {
+final class TaskType: Identifiable {
     // MARK: - Properties
     var id: String
     var color: String  // Hex color code

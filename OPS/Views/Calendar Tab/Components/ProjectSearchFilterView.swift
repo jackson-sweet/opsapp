@@ -3,6 +3,7 @@
 //  OPS
 //
 //  Multi-select filter view for ProjectSearchSheet
+//  Wrapper around generic FilterSheet component
 //
 
 import SwiftUI
@@ -10,471 +11,79 @@ import SwiftUI
 struct ProjectSearchFilterView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
-    
+
     // Bindings to parent view
     @Binding var selectedStatuses: Set<Status>
     @Binding var selectedTeamMemberIds: Set<String>
     @Binding var selectedTaskTypeIds: Set<String>
     @Binding var selectedClientIds: Set<String>
-    // Removed: scheduling type filter (task-only scheduling migration)
-    // @Binding var selectedSchedulingTypes: Set<ProjectEventType>
-    
+
     // Available options
     let availableTeamMembers: [TeamMember]
     let availableTaskTypes: [TaskType]
     let availableClients: [Client]
-    
-    // All available statuses
-    private let availableStatuses: [Status] = [.inProgress, .accepted, .estimated, .rfq, .completed, .closed, .archived]
-    
+
     var body: some View {
-        NavigationView {
-            ZStack {
-                OPSStyle.Colors.background
-                    .ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Scheduling Type Section - Removed (task-only scheduling migration)
-                        // filterSection(
-                        //     title: "SCHEDULING TYPE",
-                        //     icon: "calendar"
-                        // ) {
-                        //     schedulingTypeContent
-                        // }
-                        
-                        // Status Section
-                        filterSection(
-                            title: "PROJECT STATUS",
-                            icon: OPSStyle.Icons.alert
-                        ) {
-                            statusContent
-                        }
-                        
-                        // Team Members Section
-                        if !availableTeamMembers.isEmpty {
-                            filterSection(
-                                title: "TEAM MEMBERS",
-                                icon: OPSStyle.Icons.crew
-                            ) {
-                                teamMembersContent
-                            }
-                        }
-                        
-                        // Task Types Section
-                        if !availableTaskTypes.isEmpty {
-                            filterSection(
-                                title: "TASK TYPES",
-                                icon: "checkmark.circle.fill"
-                            ) {
-                                taskTypesContent
-                            }
-                        }
-                        
-                        // Clients Section
-                        if !availableClients.isEmpty {
-                            filterSection(
-                                title: "CLIENTS",
-                                icon: "building.2.fill"
-                            ) {
-                                clientsContent
-                            }
-                        }
-                        
-                        // Active Filters Summary
-                        if hasActiveFilters {
-                            activeFiltersSummary
-                        }
-                    }
-                    .padding(.vertical, 20)
-                }
-            }
-            .navigationTitle("FILTER PROJECTS")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("CANCEL") {
-                        dismiss()
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-                
-                ToolbarItem(placement: .principal) {
-                    Text("FILTER PROJECTS")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("APPLY") {
-                        dismiss()
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-            }
-        }
+        FilterSheet<NoSort>(
+            title: "Filter Projects",
+            filters: buildFilters()
+        )
     }
-    
-    // MARK: - Content Sections
 
-    // Removed: schedulingTypeContent - task-only scheduling migration
-    // All projects now use task-based scheduling
-    
-    private var statusContent: some View {
-        VStack(spacing: 0) {
-            // "All" option
-            filterRow(
-                title: "All Statuses",
-                subtitle: nil,
-                isSelected: selectedStatuses.isEmpty,
-                isSpecial: true
-            ) {
-                selectedStatuses.removeAll()
-            }
-            
-            Divider()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-            
-            // Individual statuses
-            ForEach(availableStatuses, id: \.self) { status in
-                HStack(spacing: 0) {
-                    HStack(spacing: 12) {
-                        Circle()
-                            .fill(status.color)
-                            .frame(width: 10, height: 10)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(status.displayName)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        }
-                        
-                        Spacer()
-                        
-                        if selectedStatuses.contains(status) {
-                            Image(systemName: OPSStyle.Icons.checkmark)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                    }
-                    .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    toggleSelection(status, in: &selectedStatuses)
-                }
-                
-                if status != availableStatuses.last {
-                    Divider()
-                        .background(OPSStyle.Colors.cardBackground)
-                        .padding(.leading, 40)
-                }
-            }
-        }
-    }
-    
-    private var teamMembersContent: some View {
-        VStack(spacing: 0) {
-            // "All" option
-            filterRow(
-                title: "All Team Members",
-                subtitle: nil,
-                isSelected: selectedTeamMemberIds.isEmpty,
-                isSpecial: true
-            ) {
-                selectedTeamMemberIds.removeAll()
-            }
-            
-            Divider()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-            
-            // Individual team members
-            ForEach(availableTeamMembers, id: \.id) { member in
-                filterRow(
-                    title: member.fullName,
-                    subtitle: member.role,
-                    isSelected: selectedTeamMemberIds.contains(member.id)
-                ) {
-                    toggleSelection(member.id, in: &selectedTeamMemberIds)
-                }
-                
-                if member.id != availableTeamMembers.last?.id {
-                    Divider()
-                        .background(OPSStyle.Colors.cardBackground)
-                        .padding(.leading, 40)
-                }
-            }
-        }
-    }
-    
-    private var taskTypesContent: some View {
-        VStack(spacing: 0) {
-            // "All" option
-            filterRow(
-                title: "All Task Types",
-                subtitle: nil,
-                isSelected: selectedTaskTypeIds.isEmpty,
-                isSpecial: true
-            ) {
-                selectedTaskTypeIds.removeAll()
-            }
-            
-            Divider()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-            
-            // Individual task types
-            ForEach(availableTaskTypes, id: \.id) { taskType in
-                HStack(spacing: 12) {
-                    // Task type color indicator
-                    Circle()
-                        .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
-                        .frame(width: 10, height: 10)
-                    
-                    // Task type icon
-                    if let icon = taskType.icon {
-                        Image(systemName: icon)
-                            .font(.system(size: 16))
-                            .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
-                            .frame(width: 20)
-                    }
-                    
-                    filterRow(
-                        title: taskType.display,
-                        subtitle: nil,
-                        isSelected: selectedTaskTypeIds.contains(taskType.id)
-                    ) {
-                        toggleSelection(taskType.id, in: &selectedTaskTypeIds)
-                    }
-                }
-                
-                if taskType.id != availableTaskTypes.last?.id {
-                    Divider()
-                        .background(OPSStyle.Colors.cardBackground)
-                        .padding(.leading, 40)
-                }
-            }
-        }
-    }
-    
-    private var clientsContent: some View {
-        VStack(spacing: 0) {
-            // "All" option
-            filterRow(
-                title: "All Clients",
-                subtitle: nil,
-                isSelected: selectedClientIds.isEmpty,
-                isSpecial: true
-            ) {
-                selectedClientIds.removeAll()
-            }
-            
-            Divider()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-            
-            // Individual clients
-            ForEach(availableClients, id: \.id) { client in
-                filterRow(
-                    title: client.name,
-                    subtitle: client.email ?? "",
-                    isSelected: selectedClientIds.contains(client.id)
-                ) {
-                    toggleSelection(client.id, in: &selectedClientIds)
-                }
-                
-                if client.id != availableClients.last?.id {
-                    Divider()
-                        .background(OPSStyle.Colors.cardBackground)
-                        .padding(.leading, 40)
-                }
-            }
-        }
-    }
-    
-    // MARK: - Helper Views
-    
-    private func filterSection<Content: View>(
-        title: String,
-        icon: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section header
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 14))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Text(title)
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .padding(.horizontal, 20)
-            
-            // Section content
-            VStack(spacing: 0) {
-                content()
-            }
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
-            )
-            .padding(.horizontal, 20)
-        }
-    }
-    
-    private func filterRow(
-        title: String,
-        subtitle: String? = nil,
-        isSelected: Bool,
-        isSpecial: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(isSpecial ? OPSStyle.Typography.bodyBold : OPSStyle.Typography.body)
-                    .foregroundColor(isSpecial ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
-                
-                if let subtitle = subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-            }
-            
-            Spacer()
+    private func buildFilters() -> [FilterSectionConfig] {
+        var filters: [FilterSectionConfig] = []
 
-            if isSelected && !isSpecial {
-                Image(systemName: OPSStyle.Icons.checkmark)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-            }
-        }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 16)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: action)
-    }
-    
-    private var activeFiltersSummary: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("ACTIVE FILTERS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 20)
-            
-            HStack {
-                VStack(alignment: .leading, spacing: 8) {
-                    if !selectedStatuses.isEmpty {
-                        HStack {
-                            Image(systemName: OPSStyle.Icons.alert)
-                                .font(.system(size: 12))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            
-                            Text("\(selectedStatuses.count) status\(selectedStatuses.count == 1 ? "" : "es") selected")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                    }
-                    
-                    if !selectedTeamMemberIds.isEmpty {
-                        HStack {
-                            Image(systemName: OPSStyle.Icons.crew)
-                                .font(.system(size: 12))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            
-                            Text("\(selectedTeamMemberIds.count) team member\(selectedTeamMemberIds.count == 1 ? "" : "s") selected")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                    }
-                    
-                    if !selectedTaskTypeIds.isEmpty {
-                        HStack {
-                            Image(systemName: OPSStyle.Icons.task)
-                                .font(.system(size: 12))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            
-                            Text("\(selectedTaskTypeIds.count) task type\(selectedTaskTypeIds.count == 1 ? "" : "s") selected")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                    }
-                    
-                    if !selectedClientIds.isEmpty {
-                        HStack {
-                            Image(systemName: OPSStyle.Icons.client)
-                                .font(.system(size: 12))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            
-                            Text("\(selectedClientIds.count) client\(selectedClientIds.count == 1 ? "" : "s") selected")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                    }
-                    
-                    // Removed: scheduling type filter display (task-only scheduling migration)
-                    /*
-                    if !selectedSchedulingTypes.isEmpty {
-                        HStack {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 12))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        // Status filter
+        let availableStatuses: [Status] = [.inProgress, .accepted, .estimated, .rfq, .completed, .closed, .archived]
+        filters.append(.multiSelect(
+            title: "PROJECT STATUS",
+            icon: OPSStyle.Icons.alert,
+            options: availableStatuses,
+            selection: $selectedStatuses,
+            getDisplay: { $0.displayName },
+            getColorIndicator: { .circle($0.color) }
+        ))
 
-                            Text("\(selectedSchedulingTypes.count) scheduling type\(selectedSchedulingTypes.count == 1 ? "" : "s") selected")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                    }
-                    */
-                    
-                    Button(action: resetFilters) {
-                        Text("Reset All Filters")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                    .padding(.top, 4)
-                }
-                .padding(16)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                )
-                
-                Spacer()
-            }
-            .padding(.horizontal, 20)
+        // Team members filter
+        if !availableTeamMembers.isEmpty {
+            filters.append(.multiSelectById(
+                title: "TEAM MEMBERS",
+                icon: OPSStyle.Icons.crew,
+                options: availableTeamMembers,
+                selection: $selectedTeamMemberIds,
+                getId: { $0.id },
+                getDisplay: { $0.fullName },
+                getSubtitle: { $0.role }
+            ))
         }
-    }
-    
-    // MARK: - Helper Properties
-    
-    private var hasActiveFilters: Bool {
-        !selectedStatuses.isEmpty || !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty // || !selectedSchedulingTypes.isEmpty
-    }
-    
-    // MARK: - Helper Methods
-    
-    private func toggleSelection<T: Hashable>(_ item: T, in set: inout Set<T>) {
-        if set.contains(item) {
-            set.remove(item)
-        } else {
-            set.insert(item)
+
+        // Task types filter
+        if !availableTaskTypes.isEmpty {
+            filters.append(.multiSelectById(
+                title: "TASK TYPES",
+                icon: "checkmark.circle.fill",
+                options: availableTaskTypes,
+                selection: $selectedTaskTypeIds,
+                getId: { $0.id },
+                getDisplay: { $0.display },
+                getIcon: { $0.icon ?? "checkmark.circle.fill" },
+                getIconColor: { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent }
+            ))
         }
-    }
-    
-    private func resetFilters() {
-        selectedStatuses.removeAll()
-        selectedTeamMemberIds.removeAll()
-        selectedTaskTypeIds.removeAll()
-        selectedClientIds.removeAll()
-        // selectedSchedulingTypes.removeAll()  // Removed (task-only scheduling migration)
+
+        // Clients filter
+        if !availableClients.isEmpty {
+            filters.append(.multiSelectById(
+                title: "CLIENTS",
+                icon: "building.2.fill",
+                options: availableClients,
+                selection: $selectedClientIds,
+                getId: { $0.id },
+                getDisplay: { $0.name },
+                getSubtitle: { $0.email ?? "" }
+            ))
+        }
+
+        return filters
     }
 }

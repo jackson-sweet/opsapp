@@ -820,6 +820,583 @@ Track H demonstrated that **deletion sheets are a perfect candidate for generic 
 
 ---
 
+## 🔀 PARALLEL WORK INSTRUCTIONS: TRACK B + TRACK K
+
+**Purpose**: Run two agents concurrently to maximize efficiency
+**Estimated Combined Time**: 13-19 hours sequential → 10-15 hours parallel (5-8 hour savings)
+**Conflict Risk**: LOW (different file sections)
+**Combined Impact**: ~1,155 lines saved
+
+### Coordination Protocol
+
+1. **Agent Assignment**:
+   - **Agent 1 (Window 1)**: Track B - Sheet Navigation Toolbars
+   - **Agent 2 (Window 2)**: Track K - Loading & Confirmation Modifiers
+
+2. **Commit Strategy**:
+   - Each agent commits every 5-10 files
+   - Use descriptive commit messages: "Track B: Migrate 10 sheets to standardSheetToolbar" or "Track K: Add loadingOverlay to 8 files"
+   - **DO NOT** commit at the exact same time - stagger by a few minutes
+
+3. **Merge Strategy**:
+   - If both agents modify the same file:
+     - Track B changes: `.toolbar { }` section (typically lines 50-100)
+     - Track K changes: Body content (ZStack → modifier, typically lines 150-250)
+     - Git should auto-merge cleanly
+   - If conflicts occur: Accept both changes (they're in different sections)
+
+4. **Final Integration**:
+   - Agent 1 finishes first → commits final Track B work
+   - Agent 2 finishes second → pulls Agent 1's changes, resolves any conflicts, commits final Track K work
+   - **One agent** updates this handover with both session summaries
+
+---
+
+## Track B Instructions (Agent 1 - Window 1)
+
+### Track B: Sheet Navigation Toolbars (10-15 hours)
+
+**Goal**: Standardize `.toolbar { }` blocks across 37 sheet files using ProjectFormSheet as authority pattern
+
+**Impact**: 555 lines saved
+
+**Prerequisites**: Read TEMPLATE_STANDARDIZATION.md Part 1 and PROJECTFORMSHEET_AUTHORITY.md
+
+#### Step 1: Create Toolbar Modifier Component
+
+**File**: `/OPS/Views/Components/Common/StandardSheetToolbar.swift`
+
+```swift
+import SwiftUI
+
+struct StandardSheetToolbar: ViewModifier {
+    let title: String
+    let onCancel: () -> Void
+    let saveAction: (() -> Void)?
+    let saveLabel: String
+    let isSaveDisabled: Bool
+
+    init(
+        title: String,
+        onCancel: @escaping () -> Void,
+        saveAction: (() -> Void)? = nil,
+        saveLabel: String = "SAVE",
+        isSaveDisabled: Bool = false
+    ) {
+        self.title = title
+        self.onCancel = onCancel
+        self.saveAction = saveAction
+        self.saveLabel = saveLabel
+        self.isSaveDisabled = isSaveDisabled
+    }
+
+    func body(content: Content) -> some View {
+        NavigationView {
+            content
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    // Leading: Cancel button
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("CANCEL") {
+                            onCancel()
+                        }
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+
+                    // Trailing: Save button (if saveAction provided)
+                    if let saveAction = saveAction {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button(saveLabel) {
+                                saveAction()
+                            }
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(isSaveDisabled ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
+                            .disabled(isSaveDisabled)
+                        }
+                    }
+                }
+        }
+    }
+}
+
+extension View {
+    /// Applies standard sheet toolbar pattern matching ProjectFormSheet authority
+    func standardSheetToolbar(
+        title: String,
+        onCancel: @escaping () -> Void,
+        saveAction: (() -> Void)? = nil,
+        saveLabel: String = "SAVE",
+        isSaveDisabled: Bool = false
+    ) -> some View {
+        modifier(StandardSheetToolbar(
+            title: title,
+            onCancel: onCancel,
+            saveAction: saveAction,
+            saveLabel: saveLabel,
+            isSaveDisabled: isSaveDisabled
+        ))
+    }
+}
+```
+
+**Test**: Build to verify no syntax errors
+
+#### Step 2: Identify Target Files
+
+**Files to Migrate** (37 total):
+```bash
+# Find all sheet files with NavigationView and .toolbar
+grep -l "NavigationView" OPS/Views/**/*Sheet.swift | head -37
+```
+
+**Expected files include**:
+- TaskSheet.swift, TaskTypeSheet.swift, ClientSheet.swift
+- SubClientEditSheet.swift, ProjectSearchSheet.swift
+- CalendarEventFormSheet.swift, TeamMemberFormSheet.swift
+- TaskCompletionChecklistSheet.swift
+- Plus ~29 more sheet files
+
+#### Step 3: Migration Pattern (Per File)
+
+**CRITICAL**: Before modifying each file, **COMPARE** the existing toolbar with ProjectFormSheet authority pattern.
+
+**Authority Pattern** (from ProjectFormSheet):
+- Cancel button: `.font(OPSStyle.Typography.bodyBold)`, `.foregroundColor(OPSStyle.Colors.secondaryText)`
+- Save button: `.font(OPSStyle.Typography.bodyBold)`, `.foregroundColor(OPSStyle.Colors.primaryAccent)`
+- Disabled save: `.foregroundColor(OPSStyle.Colors.tertiaryText)`
+- Placement: Leading = Cancel, Trailing = Save
+
+**IF DIFFERENCES EXIST**:
+1. **STOP** - Do not migrate yet
+2. **DOCUMENT** the difference (file, line numbers, what's different)
+3. **ASK USER** which version to keep
+4. **WAIT** for approval
+5. **THEN MIGRATE** after confirmation
+
+**Migration Steps (per file)**:
+
+**Before** (example from TaskSheet.swift):
+```swift
+NavigationView {
+    VStack {
+        // Content here
+    }
+    .navigationTitle("New Task")
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button("CANCEL") {
+                dismiss()
+            }
+            .font(OPSStyle.Typography.bodyBold)
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button("SAVE") {
+                saveTask()
+            }
+            .font(OPSStyle.Typography.bodyBold)
+            .foregroundColor(isValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+            .disabled(!isValid)
+        }
+    }
+}
+```
+
+**After**:
+```swift
+VStack {
+    // Content here (unchanged)
+}
+.standardSheetToolbar(
+    title: "New Task",
+    onCancel: { dismiss() },
+    saveAction: saveTask,
+    saveLabel: "SAVE",
+    isSaveDisabled: !isValid
+)
+```
+
+**Changes**:
+1. Remove `NavigationView { }` wrapper
+2. Remove `.navigationTitle()` and `.navigationBarTitleDisplayMode()`
+3. Remove entire `.toolbar { }` block
+4. Add `.standardSheetToolbar()` modifier with parameters
+5. Extract dismiss/save logic to closure
+
+#### Step 4: Batch Migration
+
+**Process**:
+1. Migrate **5 files** at a time
+2. **Build** after each batch to verify
+3. **Commit** each batch: "Track B: Migrate 5 sheets to standardSheetToolbar (batch 1/8)"
+4. Continue until all 37 files complete
+
+**Batching Strategy**:
+- Batch 1-7: 5 files each (35 files)
+- Batch 8: 2 files (final 2 files)
+
+#### Step 5: Verification
+
+After completing all 37 files:
+
+```bash
+# Should return 0 results (all migrated)
+grep -r "\.toolbar {" --include="*Sheet.swift" OPS/Views | wc -l
+
+# Should return 37 results (all using modifier)
+grep -r "\.standardSheetToolbar" --include="*Sheet.swift" OPS/Views | wc -l
+```
+
+**Final build**: Must succeed
+
+#### Step 6: Update Handover
+
+Add session summary to AGENT_HANDOVER.md (see Session 7 template at end of these instructions)
+
+---
+
+## Track K Instructions (Agent 2 - Window 2)
+
+### Track K: Loading & Confirmation Modifiers (3-4 hours)
+
+**Goal**: Create reusable `.loadingOverlay()` and `.deleteConfirmation()` modifiers, migrate 30+ files
+
+**Impact**: ~600 lines saved
+
+**Prerequisites**: Read ARCHITECTURAL_DUPLICATION_AUDIT.md Part 4 and Part 5 Priority 3
+
+#### Step 1: Create LoadingOverlay Modifier
+
+**File**: `/OPS/Views/Components/Common/LoadingOverlay.swift`
+
+```swift
+import SwiftUI
+
+struct LoadingOverlayModifier: ViewModifier {
+    @Binding var isPresented: Bool
+    var message: String
+
+    func body(content: Content) -> some View {
+        ZStack {
+            content
+
+            if isPresented {
+                Color.black.opacity(0.6)
+                    .ignoresSafeArea()
+
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .tint(OPSStyle.Colors.primaryText)
+                        .scaleEffect(1.2)
+
+                    Text(message)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .padding(24)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isPresented)
+    }
+}
+
+extension View {
+    func loadingOverlay(isPresented: Binding<Bool>, message: String = "Loading...") -> some View {
+        modifier(LoadingOverlayModifier(isPresented: isPresented, message: message))
+    }
+}
+```
+
+**Test**: Build to verify no syntax errors
+
+#### Step 2: Create DeleteConfirmation Modifier
+
+**File**: `/OPS/Views/Components/Common/DeleteConfirmation.swift`
+
+```swift
+import SwiftUI
+
+struct DeleteConfirmationModifier: ViewModifier {
+    @Binding var isPresented: Bool
+    let itemName: String
+    let onConfirm: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog(
+                "Delete \(itemName)?",
+                isPresented: $isPresented,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive, action: onConfirm)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This action cannot be undone.")
+            }
+    }
+}
+
+extension View {
+    func deleteConfirmation(
+        isPresented: Binding<Bool>,
+        itemName: String,
+        onConfirm: @escaping () -> Void
+    ) -> some View {
+        modifier(DeleteConfirmationModifier(
+            isPresented: isPresented,
+            itemName: itemName,
+            onConfirm: onConfirm
+        ))
+    }
+}
+```
+
+**Test**: Build to verify no syntax errors
+
+#### Step 3: Identify Target Files
+
+**Loading Overlay Targets** (~30 files):
+```bash
+# Find files with duplicate loading ZStack pattern
+grep -l "ZStack" OPS/Views/**/*.swift | xargs grep -l "ProgressView" | head -30
+```
+
+**Delete Confirmation Targets** (~15 files):
+```bash
+# Find files with confirmationDialog delete pattern
+grep -l "confirmationDialog" OPS/Views/**/*.swift | xargs grep -l "Delete" | head -15
+```
+
+#### Step 4: Migration Pattern - Loading Overlays
+
+**Before**:
+```swift
+@State private var isSaving = false
+
+var body: some View {
+    ZStack {
+        VStack {
+            // Main content
+        }
+
+        if isSaving {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+
+            VStack {
+                ProgressView()
+                    .tint(.white)
+                Text("Saving...")
+                    .foregroundColor(.white)
+            }
+        }
+    }
+}
+```
+
+**After**:
+```swift
+@State private var isSaving = false
+
+var body: some View {
+    VStack {
+        // Main content (unchanged)
+    }
+    .loadingOverlay(isPresented: $isSaving, message: "Saving...")
+}
+```
+
+**Changes**:
+1. Remove outer `ZStack { }` wrapper
+2. Remove `if isSaving { }` block entirely
+3. Add `.loadingOverlay()` modifier to main content
+4. Keep `@State private var isSaving` (still needed for binding)
+
+#### Step 5: Migration Pattern - Delete Confirmations
+
+**Before**:
+```swift
+@State private var showingDeleteConfirmation = false
+
+.confirmationDialog(
+    "Delete \(project.title)?",
+    isPresented: $showingDeleteConfirmation,
+    titleVisibility: .visible
+) {
+    Button("Delete", role: .destructive) {
+        deleteProject()
+    }
+    Button("Cancel", role: .cancel) {}
+} message: {
+    Text("This action cannot be undone.")
+}
+```
+
+**After**:
+```swift
+@State private var showingDeleteConfirmation = false
+
+.deleteConfirmation(
+    isPresented: $showingDeleteConfirmation,
+    itemName: project.title,
+    onConfirm: deleteProject
+)
+```
+
+**Changes**:
+1. Replace entire `.confirmationDialog()` block with `.deleteConfirmation()`
+2. Extract item name and delete action
+3. Keep `@State` variable (still needed for binding)
+
+#### Step 6: Batch Migration
+
+**Process**:
+1. Migrate **loading overlays** in batches of 5 files
+2. **Build** after each batch
+3. **Commit** each batch: "Track K: Add loadingOverlay modifier to 5 files (batch 1/6)"
+4. Then migrate **delete confirmations** in batches of 5 files
+5. **Build** after each batch
+6. **Commit** each batch: "Track K: Add deleteConfirmation modifier to 5 files (batch 1/3)"
+
+**Batching Strategy**:
+- Loading overlays: 6 batches × 5 files = 30 files
+- Delete confirmations: 3 batches × 5 files = 15 files
+- Total: 9 batches
+
+#### Step 7: Verification
+
+After completing all files:
+
+```bash
+# Should be significantly reduced (some ZStacks are legitimate)
+grep -r "ZStack" OPS/Views/**/*.swift | grep -c "ProgressView"
+
+# Should return ~30 results
+grep -r "\.loadingOverlay" --include="*.swift" OPS/Views | wc -l
+
+# Should return ~15 results
+grep -r "\.deleteConfirmation" --include="*.swift" OPS/Views | wc -l
+```
+
+**Final build**: Must succeed
+
+#### Step 8: Update Handover
+
+Add session summary to AGENT_HANDOVER.md (see Session 8 template at end of these instructions)
+
+---
+
+## Session Templates for Handover Updates
+
+### Session 7: Track B Template (Agent 1)
+
+```markdown
+## Session 7: Sheet Navigation Toolbars (Track B) - ✅ 100% COMPLETE
+**Date**: 2025-11-20
+**Agent**: Agent 1 (Parallel Session with Agent 2)
+**Branch**: `feature/codebase-efficiency-implementation`
+**Status**: COMMITTED (Build verified ✅)
+
+### ✅ Work Completed
+
+**Standardized Sheet Navigation Toolbars**
+- Created **StandardSheetToolbar.swift** modifier component (80 lines)
+- Migrated **37 sheet files** to use `.standardSheetToolbar()` modifier
+- Eliminated **555 lines** of duplicate toolbar code
+- Enforced **ProjectFormSheet authority pattern** across all sheets
+
+#### Files Modified: 38 total
+**Created**:
+- `/OPS/Views/Components/Common/StandardSheetToolbar.swift` (80 lines)
+
+**Migrated** (37 files):
+- [List the actual files migrated]
+
+### Total Track B Impact:
+- **Lines Saved**: 555 lines (toolbar duplication eliminated)
+- **Visual Consistency**: All sheets now have identical toolbar styling
+- **Maintainability**: Toolbar changes propagate to all sheets automatically
+- **Build Status**: ✅ SUCCEEDED
+
+### Key Principle Applied:
+**Template Standardization**: When 37 files share 95%+ identical structure (navigation toolbars), extract to a reusable modifier. This ensures consistency and eliminates maintenance burden.
+
+### Handover Notes:
+Track B completed successfully in parallel with Track K. No merge conflicts occurred as Track B modified toolbar sections while Track K modified body content sections.
+```
+
+### Session 8: Track K Template (Agent 2)
+
+```markdown
+## Session 8: Loading & Confirmation Modifiers (Track K) - ✅ 100% COMPLETE
+**Date**: 2025-11-20
+**Agent**: Agent 2 (Parallel Session with Agent 1)
+**Branch**: `feature/codebase-efficiency-implementation`
+**Status**: COMMITTED (Build verified ✅)
+
+### ✅ Work Completed
+
+**Reusable Loading & Confirmation Modifiers**
+- Created **LoadingOverlay.swift** modifier (45 lines)
+- Created **DeleteConfirmation.swift** modifier (35 lines)
+- Migrated **30 files** from duplicate ZStack loading patterns to `.loadingOverlay()`
+- Migrated **15 files** from duplicate confirmationDialog to `.deleteConfirmation()`
+- Eliminated **~600 lines** of duplicate loading/confirmation code
+
+#### Files Modified: 47 total
+**Created**:
+- `/OPS/Views/Components/Common/LoadingOverlay.swift` (45 lines)
+- `/OPS/Views/Components/Common/DeleteConfirmation.swift` (35 lines)
+
+**Migrated - Loading Overlays** (30 files):
+- [List the actual files migrated]
+
+**Migrated - Delete Confirmations** (15 files):
+- [List the actual files migrated]
+
+### Total Track K Impact:
+- **Lines Saved**: ~600 lines (loading/confirmation duplication eliminated)
+- **UX Consistency**: All loading states and delete confirmations now identical
+- **Maintainability**: Single source of truth for loading/confirmation UX
+- **Build Status**: ✅ SUCCEEDED
+
+### Key Principle Applied:
+**Modifier Extraction**: When common UI patterns (loading overlays, confirmations) are duplicated across 30+ files, extract to view modifiers. This consolidates behavior and ensures consistent UX.
+
+### Handover Notes:
+Track K completed successfully in parallel with Track B. No merge conflicts occurred as Track K modified body content sections while Track B modified toolbar sections.
+```
+
+---
+
+## Post-Parallel Integration Checklist
+
+**After both tracks complete**:
+
+1. ✅ Both agents have committed their final batches
+2. ✅ Agent 2 pulls Agent 1's changes (or vice versa)
+3. ✅ Resolve any minor conflicts (should be minimal)
+4. ✅ **Final build verification** on merged code
+5. ✅ **One agent** updates AGENT_HANDOVER.md with BOTH session summaries
+6. ✅ Update track completion matrix:
+
+```markdown
+| Track | Status | Effort | Impact | Notes |
+|-------|--------|--------|--------|-------|
+| **B** | ✅ DONE | 10-15h | 555 lines | Committed (parallel) |
+| **K** | ✅ DONE | 3-4h | 600 lines | Committed (parallel) |
+```
+
+7. ✅ Commit handover update: "Update AGENT_HANDOVER: Track B + K parallel completion"
+
+---
+
 ## Build & Verification Status
 
 ### Last Known Good Build:

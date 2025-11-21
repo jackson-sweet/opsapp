@@ -485,14 +485,11 @@ struct UniversalJobBoardCard: View {
                     .environmentObject(dataController)
             }
         }
-        .alert("Delete \(deleteItemName)?", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                deleteItem()
-            }
-        } message: {
-            Text("This will permanently delete this \(deleteItemName.lowercased()). This action cannot be undone.")
-        }
+        .deleteConfirmation(
+            isPresented: $showingDeleteConfirmation,
+            itemName: deleteItemName,
+            onConfirm: deleteItem
+        )
         .customAlert($customAlert)
     }
 
@@ -681,14 +678,11 @@ struct UniversalJobBoardCard: View {
                 }
             }
         }
-        .alert("Delete \(deleteItemName)?", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                deleteItem()
-            }
-        } message: {
-            Text("This will permanently delete this \(deleteItemName.lowercased()). This action cannot be undone.")
-        }
+        .deleteConfirmation(
+            isPresented: $showingDeleteConfirmation,
+            itemName: deleteItemName,
+            onConfirm: deleteItem
+        )
         .customAlert($customAlert)
     }
 

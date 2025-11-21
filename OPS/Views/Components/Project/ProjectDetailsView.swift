@@ -1174,14 +1174,12 @@ struct ProjectDetailsView: View {
         }
         .padding(.horizontal)
         .padding(.top, 8)
-        .alert("Delete Project", isPresented: $showingDeleteAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                deleteProject()
-            }
-        } message: {
-            Text("Are you sure you want to delete this project? This action cannot be undone.")
-        }
+        .deleteConfirmation(
+            isPresented: $showingDeleteAlert,
+            itemName: "Project",
+            message: "Are you sure you want to delete this project? This action cannot be undone.",
+            onConfirm: deleteProject
+        )
     }
 
     // Check if user can edit project settings

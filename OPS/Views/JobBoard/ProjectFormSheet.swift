@@ -253,38 +253,14 @@ struct ProjectFormSheet: View {
                     }
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("CANCEL") {
-                        dismiss()
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .disabled(isSaving)
-                }
-
-                ToolbarItem(placement: .principal) {
-                    Text(mode.isCreate ? "CREATE PROJECT" : "EDIT PROJECT")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: saveProject) {
-                        if isSaving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                                .scaleEffect(0.8)
-                        } else {
-                            Text(mode.isCreate ? "CREATE" : "SAVE")
-                                .font(OPSStyle.Typography.bodyBold)
-                        }
-                    }
-                    .foregroundColor(isValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    .disabled(!isValid || isSaving)
-                }
-            }
+            .standardSheetToolbar(
+                title: mode.isCreate ? "Create Project" : "Edit Project",
+                actionText: mode.isCreate ? "Create" : "Save",
+                isActionEnabled: isValid,
+                isSaving: isSaving,
+                onCancel: { dismiss() },
+                onAction: { saveProject() }
+            )
             .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showingCreateClient) {

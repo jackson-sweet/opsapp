@@ -372,14 +372,12 @@ struct TaskRow: View {
             )
             .environmentObject(dataController)
         }
-        .alert("Delete Task?", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                deleteTask()
-            }
-        } message: {
-            Text("This will permanently delete this task. This action cannot be undone.")
-        }
+        .deleteConfirmation(
+            isPresented: $showingDeleteConfirmation,
+            itemName: "Task",
+            message: "This will permanently delete this task. This action cannot be undone.",
+            onConfirm: deleteTask
+        )
         .onAppear {
             logTaskRowTeamMemberData()
         }

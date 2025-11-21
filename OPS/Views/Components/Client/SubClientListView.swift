@@ -566,14 +566,12 @@ struct SubClientRow: View {
         } message: {
             Text("How would you like to save this contact information?")
         }
-        .alert("Delete Sub-Contact", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                onDelete()
-            }
-        } message: {
-            Text("Are you sure you want to delete \(subClient.name)? This action cannot be undone.")
-        }
+        .deleteConfirmation(
+            isPresented: $showingDeleteConfirmation,
+            itemName: "Sub-Contact",
+            message: "Are you sure you want to delete \(subClient.name)? This action cannot be undone.",
+            onConfirm: onDelete
+        )
     }
     
     // MARK: - Helper Functions

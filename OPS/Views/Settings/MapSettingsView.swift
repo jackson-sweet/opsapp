@@ -60,9 +60,11 @@ struct MapSettingsView: View {
                         locationStatusCard
                         
                         // Map Features
-                        SettingsSectionHeader(title: "MAP FEATURES")
-                        
-                        SettingsCard(title: "", showTitle: false) {
+                        SectionCard(
+                            icon: "slider.horizontal.3",
+                            title: "Map Features",
+                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                        ) {
                             VStack(spacing: 0) {
                                 SettingsToggle(
                                     title: "Auto Zoom",
@@ -132,13 +134,15 @@ struct MapSettingsView: View {
                                 .padding(.vertical, 4)
                                 .padding(.horizontal, 16)
                             }
-                            .padding(.horizontal, -16) // Counteract card padding
                         }
-                        
+                        .padding(.horizontal, 20)
+
                         // Map Display
-                        SettingsSectionHeader(title: "MAP DISPLAY")
-                        
-                        SettingsCard(title: "", showTitle: false) {
+                        SectionCard(
+                            icon: "map",
+                            title: "Map Display",
+                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                        ) {
                             VStack(spacing: 0) {
                                 // Map type picker
                                 VStack(alignment: .leading, spacing: 12) {
@@ -180,8 +184,8 @@ struct MapSettingsView: View {
                                     isOn: $mapTrafficDisplay
                                 )
                             }
-                            .padding(.horizontal, -16) // Counteract card padding
                         }
+                        .padding(.horizontal, 20)
                         
                         // Reset to defaults button
                         SettingsButton(

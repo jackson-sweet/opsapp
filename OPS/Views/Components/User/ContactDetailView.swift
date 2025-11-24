@@ -30,6 +30,7 @@ struct ContactDetailView: View {
     // Sub-client editing states
     @State private var subClientToEdit: SubClient? = nil  // Single state for both data and presentation
     @State private var subClientsRefreshKey = UUID()  // Force refresh of sub-clients view
+    @State private var expandedSubClientId: String? = nil  // Track which sub-client row is expanded
     @State private var showingCreateContact = false  // For creating a contact from client data
     @State private var showingContactExportOptions = false  // For choosing export method
     @State private var showingAddToExistingContact = false  // For adding to existing contact
@@ -92,17 +93,13 @@ struct ContactDetailView: View {
                                 title: "Contact Information",
                                 actionIcon: (isClient && canEditClient) ? "pencil.circle" : nil,
                                 actionLabel: (isClient && canEditClient) ? "Edit" : nil,
-                                onAction: (isClient && canEditClient) ? { showingClientEdit = true } : nil,
-                                contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                                onAction: (isClient && canEditClient) ? { showingClientEdit = true } : nil
                             ) {
-                                VStack(spacing: 0) {
+                                VStack(spacing: 16) {
                                     contactSection
-                                        .padding(16)
 
                                     // Save and Share buttons inside the card
                                     saveShareButtons
-                                        .padding(.horizontal, 16)
-                                        .padding(.bottom, 16)
                                 }
                             }
                             .padding(.horizontal)
@@ -130,26 +127,80 @@ struct ContactDetailView: View {
                                         name: ""
                                     )
                                     subClientToEdit = tempSubClient
-                                } : nil,
-                                contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                                } : nil
                             ) {
-                                SubClientListView(
-                                    client: client,
-                                    isEditing: false,
-                                    onEditSubClient: { subClient in
-                                        subClientToEdit = subClient
-                                    },
-                                    onCreateSubClient: {
-                                        let tempSubClient = SubClient(
-                                            id: UUID().uuidString,
-                                            name: ""
+                                VStack(spacing: 16) {
+                                    // Sub-client list or empty state
+                                    if client.subClients.isEmpty {
+                                        // Empty state
+                                        VStack(spacing: 12) {
+                                            Image(systemName: OPSStyle.Icons.subClient)
+                                                .font(.system(size: 32))
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                                            Text("No sub-contacts yet")
+                                                .font(OPSStyle.Typography.caption)
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 32)
+                                        .background(OPSStyle.Colors.cardBackground.opacity(0.8))
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: 1)
                                         )
-                                        subClientToEdit = tempSubClient
-                                    },
-                                    onDeleteSubClient: { subClient in
-                                        deleteSubClient(subClient)
+                                    } else {
+                                        // Sub-client rows
+                                        VStack(spacing: 8) {
+                                            ForEach(client.subClients, id: \.id) { subClient in
+                                                SubClientRow(
+                                                    subClient: subClient,
+                                                    isExpanded: expandedSubClientId == subClient.id,
+                                                    isEditing: false,
+                                                    onTap: {
+                                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                                            if expandedSubClientId == subClient.id {
+                                                                expandedSubClientId = nil
+                                                            } else {
+                                                                expandedSubClientId = subClient.id
+                                                            }
+                                                        }
+                                                    },
+                                                    onEdit: {
+                                                        subClientToEdit = subClient
+                                                    },
+                                                    onDelete: {
+                                                        deleteSubClient(subClient)
+                                                    },
+                                                    onCall: {
+                                                        if let phone = subClient.phoneNumber {
+                                                            let cleaned = phone.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+                                                            if let phoneURL = URL(string: "tel:\(cleaned)") {
+                                                                openURL(phoneURL)
+                                                            }
+                                                        }
+                                                    },
+                                                    onMessage: {
+                                                        if let phone = subClient.phoneNumber {
+                                                            let cleaned = phone.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+                                                            if let smsURL = URL(string: "sms:\(cleaned)") {
+                                                                openURL(smsURL)
+                                                            }
+                                                        }
+                                                    },
+                                                    onEmail: {
+                                                        if let email = subClient.email {
+                                                            if let emailURL = URL(string: "mailto:\(email)") {
+                                                                openURL(emailURL)
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
-                                )
+                                }
                                 .id(subClientsRefreshKey)
                             }
                             .padding(.horizontal)
@@ -1128,28 +1179,18 @@ struct ContactDetailView: View {
             icon: isClient ? "building.2" : "person.badge.shield.checkmark",
             title: "Role Information"
         ) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(isClient ? "TYPE" : "EMPLOYEE TYPE")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            VStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(isClient ? "TYPE" : "EMPLOYEE TYPE")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                HStack(spacing: 12) {
                     Text(role)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    Spacer()
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .background(Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
-                )
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(16)
         }
         .opacity(showFullContact ? 1 : 0)
         .offset(y: showFullContact ? 0 : 20)

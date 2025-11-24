@@ -125,93 +125,103 @@ struct ProfileSettingsView: View {
                         // Form fields - all directly editable
                         VStack(spacing: 24) {
                             // PERSONAL INFORMATION section
-                            SettingsSectionHeader(title: "PERSONAL INFORMATION")
-                            
-                            // Name fields in HStack
-                            HStack(spacing: 16) {
-                                FormTextField(
-                                    title: "First Name",
-                                    text: $firstName
-                                )
-                                
-                                FormTextField(
-                                    title: "Last Name",
-                                    text: $lastName
-                                )
-                            }
-                            .padding(.horizontal, 20)
-                            
-                            // Email - disabled field with grey border
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("EMAIL ADDRESS")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                Text(email)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 1)
+                            SectionCard(
+                                icon: "person.circle",
+                                title: "Personal Information"
+                            ) {
+                                VStack(spacing: 16) {
+                                    // Name fields in HStack
+                                    HStack(spacing: 16) {
+                                        FormTextField(
+                                            title: "First Name",
+                                            text: $firstName
+                                        )
+
+                                        FormTextField(
+                                            title: "Last Name",
+                                            text: $lastName
+                                        )
+                                    }
+
+                                    // Email - disabled field with grey border
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("EMAIL ADDRESS")
+                                            .font(OPSStyle.Typography.caption)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                        Text(email)
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding()
+                                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 1)
+                                            )
+
+                                        Text("You cannot change your email address, it is the foundation of your account")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                            .italic()
+                                    }
+
+                                    // Phone - directly editable
+                                    FormTextField(
+                                        title: "Phone Number",
+                                        text: $phone,
+                                        keyboardType: .phonePad
                                     )
-                                
-                                Text("You cannot change your email address, it is the foundation of your account")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .italic()
-                            }
-                            .padding(.horizontal, 20)
-                            
-                            // Phone - directly editable
-                            FormTextField(
-                                title: "Phone Number",
-                                text: $phone,
-                                keyboardType: .phonePad
-                            )
-                            .padding(.horizontal, 20)
-                            
-                            // Home address - with autocomplete
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("HOME ADDRESS")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                AddressAutocompleteField(
-                                    address: $homeAddress,
-                                    placeholder: "Enter your home address"
-                                ) { address, coordinate in
-                                    // Optional: Could store coordinates if needed
-                                    if let coord = coordinate {
+
+                                    // Home address - with autocomplete
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("HOME ADDRESS")
+                                            .font(OPSStyle.Typography.caption)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                        AddressAutocompleteField(
+                                            address: $homeAddress,
+                                            placeholder: "Enter your home address"
+                                        ) { address, coordinate in
+                                            // Optional: Could store coordinates if needed
+                                            if let coord = coordinate {
+                                            }
+                                        }
                                     }
                                 }
                             }
                             .padding(.horizontal, 20)
                             
                             // CREDENTIALS section
-                            SettingsSectionHeader(title: "CREDENTIALS")
-                            
-                            SettingsCategoryButton(
-                                title: "Reset Password",
-                                description: "Change your account password",
+                            SectionCard(
                                 icon: "lock.shield",
-                                action: {
-                                    showResetPasswordSheet = true
+                                title: "Credentials",
+                                contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                            ) {
+                                VStack(spacing: 0) {
+                                    SettingsCategoryButton(
+                                        title: "Reset Password",
+                                        description: "Change your account password",
+                                        icon: "lock.shield",
+                                        action: {
+                                            showResetPasswordSheet = true
+                                        }
+                                    )
+
+                                    Divider()
+                                        .background(OPSStyle.Colors.cardBorder)
+
+                                    SettingsCategoryButton(
+                                        title: "Delete Account",
+                                        description: "Permanently remove your account and data",
+                                        icon: "trash.circle",
+                                        action: {
+                                            showDeleteAccountSheet = true
+                                        }
+                                    )
                                 }
-                            )
-                            .padding(.horizontal, 20)
-                            
-                            SettingsCategoryButton(
-                                title: "Delete Account",
-                                description: "Permanently remove your account and data",
-                                icon: "trash.circle",
-                                action: {
-                                    showDeleteAccountSheet = true
-                                }
-                            )
+                            }
                             .padding(.horizontal, 20)
                         }
                         .padding(.bottom, 40)

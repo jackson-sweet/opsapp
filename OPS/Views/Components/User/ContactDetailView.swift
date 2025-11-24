@@ -1051,44 +1051,19 @@ struct ContactDetailView: View {
     // MARK: - Projects Section
 
     private var projectsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Get relevant projects
-            let projects = relevantProjects
+        // Get relevant projects
+        let projects = relevantProjects
 
-            // Section title with count and add button
-            HStack {
-                Text("PROJECTS (\(projects.count))")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Spacer()
-
-                // Add Project button - only for clients with admin/office permissions
-                if isClient && canEditClient {
-                    Button(action: {
-                        showingCreateProject = true
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.plus)
-                                .font(OPSStyle.Typography.smallCaption)
-                            Text("Add")
-                                .font(OPSStyle.Typography.smallCaption)
-                        }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                        )
-                    }
-                }
-            }
-            .padding(.bottom, 4)
+        return SectionCard(
+            icon: "folder.fill",
+            title: "Projects (\(projects.count))",
+            actionIcon: (isClient && canEditClient) ? OPSStyle.Icons.plus : nil,
+            actionLabel: (isClient && canEditClient) ? "Add" : nil,
+            onAction: (isClient && canEditClient) ? { showingCreateProject = true } : nil,
+            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        ) {
 
             if !projects.isEmpty {
-
-                // Projects list card
                 VStack(spacing: 0) {
                     ForEach(Array((isProjectListExpanded ? projects : Array(projects.prefix(5))).enumerated()), id: \.element.id) { index, project in
                         Button(action: {
@@ -1169,15 +1144,6 @@ struct ContactDetailView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                )
-                .opacity(showFullContact ? 1 : 0)
-                .offset(y: showFullContact ? 0 : 20)
-                .animation(.easeInOut(duration: 0.5).delay(0.3), value: showFullContact)
             } else if isClient && canEditClient {
                 // Empty state for clients with no projects (admin/office only)
                 Button(action: {
@@ -1202,66 +1168,58 @@ struct ContactDetailView: View {
                     .padding(.vertical, 40)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                )
-                .opacity(showFullContact ? 1 : 0)
-                .offset(y: showFullContact ? 0 : 20)
-                .animation(.easeInOut(duration: 0.5).delay(0.3), value: showFullContact)
+            } else {
+                // Empty state for non-clients or field crew (just text, no action)
+                VStack(spacing: 12) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 40))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    Text("No projects")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
             }
         }
+        .opacity(showFullContact ? 1 : 0)
+        .offset(y: showFullContact ? 0 : 20)
+        .animation(.easeInOut(duration: 0.5).delay(0.3), value: showFullContact)
     }
 
     // MARK: - Role Section
 
     private var roleSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Section title
-            Text("ROLE INFORMATION")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.bottom, 4)
-            
-            // Role info card with improved styling
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(OPSStyle.Colors.cardBackground)
-                        .frame(width: contactIconSize, height: contactIconSize)
-                    
-                    Image(systemName: isClient ? "building.2" : "person.badge.shield.checkmark")
-                        .font(OPSStyle.Typography.smallBody)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(isClient ? "Type" : "Employee Type")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
+        SectionCard(
+            icon: isClient ? "building.2" : "person.badge.shield.checkmark",
+            title: "Role Information"
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(isClient ? "TYPE" : "EMPLOYEE TYPE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                HStack(spacing: 12) {
                     Text(role)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
                 }
-                
-                Spacer()
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
             }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
-            .opacity(showFullContact ? 1 : 0)
-            .offset(y: showFullContact ? 0 : 20)
-            .animation(.easeInOut(duration: 0.5).delay(0.2), value: showFullContact)
         }
-        .padding(.bottom, 16)
+        .opacity(showFullContact ? 1 : 0)
+        .offset(y: showFullContact ? 0 : 20)
+        .animation(.easeInOut(duration: 0.5).delay(0.2), value: showFullContact)
     }
     
     // MARK: - Helper Computed Properties

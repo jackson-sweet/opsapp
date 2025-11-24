@@ -28,6 +28,7 @@ struct SubscriptionLockoutView: View {
     @State private var refreshComplete = false
     @State private var refreshError = false
     @State private var refreshResultNegative = false
+    @State private var refreshResultStatus: SubscriptionStatus?
     @State private var animationTask: Task<Void, Never>?
 
     var body: some View {
@@ -213,7 +214,7 @@ struct SubscriptionLockoutView: View {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.system(size: 14))
                             }
-                            Text(refreshError ? "NETWORK ERROR" : "CHECK STATUS")
+                            Text(buttonText)
                                 .font(OPSStyle.Typography.captionBold)
                         }
                         .foregroundColor((refreshError || refreshResultNegative) ? OPSStyle.Colors.errorStatus : (refreshComplete ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText))
@@ -230,6 +231,7 @@ struct SubscriptionLockoutView: View {
                     .animation(.easeOut(duration: 0.3), value: refreshComplete)
                     .animation(.easeOut(duration: 0.3), value: refreshError)
                     .animation(.easeOut(duration: 0.3), value: refreshResultNegative)
+                    .animation(.easeOut(duration: 0.3), value: refreshResultStatus)
                 }
                 .padding(.horizontal, 24)
             }
@@ -790,6 +792,29 @@ struct SubscriptionLockoutView: View {
         }
     }
 
+    // MARK: - Button Text
+
+    private var buttonText: String {
+        if refreshError {
+            return "NETWORK ERROR"
+        } else if let status = refreshResultStatus {
+            switch status {
+            case .active:
+                return "PLAN ACTIVE"
+            case .trial:
+                return "TRIAL ACTIVE"
+            case .grace:
+                return "GRACE PERIOD"
+            case .expired:
+                return "PLAN EXPIRED"
+            case .cancelled:
+                return "PLAN CANCELLED"
+            }
+        } else {
+            return "CHECK STATUS"
+        }
+    }
+
     // MARK: - Refresh Subscription
 
     @MainActor
@@ -802,6 +827,7 @@ struct SubscriptionLockoutView: View {
         refreshComplete = false
         refreshError = false
         refreshResultNegative = false
+        refreshResultStatus = nil
 
         print("[LOCKOUT] 🔄 Refreshing subscription status...")
 
@@ -862,6 +888,7 @@ struct SubscriptionLockoutView: View {
         if success {
             // Check subscription status to determine result color
             let status = subscriptionManager.subscriptionStatus
+            refreshResultStatus = status
             let isNegativeStatus = status == .expired || status == .cancelled
 
             if isNegativeStatus {
@@ -877,6 +904,7 @@ struct SubscriptionLockoutView: View {
                 isRefreshing = false
                 refreshProgress = 0.0
                 refreshResultNegative = false
+                refreshResultStatus = nil
             } else {
                 // Positive status - fill to 100% with green
                 refreshComplete = true
@@ -898,6 +926,7 @@ struct SubscriptionLockoutView: View {
                 // Wait for fade to complete
                 try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
                 refreshComplete = false
+                refreshResultStatus = nil
             }
         } else {
             // Network error - fill to 100% with red

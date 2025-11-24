@@ -73,24 +73,15 @@ struct SeatManagementView: View {
                     }
                 }
             }
-            .navigationTitle("Manage Seats")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        saveChanges()
-                    }
-                    .foregroundColor(hasChanges ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-                    .disabled(!hasChanges || isSaving)
-                }
-            }
+            .standardSheetToolbar(
+                title: "Manage Seats",
+                actionText: "Save",
+                isActionEnabled: hasChanges,
+                isSaving: isSaving,
+                showProgressOnSave: false,
+                onCancel: { dismiss() },
+                onAction: saveChanges
+            )
         }
         .onAppear {
             loadTeamMembers()

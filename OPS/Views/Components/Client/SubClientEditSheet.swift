@@ -179,33 +179,15 @@ struct SubClientEditSheet: View {
                 }
                 .ignoresSafeArea(.keyboard)
             }
-            .navigationTitle(isCreating ? "New Sub Contact" : subClient?.name ?? "Edit Sub Contact")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .disabled(isSaving)
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: saveSubClient) {
-                        if isSaving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                                .scaleEffect(0.8)
-                        } else {
-                            Text("Save")
-                                .font(OPSStyle.Typography.bodyBold)
-                        }
-                    }
-                    .foregroundColor(viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
-                    .disabled(viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
-                }
-            }
+            .standardSheetToolbar(
+                title: isCreating ? "New Sub Contact" : "Edit Sub Contact",
+                actionText: "Save",
+                actionColor: OPSStyle.Colors.primaryAccent,
+                isActionEnabled: !viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                isSaving: isSaving,
+                onCancel: { dismiss() },
+                onAction: saveSubClient
+            )
             .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) { }
             } message: {

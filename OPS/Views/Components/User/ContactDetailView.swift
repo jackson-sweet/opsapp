@@ -759,108 +759,94 @@ struct ContactDetailView: View {
     }
     
     // MARK: - Contact Section
-    
+
     private var contactSection: some View {
-        VStack(spacing: 20) {
-                
-                // Email
-                if let email = self.email, !email.isEmpty {
-                    HStack(spacing: 16) {
-                        ZStack {
-                            Circle()
-                                .fill(OPSStyle.Colors.cardBackground)
-                                .frame(width: contactIconSize, height: contactIconSize)
-                            
-                            Image(systemName: OPSStyle.Icons.envelope)
-                                .font(OPSStyle.Typography.smallBody)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Email")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            Text(email)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .textSelection(.enabled)  // Allow text selection for copy
-                        }
-                        
-                        Spacer()
-                        
-                        // Email button
+        VStack(spacing: 16) {
+
+                // Email field
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("EMAIL")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    if let email = self.email, !email.isEmpty {
                         Button(action: {
                             if let emailURL = URL(string: "mailto:\(email)") {
                                 openURL(emailURL)
                             }
                         }) {
-                            Image(systemName: OPSStyle.Icons.envelopeFill)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.clear)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white, lineWidth: 1)
-                                )
+                            HStack(spacing: 12) {
+                                Image(systemName: OPSStyle.Icons.envelope)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 24)
+
+                                Text(email)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .textSelection(.enabled)
+
+                                Spacer()
+
+                                Image(systemName: OPSStyle.Icons.envelopeFill)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                            .background(Color.clear)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            )
                         }
-                    }
-                } else {
-                    // No email available
-                    HStack(spacing: 16) {
-                        ZStack {
-                            Circle()
-                                .fill(OPSStyle.Colors.cardBackground)
-                                .frame(width: contactIconSize, height: contactIconSize)
-                            
+                        .buttonStyle(PlainButtonStyle())
+                    } else {
+                        HStack(spacing: 12) {
                             Image(systemName: OPSStyle.Icons.envelope)
-                                .font(OPSStyle.Typography.smallBody)
+                                .font(.system(size: 16))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Email")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
+                                .frame(width: 24)
+
                             Text("No email available")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .italic()
+
+                            Spacer()
                         }
-                        
-                        Spacer()
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.clear)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        )
                     }
                 }
                 
-                // Phone
-                if let phone = self.phone, !phone.isEmpty {
-                    HStack(spacing: 16) {
-                        ZStack {
-                            Circle()
-                                .fill(OPSStyle.Colors.cardBackground)
-                                .frame(width: contactIconSize, height: contactIconSize)
-                            
+                // Phone field
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("PHONE")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    if let phone = self.phone, !phone.isEmpty {
+                        HStack(spacing: 12) {
                             Image(systemName: OPSStyle.Icons.phone)
-                                .font(OPSStyle.Typography.smallBody)
+                                .font(.system(size: 16))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Phone")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
+                                .frame(width: 24)
+
                             Text(formatPhoneNumber(phone))
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
-                                .textSelection(.enabled)  // Allow text selection for copy
-                        }
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 8) {
+                                .textSelection(.enabled)
+
+                            Spacer()
+
                             // Call button
                             Button(action: {
                                 let cleaned = phone.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
@@ -869,16 +855,10 @@ struct ContactDetailView: View {
                                 }
                             }) {
                                 Image(systemName: OPSStyle.Icons.phoneFill)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.clear)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
-                                    )
+                                    .font(.system(size: 16))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
-                            
+
                             // Message button
                             Button(action: {
                                 let cleaned = phone.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
@@ -887,126 +867,108 @@ struct ContactDetailView: View {
                                 }
                             }) {
                                 Image(systemName: "message.fill")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.clear)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
-                                    )
+                                    .font(.system(size: 16))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
                         }
-                    }
-                } else {
-                    // No phone available
-                    HStack(spacing: 16) {
-                        ZStack {
-                            Circle()
-                                .fill(OPSStyle.Colors.cardBackground)
-                                .frame(width: contactIconSize, height: contactIconSize)
-                            
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.clear)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        )
+                    } else {
+                        HStack(spacing: 12) {
                             Image(systemName: OPSStyle.Icons.phone)
-                                .font(OPSStyle.Typography.smallBody)
+                                .font(.system(size: 16))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Phone")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
+                                .frame(width: 24)
+
                             Text("No phone available")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .italic()
+
+                            Spacer()
                         }
-                        
-                        Spacer()
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.clear)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        )
                     }
                 }
                 
-                // Address (for clients only)
+                // Address field (for clients only)
                 if isClient {
-                    if let address = self.address, !address.isEmpty {
-                        Button(action: {
-                            // Open address in Maps
-                            let encodedAddress = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                            if let mapsURL = URL(string: "maps://?q=\(encodedAddress)") {
-                                openURL(mapsURL)
-                            }
-                        }) {
-                            HStack(spacing: 16) {
-                                ZStack {
-                                    Circle()
-                                        .fill(OPSStyle.Colors.cardBackground)
-                                        .frame(width: contactIconSize, height: contactIconSize)
-                                    
-                                    Image(systemName: OPSStyle.Icons.address)
-                                        .font(OPSStyle.Typography.smallBody)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("ADDRESS")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        if let address = self.address, !address.isEmpty {
+                            Button(action: {
+                                // Open address in Maps
+                                let encodedAddress = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                                if let mapsURL = URL(string: "maps://?q=\(encodedAddress)") {
+                                    openURL(mapsURL)
                                 }
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Address")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: OPSStyle.Icons.address)
+                                        .font(.system(size: 16))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        .frame(width: 24)
+
                                     Text(address)
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .lineLimit(2)
-                                        .textSelection(.enabled)  // Allow text selection for copy
-                                }
-                                
-                                Spacer()
-                                
-                                // Map button
-                                Button(action: {
-                                    let encodedAddress = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                                    if let mapsURL = URL(string: "maps://?q=\(encodedAddress)") {
-                                        openURL(mapsURL)
-                                    }
-                                }) {
+                                        .textSelection(.enabled)
+
+                                    Spacer()
+
                                     Image(systemName: "map.fill")
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(Color.clear)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
-                                        )
+                                        .font(.system(size: 16))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 16)
+                                .background(Color.clear)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                )
                             }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    } else {
-                        // No address available
-                        HStack(spacing: 16) {
-                            ZStack {
-                                Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
-                                    .frame(width: contactIconSize, height: contactIconSize)
-                                
-                                // NOTE: location.slash does not have a semantic icon yet - using legacy
+                            .buttonStyle(PlainButtonStyle())
+                        } else {
+                            HStack(spacing: 12) {
                                 Image(systemName: "location.slash")
-                                    .font(OPSStyle.Typography.smallBody)
+                                    .font(.system(size: 16))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Address")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
+                                    .frame(width: 24)
+
                                 Text("No address available")
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     .italic()
+
+                                Spacer()
                             }
-                            
-                            Spacer()
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                            .background(Color.clear)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            )
                         }
                     }
                 }

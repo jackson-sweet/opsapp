@@ -470,8 +470,7 @@ struct ProjectDetailsView: View {
             actionLabel: "Directions",
             onAction: {
                 openInMaps(coordinate: project.coordinate, address: project.address ?? "")
-            },
-            contentPadding: EdgeInsets(top: 0, leading: 16, bottom: 16, trailing: 16)
+            }
         ) {
             VStack(spacing: 16) {
 

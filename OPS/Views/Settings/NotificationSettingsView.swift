@@ -97,22 +97,32 @@ struct NotificationSettingsView: View {
                             .padding(20)
                         
                         // Project Notifications Section
-                        VStack(alignment: .leading, spacing: 16) {
-                            SettingsSectionHeader(title: "PROJECT UPDATES")
+                        SectionCard(
+                            icon: "bell.badge",
+                            title: "Project Updates",
+                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                        ) {
                             projectNotificationSettings
                         }
+                        .padding(.horizontal, 20)
                         
                         // Advance Notice Section
-                        VStack(alignment: .leading, spacing: 16) {
-                            SettingsSectionHeader(title: "ADVANCE REMINDERS")
+                        SectionCard(
+                            icon: "clock.badge",
+                            title: "Advance Reminders"
+                        ) {
                             advanceNoticeSettings
                         }
-                        
+                        .padding(.horizontal, 20)
+
                         // Test Notification Section
-                        VStack(alignment: .leading, spacing: 16) {
-                            SettingsSectionHeader(title: "TEST NOTIFICATIONS")
+                        SectionCard(
+                            icon: "bell.circle",
+                            title: "Test Notifications"
+                        ) {
                             testNotificationCard
                         }
+                        .padding(.horizontal, 20)
                     }
                     .padding(.bottom, 40)
                 }
@@ -190,33 +200,35 @@ struct NotificationSettingsView: View {
     }
     
     private var projectNotificationSettings: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
             // Assignment Notifications
-            SettingsCard(title: "", showTitle: false) {
-                SettingsToggle(
-                    title: "Project Assignments",
-                    description: "Get notified when assigned to new projects",
-                    isOn: $notifyProjectAssignment
-                )
-            }
-            
+            SettingsToggle(
+                title: "Project Assignments",
+                description: "Get notified when assigned to new projects",
+                isOn: $notifyProjectAssignment
+            )
+
+            Divider()
+                .background(OPSStyle.Colors.cardBorder)
+                .padding(.vertical, 8)
+
             // Schedule Changes
-            SettingsCard(title: "", showTitle: false) {
-                SettingsToggle(
-                    title: "Schedule Changes",
-                    description: "Receive alerts when project dates change",
-                    isOn: $notifyProjectScheduleChanges
-                )
-            }
-            
+            SettingsToggle(
+                title: "Schedule Changes",
+                description: "Receive alerts when project dates change",
+                isOn: $notifyProjectScheduleChanges
+            )
+
+            Divider()
+                .background(OPSStyle.Colors.cardBorder)
+                .padding(.vertical, 8)
+
             // Completion Notifications
-            SettingsCard(title: "", showTitle: false) {
-                SettingsToggle(
-                    title: "Project Completion",
-                    description: "Be notified when projects are marked complete",
-                    isOn: $notifyProjectCompletion
-                )
-            }
+            SettingsToggle(
+                title: "Project Completion",
+                description: "Be notified when projects are marked complete",
+                isOn: $notifyProjectCompletion
+            )
         }
     }
     

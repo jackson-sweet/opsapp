@@ -92,12 +92,12 @@ struct MapSettingsView: View {
                                         Text("Auto Re-center Time")
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(.white)
-                                        
+
                                         Text("Time before the map automatically re-centers")
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
-                                    
+
                                     SegmentedControl(
                                         selection: $mapAutoCenterTime,
                                         options: Array(zip(autoCenterTimes, autoCenterLabels))
@@ -105,25 +105,24 @@ struct MapSettingsView: View {
                                     .disabled(!mapAutoCenter) // Disable when auto-center is off
                                     .opacity(mapAutoCenter ? 1.0 : 0.6)
                                 }
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, 16)
+                                .padding(16)
                                 
                                 Divider()
                                     .background(OPSStyle.Colors.secondaryText.opacity(0.3))
                                     .padding(.vertical, 8)
                                 
-                                // Zoom level picker 
+                                // Zoom level picker
                                 VStack(alignment: .leading, spacing: 12) {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text("Auto Zoom Level")
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(.white)
-                                        
+
                                         Text("Default zoom level when showing projects")
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
-                                    
+
                                     SegmentedControl(
                                         selection: $mapZoomLevel,
                                         options: Array(zip(zoomLevels, zoomLevelLabels))
@@ -131,8 +130,7 @@ struct MapSettingsView: View {
                                     .disabled(!mapAutoZoom) // Disable when auto-zoom is off
                                     .opacity(mapAutoZoom ? 1.0 : 0.6)
                                 }
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, 16)
+                                .padding(16)
                             }
                         }
                         .padding(.horizontal, 20)
@@ -150,19 +148,18 @@ struct MapSettingsView: View {
                                         Text("Map Type")
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(.white)
-                                        
+
                                         Text("Choose the map display style")
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
-                                    
+
                                     SegmentedControl(
                                         selection: $mapDefaultType,
                                         options: Array(zip(mapTypes, mapTypeLabels))
                                     )
                                 }
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, 16)
+                                .padding(16)
                                 
                                 Divider()
                                     .background(OPSStyle.Colors.secondaryText.opacity(0.3))

@@ -80,9 +80,10 @@ struct ContactDetailView: View {
                     
                     // Scrollable content
                     ScrollView {
-                        VStack(spacing: 6) {
-                            // Profile header with avatar
-                            profileHeader
+                        VStack(spacing: 16) {
+                            // Contact preview card (replaces profile header)
+                            contactPreviewCard
+                                .padding(.horizontal)
                                 .padding(.top, 16)
                             
                             // Contact information section
@@ -91,17 +92,17 @@ struct ContactDetailView: View {
                                 title: "Contact Information",
                                 actionIcon: (isClient && canEditClient) ? "pencil.circle" : nil,
                                 actionLabel: (isClient && canEditClient) ? "Edit" : nil,
-                                onAction: (isClient && canEditClient) ? { showingClientEdit = true } : nil
+                                onAction: (isClient && canEditClient) ? { showingClientEdit = true } : nil,
+                                contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
                             ) {
                                 VStack(spacing: 0) {
                                     contactSection
-                                        .padding(.vertical, 14)
-                                        .padding(.horizontal, 16)
+                                        .padding(16)
 
                                     // Save and Share buttons inside the card
                                     saveShareButtons
                                         .padding(.horizontal, 16)
-                                        .padding(.bottom, 20)
+                                        .padding(.bottom, 16)
                                 }
                             }
                             .padding(.horizontal)
@@ -117,27 +118,42 @@ struct ContactDetailView: View {
 
                         // Sub-contacts section (for clients only) - positioned ABOVE projects
                         if isClient, let client = client {
-                            SubClientListView(
-                                client: client,
-                                isEditing: false,
-                                onEditSubClient: { subClient in
-                                    subClientToEdit = subClient  // This will trigger the sheet
-                                },
-                                onCreateSubClient: {
-                                    // Use a special marker SubClient with empty ID to indicate new creation
+                            SectionCard(
+                                icon: "person.2.fill",
+                                title: "Sub Contacts (\(client.subClients.count))",
+                                actionIcon: canEditClient ? OPSStyle.Icons.plus : nil,
+                                actionLabel: canEditClient ? "Add" : nil,
+                                onAction: canEditClient ? {
+                                    // Create new sub-client
                                     let tempSubClient = SubClient(
-                                        id: UUID().uuidString,  // Temporary ID
-                                        name: ""  // Empty name indicates new subclient
+                                        id: UUID().uuidString,
+                                        name: ""
                                     )
                                     subClientToEdit = tempSubClient
-                                },
-                                onDeleteSubClient: { subClient in
-                                    deleteSubClient(subClient)
-                                }
-                            )
+                                } : nil,
+                                contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                            ) {
+                                SubClientListView(
+                                    client: client,
+                                    isEditing: false,
+                                    onEditSubClient: { subClient in
+                                        subClientToEdit = subClient
+                                    },
+                                    onCreateSubClient: {
+                                        let tempSubClient = SubClient(
+                                            id: UUID().uuidString,
+                                            name: ""
+                                        )
+                                        subClientToEdit = tempSubClient
+                                    },
+                                    onDeleteSubClient: { subClient in
+                                        deleteSubClient(subClient)
+                                    }
+                                )
+                                .id(subClientsRefreshKey)
+                            }
                             .padding(.horizontal)
                             .padding(.top, 16)
-                            .id(subClientsRefreshKey)  // Force refresh when key changes
                         }
 
                         // Projects section
@@ -500,42 +516,88 @@ struct ContactDetailView: View {
         .padding(.horizontal)
     }
     
-    // MARK: - Profile Header
-    
-    private var profileHeader: some View {
-        HStack(spacing: 36) {
-            // Profile image - using unified UserAvatar component
-            Group {
-                if let user = user {
-                    UserAvatar(user: user, size: avatarSize)
-                } else if let teamMember = teamMember {
-                    UserAvatar(teamMember: teamMember, size: avatarSize)
-                } else if let client = client {
-                    UserAvatar(client: client, size: avatarSize)
-                } else {
-                    UserAvatar(firstName: "", lastName: "", size: avatarSize)
+    // MARK: - Contact Preview Card
+
+    private var contactPreviewCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    // Name
+                    Text(fullName.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+
+                    // Email or phone
+                    if let email = self.email, !email.isEmpty {
+                        Text(email)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    } else if let phone = self.phone, !phone.isEmpty {
+                        Text(formatPhoneNumber(phone))
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    } else {
+                        Text("NO CONTACT INFO")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .lineLimit(1)
+                    }
+
+                    // Address (for clients) or Role (for team members)
+                    if let address = self.address, !address.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mappin.circle")
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Text(address.components(separatedBy: ",").first ?? address)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                        }
+                    } else {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.badge.shield.checkmark")
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Text(role)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                        }
+                    }
                 }
+
+                Spacer()
+
+                // Avatar on right side (56x56)
+                Group {
+                    if let user = user {
+                        UserAvatar(user: user, size: 56)
+                    } else if let teamMember = teamMember {
+                        UserAvatar(teamMember: teamMember, size: 56)
+                    } else if let client = client {
+                        UserAvatar(client: client, size: 56)
+                    } else {
+                        UserAvatar(firstName: "", lastName: "", size: 56)
+                    }
+                }
+                .overlay(
+                    Circle()
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                )
             }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
-                Circle()
-                    .stroke(OPSStyle.Colors.primaryText, lineWidth: 3)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
-            
-            // Name and role on one row
-            VStack(alignment: .leading, spacing: 8) {
-                Text(fullName.uppercased())
-                    .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Text(role)
-                    .font(OPSStyle.Typography.cardSubtitle)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .multilineTextAlignment(.leading)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 32)
     }
     
     // MARK: - Contact Buttons
@@ -1087,6 +1149,7 @@ struct ContactDetailView: View {
                         .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
                 )
             }
+            .padding(16)
         }
         .opacity(showFullContact ? 1 : 0)
         .offset(y: showFullContact ? 0 : 20)

@@ -275,12 +275,9 @@ struct ProjectDetailsView: View {
         ScrollView {
             VStack(spacing: 24) {
                 locationSection
-                infoSection
-
+                projectInfoSection
                 tasksSection
-
                 photosSection
-                teamSection
 
                 if project.status != .completed {
                     Spacer()
@@ -466,31 +463,17 @@ struct ProjectDetailsView: View {
     
     // Location map
     private var locationSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Location section label
-            HStack {
-                Image(systemName: OPSStyle.Icons.jobSite)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                Text("LOCATION")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Spacer()
-
-                Button(action: {
-                    openInMaps(coordinate: project.coordinate, address: project.address ?? "")
-                }) {
-                    Text("Get Directions")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.black)
-                        .cornerRadius(OPSStyle.Layout.buttonRadius)
-                }
-            }
-            .padding(.horizontal)
+        SectionCard(
+            icon: OPSStyle.Icons.jobSite,
+            title: "Location",
+            actionIcon: "arrow.triangle.turn.up.right.circle.fill",
+            actionLabel: "Directions",
+            onAction: {
+                openInMaps(coordinate: project.coordinate, address: project.address ?? "")
+            },
+            contentPadding: EdgeInsets(top: 0, leading: 16, bottom: 16, trailing: 16)
+        ) {
+            VStack(spacing: 16) {
 
             // Address field
             VStack(alignment: .leading, spacing: 4) {
@@ -660,11 +643,370 @@ struct ProjectDetailsView: View {
                 }
                 .padding(12)
             }
-            .padding(.horizontal)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    // MARK: - Info Sections
+
+    // Project Info section - groups client, schedule, description, notes, team fields
+    private var projectInfoSection: some View {
+        SectionCard(
+            icon: "doc.text",
+            title: "Project Details"
+        ) {
+            VStack(spacing: 16) {
+                // Client field
+                clientField
+
+                // Schedule field
+                scheduleField
+
+                // Description field (only if exists)
+                if let description = project.projectDescription, !description.isEmpty {
+                    descriptionField
+                }
+
+                // Team Notes field
+                teamNotesField
+
+                // Assigned Team field
+                assignedTeamField
+            }
+        }
+        .padding(.horizontal)
+        .id(refreshTrigger)
+    }
+
+    private var clientField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("CLIENT")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Button(action: {
+                showingClientContact = true
+            }) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(project.effectiveClientName)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                        // Show email if available
+                        if let email = project.effectiveClientEmail {
+                            Text(email)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                    }
+
+                    Spacer()
+
+                    // Contact indicators
+                    HStack(spacing: 8) {
+                        Image(systemName: OPSStyle.Icons.phoneFill)
+                            .font(.system(size: 16))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.3)
+
+                        Image(systemName: OPSStyle.Icons.envelopeFill)
+                            .font(.system(size: 16))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.3)
+                    }
+
+                    Image(systemName: OPSStyle.Icons.chevronRight)
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
         }
     }
-    
-    // Project info
+
+    private var scheduleField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("SCHEDULE")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(alignment: .leading, spacing: 0) {
+                if project.tasks.isEmpty {
+                    // No tasks - show create prompt
+                    HStack(spacing: 8) {
+                        Text("No tasks to schedule. Create one?")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        Button(action: {
+                            // Trigger task creation
+                            // This will be handled by the tasks section
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 14))
+                                Text("Add Task")
+                                    .font(OPSStyle.Typography.caption)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                    }
+                } else if project.computedStartDate == nil {
+                    // Has tasks but not scheduled
+                    Text("Not Scheduled")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                } else {
+                    // Has scheduled tasks
+                    HStack(spacing: 16) {
+                        // Start date
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("START DATE")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            if let startDate = project.computedStartDate {
+                                Text(formatDate(startDate))
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            }
+                        }
+
+                        Spacer()
+
+                        // End date (only show if valid)
+                        if let endDate = project.computedEndDate,
+                           let startDate = project.computedStartDate,
+                           endDate >= startDate {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("END DATE")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                                Text(formatDate(endDate))
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .background(Color.clear)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
+        }
+    }
+
+    private var descriptionField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("DESCRIPTION")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Text(project.projectDescription ?? "")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
+        }
+    }
+
+    private var teamNotesField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("TEAM NOTES")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(spacing: 0) {
+                // Expand/collapse button
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isNotesExpanded.toggle()
+                    }
+                }) {
+                    HStack {
+                        Text(isNotesExpanded ? "Hide Notes" : "Show Notes")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                        Spacer()
+
+                        Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 12))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                // Expandable notes content
+                if isNotesExpanded {
+                    Divider()
+                        .background(OPSStyle.Colors.inputFieldBorder)
+                        .padding(.top, 12)
+
+                    ExpandableNotesView(
+                        notes: project.notes ?? "",
+                        isExpanded: $isNotesExpanded,
+                        editedNotes: $noteText,
+                        onSave: saveNotes
+                    )
+                    .padding(.top, 12)
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .background(Color.clear)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
+        }
+    }
+
+    private var assignedTeamField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ASSIGNED TEAM")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(alignment: .leading, spacing: 0) {
+                if project.tasks.isEmpty {
+                    // No tasks - show create prompt
+                    HStack(spacing: 8) {
+                        Text("No tasks to assign to. Create one?")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        Button(action: {
+                            // Trigger task creation
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 14))
+                                Text("Add Task")
+                                    .font(OPSStyle.Typography.caption)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                    }
+                } else if project.teamMembers.isEmpty {
+                    // Has tasks but no team assigned
+                    Text("No team assigned")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                } else {
+                    // Has team members
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(project.teamMembers.prefix(3), id: \.id) { member in
+                            HStack(spacing: 12) {
+                                UserAvatar(user: member, size: 32)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(member.fullName)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                    Text(member.role.displayName)
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                }
+
+                                Spacer()
+                            }
+                        }
+
+                        if project.teamMembers.count > 3 {
+                            Text("+\(project.teamMembers.count - 3) more")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .padding(.top, 4)
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .background(Color.clear)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
+        }
+    }
+
+    // Notes section (DEPRECATED - now in projectInfoSection)
+    private var notesSection: some View {
+        SectionCard(
+            icon: OPSStyle.Icons.notes,
+            title: "Project Notes",
+            contentPadding: EdgeInsets(top: 0, leading: 16, bottom: 16, trailing: 16)
+        ) {
+            VStack(spacing: 0) {
+                // Expand/collapse button
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isNotesExpanded.toggle()
+                    }
+                }) {
+                    HStack {
+                        Text(isNotesExpanded ? "Hide Notes" : "Show Notes")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                        Spacer()
+
+                        Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 14))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.vertical, 12)
+
+                // Expandable notes content
+                if isNotesExpanded {
+                    Divider()
+                        .background(OPSStyle.Colors.cardBorder)
+                        .padding(.bottom, 12)
+
+                    ExpandableNotesView(
+                        notes: project.notes ?? "",
+                        isExpanded: $isNotesExpanded,
+                        editedNotes: $noteText,
+                        onSave: saveNotes
+                    )
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    // Project info (DEPRECATED - now split into individual sections)
     private var infoSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             
@@ -859,24 +1201,14 @@ struct ProjectDetailsView: View {
     
     // Team members section with modern styling
     private var teamSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section heading with icon and edit button
-            HStack {
-                Image(systemName: OPSStyle.Icons.crew)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                Text("TEAM MEMBERS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Spacer()
-            }
-            .padding(.horizontal)
-
-            // Team members card content
+        SectionCard(
+            icon: OPSStyle.Icons.crew,
+            title: "Team Members",
+            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        ) {
             ProjectTeamView(project: project, isEditing: $isEditingTeam, triggerSave: $triggerTeamSave)
-                .padding(.horizontal)
         }
+        .padding(.horizontal)
     }
 
     private var teamEditButton: some View {
@@ -904,23 +1236,14 @@ struct ProjectDetailsView: View {
     
     // Photos section with improved styling
     private var photosSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section heading with icon
-            HStack {
-                Image(systemName: OPSStyle.Icons.photo)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Text("PROJECT PHOTOS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Spacer()
-            }
-            .padding(.horizontal)
-            
-            // Photo content
+        SectionCard(
+            icon: OPSStyle.Icons.photo,
+            title: "Project Photos",
+            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        ) {
             photoContentView
         }
+        .padding(.horizontal)
     }
     
     // Photo content view to break up complexity
@@ -928,35 +1251,29 @@ struct ProjectDetailsView: View {
         VStack(spacing: 12) {
             // Photo display (empty state or grid)
             photoDisplayView
-            
+
             // Add photos button
             addPhotosButton
-            
+                .padding(.horizontal)
+
             // Loading indicator for processing images
             if processingImages {
                 processingIndicator
+                    .padding(.horizontal)
             }
         }
+        .padding(.vertical)
     }
     
     // Photo display - either empty state or grid of photos
     private var photoDisplayView: some View {
         let photos = project.getProjectImages()
-        
+
         if photos.isEmpty {
             return AnyView(emptyPhotosView)
         } else {
             return AnyView(
-                VStack(spacing: 0) {
-                    photoGridView(photos: photos)
-                }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .padding(.horizontal)
+                photoGridView(photos: photos)
             )
         }
     }
@@ -968,11 +1285,11 @@ struct ProjectDetailsView: View {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 36))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-            
+
             Text("No photos added yet")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-            
+
             Text("Tap the button below to add photos to this project")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -981,13 +1298,7 @@ struct ProjectDetailsView: View {
         }
         .frame(height: 180)
         .frame(maxWidth: .infinity)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .padding(.horizontal)
+        .padding()
     }
     
     // Grid view for photos
@@ -1115,12 +1426,16 @@ struct ProjectDetailsView: View {
     
     // Tasks section
     private var tasksSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Show task list
+        SectionCard(
+            icon: OPSStyle.Icons.task,
+            title: "Tasks",
+            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        ) {
             TaskListView(project: project)
                 .environmentObject(dataController)
                 .environmentObject(appState)
         }
+        .padding(.horizontal)
     }
 
 

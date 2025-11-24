@@ -25,36 +25,28 @@ struct TaskTypeDetailSheet: View {
 
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing3) {
-                        // Task Type Info Card
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                            HStack {
-                                Image(systemName: taskType.icon ?? "checklist")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
+                        // Task Type Header
+                        SectionCard(
+                            icon: taskType.icon ?? "checklist",
+                            title: "Task Type"
+                        ) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(taskType.display)
+                                    .font(OPSStyle.Typography.title)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(taskType.display)
-                                        .font(OPSStyle.Typography.title)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                    Text(taskType.isDefault ? "Default Task Type" : "Custom Task Type")
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                }
-
-                                Spacer()
+                                Text(taskType.isDefault ? "Default Task Type" : "Custom Task Type")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
-                            .padding(OPSStyle.Layout.spacing3)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
 
                         // Properties
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                            Text("PROPERTIES")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-
+                        SectionCard(
+                            icon: "list.bullet",
+                            title: "Properties",
+                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                        ) {
                             VStack(spacing: 0) {
                                 PropertyRow(
                                     label: "Name",
@@ -62,7 +54,7 @@ struct TaskTypeDetailSheet: View {
                                 )
 
                                 Divider()
-                                    .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                    .background(OPSStyle.Colors.cardBorder)
 
                                 PropertyRow(
                                     label: "Icon",
@@ -70,7 +62,7 @@ struct TaskTypeDetailSheet: View {
                                 )
 
                                 Divider()
-                                    .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                    .background(OPSStyle.Colors.cardBorder)
 
                                 HStack {
                                     Text("COLOR")
@@ -86,49 +78,41 @@ struct TaskTypeDetailSheet: View {
                                 .padding(OPSStyle.Layout.spacing3)
 
                                 Divider()
-                                    .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                    .background(OPSStyle.Colors.cardBorder)
 
                                 PropertyRow(
                                     label: "Type",
                                     value: taskType.isDefault ? "System Default" : "User Created"
                                 )
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
 
-                        // Usage Stats (placeholder)
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                            Text("USAGE")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        // Usage Stats
+                        SectionCard(
+                            icon: "chart.bar.fill",
+                            title: "Usage"
+                        ) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Used in Projects")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    Text("0")
+                                        .font(OPSStyle.Typography.title)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                }
 
-                            VStack(spacing: OPSStyle.Layout.spacing3) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Used in Projects")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        Text("0")
-                                            .font(OPSStyle.Typography.title)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                    }
+                                Spacer()
 
-                                    Spacer()
-
-                                    VStack(alignment: .trailing, spacing: 4) {
-                                        Text("Total Tasks")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        Text("0")
-                                            .font(OPSStyle.Typography.title)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                    }
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    Text("Total Tasks")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    Text("0")
+                                        .font(OPSStyle.Typography.title)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                 }
                             }
-                            .padding(OPSStyle.Layout.spacing3)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
 
                         if !taskType.isDefault {

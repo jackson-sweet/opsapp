@@ -251,44 +251,23 @@ struct TaskDetailsView: View {
         }
     }
     
-    // MARK: - Location Section (matching ProjectDetailsView)
-    
+    // MARK: - Location Section
+
     private var locationSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Location section label
-            HStack {
-                Image(systemName: OPSStyle.Icons.jobSite)
+        SectionCard(
+            icon: OPSStyle.Icons.jobSite,
+            title: "Location",
+            actionIcon: "arrow.triangle.turn.up.right.circle.fill",
+            actionLabel: "Navigate",
+            onAction: { openInMaps() }
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Address
+                Text(project.address ?? "No address")
+                    .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Text("LOCATION")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Spacer()
-                
-                Button(action: {
-                    openInMaps()
-                }) {
-                    Text("Get Directions")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.black)
-                        .cornerRadius(OPSStyle.Layout.buttonRadius)
-                }
-            }
-            .padding(.horizontal)
-            
-            // Address text
-            Text(project.address ?? "No address")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(.white)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-            
-            // Map view - larger and more prominent
-            ZStack(alignment: .bottomTrailing) {
+
+                // Map view
                 MiniMapView(
                     coordinate: project.coordinate,
                     address: project.address ?? ""
@@ -297,249 +276,229 @@ struct TaskDetailsView: View {
                 }
                 .frame(height: 180)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
-                
-                // Directions button on map
-                Button(action: { openInMaps() }) {
-                    HStack {
-                        // NOTE: Missing icon in OPSStyle - "arrow.triangle.turn.up.right.diamond.fill" (Directions/navigation icon for maps)
-                        Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                            .font(.system(size: 14))
-                        
-                        Text("Directions")
-                            .font(OPSStyle.Typography.smallCaption)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .foregroundColor(.white)
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-                }
-                .padding(12)
             }
-            .padding(.horizontal)
         }
+        .padding(.horizontal)
     }
     
-    // MARK: - Info Section (matching ProjectDetailsView card style)
-    
+    // MARK: - Info Section
+
     private var infoSection: some View {
+        SectionCard(
+            icon: "doc.text",
+            title: "Task Details"
+        ) {
+            VStack(spacing: 16) {
+                // Client field
+                clientField
+
+                // Dates field
+                datesField
+
+                // Notes field
+                notesField
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var clientField: some View {
         VStack(alignment: .leading, spacing: 12) {
-            
-            // Card-based info items
-            VStack(spacing: 1) {
-                // Client card with tap interaction
-                Button(action: {
-                    showingClientContact = true
-                }) {
-                    HStack {
-                        infoRow(
-                            icon: OPSStyle.Icons.client,
-                            title: "CLIENT",
-                            value: project.effectiveClientName.uppercased(),
-                            valueColor: OPSStyle.Colors.primaryText,
-                            showChevron: true
-                        )
-                        
-                        // Contact indicators
-                        HStack(spacing: 6) {
-                            Image(systemName: OPSStyle.Icons.phoneFill)
-                                .font(.system(size: 18))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.2)
+            Text("CLIENT")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                            Image(systemName: OPSStyle.Icons.envelopeFill)
-                                .font(.system(size: 18))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.2)
-                        }
-                        .padding(.trailing, 12)
-                        
-                    }.background(OPSStyle.Colors.cardBackgroundDark)
-                }
-                .buttonStyle(PlainButtonStyle())
-                
-                // Task dates - make tappable for admin/office crew
-                Button(action: {
-                    if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
-                        showingScheduler = true
+            Button(action: { showingClientContact = true }) {
+                HStack(spacing: 12) {
+                    Image(systemName: OPSStyle.Icons.client)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(width: 24)
+
+                    Text(project.effectiveClientName.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    // Contact indicators
+                    HStack(spacing: 8) {
+                        Image(systemName: OPSStyle.Icons.phoneFill)
+                            .font(.system(size: 16))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.2)
+
+                        Image(systemName: OPSStyle.Icons.envelopeFill)
+                            .font(.system(size: 16))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.2)
                     }
-                }) {
-                    HStack(spacing: 0) {
-                        // Scheduled date
-                        HStack(spacing: 12) {
-                            Image(systemName: OPSStyle.Icons.calendar)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: 24)
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("SCHEDULED")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Image(systemName: OPSStyle.Icons.chevronRight)
+                        .font(.system(size: 14))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
 
-                                if let date = task.scheduledDate {
-                                    Text(formatDate(date))
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                } else if let calendarEvent = task.calendarEvent, let start = calendarEvent.startDate, let end = calendarEvent.endDate {
-                                    Text(formatDateRange(start, end))
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                } else {
-                                    Text("Tap to Schedule")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+    private var datesField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("SCHEDULE")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        // Completion date if completed
-                        if task.status == .completed,
-                           let completionDate = task.completionDate {
-                            HStack(spacing: 12) {
-                                Image(systemName: OPSStyle.Icons.calendarBadgeCheckmark)
+            Button(action: {
+                if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                    showingScheduler = true
+                }
+            }) {
+                VStack(spacing: 12) {
+                    // Scheduled date
+                    HStack(spacing: 12) {
+                        Image(systemName: OPSStyle.Icons.calendar)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(width: 24)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("SCHEDULED")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            if let date = task.scheduledDate {
+                                Text(formatDate(date))
+                                    .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .frame(width: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("COMPLETED")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                                    Text(formatDate(completionDate))
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                }
+                            } else if let calendarEvent = task.calendarEvent, let start = calendarEvent.startDate, let end = calendarEvent.endDate {
+                                Text(formatDateRange(start, end))
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            } else {
+                                Text("Tap to Schedule")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
-                        // Chevron indicator for admin/office crew to show it's tappable
+                        Spacer()
+
+                        // Chevron indicator for admin/office crew
                         if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
                             Image(systemName: OPSStyle.Icons.chevronRight)
                                 .font(.system(size: 14))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.trailing, 12)
-                        }
-                    }
-                    .padding()
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .id(refreshTrigger)  // Force refresh when dates change
-                .allowsHitTesting(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew)
-                
-                // Task notes section
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: OPSStyle.Icons.notes)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(width: 24)
-
-                        Text("TASK NOTES")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        Spacer()
-
-                        Image(systemName: isNotesExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                            .font(.system(size: 14))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isNotesExpanded.toggle()
                         }
                     }
 
-                    // Expandable notes view
-                    ExpandableNotesView(
-                        notes: task.taskNotes ?? "",
-                        isExpanded: $isNotesExpanded,
-                        editedNotes: $taskNotes,
-                        onSave: saveTaskNotes
-                    )
+                    // Completion date if completed
+                    if task.status == .completed, let completionDate = task.completionDate {
+                        Divider()
+                            .background(OPSStyle.Colors.inputFieldBorder)
+
+                        HStack(spacing: 12) {
+                            Image(systemName: OPSStyle.Icons.calendarBadgeCheckmark)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .frame(width: 24)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("COMPLETED")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                Text(formatDate(completionDate))
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            }
+
+                            Spacer()
+                        }
+                    }
                 }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
             }
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
-            .padding(.horizontal)
+            .buttonStyle(PlainButtonStyle())
+            .id(refreshTrigger)
+            .allowsHitTesting(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew)
         }
     }
-    
-    // MARK: - Team Section (matching ProjectDetailsView)
-    
-    private var teamSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section heading outside the card
-            HStack {
-                Image(systemName: OPSStyle.Icons.personTwo)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
 
-                Text("TEAM MEMBERS")
+    private var notesField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("TASK NOTES")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 Spacer()
 
-                if canModify {
-                    Button(action: {
-                        if isEditingTeam {
-                            // Trigger save when Done is pressed
-                            triggerTeamSave.toggle()
-                            // Exit edit mode after triggering save
-                            isEditingTeam = false
-                        } else {
-                            isEditingTeam.toggle()
-                        }
-                    }) {
-                        Text(isEditingTeam ? "Done" : "Edit")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                            )
-                    }
+                Image(systemName: isNotesExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isNotesExpanded.toggle()
                 }
             }
-            .padding(.horizontal)
 
-            // Team members content - using TaskTeamView
+            // Expandable notes view
+            ExpandableNotesView(
+                notes: task.taskNotes ?? "",
+                isExpanded: $isNotesExpanded,
+                editedNotes: $taskNotes,
+                onSave: saveTaskNotes
+            )
+        }
+    }
+    
+    // MARK: - Team Section
+
+    private var teamSection: some View {
+        SectionCard(
+            icon: OPSStyle.Icons.personTwo,
+            title: "Team Members",
+            actionIcon: canModify ? "pencil.circle" : nil,
+            actionLabel: canModify ? (isEditingTeam ? "Done" : "Edit") : nil,
+            onAction: canModify ? {
+                if isEditingTeam {
+                    triggerTeamSave.toggle()
+                    isEditingTeam = false
+                } else {
+                    isEditingTeam.toggle()
+                }
+            } : nil,
+            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        ) {
             TaskTeamView(task: task, isEditing: $isEditingTeam, triggerSave: $triggerTeamSave)
                 .environmentObject(dataController)
-                .padding(.horizontal)
         }
+        .padding(.horizontal)
     }
 
     // MARK: - Status Update Section
-    
+
     private var statusUpdateSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section heading
-            HStack {
-                // NOTE: Missing icon in OPSStyle - "flag" (Status/flag icon for task status section)
-                Image(systemName: "flag")
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Text("UPDATE STATUS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Spacer()
-            }
-            .padding(.horizontal)
-            
-            // Tactical status list
+        SectionCard(
+            icon: "flag.fill",
+            title: "Update Status",
+            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        ) {
             VStack(spacing: 1) {
                 ForEach(availableStatuses, id: \.self) { status in
                     Button(action: {
@@ -561,7 +520,7 @@ struct TaskDetailsView: View {
                                         .frame(width: 24, height: 24)
                                 }
                             }
-                            
+
                             // Status icon and text
                             Image(systemName: statusIcon(for: status))
                                 .font(.system(size: 16))
@@ -569,15 +528,15 @@ struct TaskDetailsView: View {
                                                OPSStyle.Colors.primaryText :
                                                OPSStyle.Colors.secondaryText)
                                 .frame(width: 20)
-                            
+
                             Text(status.displayName.uppercased())
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(task.status == status ?
                                                OPSStyle.Colors.primaryText :
                                                OPSStyle.Colors.secondaryText)
-                            
+
                             Spacer()
-                            
+
                             // Status color accent bar
                             Rectangle()
                                 .fill(statusColor(for: status))
@@ -586,20 +545,13 @@ struct TaskDetailsView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
-                        .background(task.status == status ? 
-                                  OPSStyle.Colors.cardBackgroundDark.opacity(0.8) :
-                                  OPSStyle.Colors.cardBackgroundDark)
+                        .background(Color.clear)
                     }
                     .disabled(task.status == status)
                 }
             }
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
-            .padding(.horizontal)
         }
+        .padding(.horizontal)
     }
     
     // MARK: - Navigation Section
@@ -1046,40 +998,12 @@ struct TaskDetailsView: View {
         guard let currentUser = dataController.currentUser else {
             return [.booked, .inProgress, .completed]
         }
-        
+
         if currentUser.role == .admin || currentUser.role == .officeCrew {
             return TaskStatus.allCases
         } else {
             return [.booked, .inProgress, .completed]
         }
-    }
-    
-    private func infoRow(icon: String, title: String, value: String, valueColor: Color = .white, showChevron: Bool = false) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Text(value)
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(valueColor)
-            }
-
-            Spacer()
-
-            if showChevron {
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 14))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-        }
-        .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
     }
     
     private func checkForUnsavedChanges() {

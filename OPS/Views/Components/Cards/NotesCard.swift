@@ -2,7 +2,7 @@
 //  NotesCard.swift
 //  OPS
 //
-//  Reusable notes display/edit card
+//  Reusable notes display/edit card - built on SectionCard base
 //
 
 import SwiftUI
@@ -12,35 +12,18 @@ struct NotesCard: View {
     @Binding var notes: String?
     let isEditable: Bool
     let onSave: () -> Void
-    
+
     @State private var isEditing = false
     @State private var editedNotes: String = ""
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                Image(systemName: OPSStyle.Icons.notes)
-                    .font(.system(size: 20))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Text(title.uppercased())
-                    .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Spacer()
-                
-                if isEditable {
-                    Button(action: toggleEdit) {
-                        Image(systemName: isEditing ? OPSStyle.Icons.complete : OPSStyle.Icons.pencilCircle)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-            }
-            .padding(.bottom, 8)
-            
-            // Notes content
+        SectionCard(
+            icon: OPSStyle.Icons.notes,
+            title: title,
+            actionIcon: isEditable ? (isEditing ? OPSStyle.Icons.complete : OPSStyle.Icons.pencilCircle) : nil,
+            actionLabel: isEditable ? (isEditing ? "Done" : "Edit") : nil,
+            onAction: isEditable ? toggleEdit : nil
+        ) {
             if isEditing {
                 // Edit mode
                 VStack(alignment: .leading, spacing: 8) {
@@ -51,16 +34,16 @@ struct NotesCard: View {
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(8)
                         .frame(minHeight: 100)
-                    
+
                     HStack {
                         Button("Cancel") {
                             cancelEdit()
                         }
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        
+
                         Spacer()
-                        
+
                         Button("Save") {
                             saveNotes()
                         }
@@ -76,6 +59,7 @@ struct NotesCard: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(nil)
                         .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text("No notes available")
                         .font(OPSStyle.Typography.body)
@@ -84,15 +68,8 @@ struct NotesCard: View {
                 }
             }
         }
-        .padding()
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.tertiaryText.opacity(0.2), lineWidth: 1)
-        )
     }
-    
+
     private func toggleEdit() {
         if isEditing {
             saveNotes()
@@ -101,13 +78,13 @@ struct NotesCard: View {
             isEditing = true
         }
     }
-    
+
     private func saveNotes() {
         notes = editedNotes.isEmpty ? nil : editedNotes
         isEditing = false
         onSave()
     }
-    
+
     private func cancelEdit() {
         editedNotes = notes ?? ""
         isEditing = false

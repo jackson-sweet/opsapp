@@ -538,10 +538,27 @@ extension View {
     }
 
     // Deprecated - use opsCardStyle() from CardStyles.swift
-    func cardStyle() -> some View {
-        self.padding()
-            .background(OPSStyle.Colors.cardBackground)
+    /// Applies standard card styling with background, border, and corner radius
+    ///
+    /// - Parameters:
+    ///   - background: Background color (default: cardBackgroundDark)
+    ///   - borderColor: Border color (default: cardBorder)
+    ///   - borderWidth: Border width (default: 1)
+    ///   - padding: Edge insets for content padding (default: 16pt all sides)
+    func cardStyle(
+        background: Color = OPSStyle.Colors.cardBackgroundDark,
+        borderColor: Color = OPSStyle.Colors.cardBorder,
+        borderWidth: CGFloat = 1,
+        padding: EdgeInsets = EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
+    ) -> some View {
+        self
+            .padding(padding)
+            .background(background)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(borderColor, lineWidth: borderWidth)
+            )
     }
 }
 

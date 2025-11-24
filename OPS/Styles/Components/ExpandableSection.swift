@@ -2,21 +2,22 @@
 //  ExpandableSection.swift
 //  OPS
 //
-//  Expandable section card with header, icon, optional delete button, and collapsible content
+//  Expandable section card with progressive disclosure - built on SectionCard base
 //
 
 import SwiftUI
 
 /// Expandable section card with progressive disclosure
 ///
-/// Used for collapsible sections in forms and detail views. Provides consistent
-/// header styling with icon, title, optional delete button, and chevron indicator.
+/// Built on SectionCard base component, adding expand/collapse behavior with
+/// chevron indicator and optional delete button. Uses consistent OPS card styling.
 ///
 /// Features:
 /// - Tap header to toggle expansion
 /// - Smooth spring animation
 /// - Optional delete button
 /// - Chevron indicator shows expanded state
+/// - Consistent styling via SectionCard base
 ///
 /// Usage:
 /// ```swift
@@ -60,63 +61,59 @@ struct ExpandableSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(spacing: 0) {
-                // MARK: - Header
-                // Tappable header with icon, title, optional delete button, and chevron
-                HStack {
-                    Image(systemName: icon)
-                        .font(.system(size: 14))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+            // MARK: - Header (Tappable)
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    Text(title.uppercased())
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                Text(title.uppercased())
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    Spacer()
+                Spacer()
 
-                    // Optional delete button
-                    if let onDelete = onDelete {
-                        Button(action: onDelete) {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(OPSStyle.Colors.errorStatus)
-                        }
-                    }
-
-                    // Chevron indicator (rotates based on state)
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .contentShape(Rectangle())  // Make entire header tappable
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        isExpanded.toggle()
+                // Optional delete button
+                if let onDelete = onDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
                     }
                 }
 
-                // MARK: - Content
-                // Only show divider and content when expanded
-                if isExpanded {
-                    Divider()
-                        .background(OPSStyle.Colors.cardBorder)
-
-                    VStack(spacing: 0) {
-                        content()
-                    }
-                    .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                // Chevron indicator (rotates based on state)
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 12))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())  // Make entire header tappable
+            .onTapGesture {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    isExpanded.toggle()
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
+
+            // MARK: - Content (Shown when expanded)
+            if isExpanded {
+                Divider()
+                    .background(OPSStyle.Colors.cardBorder)
+
+                VStack(spacing: 0) {
+                    content()
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+        )
     }
 }

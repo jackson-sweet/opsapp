@@ -23,29 +23,16 @@ struct TaskListView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section heading outside the card (matching ProjectDetailsView style)
+        VStack(alignment: .leading, spacing: 0) {
+            // Action buttons bar (inside SectionCard)
             HStack {
-                Image(systemName: OPSStyle.Icons.task)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                Text("TASKS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
                 Spacer()
 
                 // Task count badge
                 if !project.tasks.isEmpty {
-                    Text("\(project.tasks.count)")
+                    Text("\(project.tasks.count) \(project.tasks.count == 1 ? "Task" : "Tasks")")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(Color.black)
-                        )
                 }
 
                 // Project-Based button (for switching back)
@@ -68,7 +55,6 @@ struct TaskListView: View {
                 // ADD button
                 if canModify {
                     Button(action: {
-                        // Task-only scheduling migration: All projects use task-based scheduling now
                         showingTaskForm = true
                     }) {
                         HStack(spacing: 4) {
@@ -87,13 +73,16 @@ struct TaskListView: View {
                     }
                 }
             }
-            .padding(.horizontal)
-            
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+                .background(OPSStyle.Colors.cardBorder)
+
             // Task content - always show
             if project.tasks.isEmpty {
                 // Empty state with create button
                 Button(action: {
-                    // Task-only scheduling migration: All projects use task-based scheduling now
                     showingTaskForm = true
                 }) {
                     VStack(spacing: 12) {
@@ -108,13 +97,7 @@ struct TaskListView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                )
-                .padding(.horizontal)
+                .padding(.horizontal, 16)
             } else {
                 // Task cards in single container (matching ProjectDetailsView card style)
                 VStack(spacing: 1) {
@@ -132,12 +115,6 @@ struct TaskListView: View {
                     }
                 }
                 // Animation removed - was causing parent sheet to dismiss when tasks were deleted
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                )
-                .padding(.horizontal)
             }
         }
         .sheet(item: $selectedTask) { task in

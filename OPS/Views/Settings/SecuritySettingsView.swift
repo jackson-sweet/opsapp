@@ -40,9 +40,11 @@ struct SecuritySettingsView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         // Security section
-                        SettingsSectionHeader(title: "APP ACCESS")
-                        
-                        VStack(spacing: 16) {
+                        SectionCard(
+                            icon: "lock.shield",
+                            title: "App Access"
+                        ) {
+                            VStack(spacing: 16) {
                             
                             // PIN toggle
                             HStack {
@@ -79,13 +81,16 @@ struct SecuritySettingsView: View {
                                 }
                                 .padding(.horizontal, 20)
                             }
+                            }
                         }
-                        .padding(16)
-                        
+                        .padding(.horizontal, 20)
+
                         // Account Security section
-                        SettingsSectionHeader(title: "ACCOUNT SECURITY")
-                        
-                        VStack(spacing: 16) {
+                        SectionCard(
+                            icon: "person.badge.shield.checkmark",
+                            title: "Account Security"
+                        ) {
+                            VStack(spacing: 16) {
                             // Reset Password button
                             SettingsCategoryButton(
                                 title: "Reset Password",
@@ -95,8 +100,9 @@ struct SecuritySettingsView: View {
                                     showResetPasswordSheet = true
                                 }
                             )
+                            }
                         }
-                        .padding(16)
+                        .padding(.horizontal, 20)
                     }
                     .padding(.vertical, 24)
                     .padding(.top, 12)

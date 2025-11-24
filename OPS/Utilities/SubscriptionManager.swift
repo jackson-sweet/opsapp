@@ -52,7 +52,13 @@ class SubscriptionManager: ObservableObject {
     
     /// Whether company has priority support
     @Published var hasPrioritySupport: Bool = false
-    
+
+    /// Subscription end date (nil if no active subscription)
+    @Published var subscriptionEnd: Date?
+
+    /// Trial end date (nil if not in/past trial)
+    @Published var trialEndDate: Date?
+
     // MARK: - Private Properties
     
     private var cancellables = Set<AnyCancellable>()
@@ -121,10 +127,18 @@ class SubscriptionManager: ObservableObject {
             print("[SUBSCRIPTION] Error: No company found for user")
             return
         }
-        
-        
+
         // Log ALL subscription-related fields from company
-        
+        print("[SUBSCRIPTION] 📊 Company Date Fields:")
+        print("[SUBSCRIPTION]    - trialStartDate: \(company.trialStartDate?.formatted() ?? "nil")")
+        print("[SUBSCRIPTION]    - trialEndDate: \(company.trialEndDate?.formatted() ?? "nil")")
+        print("[SUBSCRIPTION]    - seatGraceStartDate: \(company.seatGraceStartDate?.formatted() ?? "nil")")
+        print("[SUBSCRIPTION]    - subscriptionEnd: \(company.subscriptionEnd?.formatted() ?? "nil")")
+        print("[SUBSCRIPTION]    - subscriptionStatus: \(company.subscriptionStatus ?? "nil")")
+        print("[SUBSCRIPTION]    - subscriptionPlan: \(company.subscriptionPlan ?? "nil")")
+        print("[SUBSCRIPTION]    - maxSeats: \(company.maxSeats)")
+        print("[SUBSCRIPTION]    - seatedEmployeeIds: \(company.getSeatedEmployeeIds().count) employees")
+
         // Update subscription status from company
         if let status = company.subscriptionStatusEnum {
             subscriptionStatus = status
@@ -162,7 +176,38 @@ class SubscriptionManager: ObservableObject {
         // Update trial/grace days
         trialDaysRemaining = company.daysRemainingInTrial
         graceDaysRemaining = company.daysRemainingInGracePeriod
-        
+
+        // Update subscription and trial end dates
+        subscriptionEnd = company.subscriptionEnd
+        trialEndDate = company.trialEndDate
+
+        // DEFENSIVE FIX: If Bubble has expired trial still marked as "trial", update it to "expired"
+        if let status = company.subscriptionStatusEnum,
+           status == .trial,
+           let trialEnd = company.trialEndDate,
+           trialEnd < Date() {
+            print("[SUBSCRIPTION] ⚠️ Detected expired trial with 'trial' status - updating Bubble to 'expired'")
+            print("[SUBSCRIPTION]    Trial ended: \(trialEnd.formatted())")
+            print("[SUBSCRIPTION]    Current date: \(Date().formatted())")
+
+            // Update Bubble in background (don't block UI)
+            Task {
+                do {
+                    try await dataController.apiService.updateCompanyFields(
+                        companyId: company.id,
+                        fields: ["subscriptionStatus": "expired"]
+                    )
+                    print("[SUBSCRIPTION] ✅ Successfully updated Bubble: trial → expired")
+                } catch {
+                    print("[SUBSCRIPTION] ❌ Failed to update Bubble status: \(error)")
+                }
+            }
+        }
+
+        print("[SUBSCRIPTION] 📊 Computed Days Remaining:")
+        print("[SUBSCRIPTION]    - trialDaysRemaining: \(trialDaysRemaining?.description ?? "nil")")
+        print("[SUBSCRIPTION]    - graceDaysRemaining: \(graceDaysRemaining?.description ?? "nil")")
+
         // Determine if should show lockout
         let previousLockoutState = shouldShowLockout
         shouldShowLockout = shouldLockoutUser()
@@ -216,13 +261,23 @@ class SubscriptionManager: ObservableObject {
             return true
 
         case .trial:
+            // DEFENSIVE CHECK: If Bubble hasn't expired the trial, do it in iOS
+            // This protects against Bubble workflow failures
+            if let trialEndDate = company.trialEndDate, trialEndDate < Date() {
+                print("[AUTH] ⚠️ Trial expired but Bubble status still 'trial' - defensive check triggered")
+                print("[AUTH]    Trial ended: \(trialEndDate.formatted())")
+                print("[AUTH]    Current date: \(Date().formatted())")
+                print("[AUTH] ❌ Access denied - trial expired (defensive check)")
+                return true
+            }
+
             // For trial status, validate trial end date exists
             if trialDaysRemaining == nil {
                 print("[AUTH] ❌ LAYER 5 FAILED: Trial status but no trial end date")
                 return true
             }
 
-            // Check if trial has expired
+            // Check if trial has expired using computed property
             if let daysRemaining = trialDaysRemaining, daysRemaining <= 0 {
                 print("[AUTH] ❌ Access denied - trial expired")
                 return true
@@ -427,9 +482,16 @@ class SubscriptionManager: ObservableObject {
     }
     
     private func scheduleTrialNotifications(daysRemaining: Int) async {
+        guard daysRemaining > 0 else {
+            print("[SUBSCRIPTION] ⚠️ No trial notifications to schedule (days remaining: \(daysRemaining))")
+            return
+        }
+
+        print("[SUBSCRIPTION] 📅 Scheduling trial notifications (days remaining: \(daysRemaining))")
+
         // Schedule notifications for days 7, 3, and 1
         let notificationDays = [7, 3, 1]
-        
+
         for day in notificationDays {
             if daysRemaining >= day {
                 scheduleTrialExpiryNotification(daysBeforeExpiry: day)
@@ -438,6 +500,14 @@ class SubscriptionManager: ObservableObject {
     }
     
     private func scheduleGracePeriodNotifications(daysRemaining: Int) async {
+        // Guard against invalid range (daysRemaining must be >= 1 for range 1...daysRemaining)
+        guard daysRemaining > 0 else {
+            print("[SUBSCRIPTION] ⚠️ No grace period notifications to schedule (days remaining: \(daysRemaining))")
+            return
+        }
+
+        print("[SUBSCRIPTION] 📅 Scheduling \(daysRemaining) grace period notification(s)")
+
         // Schedule daily notifications during grace period
         for day in 1...daysRemaining {
             scheduleGracePeriodNotification(daysRemaining: daysRemaining - day + 1)

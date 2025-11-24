@@ -292,23 +292,43 @@ struct OrganizationSettingsView: View {
                             if statusEnum == .trial, let trialEnd = company.trialEndDate {
                                 let days = Calendar.current.dateComponents([.day], from: Date(), to: trialEnd).day ?? 0
                                 HStack(spacing: 4) {
-                                    Image(systemName: OPSStyle.Icons.info)
-                                        .font(.system(size: 12))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    
-                                    Text("Trial ends in \(days) days")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    if days > 0 {
+                                        Image(systemName: OPSStyle.Icons.info)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                                        Text("Trial ends in \(days) day\(days == 1 ? "" : "s")")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    } else {
+                                        Image(systemName: OPSStyle.Icons.alert)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(OPSStyle.Colors.errorStatus)
+
+                                        Text("Trial expired")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                                    }
                                 }
                             } else if statusEnum == .grace, let days = company.daysRemainingInGracePeriod {
                                 HStack(spacing: 4) {
-                                    Image(systemName: OPSStyle.Icons.alert)
-                                        .font(.system(size: 12))
-                                        .foregroundColor(OPSStyle.Colors.warningStatus)
-                                    
-                                    Text("Grace period ends in \(days) days")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                                    if days > 0 {
+                                        Image(systemName: OPSStyle.Icons.alert)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(OPSStyle.Colors.warningStatus)
+
+                                        Text("Grace period ends in \(days) day\(days == 1 ? "" : "s")")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                                    } else {
+                                        Image(systemName: OPSStyle.Icons.alert)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(OPSStyle.Colors.errorStatus)
+
+                                        Text("Grace period expired")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                                    }
                                 }
                             }
                         }

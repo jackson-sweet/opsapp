@@ -134,22 +134,11 @@ struct OPSApp: App {
     /// Performs health check when app becomes active
     @MainActor
     private func performActiveChecks() async {
-        print("[APP_ACTIVE] 🏥 App became active - checking data health...")
+        print("[APP_ACTIVE] 🏥 App became active - running subscription check...")
 
-        let healthManager = DataHealthManager(
-            dataController: dataController,
-            authManager: AuthManager()
-        )
-
-        // Quick check - just verify minimum data exists
-        let hasMinimumData = healthManager.hasMinimumRequiredData()
-
-        if !hasMinimumData {
-            print("[APP_ACTIVE] ⚠️ Minimum data requirements not met - skipping subscription check")
-            return
-        }
-
-        // Minimum data exists, check subscription
+        // CRITICAL: Always run subscription check regardless of data health
+        // Subscription check has its own guards and handles missing data gracefully
+        // Gating this behind health check allowed expired subscriptions to bypass validation
         await subscriptionManager.checkSubscriptionStatus()
     }
 

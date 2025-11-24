@@ -23,7 +23,13 @@ struct SubscriptionLockoutView: View {
     @State private var selectedEmployeeToAdd: User?
     @State private var showAddConfirmation = false
     @State private var hasJustSeatedSelf = false
-    
+    @State private var isRefreshing = false
+    @State private var refreshProgress: Double = 0.0
+    @State private var refreshComplete = false
+    @State private var refreshError = false
+    @State private var refreshResultNegative = false
+    @State private var animationTask: Task<Void, Never>?
+
     var body: some View {
         ZStack {
             // Pure black background
@@ -169,20 +175,61 @@ struct SubscriptionLockoutView: View {
                 }
             } else {
                 // Regular admin lockout - show plan selection
-                Button(action: {
-                    showPlanSelection = true
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "creditcard")
-                            .font(.system(size: 14))
-                        Text(primaryButtonText.uppercased())
-                            .font(OPSStyle.Typography.captionBold)  // Smaller, tactical font
+                VStack(spacing: 12) {
+                    Button(action: {
+                        showPlanSelection = true
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "creditcard")
+                                .font(.system(size: 14))
+                            Text(primaryButtonText.uppercased())
+                                .font(OPSStyle.Typography.captionBold)  // Smaller, tactical font
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)  // Slightly smaller padding
+                        .background(Color.white)  // White background for primary button
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)  // Slightly smaller padding
-                    .background(Color.white)  // White background for primary button
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+
+                    // Refresh subscription button
+                    Button(action: {
+                        Task {
+                            await refreshSubscription()
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            if isRefreshing {
+                                TacticalLoadingBar(
+                                    progress: refreshProgress,
+                                    barCount: 8,
+                                    barWidth: 2,
+                                    barHeight: 6,
+                                    spacing: 4,
+                                    emptyColor: OPSStyle.Colors.inputFieldBorder,
+                                    fillColor: refreshError || refreshResultNegative ? OPSStyle.Colors.errorStatus : (refreshComplete ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText)
+                                )
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 14))
+                            }
+                            Text(refreshError ? "NETWORK ERROR" : "CHECK STATUS")
+                                .font(OPSStyle.Typography.captionBold)
+                        }
+                        .foregroundColor((refreshError || refreshResultNegative) ? OPSStyle.Colors.errorStatus : (refreshComplete ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke((refreshError || refreshResultNegative) ? OPSStyle.Colors.errorStatus : (refreshComplete ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText), lineWidth: 1)
+                        )
+                        .opacity(refreshComplete && !refreshResultNegative ? 0 : 1)
+                    }
+                    .disabled(isRefreshing)
+                    .animation(.easeOut(duration: 0.3), value: refreshComplete)
+                    .animation(.easeOut(duration: 0.3), value: refreshError)
+                    .animation(.easeOut(duration: 0.3), value: refreshResultNegative)
                 }
                 .padding(.horizontal, 24)
             }
@@ -741,6 +788,154 @@ struct SubscriptionLockoutView: View {
             .disabled(isLoggingOut)
             .opacity(isLoggingOut ? 0.5 : 1.0)
         }
+    }
+
+    // MARK: - Refresh Subscription
+
+    @MainActor
+    private func refreshSubscription() async {
+        guard !isRefreshing else { return }
+
+        // Reset states
+        isRefreshing = true
+        refreshProgress = 0.0
+        refreshComplete = false
+        refreshError = false
+        refreshResultNegative = false
+
+        print("[LOCKOUT] 🔄 Refreshing subscription status...")
+
+        // Start continuous cycling animation
+        startCyclingAnimation()
+
+        // Track start time for minimum display duration
+        let startTime = Date()
+
+        // Run sync with timeout
+        let syncTask = Task {
+            do {
+                if let syncManager = dataController.syncManager {
+                    try await syncManager.syncCompany()
+                    print("[LOCKOUT] ✅ Company data synced successfully")
+
+                    await subscriptionManager.checkSubscriptionStatus()
+                    print("[LOCKOUT] ✅ Subscription status re-checked")
+
+                    return true
+                }
+                return false
+            } catch {
+                print("[LOCKOUT] ❌ Failed to refresh subscription: \(error)")
+                return false
+            }
+        }
+
+        // Wait for either sync to complete or timeout (10 seconds)
+        let timeoutTask = Task {
+            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+            return false
+        }
+
+        // Race between sync and timeout
+        let success = await withTaskCancellationHandler {
+            await syncTask.value
+        } onCancel: {
+            syncTask.cancel()
+        }
+
+        timeoutTask.cancel()
+
+        // Calculate elapsed time
+        let elapsed = Date().timeIntervalSince(startTime)
+        let minimumDuration: TimeInterval = 3.0
+
+        // Wait for minimum display time if needed
+        if elapsed < minimumDuration {
+            let remainingTime = minimumDuration - elapsed
+            try? await Task.sleep(nanoseconds: UInt64(remainingTime * 1_000_000_000))
+        }
+
+        // Stop cycling animation
+        stopCyclingAnimation()
+
+        // Show result
+        if success {
+            // Check subscription status to determine result color
+            let status = subscriptionManager.subscriptionStatus
+            let isNegativeStatus = status == .expired || status == .cancelled
+
+            if isNegativeStatus {
+                // Negative status - fill to 100% with red
+                refreshResultNegative = true
+                refreshProgress = 1.0
+                print("[LOCKOUT] ⚠️ Subscription status is \(status.rawValue) - showing red")
+
+                // Wait to show negative result
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+
+                // Reset states
+                isRefreshing = false
+                refreshProgress = 0.0
+                refreshResultNegative = false
+            } else {
+                // Positive status - fill to 100% with green
+                refreshComplete = true
+                refreshProgress = 1.0
+                print("[LOCKOUT] ✅ Subscription status is \(status.rawValue) - showing green")
+
+                // If access is now granted, the lockout view will automatically dismiss
+                if !subscriptionManager.shouldShowLockout {
+                    print("[LOCKOUT] ✅ Access granted - lockout will dismiss")
+                }
+
+                // Wait before fading out
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+
+                // Reset states
+                isRefreshing = false
+                refreshProgress = 0.0
+
+                // Wait for fade to complete
+                try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+                refreshComplete = false
+            }
+        } else {
+            // Network error - fill to 100% with red
+            refreshError = true
+            refreshProgress = 1.0
+
+            // Wait to show error
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+
+            // Reset states
+            isRefreshing = false
+            refreshProgress = 0.0
+            refreshError = false
+        }
+    }
+
+    @MainActor
+    private func startCyclingAnimation() {
+        // Cancel any existing animation
+        stopCyclingAnimation()
+
+        // Start new cycling animation task
+        animationTask = Task {
+            while !Task.isCancelled {
+                // Cycle from 0 to 100% smoothly
+                for i in 0...100 {
+                    guard !Task.isCancelled else { break }
+                    refreshProgress = Double(i) / 100.0
+                    try? await Task.sleep(nanoseconds: 8_000_000) // 8ms per step = ~800ms per cycle
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func stopCyclingAnimation() {
+        animationTask?.cancel()
+        animationTask = nil
     }
 }
 

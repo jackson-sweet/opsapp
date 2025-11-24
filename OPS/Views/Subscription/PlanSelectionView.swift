@@ -611,12 +611,32 @@ struct PlanSelectionView: View {
     }
     
     private var shouldDisablePaymentButton: Bool {
-        // Disable if selecting current active plan
+        // Disable if selecting current active plan with valid subscription
         if let current = currentPlan,
            let status = currentStatus,
-           selectedPlan == current &&
-           (status == .active || status == .trial) {
-            return true
+           selectedPlan == current {
+
+            switch status {
+            case .active:
+                // Only disable if subscription end date is in the future
+                // If subscriptionEnd is nil or in the past, allow reactivation
+                if let subscriptionEnd = subscriptionManager.subscriptionEnd,
+                   subscriptionEnd > Date() {
+                    return true  // Valid active subscription
+                }
+                return false  // Status says active but no valid end date - allow reactivation
+
+            case .trial:
+                // Only disable if trial hasn't expired
+                if let trialEnd = subscriptionManager.trialEndDate,
+                   trialEnd > Date() {
+                    return true  // Valid trial
+                }
+                return false  // Trial expired - allow upgrade
+
+            case .cancelled, .expired, .grace:
+                return false  // Always allow reactivation
+            }
         }
         return false
     }
@@ -634,8 +654,22 @@ struct PlanSelectionView: View {
            let status = currentStatus,
            selectedPlan == current {
             switch status {
-            case .active, .trial:
-                return "This Plan Already Active"
+            case .active:
+                // Check if actually active or needs reactivation
+                if let subscriptionEnd = subscriptionManager.subscriptionEnd,
+                   subscriptionEnd > Date() {
+                    return "This Plan Already Active"
+                }
+                return "Reactivate Plan"  // Status says active but subscription expired/invalid
+
+            case .trial:
+                // Check if trial is actually active or expired
+                if let trialEnd = subscriptionManager.trialEndDate,
+                   trialEnd > Date() {
+                    return "This Plan Already Active"
+                }
+                return "Upgrade to This Plan"  // Trial expired
+
             case .cancelled, .expired:
                 return "Re-Join This Plan"
             case .grace:

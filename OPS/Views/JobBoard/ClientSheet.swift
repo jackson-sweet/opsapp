@@ -340,6 +340,7 @@ struct ClientSheet: View {
                 onCancel: { dismiss() },
                 onAction: { saveClient() }
             )
+            .loadingOverlay(isPresented: $isSaving, message: "Saving...")
             .interactiveDismissDisabled()
             .alert("Error", isPresented: $showingError) {
                 Button("OK") {

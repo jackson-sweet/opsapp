@@ -128,6 +128,7 @@ struct TaskStatusChangeSheet: View {
                 }
             }
         }
+        .loadingOverlay(isPresented: $isSaving, message: "Updating...")
     }
 
     private func saveStatus() {
@@ -265,6 +266,7 @@ struct TaskTeamChangeSheet: View {
                 contentView
             }
         }
+        .loadingOverlay(isPresented: $isSaving, message: "Updating...")
         .onAppear {
             loadAvailableMembers()
         }

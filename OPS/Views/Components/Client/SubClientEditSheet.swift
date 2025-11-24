@@ -188,6 +188,7 @@ struct SubClientEditSheet: View {
                 onCancel: { dismiss() },
                 onAction: saveSubClient
             )
+            .loadingOverlay(isPresented: $isSaving, message: "Saving...")
             .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) { }
             } message: {

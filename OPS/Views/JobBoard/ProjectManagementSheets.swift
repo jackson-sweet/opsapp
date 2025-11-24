@@ -110,6 +110,7 @@ struct ProjectStatusChangeSheet: View {
                 }
             }
         }
+        .loadingOverlay(isPresented: $isSaving, message: "Updating...")
     }
 
     private func saveStatus() {
@@ -318,6 +319,7 @@ struct SchedulingModeConversionSheet: View {
             .navigationTitle("CONVERSION DETAILS")
             .navigationBarTitleDisplayMode(.inline)
         }
+        .loadingOverlay(isPresented: $isConverting, message: "Converting...")
         .alert("Error", isPresented: $showingError) {
             Button("OK", role: .cancel) { }
         } message: {

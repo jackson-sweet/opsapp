@@ -30,7 +30,6 @@ struct ContactDetailView: View {
     // Sub-client editing states
     @State private var subClientToEdit: SubClient? = nil  // Single state for both data and presentation
     @State private var subClientsRefreshKey = UUID()  // Force refresh of sub-clients view
-    @State private var isParentContactExpanded = true  // Start expanded by default
     @State private var showingCreateContact = false  // For creating a contact from client data
     @State private var showingContactExportOptions = false  // For choosing export method
     @State private var showingAddToExistingContact = false  // For adding to existing contact
@@ -86,155 +85,27 @@ struct ContactDetailView: View {
                             profileHeader
                                 .padding(.top, 16)
                             
-                            // Contact information - collapsible for clients with sub-clients
-                            if isClient && client?.subClients.isEmpty == false {
-                            // Collapsible parent client contact when sub-clients exist
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Button(action: {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                            isParentContactExpanded.toggle()
-                                        }
-                                    }) {
-                                        HStack(spacing: 8) {
-                                            Text("CONTACT INFORMATION")
-                                                .font(OPSStyle.Typography.captionBold)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                            
-                                            Image(systemName: isParentContactExpanded ? "chevron.up" : "chevron.down")
-                                                .font(OPSStyle.Typography.smallBody)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        }
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    
-                                    Spacer()
+                            // Contact information section
+                            SectionCard(
+                                icon: "person.text.rectangle",
+                                title: "Contact Information",
+                                actionIcon: (isClient && canEditClient) ? "pencil.circle" : nil,
+                                actionLabel: (isClient && canEditClient) ? "Edit" : nil,
+                                onAction: (isClient && canEditClient) ? { showingClientEdit = true } : nil
+                            ) {
+                                VStack(spacing: 0) {
+                                    contactSection
+                                        .padding(.vertical, 14)
+                                        .padding(.horizontal, 16)
 
-                                    // Edit button only when expanded
-                                    if isParentContactExpanded && canEditClient {
-                                        Button(action: {
-                                            showingClientEdit = true
-                                        }) {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "pencil")
-                                                    .font(OPSStyle.Typography.smallCaption)
-                                                Text("Edit")
-                                                    .font(OPSStyle.Typography.smallCaption)
-                                            }
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                            )
-                                        }
-                                        .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
-                                .padding(.horizontal)
-                                
-                                if isParentContactExpanded {
-                                    VStack(spacing: 0) {
-                                        contactSection
-                                            .padding(.vertical, 14)
-                                            .padding(.horizontal, 16)
-                                        
-                                        
-                                        
-                                        // Save and Share buttons inside the card
-                                        saveShareButtons
-                                            .padding(.horizontal, 16)
-                                            .padding(.bottom, 20)
-                                    }
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                                    )
-                                    .padding(.horizontal)
-                                    .transition(.asymmetric(
-                                        insertion: .push(from: .top),
-                                        removal: .push(from: .bottom)
-                                    ))
+                                    // Save and Share buttons inside the card
+                                    saveShareButtons
+                                        .padding(.horizontal, 16)
+                                        .padding(.bottom, 20)
                                 }
                             }
+                            .padding(.horizontal)
                             .padding(.top, 8)
-                        } else {
-                            // Normal contact display for non-clients or clients without sub-clients - also collapsible
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Button(action: {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                            isParentContactExpanded.toggle()
-                                        }
-                                    }) {
-                                        HStack(spacing: 8) {
-                                            Text("CONTACT INFORMATION")
-                                                .font(OPSStyle.Typography.captionBold)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                            
-                                            Image(systemName: isParentContactExpanded ? "chevron.up" : "chevron.down")
-                                                .font(OPSStyle.Typography.smallBody)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        }
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    
-                                    Spacer()
-
-                                    // Edit button only when expanded
-                                    if isParentContactExpanded && isClient && canEditClient {
-                                        Button(action: {
-                                            showingClientEdit = true
-                                        }) {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "pencil")
-                                                    .font(OPSStyle.Typography.smallCaption)
-                                                Text("Edit")
-                                                    .font(OPSStyle.Typography.smallCaption)
-                                            }
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                            )
-                                        }
-                                        .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
-                                .padding(.horizontal)
-                                
-                                if isParentContactExpanded {
-                                    VStack(spacing: 0) {
-                                        contactSection
-                                            .padding(.vertical, 14)
-                                            .padding(.horizontal, 16)
-                                        
-                                        
-                                        // Save and Share buttons inside the card
-                                        saveShareButtons
-                                            .padding(.horizontal, 16)
-                                            .padding(.bottom, 20)
-                                    }
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                                    )
-                                    .padding(.horizontal)
-                                    .transition(.asymmetric(
-                                        insertion: .push(from: .top),
-                                        removal: .push(from: .bottom)
-                                    ))
-                                }
-                            }
-                            .padding(.top, 8)
-                        }
 
                         // Role information with improved card styling
                         // Only show role section if not a client

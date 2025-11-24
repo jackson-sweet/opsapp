@@ -129,15 +129,21 @@ struct OrganizationSettingsView: View {
                             }
                             
                             // Subscription section
-                            VStack(spacing: 16) {
-                                SettingsSectionHeader(title: "SUBSCRIPTION")
-                                
+                            SectionCard(
+                                icon: "creditcard.fill",
+                                title: "Subscription",
+                                contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                            ) {
                                 subscriptionCard
                             }
+                            .padding(.horizontal, 20)
                             
                             // Organization details section
-                            VStack(spacing: 24) {
-                                SettingsSectionHeader(title: "CONTACT INFORMATION")
+                            SectionCard(
+                                icon: "building.2.fill",
+                                title: "Contact Information"
+                            ) {
+                                VStack(spacing: 24) {
                                 
                                 // Business hours - always show
                                 infoField(
@@ -174,38 +180,43 @@ struct OrganizationSettingsView: View {
                                     icon: "globe",
                                     isMissing: organization?.website?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
                                 )
+                                }
                             }
+                            .padding(.horizontal, 20)
 
                             // Project settings section (admin only)
                             if isCompanyAdmin {
-                                VStack(spacing: 16) {
-                                    SettingsSectionHeader(title: "PROJECT SETTINGS")
-
+                                SectionCard(
+                                    icon: "paintpalette.fill",
+                                    title: "Project Settings"
+                                ) {
                                     defaultProjectColorPicker
                                 }
+                                .padding(.horizontal, 20)
                             }
 
                             // Team section
-                            VStack(spacing: 16) {
-                                SettingsSectionHeader(title: "TEAM MEMBERS")
+                            SectionCard(
+                                icon: "person.3.fill",
+                                title: "Team Members",
+                                contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                            ) {
                                 
                                 if let company = organization {
                                     // Use the new compact team view with sheets for details
                                     OrganizationTeamView(company: company)
                                         .background(OPSStyle.Colors.cardBackgroundDark)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                        .padding(.horizontal, 20)
                                 } else if teamMembers.isEmpty {
                                     emptyTeamView
-                                        .padding(.horizontal, 20)
                                 } else {
                                     // Fallback to old view if we have teamMembers but no company
                                     ForEach(Array(zip(teamMembers.indices, teamMembers)), id: \.0) { index, member in
                                         memberRow(member: member)
                                     }
-                                    .padding(.horizontal, 20)
                                 }
                             }
+                            .padding(.horizontal, 20)
                         }
                     }
                     .padding(.bottom, 40)

@@ -38,9 +38,11 @@ struct DataStorageSettingsView: View {
                 ScrollView {
                     VStack(spacing: 0 ) {
                         // Synchronization Settings
-                        SettingsSectionHeader(title: "SYNCHRONIZATION")
-                        
-                        SettingsCard(title: "", showTitle: false) {
+                        SectionCard(
+                            icon: "arrow.triangle.2.circlepath",
+                            title: "Synchronization",
+                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                        ) {
                                     VStack(spacing: 0) {
                                 SettingsToggle(
                                     title: "Sync on App Launch",
@@ -134,13 +136,15 @@ struct DataStorageSettingsView: View {
                                 }
                                 .padding(16)
                             }
-                            .padding(.horizontal, -16) // Counteract card padding
                         }
-                        
+                        .padding(.horizontal, 20)
+
                         // Storage Settings
-                        SettingsSectionHeader(title: "STORAGE")
-                        
-                        SettingsCard(title: "", showTitle: false) {
+                        SectionCard(
+                            icon: "externaldrive",
+                            title: "Storage",
+                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                        ) {
                             VStack(spacing: 0) {
                                 SettingsToggle(
                                     title: "Cache Project Images",
@@ -308,13 +312,15 @@ struct DataStorageSettingsView: View {
                                 }
                                 .padding(16)
                             }
-                            .padding(.horizontal, -16) // Counteract card padding
                         }
-                        
+                        .padding(.horizontal, 20)
+
                         // Clear data buttons
-                        SettingsSectionHeader(title: "DATA MANAGEMENT")
-                        
-                        VStack(spacing: 16) {
+                        SectionCard(
+                            icon: "trash.circle",
+                            title: "Data Management"
+                        ) {
+                            VStack(spacing: 16) {
                             SettingsButton(
                                 title: "Clear Image Cache",
                                 icon: OPSStyle.Icons.photo,
@@ -332,6 +338,7 @@ struct DataStorageSettingsView: View {
                                     clearAllOfflineData()
                                 }
                             )
+                            }
                         }
                         .padding(.horizontal, 20)
                     }

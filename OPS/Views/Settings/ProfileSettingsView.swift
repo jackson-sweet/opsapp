@@ -70,17 +70,44 @@ struct ProfileSettingsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         
-                        // Profile header - no card background
+                        // Contact Preview Card
                         if let user = dataController.currentUser {
-                            VStack(alignment: .leading, spacing: 16) {
-                                HStack(alignment: .top, spacing: 16) {
-                                    // Profile image uploader
+                            VStack(alignment: .leading, spacing: 0) {
+                                HStack(alignment: .center, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        // Name
+                                        Text(user.fullName.uppercased())
+                                            .font(OPSStyle.Typography.bodyBold)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                            .lineLimit(1)
+
+                                        // Email
+                                        Text(user.email ?? "NO EMAIL")
+                                            .font(OPSStyle.Typography.caption)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                            .lineLimit(1)
+
+                                        // Role
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "person.badge.shield.checkmark")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                            Text(user.role.displayName)
+                                                .font(OPSStyle.Typography.smallCaption)
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                .lineLimit(1)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    // Avatar with image uploader on right side (56x56)
                                     ProfileImageUploader(
                                         config: ImageUploaderConfig(
                                             currentImageURL: user.profileImageURL,
                                             currentImageData: user.profileImageData,
                                             placeholderText: "\(user.firstName.prefix(1))\(user.lastName.prefix(1))",
-                                            size: 80,
+                                            size: 56,
                                             shape: .circle,
                                             allowDelete: true,
                                             backgroundColor: Color(hex: user.userColor ?? "#59779F") ?? OPSStyle.Colors.primaryAccent
@@ -92,32 +119,19 @@ struct ProfileSettingsView: View {
                                             try await dataController.deleteUserProfileImage(for: user)
                                         }
                                     )
-
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        // Name and role
-                                        HStack(spacing: 8) {
-                                            Text(user.fullName)
-                                                .font(OPSStyle.Typography.bodyBold)
-                                                .foregroundColor(.white)
-
-                                            Text("| \(user.role.displayName)")
-                                                .font(OPSStyle.Typography.body)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        }
-
-                                        // Show role only (email is now in form field)
-                                        // Removed email display from header
-
-                                        // Phone
-                                        if let userPhone = user.phone, !userPhone.isEmpty {
-                                            Text(userPhone)
-                                                .font(OPSStyle.Typography.smallCaption)
-                                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        }
-                                    }
-
-                                    Spacer()
+                                    .overlay(
+                                        Circle()
+                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                                    )
                                 }
+                                .padding(.vertical, 14)
+                                .padding(.horizontal, 16)
+                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                )
                             }
                             .padding(.horizontal, 20)
                         }

@@ -233,63 +233,75 @@ struct NotificationSettingsView: View {
     }
     
     private var advanceNoticeSettings: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             // Master Toggle
-            SettingsCard(title: "", showTitle: false) {
-                SettingsToggle(
-                    title: "Enable Advance Reminders",
-                    description: "Get notified before projects start",
-                    isOn: $notifyProjectAdvance
-                )
-                .onChange(of: notifyProjectAdvance) { _, newValue in
-                    if newValue {
-                        // Enabled - schedule notifications
-                        rescheduleAllNotifications()
-                    } else {
-                        // Disabled - cancel all project notifications
-                        Task {
-                            await notificationManager.cancelAllProjectNotifications()
-                        }
+            SettingsToggle(
+                title: "Enable Advance Reminders",
+                description: "Get notified before projects start",
+                isOn: $notifyProjectAdvance
+            )
+            .onChange(of: notifyProjectAdvance) { _, newValue in
+                if newValue {
+                    // Enabled - schedule notifications
+                    rescheduleAllNotifications()
+                } else {
+                    // Disabled - cancel all project notifications
+                    Task {
+                        await notificationManager.cancelAllProjectNotifications()
                     }
                 }
             }
-            
+
             // Day Selectors and Time
             if notifyProjectAdvance {
-                SettingsCard(title: "REMINDER SCHEDULE") {
-                    VStack(spacing: 12) {
-                        HStack(spacing: 12) {
-                            DaySelector(value: $advanceNoticeDays1, label: "First", allowNone: false)
-                                .onChange(of: advanceNoticeDays1) { _, _ in
-                                    rescheduleAllNotifications()
-                                }
-                            DaySelector(value: $advanceNoticeDays2, label: "Second", allowNone: true)
-                                .onChange(of: advanceNoticeDays2) { _, _ in
-                                    rescheduleAllNotifications()
-                                }
-                            DaySelector(value: $advanceNoticeDays3, label: "Third", allowNone: true)
-                                .onChange(of: advanceNoticeDays3) { _, _ in
-                                    rescheduleAllNotifications()
-                                }
-                        }
-                        
-                        Text(reminderSummaryText)
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 8)
+                Divider()
+                    .background(OPSStyle.Colors.cardBorder)
+                    .padding(.vertical, 8)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("REMINDER SCHEDULE")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    HStack(spacing: 12) {
+                        DaySelector(value: $advanceNoticeDays1, label: "First", allowNone: false)
+                            .onChange(of: advanceNoticeDays1) { _, _ in
+                                rescheduleAllNotifications()
+                            }
+                        DaySelector(value: $advanceNoticeDays2, label: "Second", allowNone: true)
+                            .onChange(of: advanceNoticeDays2) { _, _ in
+                                rescheduleAllNotifications()
+                            }
+                        DaySelector(value: $advanceNoticeDays3, label: "Third", allowNone: true)
+                            .onChange(of: advanceNoticeDays3) { _, _ in
+                                rescheduleAllNotifications()
+                            }
                     }
+
+                    Text(reminderSummaryText)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
                 }
-                
+
+                Divider()
+                    .background(OPSStyle.Colors.cardBorder)
+                    .padding(.vertical, 8)
+
                 // Time Picker
-                SettingsCard(title: "NOTIFICATION TIME") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("NOTIFICATION TIME")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
                     HStack {
                         Text("Send reminders at")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        
+
                         Spacer()
-                        
+
                         // Use a simple DatePicker with custom styling
                         DatePicker("", selection: Binding(
                             get: { self.notificationTime },
@@ -315,17 +327,17 @@ struct NotificationSettingsView: View {
     private var testNotificationCard: some View {
         VStack(spacing: 16) {
             Text("Send a test to verify settings")
-                .font(OPSStyle.Typography.cardBody)
+                .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            
+
             Button {
                 sendTestNotification()
             } label: {
                 HStack {
                     Image(systemName: "bell.badge")
                         .font(.system(size: 18))
-                    
+
                     Text("SEND TEST NOTIFICATION")
                         .font(OPSStyle.Typography.button)
                 }
@@ -340,9 +352,6 @@ struct NotificationSettingsView: View {
             .disabled(!notificationManager.isNotificationsEnabled)
             .opacity(notificationManager.isNotificationsEnabled ? 1.0 : 0.5)
         }
-        .padding(24)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
     
     // MARK: - Helper Components

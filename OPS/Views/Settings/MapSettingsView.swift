@@ -55,7 +55,7 @@ struct MapSettingsView: View {
                 
                 // Content - Scrollable when needed
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: 24) {
                         // Location Permission Status Card
                         locationStatusCard
                         

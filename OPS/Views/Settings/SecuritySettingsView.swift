@@ -38,7 +38,7 @@ struct SecuritySettingsView: View {
                 )
                 
                 ScrollView {
-                    VStack(spacing: 0) {
+                    VStack(spacing: 24) {
                         // Security section
                         SectionCard(
                             icon: "lock.shield",

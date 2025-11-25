@@ -36,7 +36,7 @@ struct DataStorageSettingsView: View {
                 )
                 
                 ScrollView {
-                    VStack(spacing: 0 ) {
+                    VStack(spacing: 24) {
                         // Synchronization Settings
                         SectionCard(
                             icon: "arrow.triangle.2.circlepath",

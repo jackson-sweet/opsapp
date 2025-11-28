@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E56B446B2ED55AAC005DED59 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = E56B446A2ED55AAC005DED59 /* FirebaseAnalytics */; };
+		E56B446D2ED55AAC005DED59 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = E56B446C2ED55AAC005DED59 /* FirebaseAnalyticsCore */; };
+		E56B446F2ED55AAC005DED59 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = E56B446E2ED55AAC005DED59 /* FirebaseCore */; };
 		E598F3C42E78F599000D6F65 /* Stripe in Frameworks */ = {isa = PBXBuildFile; productRef = E598F3C32E78F599000D6F65 /* Stripe */; };
 		E598F3C62E78F599000D6F65 /* StripeApplePay in Frameworks */ = {isa = PBXBuildFile; productRef = E598F3C52E78F599000D6F65 /* StripeApplePay */; };
 		E598F3C82E78F599000D6F65 /* StripeCardScan in Frameworks */ = {isa = PBXBuildFile; productRef = E598F3C72E78F599000D6F65 /* StripeCardScan */; };
@@ -81,9 +84,12 @@
 			files = (
 				E598F3D22E78F599000D6F65 /* StripePayments in Frameworks */,
 				E5AF196F2E02308000CD46A1 /* GoogleSignIn in Frameworks */,
+				E56B446B2ED55AAC005DED59 /* FirebaseAnalytics in Frameworks */,
 				E598F3C62E78F599000D6F65 /* StripeApplePay in Frameworks */,
+				E56B446F2ED55AAC005DED59 /* FirebaseCore in Frameworks */,
 				E598F3D42E78F599000D6F65 /* StripePaymentsUI in Frameworks */,
 				E5AF19712E02308000CD46A1 /* GoogleSignInSwift in Frameworks */,
+				E56B446D2ED55AAC005DED59 /* FirebaseAnalyticsCore in Frameworks */,
 				E598F3CC2E78F599000D6F65 /* StripeFinancialConnections in Frameworks */,
 				E598F3C82E78F599000D6F65 /* StripeCardScan in Frameworks */,
 				E598F3CA2E78F599000D6F65 /* StripeConnect in Frameworks */,
@@ -169,6 +175,9 @@
 				E598F3CF2E78F599000D6F65 /* StripePaymentSheet */,
 				E598F3D12E78F599000D6F65 /* StripePayments */,
 				E598F3D32E78F599000D6F65 /* StripePaymentsUI */,
+				E56B446A2ED55AAC005DED59 /* FirebaseAnalytics */,
+				E56B446C2ED55AAC005DED59 /* FirebaseAnalyticsCore */,
+				E56B446E2ED55AAC005DED59 /* FirebaseCore */,
 			);
 			productName = OPS;
 			productReference = E595DC042DB6CF8F00B1413F /* OPS.app */;
@@ -255,6 +264,7 @@
 			packageReferences = (
 				E5AF196C2E022E7500CD46A1 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				E598F3C22E78F599000D6F65 /* XCRemoteSwiftPackageReference "stripe-ios" */,
+				E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E595DC052DB6CF8F00B1413F /* Products */;
@@ -457,7 +467,7 @@
 				CODE_SIGN_ENTITLEMENTS = OPS/OPS.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.0.3;
+				CURRENT_PROJECT_VERSION = 2.0.4;
 				DEVELOPMENT_ASSET_PATHS = "\"OPS/Preview Content\"";
 				DEVELOPMENT_TEAM = X47H96M34K;
 				ENABLE_PREVIEWS = YES;
@@ -482,7 +492,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.3;
+				MARKETING_VERSION = 2.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -505,7 +515,7 @@
 				CODE_SIGN_ENTITLEMENTS = OPS/OPS.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.0.3;
+				CURRENT_PROJECT_VERSION = 2.0.4;
 				DEVELOPMENT_ASSET_PATHS = "\"OPS/Preview Content\"";
 				DEVELOPMENT_TEAM = X47H96M34K;
 				ENABLE_PREVIEWS = YES;
@@ -530,7 +540,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.3;
+				MARKETING_VERSION = 2.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -659,6 +669,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.6.0;
+			};
+		};
 		E598F3C22E78F599000D6F65 /* XCRemoteSwiftPackageReference "stripe-ios" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/stripe/stripe-ios";
@@ -678,6 +696,21 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		E56B446A2ED55AAC005DED59 /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		E56B446C2ED55AAC005DED59 /* FirebaseAnalyticsCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalyticsCore;
+		};
+		E56B446E2ED55AAC005DED59 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
 		E598F3C32E78F599000D6F65 /* Stripe */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E598F3C22E78F599000D6F65 /* XCRemoteSwiftPackageReference "stripe-ios" */;

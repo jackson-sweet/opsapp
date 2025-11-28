@@ -779,8 +779,9 @@ class CentralizedSyncManager {
                 task.calendarEventId = dto.calendarEventId
 
                 // Team members
-                if let teamMemberIds = dto.teamMembers {
+                if let teamMemberIds = dto.teamMembers, !teamMemberIds.isEmpty {
                     task.setTeamMemberIds(teamMemberIds)
+                    print("[SYNC_TASKS] 👥 Task \(dto.id) has \(teamMemberIds.count) team members: \(teamMemberIds)")
                 }
 
                 // Parse deletedAt if present
@@ -1626,23 +1627,8 @@ class CentralizedSyncManager {
             }
         }
 
-        // Link project → team member relationships
-        for project in projects {
-            let teamMemberIds = project.getTeamMemberIds()
-            if !teamMemberIds.isEmpty {
-                var teamMembers: [User] = []
-                for memberId in teamMemberIds {
-                    let userDescriptor = FetchDescriptor<User>(
-                        predicate: #Predicate { $0.id == memberId }
-                    )
-                    if let user = try modelContext.fetch(userDescriptor).first {
-                        teamMembers.append(user)
-                    }
-                }
-                project.teamMembers = teamMembers
-                linkedCount += teamMembers.count
-            }
-        }
+        // NOTE: Project team members are computed from tasks AFTER task→project relationships are linked
+        // See "Compute project team members from tasks" section below
 
         // Link task → project relationships
         for task in tasks {
@@ -1732,6 +1718,16 @@ class CentralizedSyncManager {
                 }
                 event.teamMembers = teamMembers
                 linkedCount += teamMembers.count
+            }
+        }
+
+        // Compute project team members from tasks
+        // This must happen AFTER task→project relationships are linked
+        print("[LINK_RELATIONSHIPS] 👥 Computing project team members from tasks...")
+        for project in projects {
+            let hasChanges = project.updateTeamMembersFromTasks(in: modelContext)
+            if hasChanges {
+                linkedCount += project.teamMembers.count
             }
         }
 

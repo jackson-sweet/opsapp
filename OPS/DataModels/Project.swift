@@ -399,7 +399,9 @@ final class Project: Identifiable {
     /// Update project team members based on all task team members
     /// Collects unique team members from all tasks and updates project's team members
     /// Should be called after task creation, update, or deletion
-    func updateTeamMembersFromTasks(in context: ModelContext) {
+    /// Returns true if changes were made, false if no update was needed
+    @discardableResult
+    func updateTeamMembersFromTasks(in context: ModelContext) -> Bool {
         print("[PROJECT_TEAM] 🔄 Updating project team members from tasks...")
         print("[PROJECT_TEAM] Project: \(title)")
         print("[PROJECT_TEAM] Current team member count: \(teamMembers.count)")
@@ -407,13 +409,21 @@ final class Project: Identifiable {
         // Collect all unique team member IDs from all tasks
         var allTeamMemberIds = Set<String>()
 
+        print("[PROJECT_TEAM] Project has \(tasks.count) tasks")
         for task in tasks {
             let taskTeamMemberIds = task.getTeamMemberIds()
-            print("[PROJECT_TEAM] Task has \(taskTeamMemberIds.count) team members")
+            print("[PROJECT_TEAM] Task \(task.id) - teamMemberIdsString: '\(task.teamMemberIdsString)' -> \(taskTeamMemberIds.count) members: \(taskTeamMemberIds)")
             allTeamMemberIds.formUnion(taskTeamMemberIds)
         }
 
         print("[PROJECT_TEAM] Total unique team member IDs: \(allTeamMemberIds.count)")
+
+        // Check if there are any changes before updating
+        let currentIds = Set(getTeamMemberIds())
+        if currentIds == allTeamMemberIds {
+            print("[PROJECT_TEAM] ⏭️ No changes needed - team members already match")
+            return false
+        }
 
         // Fetch User objects for all team member IDs
         let teamMemberIdArray = Array(allTeamMemberIds)
@@ -432,8 +442,10 @@ final class Project: Identifiable {
             self.setTeamMemberIds(Array(allTeamMemberIds))
 
             print("[PROJECT_TEAM] ✅ Updated project team members: \(fetchedUsers.count) members")
+            return true
         } catch {
             print("[PROJECT_TEAM] ❌ Error fetching users: \(error)")
+            return false
         }
     }
 }

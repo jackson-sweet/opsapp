@@ -42,8 +42,6 @@ struct ProjectDetailsView: View {
     @State private var isGeocodingAddress = false
     @State private var addressDebounceTask: Task<Void, Never>?
     @StateObject private var addressSearchCompleter = AddressSearchCompleter()
-    @State private var isEditingTeam = false
-    @State private var triggerTeamSave = false
     @State private var showingCompletionSheet = false
     @State private var showingCompletionAlert = false
     @State private var showingDeleteAlert = false
@@ -51,6 +49,7 @@ struct ProjectDetailsView: View {
     @State private var isNotesExpanded = false
     @State private var isEditingTitle = false
     @State private var editedTitle: String = ""
+    @State private var showingAddTaskSheet = false
 
     // Initialize with project's existing notes
     init(project: Project, isEditMode: Bool = false) {
@@ -232,41 +231,6 @@ struct ProjectDetailsView: View {
                 }
 
                 Spacer()
-
-                // Edit/Save/Cancel buttons
-                if canEditProjectSettings() {
-                    if isEditingTitle {
-                        HStack(spacing: 12) {
-                            Button("Cancel") {
-                                editedTitle = project.title
-                                isEditingTitle = false
-                            }
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            Button("Save") {
-                                saveTitle()
-                            }
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                    } else {
-                        Button(action: {
-                            editedTitle = project.title
-                            isEditingTitle = true
-                        }) {
-                            Image(systemName: OPSStyle.Icons.pencil)
-                                .font(.system(size: 14))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                    }
-                }
-            }
-
-            if canEditProjectSettings() && !isEditingTitle {
-                Text("tap on any field to edit")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
     }
@@ -279,11 +243,18 @@ struct ProjectDetailsView: View {
                 tasksSection
                 photosSection
 
-                if project.status != .completed {
+                if project.status != .completed && project.status != .closed {
                     Spacer()
                         .frame(height: 40)
 
                     completeButton
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else if project.status == .completed {
+                    Spacer()
+                        .frame(height: 40)
+
+                    closeJobButton
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
 
                 if canEditProjectSettings() {
@@ -291,6 +262,7 @@ struct ProjectDetailsView: View {
                 }
             }
             .padding(.top, 16)
+            .animation(.easeInOut(duration: 0.3), value: project.status)
         }
     }
 
@@ -374,6 +346,10 @@ struct ProjectDetailsView: View {
         if let clientId = project.clientId, !clientId.isEmpty {
             refreshClientData(clientId: clientId, forceRefresh: true)
         }
+
+        // NOTE: Team members are computed from tasks during sync (CentralizedSyncManager)
+        // and when tasks are modified (TaskFormSheet). Do NOT compute here as it
+        // causes view dismissal due to model changes during onAppear.
     }
 
     private func handleOnDisappear() {
@@ -747,6 +723,8 @@ struct ProjectDetailsView: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
+                        Spacer()
+                        
                         Button(action: {
                             // Trigger task creation
                             // This will be handled by the tasks section
@@ -761,11 +739,14 @@ struct ProjectDetailsView: View {
                         }
                     }
                 } else if project.computedStartDate == nil {
-                    // Has tasks but not scheduled
-                    Text("Not Scheduled")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                } else {
+                    HStack(){
+                        // Has tasks but not scheduled
+                        Text("Not Scheduled")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Spacer()
+                    }
+                    } else {
                     // Has scheduled tasks
                     HStack(spacing: 16) {
                         // Start date
@@ -900,6 +881,8 @@ struct ProjectDetailsView: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
+                        Spacer()
+                        
                         Button(action: {
                             // Trigger task creation
                         }) {
@@ -913,10 +896,16 @@ struct ProjectDetailsView: View {
                         }
                     }
                 } else if project.teamMembers.isEmpty {
-                    // Has tasks but no team assigned
-                    Text("No team assigned")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    
+                    HStack(){
+                        // Has tasks but no team assigned
+                        Text("No team assigned")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Spacer()
+                    }
+                    
+                    
                 } else {
                     // Has team members
                     VStack(alignment: .leading, spacing: 8) {
@@ -1197,42 +1186,6 @@ struct ProjectDetailsView: View {
         .padding()
         .background(OPSStyle.Colors.cardBackgroundDark)
     }
-    
-    // Team members section with modern styling
-    private var teamSection: some View {
-        SectionCard(
-            icon: OPSStyle.Icons.crew,
-            title: "Team Members",
-            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-        ) {
-            ProjectTeamView(project: project, isEditing: $isEditingTeam, triggerSave: $triggerTeamSave)
-        }
-        .padding(.horizontal)
-    }
-
-    private var teamEditButton: some View {
-        Button(action: {
-            if isEditingTeam {
-                // Trigger save when Done is pressed
-                triggerTeamSave.toggle()
-            } else {
-                isEditingTeam.toggle()
-            }
-        }) {
-            Text(isEditingTeam ? "Done" : "Edit")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.black)
-                .cornerRadius(OPSStyle.Layout.buttonRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                )
-        }
-    }
-    
     // Photos section with improved styling
     private var photosSection: some View {
         SectionCard(
@@ -1428,6 +1381,12 @@ struct ProjectDetailsView: View {
         SectionCard(
             icon: OPSStyle.Icons.task,
             title: "Tasks",
+            count: project.tasks.count,
+            actionIcon: "plus.circle",
+            actionLabel: "Add",
+            onAction: {
+                showingAddTaskSheet = true
+            },
             contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
         ) {
             TaskListView(project: project)
@@ -1435,6 +1394,17 @@ struct ProjectDetailsView: View {
                 .environmentObject(appState)
         }
         .padding(.horizontal)
+        .sheet(isPresented: $showingAddTaskSheet) {
+            TaskFormSheet(
+                mode: .create,
+                preselectedProjectId: project.id,
+                onSave: { _ in
+                    // Task saved, refresh the view
+                    refreshTrigger.toggle()
+                }
+            )
+            .environmentObject(dataController)
+        }
     }
 
 
@@ -1469,6 +1439,26 @@ struct ProjectDetailsView: View {
             let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
             Text("This project has \(incompleteTasks.count) incomplete task\(incompleteTasks.count == 1 ? "" : "s"). All incomplete tasks will be marked as completed.")
         }
+    }
+
+    private var closeJobButton: some View {
+        let closedColor = OPSStyle.Colors.statusColor(for: .closed)
+        return Button(action: {
+            markProjectClosed()
+        }) {
+            Text("CLOSE JOB")
+                .font(OPSStyle.Typography.bodyBold)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .foregroundColor(closedColor)
+                .background(Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(closedColor, lineWidth: 1)
+                )
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
     }
 
     private var deleteButton: some View {
@@ -1507,6 +1497,19 @@ struct ProjectDetailsView: View {
         impactFeedback.impactOccurred()
 
         Task {
+            // Auto-complete all incomplete tasks when marking project complete
+            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+
+            for task in incompleteTasks {
+                do {
+                    try await dataController.updateTaskStatus(task: task, to: .completed)
+                    print("[PROJECT_COMPLETE] ✅ Task \(task.id) marked complete")
+                } catch {
+                    print("[PROJECT_COMPLETE] ❌ Failed to complete task \(task.id): \(error)")
+                }
+            }
+
+            // Then update project status
             try? await dataController.syncManager?.updateProjectStatus(
                 projectId: project.id,
                 status: .completed,
@@ -1516,6 +1519,26 @@ struct ProjectDetailsView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             dismiss()
+        }
+    }
+
+    private func markProjectClosed() {
+        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+        impactFeedback.impactOccurred()
+
+        // Dismiss first with animation, then update status
+        // This prevents the status change from causing view updates during dismissal
+        dismiss()
+
+        // Update status after dismissal animation starts
+        Task {
+            // Small delay to let dismissal animation begin
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            try? await dataController.syncManager?.updateProjectStatus(
+                projectId: project.id,
+                status: .closed,
+                forceSync: true
+            )
         }
     }
 

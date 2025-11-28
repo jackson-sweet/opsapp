@@ -148,10 +148,9 @@ struct ProjectDTO: Codable {
             project.projectImagesString = images.joined(separator: ",")
         }
         
-        // Assign team members - using string storage
-        if let teamMemberIds = teamMembers {
-            project.teamMemberIdsString = teamMemberIds.joined(separator: ",")
-        }
+        // NOTE: Project teamMembers is computed locally from task team members
+        // Do NOT store teamMembers from Bubble - it's a legacy field
+        // Team members are computed via project.updateTeamMembersFromTasks()
 
         // Parse deletedAt if present
         if let deletedAtString = deletedAt {

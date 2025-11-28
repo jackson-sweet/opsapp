@@ -29,12 +29,15 @@ struct TaskDetailsView: View {
     @State private var loadedTeamMembers: [User] = []
     @State private var selectedTeamMember: User? = nil
     @State private var showingTeamMemberDetails = false
-    @State private var isEditingTeam = false
-    @State private var triggerTeamSave = false
+    @State private var showingTeamMemberPicker = false
+    @State private var selectedTeamMemberIds: Set<String> = []
+    @State private var allTeamMembers: [TeamMember] = []
+    @State private var showTeamUpdateMessage = false
     @State private var showingProjectCompletionAlert = false
     @State private var showingScheduler = false
     @State private var refreshTrigger = false  // Toggle to force view refresh
     @State private var isNotesExpanded = false
+    @State private var showingDeleteConfirmation = false
 
     init(task: ProjectTask, project: Project) {
         self._task = State(initialValue: task)
@@ -144,7 +147,12 @@ struct TaskDetailsView: View {
                         
                         // Navigation cards
                         navigationSection
-                        
+
+                        // Delete task section (admin/office only)
+                        if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                            deleteTaskSection
+                        }
+
                         // Bottom padding
                         Spacer()
                             .frame(height: 80)
@@ -248,6 +256,14 @@ struct TaskDetailsView: View {
             Button("Keep Project Active", role: .cancel) { }
         } message: {
             Text("All tasks in this project are now complete. Would you like to mark the entire project as completed?")
+        }
+        .alert("Delete Task?", isPresented: $showingDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                deleteTask()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This will permanently delete this task and any associated calendar events. This action cannot be undone.")
         }
     }
     
@@ -474,21 +490,93 @@ struct TaskDetailsView: View {
             icon: OPSStyle.Icons.personTwo,
             title: "Team Members",
             actionIcon: canModify ? "pencil.circle" : nil,
-            actionLabel: canModify ? (isEditingTeam ? "Done" : "Edit") : nil,
+            actionLabel: canModify ? "Edit" : nil,
             onAction: canModify ? {
-                if isEditingTeam {
-                    triggerTeamSave.toggle()
-                    isEditingTeam = false
-                } else {
-                    isEditingTeam.toggle()
-                }
+                // Load current team member IDs
+                selectedTeamMemberIds = Set(task.getTeamMemberIds())
+                // Load available team members
+                loadAvailableTeamMembers()
+                showingTeamMemberPicker = true
             } : nil,
             contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
         ) {
-            TaskTeamView(task: task, isEditing: $isEditingTeam, triggerSave: $triggerTeamSave)
+            TaskTeamView(task: task)
                 .environmentObject(dataController)
         }
         .padding(.horizontal)
+        .sheet(isPresented: $showingTeamMemberPicker, onDismiss: {
+            // Save team changes when sheet is dismissed
+            saveTeamChanges()
+        }) {
+            TeamMemberPickerSheet(
+                selectedTeamMemberIds: $selectedTeamMemberIds,
+                allTeamMembers: allTeamMembers
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func loadAvailableTeamMembers() {
+        guard let companyId = dataController.currentUser?.companyId else { return }
+
+        Task {
+            do {
+                let userDTOs = try await dataController.apiService.fetchCompanyUsers(companyId: companyId)
+                let teamMembers = userDTOs.map { TeamMember.fromUserDTO($0) }
+                await MainActor.run {
+                    self.allTeamMembers = teamMembers
+                }
+            } catch {
+                print("[TASK_TEAM] Error loading available members: \(error)")
+            }
+        }
+    }
+
+    private func saveTeamChanges() {
+        let currentIds = Set(task.getTeamMemberIds())
+        guard selectedTeamMemberIds != currentIds else {
+            // No changes
+            return
+        }
+
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        let newMemberIds = Array(selectedTeamMemberIds)
+
+        // Optimistically update UI
+        task.setTeamMemberIds(newMemberIds)
+        task.needsSync = true
+
+        // Also update calendar event if exists
+        if let calendarEvent = task.calendarEvent {
+            calendarEvent.setTeamMemberIds(newMemberIds)
+            calendarEvent.needsSync = true
+        }
+
+        // Save to local database
+        try? dataController.modelContext?.save()
+
+        // Show confirmation message
+        showTeamUpdateMessage = true
+
+        // Perform API sync in background
+        Task {
+            do {
+                print("[TASK_TEAM_UPDATE] Syncing task team members to API...")
+                try await dataController.updateTaskTeamMembers(task: task, memberIds: newMemberIds)
+                print("[TASK_TEAM_UPDATE] ✅ Task team synced to API")
+
+                if let calendarEvent = task.calendarEvent {
+                    try await dataController.updateCalendarEventTeamMembers(event: calendarEvent, memberIds: newMemberIds)
+                    print("[TASK_TEAM_UPDATE] ✅ Calendar event team synced to API")
+                }
+            } catch {
+                print("[TASK_TEAM_UPDATE] ⚠️ Sync failed: \(error)")
+            }
+        }
     }
 
     // MARK: - Status Update Section
@@ -696,7 +784,62 @@ struct TaskDetailsView: View {
             )
         }
     }
-    
+
+    // MARK: - Delete Task Section
+
+    private var deleteTaskSection: some View {
+        Button(action: {
+            showingDeleteConfirmation = true
+        }) {
+            HStack {
+                Image(systemName: "trash")
+                    .font(.system(size: 16))
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+
+                Text("DELETE TASK")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color.clear)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.errorStatus.opacity(0.5), lineWidth: 1)
+            )
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
+    private func deleteTask() {
+        // Haptic feedback for destructive action
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.warning)
+
+        // Capture task ID before deletion
+        let taskId = task.id
+
+        Task {
+            do {
+                // Delete from server first
+                try await dataController.deleteTask(task)
+                print("[TASK_DELETE] ✅ Task deleted successfully: \(taskId)")
+
+                // Dismiss the view after successful deletion
+                await MainActor.run {
+                    // Notify calendar views to refresh
+                    dataController.calendarEventsDidChange.toggle()
+                    dismiss()
+                }
+            } catch {
+                print("[TASK_DELETE] ❌ Failed to delete task: \(error)")
+                // Show error - could add an error alert here
+            }
+        }
+    }
+
     // MARK: - Schedule Update
 
     private func handleScheduleUpdate(startDate: Date, endDate: Date) {
@@ -1233,12 +1376,13 @@ struct TaskDetailsView: View {
     }
     
     private var saveNotificationOverlay: some View {
-        VStack {
+        ZStack(alignment: .top) {
+            // Notes saved notification
             if showingSaveNotification {
                 HStack(spacing: 8) {
                     Image(systemName: OPSStyle.Icons.complete)
                         .foregroundColor(OPSStyle.Colors.successStatus)
-                    
+
                     Text("Notes saved")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(.white)
@@ -1249,8 +1393,15 @@ struct TaskDetailsView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .padding(.top, 50)
             }
-            
-            Spacer()
+
+            // Team update push-in message (uses its own positioning)
+            PushInMessage(
+                isPresented: $showTeamUpdateMessage,
+                title: "TEAM UPDATED",
+                subtitle: "\(selectedTeamMemberIds.count) member\(selectedTeamMemberIds.count == 1 ? "" : "s") assigned",
+                type: .success,
+                autoDismissAfter: 3.0
+            )
         }
     }
 }

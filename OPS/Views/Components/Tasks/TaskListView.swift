@@ -24,19 +24,11 @@ struct TaskListView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Action buttons bar (inside SectionCard)
-            HStack {
-                Spacer()
+            // Project-Based button (for switching back) - only shown when callback provided
+            if canModify, let onSwitch = onSwitchToProjectBased {
+                HStack {
+                    Spacer()
 
-                // Task count badge
-                if !project.tasks.isEmpty {
-                    Text("\(project.tasks.count) \(project.tasks.count == 1 ? "Task" : "Tasks")")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-
-                // Project-Based button (for switching back)
-                if canModify, let onSwitch = onSwitchToProjectBased {
                     Button(action: {
                         onSwitch()
                     }) {
@@ -51,35 +43,14 @@ struct TaskListView: View {
                             )
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
 
-                // ADD button
-                if canModify {
-                    Button(action: {
-                        showingTaskForm = true
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus")
-                                .font(OPSStyle.Typography.smallCaption)
-                            Text("Add")
-                                .font(OPSStyle.Typography.smallCaption)
-                        }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                        )
-                    }
-                }
+                Divider()
+                    .background(OPSStyle.Colors.cardBorder)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
 
-            Divider()
-                .background(OPSStyle.Colors.cardBorder)
-
-            // Task content - always show
+            // Task content
             if project.tasks.isEmpty {
                 // Empty state with create button
                 Button(action: {

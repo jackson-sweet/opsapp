@@ -68,6 +68,8 @@ struct TaskFormSheet: View {
     @State private var showingScheduler = false
     @State private var startDate: Date? = nil
     @State private var endDate: Date? = nil
+    @State private var datesExistedBeforeScheduler = false  // Track if dates existed before opening scheduler
+    @State private var schedulerConfirmed = false  // Track if scheduler was confirmed vs cancelled
     @State private var showingCreateTaskType = false
     @State private var projectSearchText: String = ""
     @State private var showingProjectSuggestions = false
@@ -200,7 +202,13 @@ struct TaskFormSheet: View {
             )
             .interactiveDismissDisabled()
         }
-        .sheet(isPresented: $showingScheduler) {
+        .sheet(isPresented: $showingScheduler, onDismiss: {
+            // If scheduler was dismissed without confirming and dates didn't exist before, clear them
+            if !schedulerConfirmed && !datesExistedBeforeScheduler {
+                startDate = nil
+                endDate = nil
+            }
+        }) {
             if let startDate = startDate, let endDate = endDate {
                 // In draft mode, we need a temporary project for the scheduler
                 if mode.isDraft {
@@ -213,6 +221,7 @@ struct TaskFormSheet: View {
                         currentStartDate: startDate,
                         currentEndDate: endDate,
                         onScheduleUpdate: { newStart, newEnd in
+                            schedulerConfirmed = true  // Mark as confirmed
                             self.startDate = newStart
                             self.endDate = newEnd
                         },
@@ -232,6 +241,7 @@ struct TaskFormSheet: View {
                         currentStartDate: startDate,
                         currentEndDate: endDate,
                         onScheduleUpdate: { newStart, newEnd in
+                            schedulerConfirmed = true  // Mark as confirmed
                             self.startDate = newStart
                             self.endDate = newEnd
                         },
@@ -408,7 +418,7 @@ struct TaskFormSheet: View {
                             showingProjectSuggestions = isEditing
                         }
                     })
-                    .frame(height: selectedProject != nil ? 64 : 44)
+                    .frame(height: selectedProject != nil && !showingProjectSuggestions ? 64 : 44)
                     .padding(.horizontal, 16)
                     .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -416,7 +426,8 @@ struct TaskFormSheet: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
                     )
-                    .foregroundColor(selectedProject != nil ? .clear : OPSStyle.Colors.primaryText)
+                    // Only hide text when project is selected AND not actively searching
+                    .foregroundColor(selectedProject != nil && !showingProjectSuggestions ? .clear : OPSStyle.Colors.primaryText)
                     .font(OPSStyle.Typography.body)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.words)
@@ -668,7 +679,11 @@ struct TaskFormSheet: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Button(action: {
-                    // Ensure dates are set before showing scheduler
+                    // Track if dates existed before opening scheduler
+                    datesExistedBeforeScheduler = (startDate != nil && endDate != nil)
+                    schedulerConfirmed = false  // Reset confirmation flag
+
+                    // Set temporary dates for scheduler to work with
                     if startDate == nil {
                         startDate = Date()
                     }
@@ -991,6 +1006,14 @@ struct TaskFormSheet: View {
 
                     isSaving = false
                     onSave?(task)
+
+                    // Post notification for success message overlay
+                    let taskTypeName = selectedTaskType?.display ?? ""
+                    NotificationCenter.default.post(
+                        name: Notification.Name("TaskCreatedSuccess"),
+                        object: nil,
+                        userInfo: ["taskTypeName": taskTypeName]
+                    )
 
                     // Brief delay for graceful dismissal
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

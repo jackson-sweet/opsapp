@@ -1311,6 +1311,15 @@ struct ProjectFormSheet: View {
                     generator.notificationOccurred(.success)
                     #endif
 
+                    // Post notification for success message overlay (only for new projects)
+                    if case .create = mode {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("ProjectCreatedSuccess"),
+                            object: nil,
+                            userInfo: ["projectTitle": title]
+                        )
+                    }
+
                     onSave(project)
 
                     // Brief delay for graceful dismissal
@@ -1708,8 +1717,18 @@ struct ProjectFormSheet: View {
                 deletedAt: nil
             )
 
-            let _ = try await dataController.apiService.createAndLinkCalendarEvent(calendarEventDTO)
-            print("[TASK_CREATE] ✅ Calendar event synced to Bubble")
+            let createdEventDTO = try await dataController.apiService.createAndLinkCalendarEvent(calendarEventDTO)
+            print("[TASK_CREATE] ✅ Calendar event synced to Bubble with ID: \(createdEventDTO.id)")
+
+            // CRITICAL: Update local calendar event ID to match Bubble's ID to prevent duplicates on sync
+            await MainActor.run {
+                calendarEvent.id = createdEventDTO.id
+                task.calendarEventId = createdEventDTO.id
+                calendarEvent.needsSync = false
+                calendarEvent.lastSyncedAt = Date()
+                try? modelContext.save()
+                print("[TASK_CREATE] ✅ Local calendar event ID updated to Bubble ID: \(createdEventDTO.id)")
+            }
         } catch {
             print("[TASK_CREATE] ⚠️ Failed to sync calendar event to Bubble: \(error)")
             await MainActor.run {

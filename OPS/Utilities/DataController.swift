@@ -466,14 +466,19 @@ class DataController: ObservableObject {
                 // Check if user has completed onboarding from server data
                 if let user = currentUser {
                     UserDefaults.standard.set(user.hasCompletedAppOnboarding, forKey: "onboarding_completed")
-                    
+
+                    // Track login conversion for Google Ads
+                    AnalyticsManager.shared.trackLogin(userType: user.userType, method: .email)
+                    AnalyticsManager.shared.setUserType(user.userType)
+                    AnalyticsManager.shared.setUserId(userId)
+
                     // Log what will happen next
                     if !user.hasCompletedAppOnboarding {
                     } else {
                         // Projects sync already triggered in fetchUserFromAPI after company fetch
                     }
                 }
-                
+
                 // Return true because login succeeded, even if onboarding is needed
                 // LoginView will check onboarding status separately
                 return true
@@ -527,25 +532,29 @@ class DataController: ObservableObject {
                 let hasCompany = !(user.companyId ?? "").isEmpty
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
                 let hasUserType = user.userType != nil
-                
-                
+
+                // Track login conversion for Google Ads (Apple sign-in)
+                AnalyticsManager.shared.trackLogin(userType: user.userType, method: .apple)
+                AnalyticsManager.shared.setUserType(user.userType)
+                AnalyticsManager.shared.setUserId(userDTO.id)
+
                 // Determine if onboarding is needed
                 let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding || !hasUserType
                 UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
-                
+
                 if !needsOnboarding {
                     self.isAuthenticated = true
                     // Projects will sync after company fetch in fetchUserFromAPI
                 } else {
                     // Don't set isAuthenticated - let LoginView handle onboarding
                 }
-                
+
                 return true
             }
-            
+
             return false
         } catch {
-            
+
             // Check for specific errors
             if let authError = error as? AuthError {
                 switch authError {
@@ -555,11 +564,11 @@ class DataController: ObservableObject {
                 default: break
                 }
             }
-            
+
             return false
         }
     }
-    
+
     /// Google login
     @MainActor
     func loginWithGoogle(googleUser: GIDGoogleUser) async -> Bool {
@@ -627,12 +636,16 @@ class DataController: ObservableObject {
             if let user = currentUser {
                 let hasCompany = !(user.companyId ?? "").isEmpty
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
-                
-                
+
+                // Track login conversion for Google Ads (Google sign-in)
+                AnalyticsManager.shared.trackLogin(userType: user.userType, method: .google)
+                AnalyticsManager.shared.setUserType(user.userType)
+                AnalyticsManager.shared.setUserId(userDTO.id)
+
                 // Set onboarding completed only if they have both
                 let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding
                 UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
-                
+
                 // Only set isAuthenticated if they've completed onboarding
                 // Otherwise, return true to indicate login succeeded but don't set isAuthenticated
                 if !needsOnboarding {
@@ -641,14 +654,14 @@ class DataController: ObservableObject {
                 } else {
                     // Onboarding is needed - sync will happen in fetchUserFromAPI
                 }
-                
+
                 // Return true to indicate login was successful (even if onboarding is needed)
                 return true
             }
-            
+
             return false
         } catch let error as AuthError {
-            
+
             // If it's invalid credentials, it means no account exists
             if case .invalidCredentials = error {
             }
@@ -657,7 +670,7 @@ class DataController: ObservableObject {
             return false
         }
     }
-    
+
     @MainActor
     private func fetchUserFromAPI(userId: String) async throws {
         guard let context = modelContext else {
@@ -3176,11 +3189,17 @@ class DataController: ObservableObject {
 
     /// Update a task's status - SINGLE SOURCE OF TRUTH for task status updates
     /// This function ensures we only update the task's status field and NEVER manipulate project.tasks
+    /// Also handles automatic project status updates based on task status changes:
+    /// - If project is "accepted" and task is set to "inProgress" → project becomes "inProgress"
+    /// - If project is "completed" and task changes from "completed" to "inProgress" or "booked" → project becomes "inProgress"
     /// - Parameters:
     ///   - task: The task to update
     ///   - newStatus: The new status to set
     @MainActor
     func updateTaskStatus(task: ProjectTask, to newStatus: TaskStatus) async throws {
+        let oldStatus = task.status
+        let project = task.project
+
         try await performSyncedOperation(
             item: task,
             operationName: "UPDATE_TASK_STATUS",
@@ -3195,6 +3214,53 @@ class DataController: ObservableObject {
                 task.lastSyncedAt = Date()
             }
         )
+
+        // Check if we need to update project status based on task status change
+        if let project = project {
+            await updateProjectStatusBasedOnTaskChange(
+                project: project,
+                taskOldStatus: oldStatus,
+                taskNewStatus: newStatus
+            )
+        }
+    }
+
+    /// Updates project status based on task status changes
+    /// - If project is "accepted" and a task is set to "inProgress" → project becomes "inProgress"
+    /// - If project is "completed" and a task changes from "completed" to "inProgress" or "booked" → project becomes "inProgress"
+    @MainActor
+    private func updateProjectStatusBasedOnTaskChange(
+        project: Project,
+        taskOldStatus: TaskStatus,
+        taskNewStatus: TaskStatus
+    ) async {
+        var shouldUpdateToInProgress = false
+
+        // Case 1: Project is "accepted" and task is set to "inProgress"
+        if project.status == .accepted && taskNewStatus == .inProgress {
+            shouldUpdateToInProgress = true
+            print("[PROJECT_STATUS] Project '\(project.title)' is accepted and task set to inProgress - updating project to inProgress")
+        }
+
+        // Case 2: Project is "completed" and task changed from "completed" to "inProgress" or "booked"
+        if project.status == .completed &&
+           taskOldStatus == .completed &&
+           (taskNewStatus == .inProgress || taskNewStatus == .booked) {
+            shouldUpdateToInProgress = true
+            print("[PROJECT_STATUS] Project '\(project.title)' is completed but task changed to \(taskNewStatus.rawValue) - updating project to inProgress")
+        }
+
+        // Case 3: Project is "completed" and a new task with non-completed/non-cancelled status is added
+        // This is handled separately when creating tasks
+
+        if shouldUpdateToInProgress {
+            do {
+                try await updateProjectStatus(project: project, to: .inProgress)
+                print("[PROJECT_STATUS] ✅ Project '\(project.title)' status updated to inProgress")
+            } catch {
+                print("[PROJECT_STATUS] ❌ Failed to update project status: \(error)")
+            }
+        }
     }
 
     /// Update a project's status - SINGLE SOURCE OF TRUTH for project status updates
@@ -3789,6 +3855,63 @@ class DataController: ObservableObject {
         }
 
         print("[COMPANY_COLOR] ✅ Default project color updated successfully")
+    }
+
+    // MARK: - Unassigned Employee Roles Check
+
+    /// Check if there are company users without an assigned employeeType
+    /// Returns array of UnassignedUser objects for users needing role assignment
+    /// Only returns results for admin/office crew users
+    @MainActor
+    func checkForUnassignedEmployeeRoles() async -> [UnassignedUser] {
+        // Only check for admin or office crew
+        guard let user = currentUser,
+              user.role == .admin || user.role == .officeCrew else {
+            print("[UNASSIGNED_ROLES] Skipping check - user is not admin/office crew")
+            return []
+        }
+
+        // Check if user dismissed recently (give them 24 hours before showing again)
+        if let dismissedAt = UserDefaults.standard.object(forKey: "unassigned_roles_dismissed_at") as? Date {
+            if Date().timeIntervalSince(dismissedAt) < 24 * 60 * 60 {
+                print("[UNASSIGNED_ROLES] Skipping - dismissed recently")
+                return []
+            }
+        }
+
+        // Get company ID
+        guard let companyId = user.companyId, !companyId.isEmpty else {
+            print("[UNASSIGNED_ROLES] Skipping - no company ID")
+            return []
+        }
+
+        do {
+            print("[UNASSIGNED_ROLES] Fetching company users for company: \(companyId)")
+            let companyUsers = try await apiService.fetchCompanyUsers(companyId: companyId)
+
+            // Filter for users with nil employeeType (excluding current user)
+            let unassignedDTOs = companyUsers.filter { dto in
+                dto.employeeType == nil && dto.id != user.id
+            }
+
+            print("[UNASSIGNED_ROLES] Found \(unassignedDTOs.count) users without employeeType")
+
+            // Convert to UnassignedUser objects
+            let unassignedUsers = unassignedDTOs.map { dto in
+                UnassignedUser(
+                    id: dto.id,
+                    firstName: dto.nameFirst ?? "",
+                    lastName: dto.nameLast ?? "",
+                    email: dto.email ?? dto.authentication?.email?.email
+                )
+            }
+
+            return unassignedUsers
+
+        } catch {
+            print("[UNASSIGNED_ROLES] Error fetching company users: \(error)")
+            return []
+        }
     }
 }
 

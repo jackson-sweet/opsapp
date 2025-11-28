@@ -110,31 +110,104 @@ struct PINGatedView: View {
     let dataController: DataController
     let appState: AppState
     let locationManager: LocationManager
-    
+
+    // State for unassigned roles overlay
+    @State private var showUnassignedRolesOverlay = false
+    @State private var unassignedUsers: [UnassignedUser] = []
+    @State private var hasCheckedForUnassignedRoles = false
+
+    // State for app messages
+    @State private var activeAppMessage: AppMessageDTO?
+    @State private var hasCheckedForAppMessage = false
+
+    // State for task creation success message
+    @State private var showTaskCreatedMessage = false
+    @State private var createdTaskTypeName: String = ""
+
+    // State for project creation success message
+    @State private var showProjectCreatedMessage = false
+    @State private var createdProjectTitle: String = ""
+
+    // State for client creation success message
+    @State private var showClientCreatedMessage = false
+    @State private var createdClientName: String = ""
+
     init(dataController: DataController, appState: AppState, locationManager: LocationManager) {
         self.dataController = dataController
         self.pinManager = dataController.simplePINManager
         self.appState = appState
         self.locationManager = locationManager
     }
-    
-    var body: some View {
 
-        // Check subscription lockout first
-        if subscriptionManager.shouldShowLockout {
-            SubscriptionLockoutView()
-                .environmentObject(subscriptionManager)
-                .environmentObject(dataController)
-        } else {
+    var body: some View {
+        Group {
+            // Check for blocking app message first (mandatory updates, etc.)
+            if let message = activeAppMessage, !(message.dismissable ?? true) {
+                // Non-dismissable message blocks the entire app
+                AppMessageView(
+                    message: message,
+                    onDismiss: nil
+                )
+            }
+            // Check subscription lockout next
+            else if subscriptionManager.shouldShowLockout {
+                SubscriptionLockoutView()
+                    .environmentObject(subscriptionManager)
+                    .environmentObject(dataController)
+            } else {
             ZStack {
                 // Main app content with grace period banner
                 MainTabView()
                     .environmentObject(appState)
                     .environmentObject(locationManager)
                     .gracePeriodBanner() // Add grace period banner overlay
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TaskCreatedSuccess"))) { notification in
+                        // Show success message when task is created
+                        if let taskTypeName = notification.userInfo?["taskTypeName"] as? String {
+                            createdTaskTypeName = taskTypeName
+                        } else {
+                            createdTaskTypeName = ""
+                        }
+                        showTaskCreatedMessage = true
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ProjectCreatedSuccess"))) { notification in
+                        // Show success message when project is created
+                        if let projectTitle = notification.userInfo?["projectTitle"] as? String {
+                            createdProjectTitle = projectTitle
+                        } else {
+                            createdProjectTitle = ""
+                        }
+                        showProjectCreatedMessage = true
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ClientCreatedSuccess"))) { notification in
+                        // Show success message when client is created
+                        if let clientName = notification.userInfo?["clientName"] as? String {
+                            createdClientName = clientName
+                        } else {
+                            createdClientName = ""
+                        }
+                        showClientCreatedMessage = true
+                    }
                     .onAppear {
                         // Set the appState reference in DataController for cross-component access
                         dataController.appState = appState
+
+                        // Check for unassigned employee roles (only once per session)
+                        if !hasCheckedForUnassignedRoles {
+                            hasCheckedForUnassignedRoles = true
+                            Task {
+                                // Small delay to let the UI settle
+                                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                                let users = await dataController.checkForUnassignedEmployeeRoles()
+                                if !users.isEmpty {
+                                    await MainActor.run {
+                                        unassignedUsers = users
+                                        showUnassignedRolesOverlay = true
+                                    }
+                                }
+                            }
+                        }
+
                     }
                     .opacity(pinManager.requiresPIN && !pinManager.isAuthenticated ? 0 : 1)
                     .animation(.easeInOut(duration: 0.3), value: pinManager.isAuthenticated)
@@ -163,7 +236,102 @@ struct PINGatedView: View {
                     autoDismissAfter: 4.0
                 )
                 .zIndex(2)
+
+                // Task created success notification
+                PushInMessage(
+                    isPresented: $showTaskCreatedMessage,
+                    title: "TASK CREATED",
+                    subtitle: createdTaskTypeName.isEmpty ? nil : createdTaskTypeName,
+                    type: .success,
+                    autoDismissAfter: 3.0
+                )
+                .zIndex(2)
+
+                // Project created success notification
+                PushInMessage(
+                    isPresented: $showProjectCreatedMessage,
+                    title: "PROJECT CREATED",
+                    subtitle: createdProjectTitle.isEmpty ? nil : createdProjectTitle,
+                    type: .success,
+                    autoDismissAfter: 3.0
+                )
+                .zIndex(2)
+
+                // Client created success notification
+                PushInMessage(
+                    isPresented: $showClientCreatedMessage,
+                    title: "CLIENT CREATED",
+                    subtitle: createdClientName.isEmpty ? nil : createdClientName,
+                    type: .success,
+                    autoDismissAfter: 3.0
+                )
+                .zIndex(2)
+
+                // Unassigned roles overlay
+                if showUnassignedRolesOverlay {
+                    UnassignedRolesOverlay(
+                        isPresented: $showUnassignedRolesOverlay,
+                        unassignedUsers: unassignedUsers
+                    )
+                    .environmentObject(dataController)
+                    .zIndex(3)
+                    .transition(.opacity)
+                }
+
+                // Dismissable app message overlay
+                if let message = activeAppMessage, message.dismissable ?? true {
+                    AppMessageView(
+                        message: message,
+                        onDismiss: {
+                            activeAppMessage = nil
+                        }
+                    )
+                    .zIndex(4)
+                    .transition(.opacity)
+                }
             }
+                .animation(.easeInOut(duration: 0.3), value: showUnassignedRolesOverlay)
+                .animation(.easeInOut(duration: 0.3), value: activeAppMessage?.id)
+            }
+        }
+        .task {
+            // Check for app messages on view load (only once per session)
+            if !hasCheckedForAppMessage {
+                hasCheckedForAppMessage = true
+                await checkForAppMessage()
+            }
+        }
+    }
+
+    /// Check for active app messages and filter by user role
+    private func checkForAppMessage() async {
+        print("[APP_MESSAGE] 🔍 Checking for active app messages...")
+
+        let service = AppMessageService()
+
+        guard let message = await service.fetchActiveMessage() else {
+            print("[APP_MESSAGE] ❌ No active message found")
+            return
+        }
+
+        print("[APP_MESSAGE] ✅ Found message: \(message.title ?? "No title")")
+        print("[APP_MESSAGE]   - ID: \(message.id)")
+        print("[APP_MESSAGE]   - Type: \(message.messageType ?? "unknown")")
+        print("[APP_MESSAGE]   - Dismissable: \(message.dismissable ?? true)")
+        print("[APP_MESSAGE]   - Target users: \(message.targetUserTypes ?? [])")
+
+        // Check if message should be shown to this user's role
+        let userRole = dataController.currentUser?.role
+        print("[APP_MESSAGE]   - Current user role: \(String(describing: userRole))")
+
+        guard service.shouldShowMessage(message, forUserRole: userRole) else {
+            print("[APP_MESSAGE] ⚠️ Message not targeted at user role: \(String(describing: userRole))")
+            return
+        }
+
+        print("[APP_MESSAGE] 🎯 Showing message to user")
+        await MainActor.run {
+            activeAppMessage = message
         }
     }
 }

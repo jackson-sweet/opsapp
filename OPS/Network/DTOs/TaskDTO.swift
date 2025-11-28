@@ -22,7 +22,7 @@ struct TaskDTO: Codable {
     let taskNotes: String?
     let teamMembers: [String]?  // Array of User IDs
     let type: String?  // This is the Task Type ID in Bubble
-    
+
     // Metadata
     let createdDate: String?
     let modifiedDate: String?
@@ -104,8 +104,11 @@ struct TaskDTO: Codable {
         task.taskNotes = taskNotes
         task.displayOrder = taskIndex ?? 0
         
-        if let teamMembers = teamMembers {
+        if let teamMembers = teamMembers, !teamMembers.isEmpty {
+            print("[TASK_DTO] 👥 Setting \(teamMembers.count) team members for task \(id): \(teamMembers)")
             task.setTeamMemberIds(teamMembers)
+        } else {
+            print("[TASK_DTO] ⚠️ No team members for task \(id)")
         }
 
         // Parse deletedAt if present

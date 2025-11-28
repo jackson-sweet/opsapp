@@ -35,12 +35,14 @@ struct ProjectTeamView: View {
 
             if !teamsRefreshed && activeProject.getTeamMemberIds().count > 0 && activeProject.teamMembers.isEmpty {
                 loadingStateView
+                    .frame(maxWidth: .infinity)
             } else if activeProject.teamMembers.isEmpty && !isEditing {
                 emptyStateView(activeProject)
             } else {
                 teamMembersView(activeProject)
             }
         }
+        .frame(maxWidth: .infinity)
         .padding()
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -68,32 +70,38 @@ struct ProjectTeamView: View {
             }
         }
         .onAppear {
-            // Debug log the project team members when this view appears
-            
+            print("[PROJECT_TEAM_VIEW] 🔄 onAppear triggered for project: \(project.title)")
+            print("[PROJECT_TEAM_VIEW] - modelContext exists: \(dataController.modelContext != nil)")
+            print("[PROJECT_TEAM_VIEW] - project has \(project.tasks.count) tasks")
+
+            // Compute team members from tasks first
+            if let modelContext = dataController.modelContext {
+                project.updateTeamMembersFromTasks(in: modelContext)
+                try? modelContext.save()
+            } else {
+                print("[PROJECT_TEAM_VIEW] ⚠️ modelContext is nil!")
+            }
+
             // Trigger manual team member sync
             if !teamsRefreshed {
                 Task {
                     // Sync team members
                     await dataController.syncProjectTeamMembers(project)
-                    
+
                     // Print updated info after sync
                     await MainActor.run {
-                        
                         // Fetch fresh project from DataController (critical step)
                         if let freshProject = dataController.getProject(id: project.id) {
-                            
-                            if freshProject.teamMembers.isEmpty {
-                            } else {
-                                for (index, member) in freshProject.teamMembers.enumerated() {
+                            // Update team members from tasks again with fresh data
+                            if let modelContext = dataController.modelContext {
+                                freshProject.updateTeamMembersFromTasks(in: modelContext)
+                                try? modelContext.save()
                             }
-                            
-                            }
-                            
+
                             // Update the refreshed project to trigger UI refresh
                             refreshedProject = freshProject
-                        } else {
                         }
-                        
+
                         // Update state to refresh the view
                         teamsRefreshed = true
                         refreshKey = UUID() // Force refresh
@@ -125,30 +133,42 @@ struct ProjectTeamView: View {
 
     private var loadingStateView: some View {
         HStack {
+            Spacer()
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
             Text("Loading team members...")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
+            Spacer()
         }
+        .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
     }
 
     private func emptyStateView(_ activeProject: Project) -> some View {
         HStack {
-            Text(activeProject.getTeamMemberIds().isEmpty ?
-               "No team members assigned" :
-               "Team member data unavailable")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-
             Spacer()
+            VStack(spacing: 8) {
+                Image(systemName: OPSStyle.Icons.crew)
+                    .font(.system(size: 32))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            // Task-only scheduling migration: All projects use task-based scheduling now
-            // Team members are assigned at the task level, not project level
-            // Button removed - use TaskTeamChangeSheet to assign team members to individual tasks
+                Text(activeProject.getTeamMemberIds().isEmpty ?
+                   "No team members assigned" :
+                   "Team member data unavailable")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
+                    .multilineTextAlignment(.center)
+
+                Text("Team members are assigned at the task level")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .multilineTextAlignment(.center)
+            }
+            Spacer()
         }
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
     }
 
     private func teamMembersView(_ activeProject: Project) -> some View {

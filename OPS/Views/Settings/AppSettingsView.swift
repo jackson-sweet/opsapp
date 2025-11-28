@@ -11,7 +11,6 @@ struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @State private var showMapSettings = false
-    @State private var showNotificationSettings = false
     @State private var showDataSettings = false
     @State private var showSecuritySettings = false
     @State private var showProjectSettings = false
@@ -56,17 +55,6 @@ struct AppSettingsView: View {
                             title: "Map Settings",
                             description: "Customize map display and behavior",
                             iconName: OPSStyle.Icons.map
-                        )
-                    }
-
-                    // Notifications
-                    Button {
-                        showNotificationSettings = true
-                    } label: {
-                        SettingsRowCard(
-                            title: "Notification Settings",
-                            description: "Manage notifications and reminders",
-                            iconName: "bell"
                         )
                     }
 
@@ -154,13 +142,6 @@ struct AppSettingsView: View {
             NavigationStack {
                 MapSettingsView()
                     .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showNotificationSettings) {
-            NavigationStack {
-                NotificationSettingsView()
-                    .environmentObject(dataController)
-                    .environmentObject(NotificationManager.shared)
             }
         }
         .fullScreenCover(isPresented: $showDataSettings) {

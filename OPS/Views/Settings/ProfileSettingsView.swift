@@ -81,21 +81,45 @@ struct ProfileSettingsView: View {
                                             .foregroundColor(OPSStyle.Colors.primaryText)
                                             .lineLimit(1)
 
-                                        // Email
-                                        Text(user.email ?? "NO EMAIL")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                            .lineLimit(1)
-
-                                        // Role
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "person.badge.shield.checkmark")
-                                                .font(.system(size: 11))
-                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                            Text(user.role.displayName)
-                                                .font(OPSStyle.Typography.smallCaption)
+                                        // Email or Phone (prioritize phone)
+                                        if let phone = user.phone, !phone.isEmpty {
+                                            Text(phone)
+                                                .font(OPSStyle.Typography.caption)
+                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                .lineLimit(1)
+                                        } else if let email = user.email, !email.isEmpty {
+                                            Text(email)
+                                                .font(OPSStyle.Typography.caption)
+                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                .lineLimit(1)
+                                        } else {
+                                            Text("NO CONTACT INFO")
+                                                .font(OPSStyle.Typography.caption)
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                                 .lineLimit(1)
+                                        }
+
+                                        // Home Address or Role
+                                        if let address = user.homeAddress, !address.isEmpty {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "mappin.circle")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                Text(address.components(separatedBy: ",").first ?? address)
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                    .lineLimit(1)
+                                            }
+                                        } else {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "person.badge.shield.checkmark")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                Text(user.role.displayName)
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                    .lineLimit(1)
+                                            }
                                         }
                                     }
 

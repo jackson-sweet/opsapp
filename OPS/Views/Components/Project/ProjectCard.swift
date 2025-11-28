@@ -29,6 +29,7 @@ struct ProjectCard: View {
                 Text(project.effectiveClientName)
                     .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
                 
                 // Address
                 Text(project.address ?? "No address")

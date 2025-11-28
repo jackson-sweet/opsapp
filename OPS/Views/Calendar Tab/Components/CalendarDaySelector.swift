@@ -15,6 +15,8 @@ struct CalendarDaySelector: View {
     @EnvironmentObject private var dataController: DataController
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging: Bool = false
+    @State private var isTransitioning: Bool = false
+    @State private var transitionOffset: CGFloat = 0
 
     var body: some View {
         Group {
@@ -27,59 +29,64 @@ struct CalendarDaySelector: View {
     }
     
     private var weekView: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                // Week days display container
-                HStack(spacing: 8) {
-                    ForEach(getCurrentWeekDays(), id: \.timeIntervalSince1970) { date in
-                        WeekDayCell(
-                            date: date,
-                            isSelected: DateHelper.isSameDay(date, viewModel.selectedDate),
-                            eventCount: viewModel.projectCount(for: date),
-                            events: viewModel.calendarEvents(for: date),
-                            onTap: {
-                                viewModel.selectDate(date, userInitiated: true)
-                            }
-                        )
-                        .frame(maxWidth: .infinity)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                ZStack {
+                    // Week days display container
+                    HStack(spacing: 8) {
+                        ForEach(getCurrentWeekDays(), id: \.timeIntervalSince1970) { date in
+                            WeekDayCell(
+                                date: date,
+                                isSelected: DateHelper.isSameDay(date, viewModel.selectedDate),
+                                eventCount: viewModel.projectCount(for: date),
+                                events: viewModel.calendarEvents(for: date),
+                                onTap: {
+                                    viewModel.selectDate(date, userInitiated: true)
+                                }
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+
                     }
-                    
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 6)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .offset(x: isTransitioning ? transitionOffset : dragOffset)
+                    .opacity(isTransitioning ? Double(1.0 - abs(transitionOffset) / geometry.size.width) : 1.0)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 6)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .offset(x: dragOffset)
+                .clipped() // Prevent content from going outside safe area
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            guard !isTransitioning else { return }
+                            // Add resistance when dragging
+                            let resistance: CGFloat = 0.5
+                            dragOffset = value.translation.width * resistance
+                            isDragging = true
+                        }
+                        .onEnded { value in
+                            guard !isTransitioning else { return }
+                            let threshold: CGFloat = 50
+                            let velocity = value.predictedEndTranslation.width - value.translation.width
+
+                            // Consider both distance and velocity for more natural feel
+                            if value.translation.width > threshold || velocity > 200 {
+                                // Swipe right - go to previous week
+                                navigateToWeek(offset: -1, screenWidth: geometry.size.width)
+                            } else if value.translation.width < -threshold || velocity < -200 {
+                                // Swipe left - go to next week
+                                navigateToWeek(offset: 1, screenWidth: geometry.size.width)
+                            } else {
+                                // Not enough to trigger week change, snap back
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    dragOffset = 0
+                                    isDragging = false
+                                }
+                            }
+                        }
+                )
             }
-            .clipped() // Prevent content from going outside safe area
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        // Add resistance when dragging
-                        let resistance: CGFloat = 0.5
-                        dragOffset = value.translation.width * resistance
-                        isDragging = true
-                    }
-                    .onEnded { value in
-                        let threshold: CGFloat = 50
-                        let velocity = value.predictedEndTranslation.width - value.translation.width
-                        
-                        // Consider both distance and velocity for more natural feel
-                        if value.translation.width > threshold || velocity > 200 {
-                            // Swipe right - go to previous week
-                            navigateToWeek(offset: -1)
-                        } else if value.translation.width < -threshold || velocity < -200 {
-                            // Swipe left - go to next week
-                            navigateToWeek(offset: 1)
-                        }
-                        
-                        // Always reset the offset after gesture ends
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            dragOffset = 0
-                            isDragging = false
-                        }
-                    }
-            )
         }
         .frame(height: 80)
         // Update the week when selectedDate changes from external sources (like DatePickerPopover)
@@ -93,7 +100,9 @@ struct CalendarDaySelector: View {
         }
     }
     
-    private func navigateToWeek(offset: Int) {
+    private func navigateToWeek(offset: Int, screenWidth: CGFloat) {
+        guard !isTransitioning else { return }
+
         var calendar = Calendar.current
         calendar.firstWeekday = 2 // Monday
 
@@ -111,10 +120,35 @@ struct CalendarDaySelector: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.prepare()
 
-        // Update immediately - no animation needed, SwiftUI handles it naturally
-        viewModel.selectDate(newWeekStart, userInitiated: false)
+        // Start rolling animation
+        isTransitioning = true
+        let slideDirection: CGFloat = offset > 0 ? -1 : 1 // Slide opposite to swipe direction
 
-        impactFeedback.impactOccurred()
+        // First phase: slide current week out
+        withAnimation(.easeIn(duration: 0.15)) {
+            transitionOffset = slideDirection * screenWidth * 0.5
+            dragOffset = 0
+            isDragging = false
+        }
+
+        // Update the date mid-animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            viewModel.selectDate(newWeekStart, userInitiated: false)
+            impactFeedback.impactOccurred()
+
+            // Reset position for incoming animation
+            transitionOffset = -slideDirection * screenWidth * 0.3
+
+            // Second phase: slide new week in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                transitionOffset = 0
+            }
+
+            // Clean up after animation completes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                isTransitioning = false
+            }
+        }
     }
     
     // Generate only the current week days (7 days starting from Monday)

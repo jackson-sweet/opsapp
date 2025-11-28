@@ -281,6 +281,28 @@ struct EventCardView: View {
                         .padding(8)
                 }
             }
+
+            // Cancelled overlay - grey out and show badge
+            if event.task?.status == .cancelled {
+                ZStack(alignment: .topTrailing) {
+                    // Grey overlay
+                    OPSStyle.Colors.modalOverlay
+                        .frame(width: 362, height: 100)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+
+                    // Cancelled badge
+                    Text("CANCELLED")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(OPSStyle.Colors.inactiveStatus)
+                        )
+                        .padding(8)
+                }
+            }
         }
         .onTapGesture {
             // Always use the tap handler for confirmation

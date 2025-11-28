@@ -446,7 +446,7 @@ class SubscriptionManager: ObservableObject {
             return false
         }
     }
-    
+     
     // MARK: - Notification Scheduling
     
     /// Schedule notifications for trial expiry and grace periods

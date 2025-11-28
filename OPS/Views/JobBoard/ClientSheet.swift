@@ -528,6 +528,13 @@ struct ClientSheet: View {
                         let generator = UINotificationFeedbackGenerator()
                         generator.notificationOccurred(.success)
 
+                        // Post notification for success message overlay
+                        NotificationCenter.default.post(
+                            name: Notification.Name("ClientCreatedSuccess"),
+                            object: nil,
+                            userInfo: ["clientName": name]
+                        )
+
                         onSave(newClient)
 
                         // Brief delay for graceful dismissal

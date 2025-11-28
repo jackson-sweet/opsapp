@@ -250,6 +250,18 @@ struct CopyFromProjectSheet: View {
                         }
                     }
 
+                    // Task count
+                    HStack(alignment: .bottom, spacing: 4) {
+                        Image(systemName: OPSStyle.Icons.task)
+                            .font(.system(size: 11))
+                            .foregroundColor(project.tasks.isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
+
+                        Text("\(project.tasks.count) TASK\(project.tasks.count == 1 ? "" : "S")")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(project.tasks.isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
+                            .lineLimit(1)
+                    }
+
                     Spacer()
                 }
             }

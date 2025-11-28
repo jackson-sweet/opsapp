@@ -68,113 +68,119 @@ struct SubClientEditSheet: View {
                     .ignoresSafeArea()
                 
                 ScrollView {
-                    VStack(spacing: 20) {
-                        // Form fields
-                        VStack(spacing: 16) {
-                            // Name field (required)
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label("Name *", systemImage: OPSStyle.Icons.subClient)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                TextField("Enter name", text: $viewModel.name)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .autocorrectionDisabled(true)
-                                    .textInputAutocapitalization(.words)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .focused($focusedField, equals: .name)
-                            }
-                            
-                            // Title field
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label("Title", systemImage: "briefcase")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                TextField("Enter title", text: $viewModel.title)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .autocorrectionDisabled(true)
-                                    .textInputAutocapitalization(.words)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .focused($focusedField, equals: .title)
-                            }
-                            
-                            // Email field
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label("Email", systemImage: OPSStyle.Icons.envelope)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                TextField("Enter email", text: $viewModel.email)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .keyboardType(.emailAddress)
-                                    .autocapitalization(.none)
-                                    .autocorrectionDisabled(true)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .focused($focusedField, equals: .email)
-                            }
-                            
-                            // Phone field
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label("Phone", systemImage: OPSStyle.Icons.phone)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                TextField("Enter phone number", text: $viewModel.phone)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .keyboardType(.phonePad)
-                                    .autocorrectionDisabled(true)
-                                    .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .focused($focusedField, equals: .phone)
-                            }
-                            
-                            // Address field with autocomplete
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label("Address", systemImage: OPSStyle.Icons.address)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
-                                AddressSearchField(address: $viewModel.address, placeholder: "Enter address")
+                    VStack(spacing: 24) {
+                        // Contact Preview Card
+                        subClientPreviewCard
+                            .padding(.horizontal)
+                            .padding(.top, 16)
+
+                        // Contact Details Section
+                        SectionCard(
+                            icon: "person.text.rectangle",
+                            title: "Contact Details"
+                        ) {
+                            VStack(spacing: 16) {
+                                // Name field (required)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("NAME *")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    TextField("Enter name", text: $viewModel.name)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .autocorrectionDisabled(true)
+                                        .textInputAutocapitalization(.words)
+                                        .padding(12)
+                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .focused($focusedField, equals: .name)
+                                }
+
+                                // Title field
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("TITLE")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    TextField("Enter title", text: $viewModel.title)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .autocorrectionDisabled(true)
+                                        .textInputAutocapitalization(.words)
+                                        .padding(12)
+                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .focused($focusedField, equals: .title)
+                                }
+
+                                // Email field
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("EMAIL")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    TextField("Enter email", text: $viewModel.email)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .keyboardType(.emailAddress)
+                                        .autocapitalization(.none)
+                                        .autocorrectionDisabled(true)
+                                        .padding(12)
+                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .focused($focusedField, equals: .email)
+                                }
+
+                                // Phone field
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("PHONE")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    TextField("Enter phone number", text: $viewModel.phone)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .keyboardType(.phonePad)
+                                        .autocorrectionDisabled(true)
+                                        .padding(12)
+                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .focused($focusedField, equals: .phone)
+                                }
+
+                                // Address field with autocomplete
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("ADDRESS")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    AddressSearchField(address: $viewModel.address, placeholder: "Enter address")
+                                }
                             }
                         }
                         .padding(.horizontal)
-                        .padding(.top, 20)
-                        
-                        // Required field note
-                        Text("* Required field")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal)
-                        
-                        Spacer(minLength: 100)
-                        
+
+                        // Import from Contacts button at bottom
                         Button(action: {
                             showingContactPicker = true
                         }) {
-
-                                HStack(spacing: 4) {
-                                    Image(systemName: OPSStyle.Icons.addContact)
-                                    Text("Import from Contacts")
-
-                                .font(OPSStyle.Typography.button)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                
+                            HStack(spacing: 8) {
+                                Image(systemName: OPSStyle.Icons.addContact)
+                                    .font(.system(size: 18))
+                                Text("Import from Contacts")
+                                    .font(OPSStyle.Typography.button)
                             }
-                                
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                            )
                         }
+                        .padding(.horizontal)
+                        .padding(.bottom, 40)
                     }
                 }
                 .ignoresSafeArea(.keyboard)
@@ -316,9 +322,94 @@ struct SubClientEditSheet: View {
             }
         }
     }
-    
+
+    // MARK: - View Components
+
+    private var subClientPreviewCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    // Name
+                    Text(viewModel.name.isEmpty ? "SUB CONTACT NAME" : viewModel.name.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(viewModel.name.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+
+                    // Email or Phone
+                    if !viewModel.email.isEmpty {
+                        Text(viewModel.email)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    } else if !viewModel.phone.isEmpty {
+                        Text(viewModel.phone)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    } else {
+                        Text("NO CONTACT INFO")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .lineLimit(1)
+                    }
+
+                    // Address or Title
+                    if !viewModel.address.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mappin.circle")
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Text(viewModel.address.components(separatedBy: ",").first ?? viewModel.address)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                        }
+                    } else if !viewModel.title.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "briefcase")
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Text(viewModel.title)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                        }
+                    } else {
+                        Text("NO TITLE")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+
+                Spacer()
+
+                // Placeholder avatar on right side (56x56)
+                Circle()
+                    .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
+                    .frame(width: 56, height: 56)
+                    .overlay(
+                        Text(viewModel.name.isEmpty ? "?" : String(viewModel.name.prefix(1)).uppercased())
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                    )
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+        }
+    }
+
     // MARK: - Helper Methods
-    
+
     private func saveSubClient() {
         // Validate name
         let trimmedName = viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines)

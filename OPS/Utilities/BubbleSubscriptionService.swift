@@ -662,6 +662,77 @@ class BubbleSubscriptionService {
             }
         }
     }
+
+    // MARK: - Cancel Subscription
+
+    /// Cancel subscription through Bubble backend
+    /// - Parameters:
+    ///   - userId: The user's unique ID
+    ///   - companyId: The company ID
+    ///   - reason: The cancellation reason
+    ///   - cancelPriority: Whether to also cancel priority support
+    ///   - plan: The current subscription plan
+    func cancelSubscription(
+        userId: String,
+        companyId: String,
+        reason: String,
+        cancelPriority: Bool,
+        plan: SubscriptionPlan
+    ) async throws {
+        let endpoint = baseURL + "cancel_subscription?api_token=\(apiKey)"
+
+        guard let url = URL(string: endpoint) else {
+            throw BubbleAPIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "user": userId,
+            "company_id": companyId,
+            "reason": reason,
+            "cancelPriority": cancelPriority,
+            "plan": plan.rawValue
+        ]
+
+        print("📤 CANCEL SUBSCRIPTION REQUEST:")
+        print("  - User: \(userId)")
+        print("  - Company: \(companyId)")
+        print("  - Reason: \(reason)")
+        print("  - Cancel Priority: \(cancelPriority)")
+        print("  - Plan: \(plan.rawValue)")
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BubbleAPIError.invalidResponse
+        }
+
+        #if DEBUG
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("📥 CANCEL SUBSCRIPTION RESPONSE: \(jsonString)")
+        }
+        #endif
+
+        guard httpResponse.statusCode == 200 else {
+            print("❌ CANCEL SUBSCRIPTION ERROR \(httpResponse.statusCode)")
+            throw BubbleAPIError.httpError(httpResponse.statusCode)
+        }
+
+        // Parse response to check for success
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let status = json["status"] as? String,
+           status == "success" {
+            print("✅ SUBSCRIPTION CANCELLED SUCCESSFULLY")
+        } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let error = json["error"] as? String {
+            throw BubbleAPIError.bubbleError(error)
+        }
+    }
 }
 
 // MARK: - Error Types

@@ -12,18 +12,29 @@ struct LoadingOverlayModifier: ViewModifier {
                 Color.black.opacity(0.6)
                     .ignoresSafeArea()
 
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .tint(OPSStyle.Colors.primaryText)
-                        .scaleEffect(1.2)
+                VStack(spacing: 20) {
+                    TacticalLoadingBarAnimated(
+                        barCount: 8,
+                        barWidth: 2,
+                        barHeight: 10,
+                        spacing: 4,
+                        emptyColor: OPSStyle.Colors.inputFieldBorder,
+                        fillColor: OPSStyle.Colors.primaryAccent
+                    )
 
-                    Text(message)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text(message.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .tracking(2)
                 }
-                .padding(24)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 24)
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isPresented)

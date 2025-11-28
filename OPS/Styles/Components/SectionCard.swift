@@ -50,6 +50,7 @@ import SwiftUI
 struct SectionCard<Content: View>: View {
     let icon: String?
     let title: String?
+    let count: Int?
     let actionIcon: String?
     let actionLabel: String?
     let onAction: (() -> Void)?
@@ -61,6 +62,7 @@ struct SectionCard<Content: View>: View {
     /// - Parameters:
     ///   - icon: Optional SF Symbol icon for header
     ///   - title: Optional title (will be uppercased)
+    ///   - count: Optional count badge shown after title
     ///   - actionIcon: Optional action button icon
     ///   - actionLabel: Optional action button label
     ///   - onAction: Optional action button handler
@@ -69,6 +71,7 @@ struct SectionCard<Content: View>: View {
     init(
         icon: String? = nil,
         title: String? = nil,
+        count: Int? = nil,
         actionIcon: String? = nil,
         actionLabel: String? = nil,
         onAction: (() -> Void)? = nil,
@@ -77,6 +80,7 @@ struct SectionCard<Content: View>: View {
     ) {
         self.icon = icon
         self.title = title
+        self.count = count
         self.actionIcon = actionIcon
         self.actionLabel = actionLabel
         self.onAction = onAction
@@ -128,6 +132,21 @@ struct SectionCard<Content: View>: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
 
+            // Count badge
+            if let count = count {
+                Text("\(count)")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    )
+            }
+
             Spacer()
 
             // Optional action button
@@ -160,6 +179,7 @@ extension SectionCard {
     ) {
         self.icon = nil
         self.title = nil
+        self.count = nil
         self.actionIcon = nil
         self.actionLabel = nil
         self.onAction = nil

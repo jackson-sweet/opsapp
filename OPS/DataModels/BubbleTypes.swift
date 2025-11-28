@@ -23,7 +23,12 @@ struct BubbleAddress: Codable {
 /// Bubble's reference type - handles both string and object references
 struct BubbleReference: Codable {
     let value: ReferenceValue
-    
+
+    /// Initialize with a string value directly
+    init(stringValue: String) {
+        self.value = .string(stringValue)
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         

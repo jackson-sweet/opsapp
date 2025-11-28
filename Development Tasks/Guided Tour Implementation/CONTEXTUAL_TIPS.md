@@ -95,7 +95,7 @@ Access the tour or tips anytime from Settings → Help.
 
 ---
 
-## All Contextual Tips (31 Total)
+## All Contextual Tips (30 Total)
 
 ### Priority Legend
 - **P0**: Critical gestures - Show these first (hidden, easy to miss)
@@ -138,7 +138,7 @@ Dashboard shows projects grouped by status.
 **Visibility**: `["office"]`
 **Screen**: Home, Job Board, or Calendar (anywhere floating button appears)
 **Trigger**: First time seeing floating + button
-**Element**: Floating action button (bottom right)
+**Element**: Floating action button (64x64pt circle, bottom right, 140pt above tab bar)
 **Tip Text**:
 ```
 Create projects, clients, tasks, or task types.
@@ -147,8 +147,8 @@ Tap to see all options.
 ```
 **Dismissal**: User taps the + button, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_floatingActionButton`
-**Reference**: 🔍 Need to research
-**Research Status**: 🔍 Needs research
+**Reference**: FloatingActionMenu.swift:20-144 (visibility lines 20-23, button at bottom right, expands to show 4 options)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -240,7 +240,7 @@ See location, materials, notes, and team members.
 **Visibility**: `["office", "field"]`
 **Screen**: ProjectDetailsView
 **Trigger**: First time opening ProjectDetailsView
-**Element**: Photo/image upload section or button
+**Element**: "ADD PHOTOS" button (full width, blue, with plus.viewfinder icon)
 **Tip Text**:
 ```
 Add job site photos to document progress.
@@ -249,8 +249,8 @@ Photos sync automatically when online.
 ```
 **Dismissal**: User taps photo upload button OR adds a photo, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_photoUpload`
-**Reference**: 🔍 Need to research ProjectDetailsView photo section
-**Research Status**: 🔍 Needs research
+**Reference**: ProjectDetailsView.swift:1237-1246 (photosSection), 1354-1373 (addPhotosButton)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -260,7 +260,7 @@ Photos sync automatically when online.
 **Visibility**: `["office"]`
 **Screen**: Floating + menu, OR Task Type management screen
 **Trigger**: First time accessing task type creation
-**Element**: "Create Task Type" button in + menu or task type list
+**Element**: "New Task Type" option in floating + menu (appears with 0.8s animation delay)
 **Tip Text**:
 ```
 Create custom task types to organize your work.
@@ -269,8 +269,8 @@ Use task types to track different kinds of jobs.
 ```
 **Dismissal**: User taps create task type button, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_createTaskType`
-**Reference**: 🔍 Need to research task type creation flow
-**Research Status**: 🔍 Needs research
+**Reference**: TaskTypeSheet.swift:12-30 (sheet with create/edit modes), FloatingActionMenu.swift (New Task Type option)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -406,7 +406,7 @@ Saves time when creating similar jobs.
 **Visibility**: `["office"]`
 **Screen**: ClientSheet (create mode)
 **Trigger**: First time opening ClientSheet
-**Element**: "Import from Contacts" button
+**Element**: "IMPORT FROM CONTACTS" button (full width, at bottom of form, dark background with border)
 **Tip Text**:
 ```
 Import contact info from your phone.
@@ -415,8 +415,8 @@ Pull name, phone, email, and address automatically.
 ```
 **Dismissal**: User taps "Import from Contacts" button, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_importFromContacts`
-**Reference**: 🔍 Need to research ClientSheet import button
-**Research Status**: 🔍 Needs research
+**Reference**: ClientSheet.swift:310-328 (button with person.crop.circle icon, only visible in create mode line 309)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -435,8 +435,8 @@ Quick access to client details and actions.
 ```
 **Dismissal**: User performs long press on any client card, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_longPressClient`
-**Reference**: 🔍 Need to research client list long press behavior
-**Research Status**: 🔍 Needs research
+**Reference**: UniversalJobBoardCard.swift:84-101 (LongPressGesture with 0.3s minimumDuration, opens confirmationDialog with clientActions)
+**Research Status**: ✅ Verified
 **Gesture Animation**: Animated long press
 
 ---
@@ -487,9 +487,9 @@ Keep everyone informed of your progress.
 
 **Priority**: P2
 **Visibility**: `["office"]`
-**Screen**: ClientDetailsView or ClientSheet
+**Screen**: ClientDetailsView (ContactDetailView)
 **Trigger**: First time viewing client details
-**Element**: "Add Sub-Client" button or section
+**Element**: "Add Sub-Client" button or section in client details
 **Tip Text**:
 ```
 Add contacts like site supervisors, project managers, or foremen.
@@ -498,8 +498,8 @@ Organize all contacts for a general contractor.
 ```
 **Dismissal**: User taps "Add Sub-Client" button, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_addSubClient`
-**Reference**: 🔍 Need to research sub-client feature location
-**Research Status**: 🔍 Needs research
+**Reference**: SubClientEditSheet.swift:37-50 (sheet for creating/editing sub-clients), SubClientListView.swift (displays sub-clients)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -518,8 +518,8 @@ See contact info, projects, and history.
 ```
 **Dismissal**: User taps any client card, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_clientDetails`
-**Reference**: 🔍 Need to research client list tap behavior
-**Research Status**: 🔍 Needs research
+**Reference**: UniversalJobBoardCard.swift:81-82 (onTapGesture sets showingDetails = true), 854-856 (opens ContactDetailView for clients)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -529,7 +529,7 @@ See contact info, projects, and history.
 **Visibility**: `["office", "field"]`
 **Screen**: Calendar View
 **Trigger**: First time opening Calendar (show after sync/search tips)
-**Element**: Filter button (funnel icon in header)
+**Element**: Filter button (funnel icon "line.3.horizontal.decrease.circle" in header, 44x44pt)
 **Tip Text**:
 ```
 Filter your schedule by status, team member, or client.
@@ -538,8 +538,8 @@ Focus on what matters.
 ```
 **Dismissal**: User taps filter button, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_calendarFilter`
-**Reference**: 🔍 Need to research AppHeader filter button
-**Research Status**: 🔍 Needs research
+**Reference**: AppHeader.swift:149-161 (filter button with optional filter count badge, shows .fill icon when active)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -563,7 +563,7 @@ Quick navigation to any week or month.
 
 ---
 
-## P3 - Basic UI (13 tips)
+## P3 - Basic UI (8 tips)
 
 ### Tip #4: Calendar Toggle (Week/Month)
 
@@ -652,7 +652,7 @@ Archive projects for later reference.
 **Visibility**: `["office", "field"]`
 **Screen**: ProjectDetailsView
 **Trigger**: First time opening ProjectDetailsView (even if team list empty)
-**Element**: Team Members section/card
+**Element**: Team Members section/card (SectionCard with crew icon)
 **Tip Text**:
 ```
 See all crew members assigned to tasks on this project.
@@ -661,8 +661,8 @@ Shows the total team working on the job.
 ```
 **Dismissal**: User scrolls to or interacts with team section, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_teamMemberSection`
-**Reference**: 🔍 Need to research team member section in ProjectDetailsView
-**Research Status**: 🔍 Needs research
+**Reference**: ProjectDetailsView.swift:1202-1211 (teamSection using SectionCard with OPSStyle.Icons.crew and ProjectTeamView)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -672,7 +672,7 @@ Shows the total team working on the job.
 **Visibility**: `["office", "field"]`
 **Screen**: TaskDetailsView
 **Trigger**: First time opening TaskDetailsView (after status update tip)
-**Element**: Notes section/field
+**Element**: Notes section with "TASK NOTES" header and expandable chevron
 **Tip Text**:
 ```
 Add notes to document work details or issues.
@@ -681,28 +681,8 @@ Notes are visible to all team members.
 ```
 **Dismissal**: User taps notes field, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_addTaskNotes`
-**Reference**: 🔍 Need to research notes section in TaskDetailsView
-**Research Status**: 🔍 Needs research
-
----
-
-### Tip #23: Edit Task Button
-
-**Priority**: P3
-**Visibility**: `["office"]`
-**Screen**: TaskDetailsView
-**Trigger**: First time opening TaskDetailsView
-**Element**: Edit button in header
-**Tip Text**:
-```
-Tap to edit task details.
-
-Update task type, dates, or assignments.
-```
-**Dismissal**: User taps edit button, OR taps anywhere
-**UserDefaults Key**: `hasSeenContextualTip_editTask`
-**Reference**: 🔍 Need to research edit button in TaskDetailsView
-**Research Status**: 🔍 Needs research
+**Reference**: TaskDetailsView.swift:440-465 (notesField with ExpandableNotesView, chevron icon shows expand/collapse state)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -712,7 +692,7 @@ Update task type, dates, or assignments.
 **Visibility**: `["office"]`
 **Screen**: Job Board - Projects or Tasks Tab
 **Trigger**: First time viewing Projects or Tasks tab
-**Element**: Filter button in header or search area
+**Element**: "FILTER & SORT" button with funnel icon (full width row)
 **Tip Text**:
 ```
 Filter projects or tasks by status, team, or other criteria.
@@ -721,8 +701,8 @@ Focus on specific work.
 ```
 **Dismissal**: User taps filter button, OR taps anywhere
 **UserDefaults Key**: `hasSeenContextualTip_jobBoardFilter`
-**Reference**: 🔍 Need to research Job Board filter button
-**Research Status**: 🔍 Needs research
+**Reference**: JobBoardView.swift:659-688 (filterButton with "line.3.horizontal.decrease.circle" icon, shows filter count badge when active)
+**Research Status**: ✅ Verified
 
 ---
 
@@ -958,25 +938,24 @@ Users who choose "Contextual Tips" see ALL tour-feature tips immediately on firs
 - Essential P2 tips only
 - Minimal P3 tips
 
-**Office Crew See**: All 31 tips
+**Office Crew See**: All 30 tips
 
 ---
 
 ## Research Status Summary
 
-**✅ Verified (14 tips)**: #1, #3, #5, #6, #7, #8, #9, #10, #11, #12, #13, #14, #15, #16, #18, #28, #30
+**✅ Verified (30 tips)**: #1, #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #12, #13, #14, #15, #16, #17, #18, #19, #20, #21, #22, #24, #25, #26, #27, #28, #29, #30, #31
 
-**🔍 Needs Research (17 tips)**: #2, #4, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #29, #31
+**All Research Complete**: All 30 contextual tips have been thoroughly researched with file locations and line numbers verified.
 
 ---
 
 ## Next Steps
 
-1. Complete research for all 🔍 tips
-2. Finalize priority order within each level (waiting for user input)
-3. Define exact tooltip positioning for each tip
-4. Create gesture animation specs
-5. Implement TipManager and state management
-6. Build UI components (mini-spotlight, tooltip)
-7. Integrate with app navigation flow
-8. Test with both roles (office and field)
+1. ✅ Complete research for all tips (30/30 verified)
+2. ⏳ Define exact tooltip positioning for each tip
+3. ⏳ Create gesture animation specs
+4. ⏳ Implement TipManager and state management
+5. ⏳ Build UI components (mini-spotlight, tooltip)
+6. ⏳ Integrate with app navigation flow
+7. ⏳ Test with both roles (office and field)

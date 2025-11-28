@@ -519,6 +519,132 @@ Image(systemName: "person.fill")        // Hardcoded
 Image(systemName: "checkmark.square")   // Hardcoded
 ```
 
+### Full-Screen Overlays (Tactical/Minimalist Style)
+
+For important system prompts like lockouts, role assignment, or seat management. Reference implementations: `SubscriptionLockoutView.swift`, `SeatManagementView.swift`, `UnassignedRolesOverlay.swift`.
+
+**Key Principles**:
+- Pure black background (0.85 opacity for overlays)
+- Small fonts throughout (caption, smallCaption, captionBold)
+- Generous spacing between elements
+- No card backgrounds - floating content
+- White primary buttons, tertiaryText for secondary actions
+- No avatars or heavy visual elements
+- Header left-aligned with icon on right
+
+```swift
+// Header pattern
+HStack(alignment: .top, spacing: 0) {
+    VStack(alignment: .leading, spacing: 2) {
+        Text("TITLE HERE")
+            .font(OPSStyle.Typography.bodyBold)
+            .foregroundColor(OPSStyle.Colors.primaryText)
+
+        Text("Subtitle description")
+            .font(OPSStyle.Typography.caption)
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+    }
+
+    Spacer()
+
+    Image(systemName: "icon.name")
+        .font(.system(size: 20))
+        .foregroundColor(OPSStyle.Colors.tertiaryText)
+}
+.padding(.horizontal, 24)
+```
+
+```swift
+// List row pattern (no card background)
+HStack(spacing: 12) {
+    VStack(alignment: .leading, spacing: 2) {
+        Text("Primary Text")
+            .font(OPSStyle.Typography.caption)
+            .foregroundColor(OPSStyle.Colors.primaryText)
+
+        Text("secondary text")
+            .font(OPSStyle.Typography.smallCaption)
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+    }
+
+    Spacer()
+
+    // Action or status indicator
+    Image(systemName: "chevron.down")
+        .font(.system(size: 12, weight: .medium))
+        .foregroundColor(OPSStyle.Colors.tertiaryText)
+}
+.padding(.vertical, 16)
+.padding(.horizontal, 24)
+
+// Divider between rows
+Rectangle()
+    .fill(OPSStyle.Colors.tertiaryText.opacity(0.2))
+    .frame(height: 1)
+    .padding(.horizontal, 24)
+```
+
+```swift
+// Primary button (white on black)
+Button(action: save) {
+    Text("SAVE")
+        .font(OPSStyle.Typography.captionBold)
+        .foregroundColor(.black)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(isEnabled ? Color.white : Color.white.opacity(0.3))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+}
+.padding(.horizontal, 24)
+
+// Tertiary text button
+Button(action: dismiss) {
+    Text("REMIND ME LATER")
+        .font(OPSStyle.Typography.smallCaption)
+        .foregroundColor(OPSStyle.Colors.tertiaryText)
+}
+```
+
+**Expandable Selection Pattern** (with descriptions):
+```swift
+// Collapsed state shows: Name | SELECTED VALUE | chevron
+// Expanded state reveals options with descriptions
+
+VStack(spacing: 16) {
+    // Option with circle selector
+    Button(action: selectOption) {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 18))
+                .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("OPTION TITLE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+
+                Text("Description of what this option does and when to use it.")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .background(isSelected ? OPSStyle.Colors.subtleBackground : Color.clear)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.tertiaryText.opacity(0.2), lineWidth: 1)
+        )
+    }
+    .buttonStyle(PlainButtonStyle())
+}
+```
+
+**Animation TODO**: Current expand/collapse animations use basic `.easeInOut`. Could be improved with spring animations and staggered content reveals.
+
 ---
 
 ## Gesture Patterns

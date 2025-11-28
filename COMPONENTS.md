@@ -1422,6 +1422,26 @@ ScrollView {
 .tabBarPadding()
 ```
 
+### UnassignedRolesOverlay
+**Location**: `Views/Components/Common/UnassignedRolesOverlay.swift`
+
+Full-screen overlay for assigning roles to team members who don't have an employeeType set. Follows the tactical/minimalist overlay pattern.
+
+**When shown**: On app launch for admin/office crew when company has users with `employeeType == nil`
+
+**Features**:
+- Expandable rows with role selection
+- Role descriptions (Field Crew vs Office Crew)
+- Auto-collapse after selection
+- "REMIND ME LATER" dismisses for 24 hours
+- Always checks on launch (no permanent dismiss)
+
+**Usage**: Automatically triggered via `PINGatedView` → `DataController.checkForUnassignedEmployeeRoles()`
+
+**Related components**:
+- `SubscriptionLockoutView` - Same tactical styling pattern
+- `SeatManagementView` - Same minimalist row pattern
+
 ---
 
 **End of COMPONENTS.md**

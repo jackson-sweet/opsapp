@@ -30,7 +30,7 @@ None currently - ready for next agent
 | G | DONE | 100% | V1 Agent | Filters consolidated |
 | H | DONE | 100% | V1 Agent | Deletion sheets |
 | I | DONE | 100% | V1 Agent | Search fields |
-| B | DONE | 100% | V1 Agent | Toolbar (partial - 4 sheets) |
+| B | DONE | 100% | Session 2 | SectionCard migration complete (detail views + settings) |
 | K | DONE | 100% | V1 Agent | Loading/confirmation modifiers |
 | **F** | **85%** | 85% | V1 Agent | **Needs ~60 more icons** |
 | C | TODO | 0% | - | Notifications |
@@ -317,6 +317,78 @@ N/A - SectionCard migration complete
 
 ---
 
-**Document Version**: 2.0
-**Last Updated**: November 24, 2025
+## Session 2: SectionCard Migration Completion - November 27, 2025
+
+**Agent**: Claude (Continuation Session)
+**Duration**: ~1 hour
+**Commits**: Pending
+
+### Completed
+
+**Track B (SectionCard Migration) - Final Touches**:
+
+This session completed the remaining SectionCard migration work that was identified but not completed in Session 1:
+
+**ProfileSettingsView** (Lines 73-144):
+- Fixed contact preview card at top to properly show phone/address data
+- Prioritizes phone over email for contact display
+- Shows home address if available, otherwise shows user role
+- Proper fallback handling for missing optional data
+- 56×56 ProfileImageUploader on right side
+
+**SubClientEditSheet** (Complete Overhaul):
+- Added live preview card at top (Lines 328-409)
+  - Updates in real-time as user types in form fields
+  - Shows name (or "SUB CONTACT NAME" placeholder)
+  - Displays email/phone (or "NO CONTACT INFO")
+  - Shows address or title (or "NO TITLE")
+  - 56×56 circular avatar with initial letter
+  - Matches exact styling pattern from ClientSheet
+- Restructured entire form layout (Lines 70-184)
+  - Wrapped all fields in SectionCard with "Contact Details" title
+  - Updated spacing from 20pt to 24pt
+  - Changed field labels to smallCaption Text components
+  - Added explicit 12pt padding to all text fields
+  - Moved "Import from Contacts" button to bottom
+  - Proper button styling with accent color border
+
+**Build Status**: ✅ BUILD SUCCEEDED (no errors, only warnings in unrelated files)
+
+### Files Modified
+1. `/OPS/Views/Settings/ProfileSettingsView.swift` - Contact preview card data population
+2. `/OPS/Views/Components/Client/SubClientEditSheet.swift` - Complete restructure with preview card
+
+### In Progress
+
+N/A - All identified SectionCard migration work is complete
+
+### Blockers/Issues
+
+None encountered - build succeeded on first attempt after preview card implementation
+
+### Advice for Next Agent
+
+**SectionCard Migration (Track B) is now COMPLETE** for detail views and settings views. All contact preview cards and section layouts now follow consistent patterns.
+
+**Recommended Next Steps** (unchanged from Session 1):
+
+1. **Track F** (2-3h) - Finish icon migration
+   - ~60 icons remaining in ViewModels
+   - Quick completion task
+   - Run: `grep -r 'systemName: "' OPS/Views OPS/ViewModels --include="*.swift" | grep -v "OPSStyle.Icons" | wc -l`
+
+2. **Track J+** (6-8h) - Action-based operations
+   - High architectural impact
+   - Centralizes 99 direct save() calls
+   - See ACTION_BASED_OPERATIONS.md
+
+3. **Track C** (4-6h) - Notification consolidation
+   - 52 alert patterns to migrate
+   - Immediate UX consistency
+   - See REMAINING_TRACKS.md
+
+---
+
+**Document Version**: 2.1
+**Last Updated**: November 27, 2025
 **Next Agent**: Please add your session below

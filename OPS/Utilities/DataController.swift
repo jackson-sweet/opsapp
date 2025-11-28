@@ -533,13 +533,20 @@ class DataController: ObservableObject {
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
                 let hasUserType = user.userType != nil
 
-                // Track login conversion for Google Ads (Apple sign-in)
-                AnalyticsManager.shared.trackLogin(userType: user.userType, method: .apple)
+                // Determine if onboarding is needed (indicates new user)
+                let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding || !hasUserType
+
+                // Track analytics for Google Ads (Apple sign-in)
+                if needsOnboarding {
+                    // New user - track as sign-up
+                    AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .apple)
+                } else {
+                    // Returning user - track as login
+                    AnalyticsManager.shared.trackLogin(userType: user.userType, method: .apple)
+                }
                 AnalyticsManager.shared.setUserType(user.userType)
                 AnalyticsManager.shared.setUserId(userDTO.id)
 
-                // Determine if onboarding is needed
-                let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding || !hasUserType
                 UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
 
                 if !needsOnboarding {
@@ -637,13 +644,20 @@ class DataController: ObservableObject {
                 let hasCompany = !(user.companyId ?? "").isEmpty
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
 
-                // Track login conversion for Google Ads (Google sign-in)
-                AnalyticsManager.shared.trackLogin(userType: user.userType, method: .google)
+                // Determine if onboarding is needed (indicates new user)
+                let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding
+
+                // Track analytics for Google Ads (Google sign-in)
+                if needsOnboarding {
+                    // New user - track as sign-up
+                    AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .google)
+                } else {
+                    // Returning user - track as login
+                    AnalyticsManager.shared.trackLogin(userType: user.userType, method: .google)
+                }
                 AnalyticsManager.shared.setUserType(user.userType)
                 AnalyticsManager.shared.setUserId(userDTO.id)
 
-                // Set onboarding completed only if they have both
-                let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding
                 UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
 
                 // Only set isAuthenticated if they've completed onboarding
@@ -2746,6 +2760,25 @@ class DataController: ObservableObject {
         }
     }
     
+    /// Gets the count of all projects for the current user's company
+    func getProjectCount() async -> Int {
+        guard let context = modelContext,
+              let companyId = currentUser?.companyId else {
+            return 0
+        }
+
+        do {
+            let descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.companyId == companyId && $0.deletedAt == nil }
+            )
+            let projects = try context.fetch(descriptor)
+            return projects.count
+        } catch {
+            print("[DataController] Error fetching project count: \(error)")
+            return 0
+        }
+    }
+
     /// Gets a project by ID
     func getProject(id: String) -> Project? {
         guard let context = modelContext else {

@@ -178,6 +178,13 @@ struct PINGatedView: View {
                             createdProjectTitle = ""
                         }
                         showProjectCreatedMessage = true
+
+                        // Track project creation for Google Ads
+                        Task {
+                            let projectCount = await dataController.getProjectCount()
+                            let userType = dataController.currentUser?.userType
+                            AnalyticsManager.shared.trackCreateProject(projectCount: projectCount, userType: userType)
+                        }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ClientCreatedSuccess"))) { notification in
                         // Show success message when client is created

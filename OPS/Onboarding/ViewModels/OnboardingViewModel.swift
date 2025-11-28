@@ -1623,6 +1623,15 @@ class OnboardingViewModel: ObservableObject {
                     dataController.isAuthenticated = true
                 }
 
+                // Track onboarding completion for Google Ads
+                let hasCompany = dataController?.currentUser?.companyId != nil && !(dataController?.currentUser?.companyId ?? "").isEmpty
+                AnalyticsManager.shared.trackCompleteOnboarding(userType: selectedUserType, hasCompany: hasCompany)
+
+                // Track trial start for company owners
+                if selectedUserType == .company {
+                    AnalyticsManager.shared.trackBeginTrial(userType: selectedUserType, trialDays: 30)
+                }
+
                 // Dismiss the onboarding overlay
                 NotificationCenter.default.post(name: Notification.Name("DismissOnboarding"), object: nil)
             }

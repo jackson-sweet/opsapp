@@ -87,7 +87,7 @@ class SubscriptionManager: ObservableObject {
                 }
             }
             .store(in: &cancellables)
-        
+
         // Listen for successful sync to update subscription
         NotificationCenter.default.publisher(for: .companySynced)
             .sink { [weak self] _ in
@@ -96,6 +96,35 @@ class SubscriptionManager: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        // Listen for payment success to track subscription conversion
+        NotificationCenter.default.publisher(for: .paymentSuccessful)
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    self?.trackSubscriptionPurchase()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Track subscription purchase for Google Ads conversion
+    @MainActor
+    private func trackSubscriptionPurchase() {
+        guard let company = dataController?.getCurrentUserCompany() else { return }
+
+        let planName = subscriptionPlan.displayName
+        let price = Double(subscriptionPlan.monthlyPrice) // Use monthly price as base
+        let userType = dataController?.currentUser?.userType
+
+        AnalyticsManager.shared.trackSubscribe(
+            planName: planName,
+            price: price,
+            currency: "USD",
+            userType: userType
+        )
+        AnalyticsManager.shared.setSubscriptionStatus(true)
+
+        print("[SUBSCRIPTION] 📊 Tracked subscription purchase - plan: \(planName)")
     }
     
     // MARK: - Public Methods

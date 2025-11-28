@@ -66,6 +66,8 @@ class OnboardingViewModel: ObservableObject {
 
     // State management
     @Published var isLoading: Bool = false
+    @Published var isShowingCompanyCreationLoading: Bool = false
+    @Published var isCompanyCreationComplete: Bool = false
     @Published var errorMessage: String = ""
     @Published var isLocationPermissionGranted: Bool = false
     @Published var isNotificationsPermissionGranted: Bool = false
@@ -517,6 +519,8 @@ class OnboardingViewModel: ObservableObject {
                         isSignedUp = true
                         userId = userIdValue
                         UserDefaults.standard.set(userIdValue, forKey: "user_id")
+                        // CRITICAL: Also set currentUserId for SyncManager compatibility
+                        UserDefaults.standard.set(userIdValue, forKey: "currentUserId")
 
                         // Print detailed success information for debugging
                         print("[ONBOARDING] User signed up successfully with ID: \(userIdValue)")
@@ -561,6 +565,11 @@ class OnboardingViewModel: ObservableObject {
                         if let userType = selectedUserType {
                             UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
                         }
+
+                        // Track sign-up conversion for Google Ads
+                        AnalyticsManager.shared.trackSignUp(userType: selectedUserType, method: .email)
+                        AnalyticsManager.shared.setUserType(selectedUserType)
+                        AnalyticsManager.shared.setUserId(userIdValue)
 
                         // Log that we've saved these important credentials
 
@@ -823,7 +832,7 @@ class OnboardingViewModel: ObservableObject {
                     authManager: AuthManager()
                 )
 
-                let (healthState, recoveryAction) = await healthManager.performHealthCheck()
+                let (healthState, recoveryAction) = await healthManager.performHealthCheck(duringOnboarding: true)
 
                 if !healthState.isHealthy {
                     print("[ONBOARDING] ❌ Data health check failed after joining company: \(healthState)")
@@ -1316,6 +1325,32 @@ class OnboardingViewModel: ObservableObject {
                                 companyObject.setIndustries([industry.rawValue])
                             }
 
+                            // Save subscription data from response
+                            if let subscriptionStatus = company.subscriptionStatus {
+                                companyObject.subscriptionStatus = subscriptionStatus
+                                print("[ONBOARDING] ✅ Subscription status: \(subscriptionStatus)")
+                            }
+                            if let subscriptionPlan = company.subscriptionPlan {
+                                companyObject.subscriptionPlan = subscriptionPlan
+                                print("[ONBOARDING] ✅ Subscription plan: \(subscriptionPlan)")
+                            }
+                            if let trialStartDateStr = company.trialStartDate {
+                                companyObject.trialStartDate = ISO8601DateFormatter().date(from: trialStartDateStr)
+                                print("[ONBOARDING] ✅ Trial start date: \(trialStartDateStr)")
+                            }
+                            if let trialEndDateStr = company.trialEndDate {
+                                companyObject.trialEndDate = ISO8601DateFormatter().date(from: trialEndDateStr)
+                                print("[ONBOARDING] ✅ Trial end date: \(trialEndDateStr)")
+                            }
+                            if let seatedEmployees = company.seatedEmployees {
+                                companyObject.setSeatedEmployeeIds(seatedEmployees)
+                                print("[ONBOARDING] ✅ Seated employees: \(seatedEmployees.count)")
+                            }
+                            if let maxSeats = company.maxSeats {
+                                companyObject.maxSeats = maxSeats
+                                print("[ONBOARDING] ✅ Max seats: \(maxSeats)")
+                            }
+
                             // Save company to database
                             try? modelContext.save()
                             print("[ONBOARDING] ✅ Company saved to SwiftData")
@@ -1405,7 +1440,7 @@ class OnboardingViewModel: ObservableObject {
                 authManager: AuthManager()
             )
 
-            let (healthState, recoveryAction) = await healthManager.performHealthCheck()
+            let (healthState, recoveryAction) = await healthManager.performHealthCheck(duringOnboarding: true)
 
             if !healthState.isHealthy {
                 print("[ONBOARDING] ❌ Data health check failed after company creation: \(healthState)")
@@ -1428,6 +1463,13 @@ class OnboardingViewModel: ObservableObject {
                 return
             }
 
+            // IMPORTANT: Add a short delay to allow Bubble backend to finish setting up trial data
+            // The update_company API triggers async operations (trial setup, seat assignment) that
+            // may not be complete when the response is returned. Without this delay, syncCompany()
+            // may fetch company data before subscription fields are populated.
+            print("[ONBOARDING] ⏳ Waiting for Bubble to complete trial setup...")
+            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
+
             print("[ONBOARDING] ✅ SyncManager found, starting performOnboardingSync...")
             await syncManager.performOnboardingSync()
             print("[ONBOARDING] ✅ Full sync completed after company creation")
@@ -1437,9 +1479,17 @@ class OnboardingViewModel: ObservableObject {
             print("[ONBOARDING] Reloading current user...")
             await reloadCurrentUser()
             print("[ONBOARDING] ✅ Current user reloaded")
+
+            // Signal that company creation is complete (for loading screen)
+            await MainActor.run {
+                isCompanyCreationComplete = true
+                print("[ONBOARDING] ✅ Company creation marked complete")
+            }
         } catch {
             await MainActor.run {
                 isLoading = false
+                isShowingCompanyCreationLoading = false
+                isCompanyCreationComplete = false
                 errorMessage = error.localizedDescription
             }
             throw error
@@ -1597,7 +1647,7 @@ class OnboardingViewModel: ObservableObject {
             authManager: AuthManager()
         )
 
-        let (healthState, recoveryAction) = await healthManager.performHealthCheck()
+        let (healthState, recoveryAction) = await healthManager.performHealthCheck(duringOnboarding: true)
 
         if !healthState.isHealthy {
             print("[ONBOARDING] ❌ Data health check failed: \(healthState)")

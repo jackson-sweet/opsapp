@@ -50,13 +50,19 @@ class DataHealthManager: ObservableObject {
 
     /// Performs a comprehensive health check on all critical data
     /// Returns the current health state and recommended recovery action
-    func performHealthCheck() async -> (state: DataHealthState, action: DataRecoveryAction) {
-        print("[DATA_HEALTH] 🏥 Performing comprehensive health check...")
+    /// - Parameter duringOnboarding: If true, skips company-related checks since user may not have a company yet
+    func performHealthCheck(duringOnboarding: Bool = false) async -> (state: DataHealthState, action: DataRecoveryAction) {
+        print("[DATA_HEALTH] 🏥 Performing comprehensive health check\(duringOnboarding ? " (onboarding mode)" : "")...")
 
         // 1. Check for user ID
         guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else {
             print("[DATA_HEALTH] ❌ No user ID found")
             currentHealthState = .missingUserId
+            // During onboarding before signup, missing user ID is expected - don't logout
+            if duringOnboarding {
+                print("[DATA_HEALTH] ℹ️ Missing user ID is expected during early onboarding - no action needed")
+                return (.missingUserId, .none)
+            }
             return (.missingUserId, .logout)
         }
 
@@ -71,20 +77,48 @@ class DataHealthManager: ObservableObject {
                 dataController.currentUser = loadedUser
                 print("[DATA_HEALTH] ✅ Successfully loaded user from SwiftData")
             } else {
-                print("[DATA_HEALTH] ❌ User not found in SwiftData - need to fetch from API")
-                currentHealthState = .missingUserData
-                return (.missingUserData, .fetchUserFromAPI)
+                // During onboarding, try to fetch from API if not in SwiftData
+                if duringOnboarding {
+                    print("[DATA_HEALTH] ℹ️ User not in SwiftData during onboarding - attempting API fetch")
+                    if let apiUser = await fetchUserFromAPI(userId: userId) {
+                        dataController.currentUser = apiUser
+                        print("[DATA_HEALTH] ✅ Loaded user from API during onboarding")
+                    } else {
+                        // During onboarding, if user was just created, they might not be in API yet
+                        // This is expected and not an error
+                        print("[DATA_HEALTH] ℹ️ User not found in API yet - this is normal for new signups")
+                        currentHealthState = .healthy
+                        return (.healthy, .none)
+                    }
+                } else {
+                    print("[DATA_HEALTH] ❌ User not found in SwiftData - need to fetch from API")
+                    currentHealthState = .missingUserData
+                    return (.missingUserData, .fetchUserFromAPI)
+                }
             }
         }
 
         guard let user = dataController.currentUser else {
+            // During onboarding, missing currentUser after signup is OK - user is being set up
+            if duringOnboarding {
+                print("[DATA_HEALTH] ℹ️ No currentUser during onboarding - this is expected")
+                currentHealthState = .healthy
+                return (.healthy, .none)
+            }
             currentHealthState = .missingUserData
             return (.missingUserData, .fetchUserFromAPI)
         }
 
         print("[DATA_HEALTH] ✅ Current user exists: \(user.fullName)")
 
-        // 3. Check for company ID
+        // 3. Check for company ID - SKIP during onboarding since user hasn't created/joined company yet
+        if duringOnboarding {
+            print("[DATA_HEALTH] ℹ️ Skipping company checks during onboarding")
+            currentHealthState = .healthy
+            lastHealthCheck = Date()
+            return (.healthy, .none)
+        }
+
         if user.companyId == nil || user.companyId?.isEmpty == true {
             print("[DATA_HEALTH] ⚠️ User has no company ID")
 
@@ -207,10 +241,72 @@ class DataHealthManager: ObservableObject {
     }
 
     private func fetchUserFromAPI(userId: String) async -> User? {
-        // Note: APIService doesn't have a direct getUser method
-        // This would need to be implemented or we fetch via sync
-        print("[DATA_HEALTH] ⚠️ fetchUserFromAPI not yet implemented")
-        return nil
+        print("[DATA_HEALTH] 🔄 Fetching user from API: \(userId)")
+
+        do {
+            // Use the centralized Bubble API fetch method to get the user by ID
+            let constraints: [String: Any] = [
+                "key": "_id",
+                "constraint_type": "equals",
+                "value": userId
+            ]
+
+            let userDTOs: [UserDTO] = try await dataController.apiService.fetchBubbleObjects(
+                objectType: "User",
+                constraints: constraints,
+                limit: 1
+            )
+
+            guard let userDTO = userDTOs.first else {
+                print("[DATA_HEALTH] ⚠️ User not found in API: \(userId)")
+                return nil
+            }
+
+            print("[DATA_HEALTH] ✅ Found user in API: \(userDTO.nameFirst ?? "") \(userDTO.nameLast ?? "")")
+
+            // Convert DTO to User model
+            let user = userDTO.toModel()
+
+            // Store/update user in SwiftData
+            if let modelContext = dataController.modelContext {
+                // Check if user already exists
+                let descriptor = FetchDescriptor<User>(
+                    predicate: #Predicate<User> { $0.id == userId }
+                )
+                let existingUsers = try? modelContext.fetch(descriptor)
+
+                if let existingUser = existingUsers?.first {
+                    // Update existing user with API data
+                    existingUser.firstName = user.firstName
+                    existingUser.lastName = user.lastName
+                    existingUser.email = user.email
+                    existingUser.phone = user.phone
+                    existingUser.companyId = user.companyId
+                    existingUser.role = user.role
+                    existingUser.profileImageURL = user.profileImageURL
+                    existingUser.userColor = user.userColor
+                    existingUser.devPermission = user.devPermission
+                    existingUser.hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
+                    existingUser.lastSyncedAt = Date()
+
+                    try? modelContext.save()
+                    print("[DATA_HEALTH] ✅ Updated existing user in SwiftData")
+                    return existingUser
+                } else {
+                    // Insert new user
+                    modelContext.insert(user)
+                    try? modelContext.save()
+                    print("[DATA_HEALTH] ✅ Inserted new user into SwiftData")
+                    return user
+                }
+            }
+
+            return user
+
+        } catch {
+            print("[DATA_HEALTH] ❌ Error fetching user from API: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     private func fetchAndStoreUserData() async {

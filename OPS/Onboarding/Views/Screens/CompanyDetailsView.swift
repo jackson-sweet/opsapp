@@ -119,16 +119,18 @@ struct CompanyDetailsView: View {
                                     onboardingViewModel.companyIndustry = selectedIndustry
                                     onboardingViewModel.companySize = selectedSize
                                     onboardingViewModel.companyAge = selectedAge
-                                    
-                                    // Create the company and get the company code
+
+                                    // Show loading screen and create company
+                                    onboardingViewModel.isShowingCompanyCreationLoading = true
+
                                     Task {
                                         do {
                                             try await onboardingViewModel.createCompany()
-                                            await MainActor.run {
-                                                onboardingViewModel.moveToNextStep()
-                                            }
+                                            // Don't move to next step here - loading view will handle it
                                         } catch {
                                             await MainActor.run {
+                                                // Hide loading on error
+                                                onboardingViewModel.isShowingCompanyCreationLoading = false
                                                 // Error is already set in viewModel
                                             }
                                         }

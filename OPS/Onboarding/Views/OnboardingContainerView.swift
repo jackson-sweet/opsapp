@@ -39,15 +39,31 @@ struct OnboardingView: View {
         ZStack {
             // Background
             Color.black.ignoresSafeArea()
-            
+
             // Consolidated flow - respect safe areas for content
             consolidatedFlowView
+
+            // Company creation loading overlay
+            if viewModel.isShowingCompanyCreationLoading {
+                CompanyCreationLoadingView(
+                    isVisible: $viewModel.isShowingCompanyCreationLoading,
+                    isApiComplete: $viewModel.isCompanyCreationComplete,
+                    onComplete: {
+                        // Reset for potential future use
+                        viewModel.isCompanyCreationComplete = false
+                        viewModel.moveToNextStep()
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(100)
+            }
         }
         .onAppear {
             // Configure ViewModel with DataController
             configureViewModel()
         }
         .animation(.easeInOut, value: viewModel.currentStep.rawValue)
+        .animation(.easeInOut(duration: 0.3), value: viewModel.isShowingCompanyCreationLoading)
         // Apply theme based on user type
         .preferredColorScheme(viewModel.shouldUseLightTheme ? .light : .dark)
     }

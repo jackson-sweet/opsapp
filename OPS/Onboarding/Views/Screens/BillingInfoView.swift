@@ -162,7 +162,7 @@ struct BillingInfoView: View {
                 authManager: AuthManager()  // Create a temporary instance
             )
 
-            let (healthState, recoveryAction) = await healthManager.performHealthCheck()
+            let (healthState, recoveryAction) = await healthManager.performHealthCheck(duringOnboarding: true)
 
             if !healthState.isHealthy {
                 print("[BILLING_INFO] ⚠️ Data health check failed: \(healthState)")

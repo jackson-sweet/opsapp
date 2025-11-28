@@ -240,13 +240,11 @@ class OnboardingService {
         }
         
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-        
+
         // DEBUG: Log the complete request
-        for (key, value) in parameters {
-            if key == "user" {
-            } else if key == "user_phone" || key == "name_first" || key == "name_last" {
-            } else {
-            }
+        print("[ONBOARDING_API] 📤 update_company request parameters:")
+        for (key, value) in parameters.sorted(by: { $0.key < $1.key }) {
+            print("[ONBOARDING_API]   \(key): \(value)")
         }
         
         do {
@@ -255,12 +253,16 @@ class OnboardingService {
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw SignUpError.invalidResponse
             }
-            
-            
+
+            print("[ONBOARDING_API] 📥 update_company response status: \(httpResponse.statusCode)")
             if let responseString = String(data: data, encoding: .utf8) {
+                print("[ONBOARDING_API] 📥 update_company response body: \(responseString)")
             }
-            
+
             guard (200...299).contains(httpResponse.statusCode) else {
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("[ONBOARDING_API] ❌ Error response: \(responseString)")
+                }
                 throw SignUpError.serverError("Company update failed with status \(httpResponse.statusCode)")
             }
             
@@ -439,28 +441,45 @@ struct CompanyResponseData: Codable {
     let age: String? // Keep for backward compatibility
     let address: String?
     let code: String? // Keep for backward compatibility
-    
+
+    // Subscription fields
+    let subscriptionStatus: String?
+    let subscriptionPlan: String?
+    let trialStartDate: String?
+    let trialEndDate: String?
+    let seatedEmployees: [String]?
+    let maxSeats: Int?
+
     private enum CodingKeys: String, CodingKey {
         case _id
         case id
-        case companyId = "companyId"  // Changed from "company id"
-        case companyName = "companyName"  // Changed from "Company Name"
+        case companyId = "companyId"
+        case companyName = "companyName"
         case name
-        case officeEmail = "officeEmail"  // Changed from "office_email"
+        case officeEmail = "officeEmail"
         case email
         case phone
-        case industry = "industry"  // Changed from "Industry"
-        case companySize = "companySize"  // Changed from "company_size"
+        case industry = "industry"
+        case companySize = "companySize"
         case size
-        case companyAge = "companyAge"  // Changed from "company_age"
+        case companyAge = "companyAge"
         case age
         case address
         case code
+        case subscriptionStatus = "subscriptionStatus"
+        case subscriptionPlan = "subscriptionPlan"
+        case trialStartDate = "trialStartDate"
+        case trialEndDate = "trialEndDate"
+        case seatedEmployees = "seatedEmployees"
+        case maxSeats = "maxSeats"
     }
-    
-    init(id: String? = nil, name: String? = nil, email: String? = nil, 
+
+    init(id: String? = nil, name: String? = nil, email: String? = nil,
          phone: String? = nil, industry: String? = nil, size: String? = nil,
-         age: String? = nil, address: String? = nil, code: String? = nil) {
+         age: String? = nil, address: String? = nil, code: String? = nil,
+         subscriptionStatus: String? = nil, subscriptionPlan: String? = nil,
+         trialStartDate: String? = nil, trialEndDate: String? = nil,
+         seatedEmployees: [String]? = nil, maxSeats: Int? = nil) {
         self._id = id
         self.id = id
         self.companyId = code
@@ -476,6 +495,12 @@ struct CompanyResponseData: Codable {
         self.age = age
         self.address = address
         self.code = code
+        self.subscriptionStatus = subscriptionStatus
+        self.subscriptionPlan = subscriptionPlan
+        self.trialStartDate = trialStartDate
+        self.trialEndDate = trialEndDate
+        self.seatedEmployees = seatedEmployees
+        self.maxSeats = maxSeats
     }
     
     // Helper to get the ID regardless of which field it's in

@@ -108,11 +108,17 @@ Complete reusable component library reference.
 ## Project Structure
 
 ```
-/OPS
-├── Data Models/          # SwiftData models (8 core entities)
-├── Network/             # API service, sync manager, DTOs, endpoints
+/OPS/OPS/
+├── DataModels/          # SwiftData models (16 files including Status, UserRole, BubbleTypes)
+├── Network/
+│   ├── API/             # APIService.swift, BubbleFields.swift
+│   ├── DTOs/            # Data Transfer Objects (11 files)
+│   └── Sync/            # CentralizedSyncManager.swift
 ├── Views/               # SwiftUI views organized by feature
 ├── Styles/              # OPSStyle system and standardized components
+└── Resources/           # Assets, fonts, configuration
+
+/OPS/
 ├── Documentation/       # Technical docs and implementation guides
 ├── Development Tasks/   # Active TODO lists and future features
 ├── Release Notes/       # Version-specific release notes

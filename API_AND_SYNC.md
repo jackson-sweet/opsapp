@@ -2,7 +2,7 @@
 
 **Purpose**: This document provides Claude (AI assistant) with complete context on OPS app API integration, sync strategies, and network operations. This enables accurate implementation of API calls, sync logic, and offline-first features.
 
-**Last Updated**: November 18, 2025
+**Last Updated**: December 4, 2025
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Purpose**: This document provides Claude (AI assistant) with a complete reference of all reusable UI components in the OPS app. Use these standardized components to maintain consistency and avoid creating duplicate implementations.
 
-**Last Updated**: November 18, 2025
+**Last Updated**: December 4, 2025
 
 ---
 

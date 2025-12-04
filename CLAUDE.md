@@ -84,12 +84,13 @@ When working on the OPS codebase, reference these consolidated documentation fil
 - **Interaction Control**: Uses `.allowsHitTesting()` instead of `.disabled()` to prevent field crew editing
 - **Permission Indicators**: Chevron only shows for admin/office crew who can edit dates
 
-### CalendarEvent-Centric Architecture (August 2025)
-- **CalendarEvents as Single Source of Truth**: All calendar display logic now flows through CalendarEvent entities
-- **Filtering Based on Project Scheduling Mode**:
-  - If `project.eventType == .project`, only project-level CalendarEvents are displayed
-  - If `project.eventType == .task`, only task-level CalendarEvents are displayed
-- **shouldDisplay Property**: CalendarEvent.shouldDisplay handles complex filtering logic based on project scheduling mode
+### Task-Only Scheduling Architecture (November 2025)
+- **CalendarEvents as Single Source of Truth**: All calendar display logic flows through task-linked CalendarEvent entities
+- **Simplified Architecture**: Removed dual-scheduling modes (project-level vs task-level)
+  - All projects now use task-based scheduling exclusively
+  - Project dates computed from task calendar events (`computedStartDate`, `computedEndDate`)
+  - Removed `eventType`, `type`, `active` fields from models (still in BubbleFields for API compatibility)
+- **Migration Complete**: One-time migration deleted all project-level calendar events
 
 ### TaskDetailsView Implementation (August 2025)
 - **Matches ProjectDetailsView Structure**: Header with status badge, breadcrumb navigation, and color stripe

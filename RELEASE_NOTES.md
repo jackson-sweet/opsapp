@@ -1,135 +1,231 @@
 # OPS Release Notes
 
-## Version: November 13, 2025 Release
-
-### Overview
-This release focuses on improving team member management, data synchronization reliability, and visual clarity for completed work. Key improvements include automatic project team synchronization, comprehensive data health checks, and enhanced UI feedback for completed tasks and events.
+**Current Version**: 2.0.3
+**Last Updated**: December 4, 2025
 
 ---
 
-## What's New
+## Version 2.0.3 (November 28, 2025)
+
+### Overview
+Major release featuring Firebase Analytics integration for Google Ads conversion tracking, in-app messaging system, and comprehensive UI consistency improvements across all settings and detail views.
+
+---
+
+### New Features
+
+#### Firebase Analytics & Conversion Tracking
+- **Google Ads Integration**: Comprehensive analytics events for conversion tracking
+- **User Journey Tracking**: Track key user actions and conversions
+- **Marketing Attribution**: Enable data-driven marketing decisions
+
+#### In-App Messaging System
+- **App Messages**: New system for displaying in-app announcements and updates
+- **Message Management**: Admin-controlled messaging from Bubble backend
+- **User Experience**: Non-intrusive notifications for important updates
+
+#### Organization Settings Modular Views
+- **Redesigned Settings**: Organization settings split into focused, modular views
+- **Improved Navigation**: Easier access to specific settings categories
+- **Consistent UI**: All settings views now use SectionCard pattern
+
+---
+
+### UI Consistency Improvements
+
+#### SectionCard Migration (Track B)
+- **All Settings Views**: Migrated to consistent SectionCard component
+  - MapSettingsView
+  - NotificationSettingsView
+  - DataStorageSettingsView
+  - SecuritySettingsView
+  - OrganizationSettingsView
+  - ProfileSettingsView
+- **Detail Views**: ProjectDetailsView, ContactDetailView updated
+- **Uniform Spacing**: Consistent padding and layout across all views
+
+#### Loading & Confirmation Patterns (Track K)
+- **LoadingOverlay Modifier**: Standardized loading states across all form sheets
+- **DeleteConfirmation Modifier**: Consistent delete confirmation dialogs
+- **Subscription Lockout**: Improved UX with status display in refresh button
+
+---
+
+### Bug Fixes
+
+#### Team & Sync
+- **Project Team Computation**: Fixed team members computed during sync instead of view appearance
+- **Onboarding Flow**: Fixed data sync, subscription loading, and loading UI issues
+
+#### QA Fixes
+- **Team UI**: Various team management interface fixes
+- **Push-in Notifications**: Fixed notification display issues
+- **Task List**: Resolved task list rendering problems
+- **Settings**: Multiple settings view fixes
+
+---
+
+## Version 2.0.2 (November 18-24, 2025)
+
+### Overview
+Architecture simplification release featuring task-only scheduling migration, comprehensive codebase efficiency improvements, and form sheet UI consistency updates.
+
+---
+
+### Architecture Changes
+
+#### Task-Only Scheduling Migration
+- **Simplified Architecture**: Removed dual-scheduling system (project-level vs task-level)
+- **All Projects Task-Based**: Every project now uses task-based scheduling exclusively
+- **Computed Project Dates**: Project start/end dates computed from task calendar events
+- **Removed Fields**: Eliminated `eventType`, `type`, `active` fields from models
+- **Cleaner Codebase**: Simplified CalendarEvent filtering logic
+
+#### Codebase Efficiency Improvements
+- **Track A**: Expanded OPSStyle definitions with semantic colors and icons
+- **Track D**: Merged duplicate form/edit sheets (TaskTypeSheet, ClientSheet)
+- **Track E**: Complete color migration to semantic OPSStyle colors (235+ files)
+- **Track F**: Icon migration to OPSStyle.Icons (54% complete)
+- **Track G**: Consolidated filter sheets into generic FilterSheet component
+- **Track H**: Consolidated deletion sheets into generic DeletionSheet component
+
+---
+
+### Form Sheet UI Improvements
+
+#### Consistency Updates
+- **ProjectFormSheet**: Dynamic section reordering, auto-scroll to opened sections
+- **TaskFormSheet**: All inputs grouped into single card section
+- **ClientFormSheet**: Unified input card layout with consistent borders
+- **Button Placement**: Save/Cancel buttons positioned at bottom consistently
+- **Border Consistency**: All form sheets use `Color.white.opacity(0.1)` borders
+
+#### Progressive Disclosure
+- **Collapsible Sections**: Sections expand/collapse with smooth animations
+- **Smart Ordering**: Active sections move to top of form
+- **Reduced Clutter**: Less overwhelming initial form state
+
+---
+
+### Job Board Enhancements
+
+#### Badge Logic Improvements
+- **Unscheduled Badge**: Shows if project has no tasks
+- **Smart Filtering**: Excludes completed/cancelled tasks from badge calculation
+- **Badge Hiding**: Hidden when all tasks are completed/cancelled
+
+#### Field Crew Access
+- **Tab Bar Access**: Job Board tab visible to all user roles
+- **Role-Based UI**: Section picker hidden for field crew
+- **Project Filtering**: Field crew see only assigned projects
+- **Status Updates**: Field crew can update project and task statuses
+
+---
+
+### Bug Fixes
+
+#### Critical Fixes
+- **Task/Project Linking**: Fixed critical bug in task-project relationships
+- **UI Notifications**: Improved notification display and timing
+- **Floating Action Menu**: UI improvements and fixes
+
+#### TaskDetailsView
+- **Field Crew Permissions**: Dates section visual consistency for all roles
+- **Interaction Control**: Uses `.allowsHitTesting()` for permission control
+- **Permission Indicators**: Chevron shows only for users who can edit
+
+---
+
+## Version 2.0.1 (November 13, 2025)
+
+### Overview
+Focus on team member management, data synchronization reliability, and visual clarity for completed work.
+
+---
 
 ### Visual Improvements
 
 #### Completed Task & Event Overlay
-- **Calendar Views**: Completed tasks and events now display with a semi-transparent grey overlay and "COMPLETED" badge
-- **Project Carousel**: Home screen project cards show completion status at a glance
-- **Clear Visual Hierarchy**: Easily distinguish between active and completed work without cluttering the interface
-- **Locations**: Week view, month view, project lists, and home screen carousel (does not apply to job board cards)
+- **Calendar Views**: Completed items display with grey overlay and "COMPLETED" badge
+- **Project Carousel**: Home screen cards show completion status
+- **Clear Visual Hierarchy**: Easy distinction between active and completed work
+- **Locations**: Week view, month view, project lists, home carousel
+
+---
 
 ### Team Management Enhancements
 
 #### Automatic Project Team Synchronization
-- **Smart Team Updates**: When team members are added to or removed from tasks, the parent project's team automatically updates
-- **Unified Access Control**: Field crew members assigned to any task on a project now automatically see that project
-- **Real-Time Sync**: Team changes sync to the cloud in the background while updating the UI immediately
-- **Offline-First**: Team member changes save locally first and sync when connection is available
+- **Smart Team Updates**: Task team changes automatically update parent project
+- **Unified Access Control**: Field crew assigned to tasks see parent project
+- **Real-Time Sync**: Background sync with immediate UI updates
+- **Offline-First**: Local save first, sync when connected
 
-#### Improved Team Editing Experience
-- **Responsive UI**: Team member changes reflect immediately in the interface
-- **No Delays**: Eliminated UI hang when saving team member changes
-- **Edit Mode Stability**: Task details view no longer closes unexpectedly after editing team members
-- **Optimistic Updates**: Changes appear instantly while syncing happens in the background
+#### Improved Team Editing
+- **Responsive UI**: Immediate reflection of team changes
+- **No Delays**: Eliminated UI hang on team saves
+- **Edit Mode Stability**: Fixed unexpected dismissal after edits
+- **Optimistic Updates**: Instant UI with background sync
 
-### Data Reliability & Sync Improvements
+---
 
-#### Comprehensive Data Health Management
-- **Health Checks on Launch**: App validates user, company, and sync manager state before initializing
-- **Automatic Recovery**: Missing sync manager automatically reinitializes to prevent sync errors
-- **Onboarding Protection**: Health checks prevent sync errors during organization setup
-- **State Validation**: Ensures all critical data is properly configured before sync operations
+### Data Reliability & Sync
 
-#### Enhanced Subscription Data Sync
-- **Seated Employee Sync**: Fixed missing seated employee data during company synchronization
-- **Data Preservation**: Seated employee information no longer lost during sync operations
-- **Proper DTO Extraction**: Correctly extracts and processes seated employee IDs from API responses
-- **Complete Company Sync**: All company data including billing and employee seats syncs reliably
+#### Data Health Management
+- **Health Checks on Launch**: Validates user, company, sync manager state
+- **Automatic Recovery**: Missing sync manager reinitializes automatically
+- **Onboarding Protection**: Prevents sync errors during setup
+- **State Validation**: Ensures critical data configured before sync
 
-#### Field Crew Access Control
-- **All-Projects Sync**: Field crew users now sync all company projects to local database
-- **Task-Based Filtering**: Access control happens at UI level based on task assignments
-- **Improved Performance**: Eliminates unnecessary API filtering, relies on local data access patterns
-- **Consistent Behavior**: All user roles receive complete project data for better offline support
+#### Subscription Data Sync
+- **Seated Employee Sync**: Fixed missing data during company sync
+- **Data Preservation**: Employee info no longer lost during sync
+- **Complete Company Sync**: All data including billing syncs reliably
 
-### Employee Experience Improvements
+#### Field Crew Access
+- **All-Projects Sync**: Field crew syncs all company projects locally
+- **Task-Based Filtering**: UI-level access control based on assignments
+- **Improved Performance**: Local data filtering instead of API filtering
+
+---
+
+### Employee Experience
 
 #### Unseated Employee Support
-- **Clear Messaging**: Unseated employees see helpful information about contacting their administrator
-- **Contact Actions**: Direct CALL and EMAIL buttons to reach company admin
-- **Admin Information**: Shows admin name and contact details in a minimal, tactical design
-- **Professional UI**: Matches subscription lockout view design language
+- **Clear Messaging**: Helpful info about contacting administrator
+- **Contact Actions**: Direct CALL and EMAIL buttons
+- **Admin Information**: Shows admin contact details
+- **Professional UI**: Matches subscription lockout design
 
 #### Subscription & Billing UI
-- **Refresh Mechanism**: BillingInfoView now properly updates after subscription changes
-- **SwiftUI Updates**: Forced UI refresh ensures subscription data always displays current state
-- **Employee Seat Section**: Redesigned to match subscription lockout view for consistency
+- **Refresh Mechanism**: BillingInfoView updates after changes
+- **Employee Seat Section**: Redesigned for consistency
+
+---
 
 ### Bug Fixes
 
-#### Job Board Improvements
-- **Delete Confirmation**: Task cards in job board now show confirmation alert before deletion
-- **Accidental Deletion Prevention**: Prevents unintended task removal with confirmation step
-
-#### Calendar & Event Fixes
-- **Team Member IDs**: Fixed CalendarEvent team member ID extraction and storage
-- **Data Model Consistency**: All models properly implement team member ID getters/setters
-- **Sync Reliability**: Calendar events sync team member changes reliably with task updates
+- **Delete Confirmation**: Task cards show confirmation before deletion
+- **Team Member IDs**: Fixed CalendarEvent team member handling
+- **Data Model Consistency**: All models implement team member getters/setters
+- **Sync Reliability**: Calendar events sync team changes with tasks
 
 ---
 
-## Technical Improvements
+## Technical Summary
 
-### Architecture Enhancements
-- Created `DataHealthManager` for centralized health validation
-- Implemented automatic project team member updates based on task assignments
-- Added `syncProjectTeamMembersFromTasks()` method to DataController
-- Improved offline-first architecture with `needsSync` flag usage
+### Architecture
+- Task-only scheduling (removed dual-mode)
+- SectionCard component for consistent UI
+- LoadingOverlay and DeleteConfirmation modifiers
+- Semantic OPSStyle colors and icons
+- Generic FilterSheet and DeletionSheet components
 
-### Performance Optimizations
-- Optimistic UI updates eliminate perceived lag
-- Background sync operations don't block user interface
-- Reduced API calls by syncing all projects and filtering locally
-- Removed expensive team sync from app launch sequence
-
-### Code Quality
-- Removed excessive debug logging from hot paths
-- Added comprehensive sync logging for troubleshooting
-- Improved error handling with graceful degradation
-- Better separation of concerns between sync and UI layers
-
----
-
-## Files Changed
-
-### Core Data & Sync
-- `OPS/Utilities/DataController.swift` - Added team sync logic, removed excessive logging
-- `OPS/Network/Sync/CentralizedSyncManager.swift` - Fixed project fetching for field crew, added seated employee sync
-- `OPS/Utilities/DataHealthManager.swift` - New comprehensive health validation system
-
-### UI Components
-- `OPS/Views/Components/Event/EventCarousel.swift` - Added completed overlay to home screen cards
-- `OPS/Views/Calendar Tab/Components/CalendarEventCard.swift` - Added completed overlay to calendar cards
-- `OPS/Views/Components/User/TaskTeamView.swift` - Implemented optimistic updates and offline-first behavior
-- `OPS/Views/Components/Project/TaskDetailsView.swift` - Fixed edit mode state management
-- `OPS/Onboarding/Views/Screens/BillingInfoView.swift` - Added refresh mechanism and employee seat UI improvements
-
-### Data Models
-- Multiple DTOs updated for proper team member ID handling
-- Calendar events, tasks, and projects now consistently manage team member relationships
-
----
-
-## Migration Notes
-
-### For Administrators
-- Existing projects will automatically sync team members from their tasks on next app launch
-- No manual intervention required
-- Team member changes will now propagate to both task and project levels
-
-### For Field Crews
-- Projects assigned via tasks will now appear correctly on first login
-- Improved offline access to project data
-- No configuration changes needed
+### Key Files
+- `CentralizedSyncManager.swift` - Triple-layer sync strategy
+- `OPSStyle.swift` - Centralized design system
+- `DataHealthManager.swift` - Health validation
+- `DataController.swift` - Data management and team sync
 
 ---
 
@@ -139,9 +235,10 @@ This release focuses on improving team member management, data synchronization r
 ---
 
 ## Coming Soon
-- Enhanced task scheduling features
+- Enhanced analytics dashboard
 - Additional calendar view improvements
 - Performance optimizations for large project lists
+- Continued icon migration (Track F)
 
 ---
 

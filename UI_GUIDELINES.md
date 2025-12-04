@@ -2,7 +2,7 @@
 
 **Purpose**: This document provides Claude (AI assistant) with complete UI design standards, OPSStyle reference, and field-first design principles. This ensures all generated UI code maintains brand consistency and field usability.
 
-**Last Updated**: November 18, 2025
+**Last Updated**: December 4, 2025
 
 ---
 

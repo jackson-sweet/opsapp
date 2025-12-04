@@ -2,7 +2,7 @@
 
 **Purpose**: This document provides Claude (AI assistant) with complete context on OPS app data architecture, SwiftData models, Bubble field mappings, and data handling patterns. This enables accurate code generation and debugging without introducing data integrity issues.
 
-**Last Updated**: November 19, 2025
+**Last Updated**: December 4, 2025
 
 ---
 
@@ -26,15 +26,19 @@
 
 ```swift
 @Model
-final class Project {
+final class Project: Identifiable {
     // Identity
     var id: String                    // Unique identifier
-    var name: String                  // Project title
+    var title: String                 // Project title (note: 'title' not 'name')
     var companyId: String            // Parent company
-    var clientId: String?            // Associated client
+    var clientId: String?            // Associated client Bubble ID
 
-    // Dates (Task-Only Scheduling - Nov 2025)
-    // Note: No more eventType or primaryCalendarEvent fields
+    // Stored Dates (from API)
+    var startDate: Date?             // Project start date from API
+    var endDate: Date?               // Project end date from API
+    var duration: Int?               // Duration in days from API
+
+    // Computed Dates (from tasks - Task-Only Scheduling Nov 2025)
     var computedStartDate: Date? {    // Earliest task start date
         tasks.compactMap { $0.calendarEvent?.startDate }.min()
     }
@@ -43,30 +47,35 @@ final class Project {
     }
 
     // Location
-    var street: String?
-    var city: String?
-    var state: String?
-    var zipCode: String?
+    var address: String?             // Full formatted address
     var latitude: Double?
     var longitude: Double?
 
     // Project Details
-    var notes: String = ""
-    var status: Status = .rfq        // RFQ, Estimated, Accepted, InProgress, Completed, Closed, Archived
-    var color: String = "#FFFFFF"    // Project color for calendar
+    var notes: String?
+    var projectDescription: String?
+    var status: Status               // RFQ, Estimated, Accepted, InProgress, Completed, Closed, Archived
+    var allDay: Bool                 // All-day scheduling flag
     var projectImagesString: String = ""     // Comma-separated S3 URLs
     var unsyncedImagesString: String = ""   // Comma-separated local URLs
 
-    // Team
-    var teamMemberIds: [String] = [] // Assigned team member IDs
+    // Team (stored as comma-separated string)
+    var teamMemberIdsString: String = ""
 
     // Sync
     var needsSync: Bool = false
     var syncPriority: Int = 1        // 1-3, higher = more urgent
+    var lastSyncedAt: Date?
     var deletedAt: Date?             // Soft delete timestamp
 
     // Relationships
-    @Relationship(deleteRule: .cascade) var tasks: [ProjectTask] = []
+    @Relationship(deleteRule: .nullify) var client: Client?
+    @Relationship(deleteRule: .noAction) var teamMembers: [User]
+    @Relationship(deleteRule: .cascade, inverse: \ProjectTask.project) var tasks: [ProjectTask] = []
+
+    // Transient properties (not persisted)
+    @Transient var lastTapped: Date?
+    @Transient var coordinatorData: [String: Any]?
 }
 ```
 
@@ -85,24 +94,39 @@ final class ProjectTask {
     // Identity
     var id: String
     var projectId: String
-    var taskIndex: Int               // Display order within project
+    var companyId: String
+    var taskIndex: Int?              // Index for task ordering (based on startDate)
+    var displayOrder: Int = 0        // Display order within project
 
     // Task Details
-    var title: String
-    var notes: String = ""
+    var customTitle: String?         // Optional custom title (overrides taskType.display)
+    var taskNotes: String?
     var status: TaskStatus = .booked // Booked (formerly Scheduled), InProgress, Completed, Cancelled
-    var taskTypeId: String?          // References TaskType
+    var taskTypeId: String           // References TaskType
+    var taskColor: String            // Hex color code
 
-    // Team
-    var teamMemberIds: [String] = [] // Task-specific team assignment
+    // Team (stored as comma-separated string)
+    var teamMemberIdsString: String = ""
 
     // Calendar Integration
     var calendarEventId: String?     // Links to CalendarEvent
-    var calendarEvent: CalendarEvent? // Computed relationship
 
     // Sync
+    var lastSyncedAt: Date?
     var needsSync: Bool = false
     var deletedAt: Date?
+
+    // Relationships
+    @Relationship(deleteRule: .nullify) var project: Project?
+    @Relationship(deleteRule: .cascade) var calendarEvent: CalendarEvent?
+    @Relationship(deleteRule: .nullify) var taskType: TaskType?
+    @Relationship(deleteRule: .noAction) var teamMembers: [User] = []
+
+    // Computed Properties
+    var displayTitle: String         // Returns customTitle or taskType.display
+    var effectiveColor: String       // Returns taskType.color or taskColor
+    var scheduledDate: Date?         // From calendarEvent.startDate
+    var completionDate: Date?        // From calendarEvent.endDate
 }
 ```
 
@@ -119,35 +143,45 @@ Booked → In Progress → Completed
 
 ```swift
 @Model
-final class CalendarEvent {
+final class CalendarEvent: Hashable {
     // Identity
     var id: String
     var companyId: String
-    var projectId: String?
-    var taskId: String?              // Always set for task-based scheduling
+    var projectId: String
+    var taskId: String?              // Links to task
 
     // Dates
-    var startDate: Date
-    var endDate: Date
+    var startDate: Date?
+    var endDate: Date?
+    var duration: Int                // Days
 
     // Display
     var title: String
-    var color: String                // Inherited from project or company default
+    var color: String                // Hex color code
+
+    // Team (stored as comma-separated string)
+    var teamMemberIdsString: String = ""
 
     // Sync
+    var lastSyncedAt: Date?
     var needsSync: Bool = false
     var deletedAt: Date?
 
-    // Note: Removed in Task-Only Migration (Nov 2025)
-    // - type: CalendarEventType (was .project or .task)
-    // - active: Bool (controlled which events displayed)
+    // Relationships
+    @Relationship(deleteRule: .nullify) var project: Project?
+    @Relationship(deleteRule: .nullify, inverse: \ProjectTask.calendarEvent) var task: ProjectTask?
+    @Relationship(deleteRule: .noAction) var teamMembers: [User] = []
+
+    // Computed Properties
+    var isMultiDay: Bool             // True if spans multiple days
+    var spannedDates: [Date]         // All dates this event covers
 }
 ```
 
 **Post-Migration Behavior:**
-- All calendar events are task-based (taskId is always set)
+- All calendar events should be task-based (taskId set)
 - Project dates are computed from task calendar events
-- No more dual-scheduling modes
+- BubbleFields.swift still has `eventType` and `active` fields for API compatibility
 
 #### 4. TaskType
 **Customizable task categories** with visual identity.
@@ -951,7 +985,7 @@ func performHealthCheck() {
 ## File Structure
 
 ```
-/Data Models/
+/OPS/DataModels/
   ├── Project.swift
   ├── ProjectTask.swift
   ├── CalendarEvent.swift
@@ -959,9 +993,17 @@ func performHealthCheck() {
   ├── Client.swift
   ├── SubClient.swift
   ├── User.swift
-  └── Company.swift
+  ├── Company.swift
+  ├── Status.swift
+  ├── UserRole.swift
+  ├── BubbleTypes.swift
+  ├── BubbleImage.swift
+  ├── TeamMember.swift
+  ├── OpsContact.swift
+  ├── SubscriptionEnums.swift
+  └── TaskStatusOption.swift
 
-/Network/DTOs/
+/OPS/Network/DTOs/
   ├── ProjectDTO.swift
   ├── TaskDTO.swift
   ├── CalendarEventDTO.swift
@@ -969,13 +1011,17 @@ func performHealthCheck() {
   ├── ClientDTO.swift
   ├── SubClientDTO.swift
   ├── UserDTO.swift
-  └── CompanyDTO.swift
+  ├── CompanyDTO.swift
+  ├── AppMessageDTO.swift
+  ├── OpsContactDTO.swift
+  └── TaskStatusOptionDTO.swift
 
-/Network/
+/OPS/Network/API/
   ├── BubbleFields.swift      // Field name constants
-  ├── APIService.swift         // API client
-  └── Sync/
-      └── CentralizedSyncManager.swift
+  └── APIService.swift         // API client
+
+/OPS/Network/Sync/
+  └── CentralizedSyncManager.swift
 ```
 
 ---

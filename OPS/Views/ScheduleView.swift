@@ -131,6 +131,9 @@ struct ScheduleView: View {
         }
         // Initialize on appear
         .onAppear {
+            // Track screen view for analytics
+            AnalyticsManager.shared.trackScreenView(screenName: .schedule, screenClass: "ScheduleView")
+
             // Initialize with proper data controller
             viewModel.setDataController(dataController)
         }

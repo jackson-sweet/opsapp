@@ -394,6 +394,10 @@ struct ClientSheet: View {
                     selectionLimit: 1
                 )
             }
+            .onAppear {
+                // Track screen view for analytics
+                AnalyticsManager.shared.trackScreenView(screenName: .clientForm, screenClass: "ClientSheet")
+            }
         }
     }
     
@@ -528,6 +532,14 @@ struct ClientSheet: View {
                         let generator = UINotificationFeedbackGenerator()
                         generator.notificationOccurred(.success)
 
+                        // Track client creation for analytics
+                        AnalyticsManager.shared.trackClientCreated(
+                            hasEmail: !email.isEmpty,
+                            hasPhone: !phone.isEmpty,
+                            hasAddress: !address.isEmpty,
+                            importMethod: .manual
+                        )
+
                         // Post notification for success message overlay
                         NotificationCenter.default.post(
                             name: Notification.Name("ClientCreatedSuccess"),
@@ -549,6 +561,9 @@ struct ClientSheet: View {
                         // Success haptic feedback
                         let generator = UINotificationFeedbackGenerator()
                         generator.notificationOccurred(.success)
+
+                        // Track client edit for analytics
+                        AnalyticsManager.shared.trackClientEdited(clientId: client.id)
 
                         onSave(client)
 

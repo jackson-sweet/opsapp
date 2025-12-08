@@ -271,6 +271,9 @@ struct TaskFormSheet: View {
             }
         }
         .onAppear {
+            // Track screen view for analytics
+            AnalyticsManager.shared.trackScreenView(screenName: .taskForm, screenClass: "TaskFormSheet")
+
             if let selectedProject = selectedProject {
                 projectSearchText = selectedProject.title
             }
@@ -1006,6 +1009,18 @@ struct TaskFormSheet: View {
 
                     isSaving = false
                     onSave?(task)
+
+                    // Track analytics for task creation/edit
+                    if case .create = mode {
+                        let hasSchedule = startDate != nil || endDate != nil
+                        AnalyticsManager.shared.trackTaskCreated(
+                            taskType: selectedTaskType?.display,
+                            hasSchedule: hasSchedule,
+                            teamSize: selectedTeamMemberIds.count
+                        )
+                    } else if case .edit = mode {
+                        AnalyticsManager.shared.trackTaskEdited(taskId: task.id)
+                    }
 
                     // Post notification for success message overlay
                     let taskTypeName = selectedTaskType?.display ?? ""

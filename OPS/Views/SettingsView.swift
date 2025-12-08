@@ -191,6 +191,10 @@ struct SettingsView: View {
                 .padding(.bottom, 90) // Add padding for tab bar
             }
         }
+        .onAppear {
+            // Track screen view for analytics
+            AnalyticsManager.shared.trackScreenView(screenName: .settings, screenClass: "SettingsView")
+        }
         .sheet(isPresented: $showingSearchSheet) {
             SettingsSearchSheet(allSearchableSettings: allSearchableSettings)
                 .environmentObject(dataController)

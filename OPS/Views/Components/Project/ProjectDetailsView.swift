@@ -333,6 +333,9 @@ struct ProjectDetailsView: View {
     // MARK: - Actions
 
     private func handleOnAppear() {
+        // Track screen view for analytics
+        AnalyticsManager.shared.trackScreenView(screenName: .projectDetails, screenClass: "ProjectDetailsView")
+
         DispatchQueue.main.async {
             if let appState = dataController.appState {
                 if InProgressManager.shared.isRouting && appState.activeProjectID != project.id {

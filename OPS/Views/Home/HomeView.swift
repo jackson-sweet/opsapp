@@ -108,14 +108,17 @@ struct HomeView: View {
             userStoppedRouting = true
         }
         .onAppear {
+            // Track screen view for analytics
+            AnalyticsManager.shared.trackScreenView(screenName: .home, screenClass: "HomeView")
+
             // Initialize location status
             locationStatus = locationManager.authorizationStatus
-            
+
             // Load projects
             loadTodaysProjects()
-            
+
             // Debug log
-            
+
             // Set up periodic route refreshes for navigation
             if appState.isInProjectMode {
                 // Schedule route refresh every 30 seconds while in project mode

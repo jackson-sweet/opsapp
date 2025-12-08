@@ -131,6 +131,22 @@ struct JobBoardView: View {
                         // Preload clients in background when Job Board first appears
                         await preloadClientsData()
                     }
+                    .onAppear {
+                        // Track screen view for analytics
+                        AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
+                    }
+                    .onChange(of: selectedSection) { _, newSection in
+                        // Track section changes within Job Board
+                        let screenName: ScreenName = {
+                            switch newSection {
+                            case .dashboard: return .jobBoardDashboard
+                            case .projects: return .jobBoardProjects
+                            case .tasks: return .jobBoardTasks
+                            case .clients: return .jobBoardClients
+                            }
+                        }()
+                        AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
+                    }
 
                 }
 

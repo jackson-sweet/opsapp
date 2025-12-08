@@ -163,6 +163,9 @@ struct TaskDetailsView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
+            // Track screen view for analytics
+            AnalyticsManager.shared.trackScreenView(screenName: .taskDetails, screenClass: "TaskDetailsView")
+
             loadTaskTeamMembers()
             logTaskTeamMemberData()
         }

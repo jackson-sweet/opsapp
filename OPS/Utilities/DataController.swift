@@ -306,7 +306,15 @@ class DataController: ObservableObject {
                     
                     if let user = users.first {
                         self.currentUser = user
-                        
+
+                        // Link user to OneSignal for push notifications
+                        NotificationManager.shared.linkUserToOneSignal()
+
+                        // Configure OneSignal service for sending notifications
+                        Task {
+                            await OneSignalService.shared.configure()
+                        }
+
                         // Initialize sync manager
                         initializeSyncManager()
                         return
@@ -347,14 +355,22 @@ class DataController: ObservableObject {
                         
                         if let user = users.first {
                             self.currentUser = user
-                            
+
+                            // Link user to OneSignal for push notifications
+                            NotificationManager.shared.linkUserToOneSignal()
+
+                            // Configure OneSignal service for sending notifications
+                            Task {
+                                await OneSignalService.shared.configure()
+                            }
+
                             // Only set isAuthenticated if user has completed onboarding
                             if user.hasCompletedAppOnboarding {
                                 self.isAuthenticated = true
                             } else {
                                 self.isAuthenticated = false
                             }
-                            
+
                             if let companyId = user.companyId {
                                 UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
                                 UserDefaults.standard.set(companyId, forKey: "company_id")
@@ -812,6 +828,14 @@ class DataController: ObservableObject {
 
         UserDefaults.standard.set(user.id, forKey: "currentUserId")
 
+        // Link user to OneSignal for push notifications
+        NotificationManager.shared.linkUserToOneSignal()
+
+        // Configure OneSignal service for sending notifications
+        Task {
+            await OneSignalService.shared.configure()
+        }
+
         // Initialize sync managers first
         initializeSyncManager()
 
@@ -919,16 +943,22 @@ class DataController: ObservableObject {
     @MainActor
     func logout() {
         print("[LOGOUT] Starting logout process...")
-        
+
+        // Unlink user from OneSignal
+        NotificationManager.shared.unlinkUserFromOneSignal()
+
+        // Clear OneSignal service configuration
+        OneSignalService.shared.clearConfiguration()
+
         // First, clear the current user reference to prevent views from accessing it
         self.currentUser = nil
-        
+
         // Post notification to reset app state and dismiss views
         NotificationCenter.default.post(name: NSNotification.Name("LogoutInitiated"), object: nil)
-        
+
         // IMPORTANT: Clear auth state to trigger view dismissal
         clearAuthentication()
-        
+
         // Sign out from auth manager
         authManager.signOut()
         
@@ -3248,6 +3278,17 @@ class DataController: ObservableObject {
             }
         )
 
+        // Track task status change for analytics
+        AnalyticsManager.shared.trackTaskStatusChanged(
+            oldStatus: oldStatus.rawValue,
+            newStatus: newStatus.rawValue
+        )
+
+        // Track task completion as high-value event
+        if newStatus == .completed {
+            AnalyticsManager.shared.trackTaskCompleted(taskType: task.taskType?.display)
+        }
+
         // Check if we need to update project status based on task status change
         if let project = project {
             await updateProjectStatusBasedOnTaskChange(
@@ -3302,6 +3343,9 @@ class DataController: ObservableObject {
     ///   - newStatus: The new status to set
     @MainActor
     func updateProjectStatus(project: Project, to newStatus: Status) async throws {
+        // Capture previous status to detect completion
+        let previousStatus = project.status
+
         try await performSyncedOperation(
             item: project,
             operationName: "UPDATE_PROJECT_STATUS",
@@ -3316,6 +3360,30 @@ class DataController: ObservableObject {
                 project.lastSyncedAt = Date()
             }
         )
+
+        // Track project status change for analytics
+        AnalyticsManager.shared.trackProjectStatusChanged(
+            oldStatus: previousStatus.rawValue,
+            newStatus: newStatus.rawValue
+        )
+
+        // Send push notification if project was just marked as completed
+        if newStatus == .completed && previousStatus != .completed {
+            let teamMemberIds = project.getTeamMemberIds()
+            if !teamMemberIds.isEmpty, OneSignalService.shared.isConfigured {
+                Task {
+                    do {
+                        try await OneSignalService.shared.notifyProjectCompletion(
+                            userIds: teamMemberIds,
+                            projectName: project.title,
+                            projectId: project.id
+                        )
+                    } catch {
+                        print("[NOTIFICATIONS] Failed to send project completion notification: \(error)")
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Calendar Event Operations
@@ -3326,6 +3394,10 @@ class DataController: ObservableObject {
         // Store task/project references before async operation
         let task = event.task
         let project = task?.project
+
+        // Capture previous dates to detect actual changes
+        let previousStartDate = event.startDate
+        let previousEndDate = event.endDate
 
         try await performSyncedOperation(
             item: event,
@@ -3353,6 +3425,27 @@ class DataController: ObservableObject {
                 event.lastSyncedAt = Date()
             }
         )
+
+        // Send schedule change notification if dates actually changed
+        let datesChanged = previousStartDate != startDate || previousEndDate != endDate
+        if datesChanged, let task = task, let project = project, OneSignalService.shared.isConfigured {
+            let teamMemberIds = task.getTeamMemberIds()
+            if !teamMemberIds.isEmpty {
+                Task {
+                    do {
+                        try await OneSignalService.shared.notifyScheduleChange(
+                            userIds: teamMemberIds,
+                            taskName: task.displayTitle,
+                            projectName: project.title,
+                            taskId: task.id,
+                            projectId: project.id
+                        )
+                    } catch {
+                        print("[NOTIFICATIONS] Failed to send schedule change notification: \(error)")
+                    }
+                }
+            }
+        }
 
         // Recalculate task indices if this event is linked to a task
         // This runs regardless of whether calendar sync succeeded
@@ -3452,6 +3545,11 @@ class DataController: ObservableObject {
     /// Update task team members - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateTaskTeamMembers(task: ProjectTask, memberIds: [String]) async throws {
+        // Capture previous team members before update to detect new assignments
+        let previousMemberIds = Set(task.getTeamMemberIds())
+        let newMemberIds = Set(memberIds)
+        let addedMemberIds = newMemberIds.subtracting(previousMemberIds)
+
         try await performSyncedOperation(
             item: task,
             operationName: "UPDATE_TASK_TEAM",
@@ -3466,6 +3564,28 @@ class DataController: ObservableObject {
                 task.lastSyncedAt = Date()
             }
         )
+
+        // Send push notifications to newly added team members
+        if !addedMemberIds.isEmpty, OneSignalService.shared.isConfigured {
+            let taskName = task.displayTitle
+            let projectName = task.project?.title ?? "Project"
+
+            for userId in addedMemberIds {
+                Task {
+                    do {
+                        try await OneSignalService.shared.notifyTaskAssignment(
+                            userId: userId,
+                            taskName: taskName,
+                            projectName: projectName,
+                            taskId: task.id,
+                            projectId: task.project?.id ?? ""
+                        )
+                    } catch {
+                        print("[NOTIFICATIONS] Failed to send task assignment notification: \(error)")
+                    }
+                }
+            }
+        }
 
         // After updating task team members, sync project team members
         // Project team members should be the union of all task team members

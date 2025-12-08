@@ -35,6 +35,19 @@ struct MainTabView: View {
     // Observer for navigating to map view
     private let navigateToMapObserver = NotificationCenter.default
         .publisher(for: Notification.Name("NavigateToMapView"))
+
+    // Push notification deep linking observers
+    private let openProjectDetailsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenProjectDetails"))
+
+    private let openTaskDetailsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenTaskDetails"))
+
+    private let openScheduleObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenSchedule"))
+
+    private let openJobBoardObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenJobBoard"))
     
     // Keyboard observers
     private let keyboardWillShow = NotificationCenter.default
@@ -191,9 +204,65 @@ struct MainTabView: View {
             }
         }
 
-        // Track tab changes for slide transitions
+        // MARK: - Push Notification Deep Linking Handlers
+
+        // Handle opening project details from push notification
+        .onReceive(openProjectDetailsObserver) { notification in
+            if let projectId = notification.userInfo?["projectId"] as? String {
+                print("[PUSH_NAVIGATION] Opening project details for: \(projectId)")
+                DispatchQueue.main.async {
+                    appState.viewProjectDetailsById(projectId)
+                }
+            }
+        }
+
+        // Handle opening task details from push notification
+        .onReceive(openTaskDetailsObserver) { notification in
+            if let taskId = notification.userInfo?["taskId"] as? String,
+               let projectId = notification.userInfo?["projectId"] as? String {
+                print("[PUSH_NAVIGATION] Opening task details - Task: \(taskId), Project: \(projectId)")
+                DispatchQueue.main.async {
+                    // Post to ShowTaskDetailsFromHome which is handled by HomeView
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ShowTaskDetailsFromHome"),
+                        object: nil,
+                        userInfo: ["taskID": taskId, "projectID": projectId]
+                    )
+                }
+            }
+        }
+
+        // Handle opening schedule view from push notification
+        .onReceive(openScheduleObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening schedule view")
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selectedTab = 2 // Schedule tab
+            }
+        }
+
+        // Handle opening job board from push notification
+        .onReceive(openJobBoardObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening job board")
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selectedTab = 1 // Job Board tab
+            }
+        }
+
+        // Track tab changes for slide transitions and analytics
         .onChange(of: selectedTab) { oldValue, newValue in
             previousTab = oldValue
+
+            // Track tab selection for analytics
+            let tabName: TabName = {
+                switch newValue {
+                case 0: return .home
+                case 1: return .jobBoard
+                case 2: return .schedule
+                case 3: return .settings
+                default: return .home
+                }
+            }()
+            AnalyticsManager.shared.trackTabSelected(tabName: tabName)
         }
 
         // Handle keyboard appearance - but ignore if from a sheet

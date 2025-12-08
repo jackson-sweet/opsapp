@@ -3287,6 +3287,32 @@ class DataController: ObservableObject {
         // Track task completion as high-value event
         if newStatus == .completed {
             AnalyticsManager.shared.trackTaskCompleted(taskType: task.taskType?.display)
+
+            // Send task completion notification to all project team members
+            if let project = project, OneSignalService.shared.isConfigured {
+                let projectTeamMemberIds = project.teamMembers.map { $0.id }
+                if !projectTeamMemberIds.isEmpty {
+                    let taskName = task.displayTitle
+                    let projectName = project.title
+                    let completedByName = currentUser?.fullName
+
+                    Task {
+                        do {
+                            try await OneSignalService.shared.notifyTaskCompletion(
+                                userIds: projectTeamMemberIds,
+                                taskName: taskName,
+                                projectName: projectName,
+                                taskId: task.id,
+                                projectId: project.id,
+                                completedByName: completedByName
+                            )
+                        } catch {
+                            print("[TASK_STATUS] ⚠️ Failed to send task completion notification: \(error)")
+                        }
+                    }
+                    print("[TASK_STATUS] 📬 Task completion notification queued for \(projectTeamMemberIds.count) project team members")
+                }
+            }
         }
 
         // Check if we need to update project status based on task status change

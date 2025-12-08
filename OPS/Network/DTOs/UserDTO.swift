@@ -21,6 +21,7 @@ struct UserDTO: Codable {
     let hasCompletedAppOnboarding: Bool?
     let authentication: Authentication?
     let stripeCustomerId: String?
+    let deviceToken: String?  // APNs device token for push notifications
 
     // Soft delete support
     let deletedAt: String?
@@ -57,6 +58,7 @@ struct UserDTO: Codable {
         case devPermission = "devPermission" // Bool indicating if user has dev permission for testing features.
         case hasCompletedAppOnboarding = "hasCompletedAppOnboarding" // Bool indicating if user has completed app onboarding.
         case stripeCustomerId = "stripeCustomerId" // User's Stripe customer ID
+        case deviceToken = "deviceToken" // APNs device token for push notifications
         case deletedAt = "deletedAt" // Soft delete timestamp
     }
     
@@ -110,7 +112,10 @@ struct UserDTO: Codable {
         
         // Handle Stripe customer ID
         user.stripeCustomerId = stripeCustomerId
-        
+
+        // Handle device token if available
+        user.deviceToken = deviceToken
+
         // Handle phone number if available
         if let phoneNumber = phone {
             user.phone = phoneNumber

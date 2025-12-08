@@ -19,12 +19,25 @@ struct NotificationSettingsView: View {
     @AppStorage("notifyProjectCompletion") private var notifyProjectCompletion = true
     
     // Advance notice settings
-    @AppStorage("notifyProjectAdvance") private var notifyProjectAdvance = true
+    @AppStorage("notifyAdvanceNotice") private var notifyProjectAdvance = true
     @AppStorage("advanceNoticeDays1") private var advanceNoticeDays1 = 1
     @AppStorage("advanceNoticeDays2") private var advanceNoticeDays2 = 0  // Default to None
     @AppStorage("advanceNoticeDays3") private var advanceNoticeDays3 = 0  // Default to None
     @AppStorage("advanceNoticeHour") private var advanceNoticeHour = 8
     @AppStorage("advanceNoticeMinute") private var advanceNoticeMinute = 0
+
+    // Do Not Disturb settings
+    @AppStorage("quietHoursEnabled") private var quietHoursEnabled = false
+    @AppStorage("quietHoursStart") private var quietHoursStart = 22  // 10 PM
+    @AppStorage("quietHoursEnd") private var quietHoursEnd = 7       // 7 AM
+
+    // Priority filter settings
+    @AppStorage("notificationPriority") private var notificationPriority = "all"
+
+    // Temporary mute settings
+    @AppStorage("isMuted") private var isMuted = false
+    @AppStorage("muteUntil") private var muteUntil: Double = 0  // Timestamp
+    @State private var muteHours: Int = 1
     
     // Computed property for the notification time
     private var notificationTime: Date {
@@ -123,6 +136,24 @@ struct NotificationSettingsView: View {
                             testNotificationCard
                         }
                         .padding(.horizontal, 20)
+
+                        // MARK: - Do Not Disturb Section
+                        SectionCard(
+                            icon: "moon.fill",
+                            title: "Do Not Disturb"
+                        ) {
+                            doNotDisturbSettings
+                        }
+                        .padding(.horizontal, 20)
+
+                        // MARK: - Temporary Mute Section
+                        SectionCard(
+                            icon: "bell.slash",
+                            title: "Temporary Mute"
+                        ) {
+                            temporaryMuteSettings
+                        }
+                        .padding(.horizontal, 20)
                     }
                     .padding(.bottom, 40)
                 }
@@ -131,6 +162,8 @@ struct NotificationSettingsView: View {
         .navigationBarBackButtonHidden(true)
         .onAppear {
             notificationManager.getAuthorizationStatus()
+            // Check if mute has expired
+            checkMuteExpiration()
         }
     }
     
@@ -245,9 +278,9 @@ struct NotificationSettingsView: View {
                     // Enabled - schedule notifications
                     rescheduleAllNotifications()
                 } else {
-                    // Disabled - cancel all project notifications
+                    // Disabled - cancel all advance notice notifications
                     Task {
-                        await notificationManager.cancelAllProjectNotifications()
+                        await notificationManager.removeAllAdvanceNotices()
                     }
                 }
             }
@@ -354,17 +387,214 @@ struct NotificationSettingsView: View {
         }
     }
     
-    // MARK: - Helper Components
-    
+    // MARK: - Do Not Disturb Settings
+
+    private var doNotDisturbSettings: some View {
+        VStack(spacing: 16) {
+            // Enable toggle
+            SettingsToggle(
+                title: "Quiet Hours",
+                description: "Silence notifications during set hours",
+                isOn: $quietHoursEnabled
+            )
+
+            // Time window (only show if enabled)
+            if quietHoursEnabled {
+                Divider()
+                    .background(OPSStyle.Colors.cardBorder)
+                    .padding(.vertical, 8)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("QUIET HOURS")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    HStack(spacing: 16) {
+                        // Start time picker
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("From")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            Menu {
+                                ForEach(0..<24, id: \.self) { hour in
+                                    Button {
+                                        quietHoursStart = hour
+                                    } label: {
+                                        if quietHoursStart == hour {
+                                            Label(formatHour(hour), systemImage: "checkmark")
+                                        } else {
+                                            Text(formatHour(hour))
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text(formatHour(quietHoursStart))
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(.white)
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(OPSStyle.Colors.cardBackground)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            }
+                        }
+
+                        // End time picker
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("To")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            Menu {
+                                ForEach(0..<24, id: \.self) { hour in
+                                    Button {
+                                        quietHoursEnd = hour
+                                    } label: {
+                                        if quietHoursEnd == hour {
+                                            Label(formatHour(hour), systemImage: "checkmark")
+                                        } else {
+                                            Text(formatHour(hour))
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text(formatHour(quietHoursEnd))
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(.white)
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(OPSStyle.Colors.cardBackground)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            }
+                        }
+
+                        Spacer()
+                    }
+
+                    // Summary text
+                    Text("Notifications silenced \(formatHour(quietHoursStart)) - \(formatHour(quietHoursEnd))")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.top, 4)
+                }
+            }
+        }
+    }
+
+    // MARK: - Temporary Mute Settings
+
+    private var temporaryMuteSettings: some View {
+        VStack(spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Mute All Notifications")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(.white)
+
+                    Text("Silence all notifications temporarily")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $isMuted)
+                    .labelsHidden()
+                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                    .onChange(of: isMuted) { _, newValue in
+                        if newValue {
+                            // Set mute end time
+                            muteUntil = Date().addingTimeInterval(Double(muteHours) * 3600).timeIntervalSince1970
+                        } else {
+                            // Clear mute
+                            muteUntil = 0
+                        }
+                    }
+            }
+
+            if isMuted {
+                Divider()
+                    .background(OPSStyle.Colors.cardBorder)
+                    .padding(.vertical, 8)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("MUTE DURATION")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    // Duration options
+                    HStack(spacing: 8) {
+                        ForEach([1, 2, 4, 8, 24], id: \.self) { hours in
+                            Button {
+                                muteHours = hours
+                                muteUntil = Date().addingTimeInterval(Double(hours) * 3600).timeIntervalSince1970
+                            } label: {
+                                Text("\(hours)h")
+                                    .font(OPSStyle.Typography.caption)
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 12)
+                                    .background(muteHours == hours ?
+                                                OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
+                                    .foregroundColor(muteHours == hours ? .black : .white)
+                                    .cornerRadius(16)
+                            }
+                        }
+                    }
+
+                    // Show when notifications will resume
+                    if muteUntil > Date().timeIntervalSince1970 {
+                        let endDate = Date(timeIntervalSince1970: muteUntil)
+                        HStack {
+                            Image(systemName: "bell.slash.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+
+                            Text("Muted until \(endDate.formatted(date: .omitted, time: .shortened))")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Helper Functions
+
+    private func formatHour(_ hour: Int) -> String {
+        let hourDisplay = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)
+        let amPm = hour >= 12 ? "PM" : "AM"
+        return "\(hourDisplay) \(amPm)"
+    }
+
+    private func checkMuteExpiration() {
+        // If mute time has passed, disable mute
+        if isMuted && muteUntil > 0 && muteUntil < Date().timeIntervalSince1970 {
+            isMuted = false
+            muteUntil = 0
+        }
+    }
+
     private func sendTestNotification() {
         // Schedule a test notification for 5 seconds from now
         let testDate = Date().addingTimeInterval(5)
-        
+
         // Format the time for display
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         let timeString = formatter.string(from: notificationTime)
-        
+
         _ = notificationManager.scheduleProjectNotification(
             projectId: "test",
             title: "OPS Test Notification",
@@ -372,11 +602,12 @@ struct NotificationSettingsView: View {
             date: testDate
         )
     }
-    
+
     private func rescheduleAllNotifications() {
         Task {
             guard let modelContext = dataController.modelContext else { return }
-            await notificationManager.scheduleNotificationsForAllProjects(using: modelContext)
+            // Use task-based scheduling instead of project-based
+            await notificationManager.scheduleAdvanceNoticesForAllTasks(using: modelContext)
         }
     }
 }

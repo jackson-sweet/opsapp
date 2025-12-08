@@ -1425,6 +1425,31 @@ struct ProjectFormSheet: View {
                 }
             }
 
+            // Send project assignment notifications to team members (who don't have tasks)
+            // Note: Team members who have tasks will get task assignment notifications instead
+            let projectTeamMemberIds = Set(project.teamMembers.map { $0.id })
+            let taskTeamMemberIds = Set(localTasks.flatMap { $0.teamMemberIds })
+            let projectOnlyMemberIds = projectTeamMemberIds.subtracting(taskTeamMemberIds)
+
+            if !projectOnlyMemberIds.isEmpty && OneSignalService.shared.isConfigured {
+                let projectName = project.title
+
+                for userId in projectOnlyMemberIds {
+                    Task {
+                        do {
+                            try await OneSignalService.shared.notifyProjectAssignment(
+                                userId: userId,
+                                projectName: projectName,
+                                projectId: bubbleProjectId
+                            )
+                        } catch {
+                            print("[PROJECT_CREATE] ⚠️ Failed to send project notification to \(userId): \(error)")
+                        }
+                    }
+                }
+                print("[PROJECT_CREATE] 📬 Project assignment notifications queued for \(projectOnlyMemberIds.count) team members")
+            }
+
             // Continue with linking and other operations in background
             let capturedDataController = dataController
             let capturedModelContext = modelContext
@@ -1645,6 +1670,30 @@ struct ProjectFormSheet: View {
                 task.needsSync = false
                 task.lastSyncedAt = Date()
                 try? modelContext.save()
+            }
+
+            // Send task assignment notifications to team members
+            let teamMemberIds = task.teamMembers.map { $0.id }
+            if !teamMemberIds.isEmpty && OneSignalService.shared.isConfigured {
+                let taskName = task.displayTitle
+                let projectName = project.title
+
+                for userId in teamMemberIds {
+                    Task {
+                        do {
+                            try await OneSignalService.shared.notifyTaskAssignment(
+                                userId: userId,
+                                taskName: taskName,
+                                projectName: projectName,
+                                taskId: bubbleTaskId,
+                                projectId: project.id
+                            )
+                        } catch {
+                            print("[TASK_CREATE] ⚠️ Failed to send notification to \(userId): \(error)")
+                        }
+                    }
+                }
+                print("[TASK_CREATE] 📬 Task assignment notifications queued for \(teamMemberIds.count) team members")
             }
         } catch {
             print("[TASK_CREATE] ⚠️ Failed to sync task to Bubble: \(error)")

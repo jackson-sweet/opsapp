@@ -145,6 +145,9 @@ class CentralizedSyncManager {
             debugLog("  - Calendar Events: \(eventCount)", enabled: DebugFlags.syncAll)
         }
 
+        // Start notification batching to prevent notification spam during sync
+        NotificationBatcher.shared.startBatch()
+
         do {
             // Sync in dependency order (parents before children)
             debugLog("→ Syncing Company...", enabled: DebugFlags.syncAll)
@@ -171,6 +174,14 @@ class CentralizedSyncManager {
             debugLog("→ Linking Relationships...", enabled: DebugFlags.syncAll)
             try await linkAllRelationships()
 
+            // Schedule local advance notice notifications for user's assigned tasks
+            debugLog("→ Scheduling task notifications...", enabled: DebugFlags.syncAll)
+            await scheduleTaskNotifications()
+
+            // Flush batched notifications - sends summary notifications
+            debugLog("→ Flushing notification batch...", enabled: DebugFlags.syncAll)
+            NotificationBatcher.shared.flushBatch()
+
             // Log current data counts AFTER sync
             if DebugFlags.syncAll {
                 let companyCount = (try? modelContext.fetchCount(FetchDescriptor<Company>())) ?? 0
@@ -195,6 +206,8 @@ class CentralizedSyncManager {
             debugLog("✅ Complete sync finished successfully at \(lastSyncDate)", enabled: DebugFlags.syncAll)
             print("[SYNC_ALL] ✅ Complete sync finished")
         } catch {
+            // Cancel notification batch on sync error
+            NotificationBatcher.shared.cancelBatch()
             debugLog("❌ Sync failed with error: \(error)", enabled: DebugFlags.syncAll)
             print("[SYNC_ALL] ❌ Sync failed: \(error)")
             throw error
@@ -251,15 +264,22 @@ class CentralizedSyncManager {
 
         print("[SYNC_BG] 🔄 Background refresh...")
 
+        // Start notification batching for background sync
+        NotificationBatcher.shared.startBatch()
+
         do {
             // Only sync data likely to have changed
             try await syncProjects(sinceDate: lastSyncDate)
             try await syncCalendarEvents(sinceDate: lastSyncDate)
             try await syncTasks(sinceDate: lastSyncDate)
 
+            // Flush batched notifications
+            NotificationBatcher.shared.flushBatch()
+
             lastSyncDate = Date()
             print("[SYNC_BG] ✅ Background refresh complete")
         } catch {
+            NotificationBatcher.shared.cancelBatch()
             print("[SYNC_BG] ❌ Refresh failed: \(error)")
             throw error
         }
@@ -1910,6 +1930,15 @@ class CentralizedSyncManager {
         if deletedCount > 0 {
             print("[DELETION] ✅ Soft deleted \(deletedCount) calendar events")
         }
+    }
+
+    // MARK: - Notification Scheduling
+
+    /// Schedule local advance notice notifications for user's assigned tasks
+    /// Called after sync completes and relationships are linked
+    private func scheduleTaskNotifications() async {
+        print("[NOTIFICATIONS] 📅 Scheduling task advance notices after sync...")
+        await NotificationManager.shared.scheduleAdvanceNoticesForAllTasks(using: modelContext)
     }
 
     // MARK: - Helper Functions (Get or Create)

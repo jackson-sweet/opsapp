@@ -36,7 +36,10 @@ final class User {
     
     // Stripe integration
     var stripeCustomerId: String?  // User's Stripe customer ID (for plan holders)
-    
+
+    // Push notifications
+    var deviceToken: String?  // APNs device token for push notifications
+
     // Fixed relationship with proper inverse that matches Project's declaration
     @Relationship(deleteRule: .noAction, inverse: \Project.teamMembers)
     var assignedProjects: [Project]

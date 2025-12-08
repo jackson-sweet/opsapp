@@ -11,6 +11,7 @@ import UIKit
 import Combine
 import CoreLocation
 import SwiftData
+import OneSignalFramework
 
 /// Notification categories for different types of notifications
 enum NotificationCategory: String {
@@ -30,6 +31,34 @@ enum NotificationAction: String {
     case accept = "ACCEPT_ACTION"
     case decline = "DECLINE_ACTION"
     case dismiss = "DISMISS_ACTION"
+}
+
+/// Notification priority levels for filtering
+enum NotificationPriorityLevel: String {
+    case normal = "normal"
+    case important = "important"
+    case critical = "critical"
+}
+
+/// Errors that can occur during notification operations
+enum NotificationError: Error, LocalizedError {
+    case permissionDenied
+    case schedulingFailed(String)
+    case tokenSyncFailed(Error)
+    case invalidDate
+
+    var errorDescription: String? {
+        switch self {
+        case .permissionDenied:
+            return "Notification permissions not granted"
+        case .schedulingFailed(let reason):
+            return "Failed to schedule notification: \(reason)"
+        case .tokenSyncFailed(let error):
+            return "Failed to sync device token: \(error.localizedDescription)"
+        case .invalidDate:
+            return "Invalid date for notification"
+        }
+    }
 }
 
 /// Manages all notification-related functionality including requesting permissions,
@@ -413,9 +442,78 @@ class NotificationManager: NSObject, ObservableObject {
     func handleDeviceTokenRegistration(deviceToken: Data) {
         let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
         let token = tokenParts.joined()
-        
-        // Store device token in UserDefaults for later use
+
+        print("[NOTIFICATIONS] Device token received: \(token.prefix(20))...")
+
+        // Check if token changed from previous value
+        let previousToken = UserDefaults.standard.string(forKey: "apns_device_token")
+
+        // Store device token in UserDefaults
         UserDefaults.standard.set(token, forKey: "apns_device_token")
+
+        // Sync to Bubble if token changed or first time
+        if token != previousToken {
+            print("[NOTIFICATIONS] Token changed, syncing to Bubble...")
+            Task {
+                await syncDeviceTokenToBubble(token: token)
+            }
+        } else {
+            print("[NOTIFICATIONS] Token unchanged, skipping sync")
+        }
+    }
+
+    /// Sync the device token to the Bubble backend
+    @MainActor
+    func syncDeviceTokenToBubble(token: String) async {
+        // Get current user ID from UserDefaults
+        guard let userId = UserDefaults.standard.string(forKey: "currentUserId") else {
+            print("[NOTIFICATIONS] Cannot sync token - no user ID found")
+            return
+        }
+
+        print("[NOTIFICATIONS] Syncing device token for user: \(userId)")
+
+        do {
+            try await updateUserDeviceToken(userId: userId, token: token)
+            print("[NOTIFICATIONS] ✅ Device token synced to Bubble successfully")
+        } catch {
+            print("[NOTIFICATIONS] ❌ Failed to sync device token: \(error.localizedDescription)")
+            // Token will be re-synced on next app launch when token registration is called again
+        }
+    }
+
+    /// Update user's device token on Bubble backend
+    private func updateUserDeviceToken(userId: String, token: String) async throws {
+        let baseURL = "https://opsapp.co/api/1.1/obj/user/"
+
+        guard let url = URL(string: baseURL + userId) else {
+            throw NSError(domain: "NotificationManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            BubbleFields.User.deviceToken: token
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "NotificationManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+
+        print("[NOTIFICATIONS] Device token PATCH response: \(httpResponse.statusCode)")
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("[NOTIFICATIONS] Error response: \(responseString)")
+            }
+            throw NSError(domain: "NotificationManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP error \(httpResponse.statusCode)"])
+        }
     }
     
     /// Open app settings for notification permissions
@@ -423,6 +521,113 @@ class NotificationManager: NSObject, ObservableObject {
         if let url = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(url)
         }
+    }
+
+    // MARK: - OneSignal User Linking
+
+    /// Link current user to OneSignal for targeted push notifications
+    /// Call this after user logs in successfully
+    func linkUserToOneSignal() {
+        guard let userId = UserDefaults.standard.string(forKey: "currentUserId") else {
+            print("[ONESIGNAL] Cannot link user - no user ID found")
+            return
+        }
+
+        // Login to OneSignal with external user ID
+        OneSignal.login(userId)
+        print("[ONESIGNAL] Linked user ID: \(userId)")
+
+        // Add tags for segmentation (optional but useful)
+        // Try multiple keys since user type can be stored in different places
+        let userRole = UserDefaults.standard.string(forKey: "selected_user_type")
+            ?? UserDefaults.standard.string(forKey: "user_type")
+            ?? UserDefaults.standard.string(forKey: "user_type_raw")
+
+        if let role = userRole {
+            OneSignal.User.addTag(key: "role", value: role)
+            print("[ONESIGNAL] Added role tag: \(role)")
+        }
+
+        // Try multiple keys for company ID
+        let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId")
+            ?? UserDefaults.standard.string(forKey: "company_id")
+
+        if let company = companyId {
+            OneSignal.User.addTag(key: "companyId", value: company)
+            print("[ONESIGNAL] Added companyId tag: \(company)")
+        }
+    }
+
+    /// Unlink user from OneSignal when logging out
+    /// Call this when user logs out
+    func unlinkUserFromOneSignal() {
+        OneSignal.logout()
+        print("[ONESIGNAL] User unlinked from OneSignal")
+    }
+
+    // MARK: - Notification Filtering
+
+    /// Check if notifications should be sent based on user settings (DND, mute, priority filter)
+    /// - Parameter priority: The priority level of the notification
+    /// - Returns: true if notification should be sent, false if it should be silenced
+    func shouldSendNotification(priority: NotificationPriorityLevel = .normal) -> Bool {
+        // Check temporary mute first (overrides everything)
+        let isMuted = UserDefaults.standard.bool(forKey: "isMuted")
+        let muteUntil = UserDefaults.standard.double(forKey: "muteUntil")
+        if isMuted && muteUntil > Date().timeIntervalSince1970 {
+            print("[NOTIFICATIONS] Silenced: Temporarily muted until \(Date(timeIntervalSince1970: muteUntil))")
+            return false
+        }
+
+        // Auto-disable expired mute
+        if isMuted && muteUntil > 0 && muteUntil < Date().timeIntervalSince1970 {
+            UserDefaults.standard.set(false, forKey: "isMuted")
+            UserDefaults.standard.set(0.0, forKey: "muteUntil")
+        }
+
+        // Check quiet hours (Do Not Disturb)
+        let quietHoursEnabled = UserDefaults.standard.bool(forKey: "quietHoursEnabled")
+        if quietHoursEnabled {
+            let quietStart = UserDefaults.standard.integer(forKey: "quietHoursStart")
+            let quietEnd = UserDefaults.standard.integer(forKey: "quietHoursEnd")
+            let currentHour = Calendar.current.component(.hour, from: Date())
+
+            let isInQuietHours: Bool
+            if quietStart > quietEnd {
+                // Quiet hours span midnight (e.g., 22:00 - 07:00)
+                isInQuietHours = currentHour >= quietStart || currentHour < quietEnd
+            } else if quietStart < quietEnd {
+                // Quiet hours within same day (e.g., 13:00 - 14:00)
+                isInQuietHours = currentHour >= quietStart && currentHour < quietEnd
+            } else {
+                // Start equals end - no quiet hours
+                isInQuietHours = false
+            }
+
+            if isInQuietHours {
+                print("[NOTIFICATIONS] Silenced: Currently in quiet hours (\(quietStart):00 - \(quietEnd):00)")
+                return false
+            }
+        }
+
+        // Check priority filter
+        let priorityFilter = UserDefaults.standard.string(forKey: "notificationPriority") ?? "all"
+        switch priorityFilter {
+        case "important":
+            if priority == .normal {
+                print("[NOTIFICATIONS] Filtered: Only important notifications enabled")
+                return false
+            }
+        case "critical":
+            if priority != .critical {
+                print("[NOTIFICATIONS] Filtered: Only critical notifications enabled")
+                return false
+            }
+        default:
+            break  // "all" - send everything
+        }
+
+        return true
     }
 }
 
@@ -434,14 +639,35 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // Check if notification should be silenced based on user settings
+        // Determine priority based on notification category
+        let category = notification.request.content.categoryIdentifier
+        let priority: NotificationPriorityLevel
+        switch category {
+        case NotificationCategory.projectAssignment.rawValue:
+            priority = .important
+        case NotificationCategory.projectAdvance.rawValue:
+            priority = .important
+        case NotificationCategory.projectCompletion.rawValue:
+            priority = .normal
+        default:
+            priority = .normal
+        }
+
+        guard shouldSendNotification(priority: priority) else {
+            print("[NOTIFICATIONS] Notification silenced by user settings")
+            completionHandler([])  // Don't show the notification
+            return
+        }
+
         // Forward the notification to our publisher
         notificationSubject.send(notification)
-        
+
         // Show the notification alert, play sound, and update badge
         completionHandler([.banner, .sound, .badge])
     }
     
-    /// Called when a user interacts with a notification
+    /// Called when a user interacts with a notification (taps on it)
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
@@ -449,36 +675,188 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     ) {
         // Get the notification
         let notification = response.notification
-        
+
         // Get user info from the notification
         let userInfo = notification.request.content.userInfo
-        
+
         // Get the action identifier
         let actionIdentifier = response.actionIdentifier
-        
-        // Handle based on notification category
-        switch notification.request.content.categoryIdentifier {
-        case NotificationCategory.project.rawValue:
-            handleProjectNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
-            
-        case NotificationCategory.schedule.rawValue:
-            handleScheduleNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
-            
-        case NotificationCategory.team.rawValue:
-            handleTeamNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
-            
-        case NotificationCategory.projectAssignment.rawValue,
-             NotificationCategory.projectUpdate.rawValue,
-             NotificationCategory.projectCompletion.rawValue,
-             NotificationCategory.projectAdvance.rawValue:
-            // All these notification types open the project details page
-            handleProjectNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
-            
+
+        // Get the category identifier
+        let categoryIdentifier = notification.request.content.categoryIdentifier
+
+        print("[NOTIFICATIONS] Response received - Category: \(categoryIdentifier)")
+        print("[NOTIFICATIONS] UserInfo: \(userInfo)")
+
+        // Check for batch notification first
+        if let _ = userInfo["batchType"] as? String {
+            handleBatchNotificationResponse(userInfo: userInfo)
+            completionHandler()
+            return
+        }
+
+        // Check if this is a remote notification (has "aps" key)
+        if userInfo["aps"] != nil {
+            handleRemoteNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
+        } else {
+            // Handle local notification based on category
+            switch categoryIdentifier {
+            case NotificationCategory.project.rawValue:
+                handleProjectNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
+
+            case NotificationCategory.schedule.rawValue:
+                handleScheduleNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
+
+            case NotificationCategory.team.rawValue:
+                handleTeamNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
+
+            case NotificationCategory.projectAssignment.rawValue,
+                 NotificationCategory.projectUpdate.rawValue,
+                 NotificationCategory.projectCompletion.rawValue,
+                 NotificationCategory.projectAdvance.rawValue:
+                // Check if this is a task advance notice (has taskId)
+                if let taskId = userInfo["taskId"] as? String {
+                    handleTaskNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
+                } else {
+                    // Project notification - open project details
+                    handleProjectNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
+                }
+
+            default:
+                print("[NOTIFICATIONS] Unknown category: \(categoryIdentifier)")
+            }
+        }
+
+        completionHandler()
+    }
+
+    /// Handle tap on remote push notification
+    private func handleRemoteNotificationResponse(userInfo: [AnyHashable: Any], actionIdentifier: String) {
+        let projectId = userInfo["projectId"] as? String
+        let taskId = userInfo["taskId"] as? String
+        let screen = userInfo["screen"] as? String
+        let type = userInfo["type"] as? String
+
+        print("[NOTIFICATIONS] Handling remote notification response - screen: \(screen ?? "none"), type: \(type ?? "none")")
+
+        // Route based on screen or type (same logic as AppDelegate)
+        if let screen = screen {
+            routeToScreen(screen, projectId: projectId, taskId: taskId)
+        } else if let type = type {
+            routeByType(type, projectId: projectId, taskId: taskId)
+        } else if let projectId = projectId {
+            // Default: open project details
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenProjectDetails"),
+                object: nil,
+                userInfo: ["projectId": projectId]
+            )
+        }
+    }
+
+    /// Handle tap on task notification (advance notices)
+    private func handleTaskNotificationResponse(userInfo: [AnyHashable: Any], actionIdentifier: String) {
+        guard let taskId = userInfo["taskId"] as? String else { return }
+        let projectId = userInfo["projectId"] as? String
+
+        print("[NOTIFICATIONS] Task notification tapped - Task: \(taskId), Project: \(projectId ?? "none")")
+
+        switch actionIdentifier {
+        case NotificationAction.view.rawValue, UNNotificationDefaultActionIdentifier:
+            if let projectId = projectId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenTaskDetails"),
+                    object: nil,
+                    userInfo: ["taskId": taskId, "projectId": projectId]
+                )
+            }
         default:
             break
         }
-        
-        completionHandler()
+    }
+
+    /// Handle tap on batched notification
+    private func handleBatchNotificationResponse(userInfo: [AnyHashable: Any]) {
+        let batchType = userInfo["batchType"] as? String
+        let projectIds = userInfo["projectIds"] as? [String]
+        let batchCount = userInfo["batchCount"] as? Int ?? 0
+
+        print("[NOTIFICATIONS] Batch notification tapped - Type: \(batchType ?? "unknown"), Count: \(batchCount)")
+
+        if batchCount == 1, let projectId = projectIds?.first {
+            // Single item in batch - go to project details
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenProjectDetails"),
+                object: nil,
+                userInfo: ["projectId": projectId]
+            )
+        } else {
+            // Multiple items - go to Job Board
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenJobBoard"),
+                object: nil,
+                userInfo: ["filter": batchType ?? "all"]
+            )
+        }
+    }
+
+    /// Route to specific screen based on payload
+    private func routeToScreen(_ screen: String, projectId: String?, taskId: String?) {
+        switch screen {
+        case "projectDetails":
+            if let projectId = projectId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenProjectDetails"),
+                    object: nil,
+                    userInfo: ["projectId": projectId]
+                )
+            }
+        case "taskDetails":
+            if let taskId = taskId, let projectId = projectId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenTaskDetails"),
+                    object: nil,
+                    userInfo: ["taskId": taskId, "projectId": projectId]
+                )
+            }
+        case "schedule", "calendar":
+            NotificationCenter.default.post(name: Notification.Name("OpenSchedule"), object: nil)
+        case "jobBoard":
+            NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+        default:
+            print("[NOTIFICATIONS] Unknown screen: \(screen)")
+        }
+    }
+
+    /// Route based on notification type
+    private func routeByType(_ type: String, projectId: String?, taskId: String?) {
+        switch type {
+        case "assignment", "update", "completion", "projectCompletion":
+            if let projectId = projectId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenProjectDetails"),
+                    object: nil,
+                    userInfo: ["projectId": projectId]
+                )
+            }
+        case "taskAssignment", "taskUpdate", "scheduleChange", "advanceNotice":
+            if let taskId = taskId, let projectId = projectId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenTaskDetails"),
+                    object: nil,
+                    userInfo: ["taskId": taskId, "projectId": projectId]
+                )
+            } else if let projectId = projectId {
+                // Fallback to project details
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenProjectDetails"),
+                    object: nil,
+                    userInfo: ["projectId": projectId]
+                )
+            }
+        default:
+            print("[NOTIFICATIONS] Unknown type: \(type)")
+        }
     }
     
     // MARK: - Notification Response Handlers
@@ -911,13 +1289,200 @@ extension NotificationManager {
     /// Convenience method to schedule advance notice for a project
     func scheduleProjectAdvanceNotice(project: Project, daysBefore: Int) {
         guard let startDate = project.startDate else { return }
-        
+
         _ = scheduleProjectAdvanceNotice(
             projectId: project.id,
             projectTitle: project.title,
             startDate: startDate,
             daysInAdvance: daysBefore
         )
+    }
+}
+
+// MARK: - Task-Based Local Notifications
+extension NotificationManager {
+
+    /// Schedule advance notice for a task
+    /// - Parameters:
+    ///   - task: The task to schedule notification for
+    ///   - projectName: Name of the project (for notification body)
+    ///   - daysBefore: Days before task start to notify
+    func scheduleTaskAdvanceNotice(task: ProjectTask, projectName: String, daysBefore: Int) {
+        // Get task start date from calendar event
+        guard let taskStartDate = task.scheduledDate else {
+            print("[NOTIFICATIONS] Task \(task.id) has no start date - skipping advance notice")
+            return
+        }
+
+        // Check user preferences
+        guard UserDefaults.standard.bool(forKey: "notifyAdvanceNotice") else {
+            print("[NOTIFICATIONS] Advance notice disabled by user")
+            return
+        }
+
+        // Get user's preferred notification time
+        let noticeHour = UserDefaults.standard.integer(forKey: "advanceNoticeHour")
+        let noticeMinute = UserDefaults.standard.integer(forKey: "advanceNoticeMinute")
+
+        // Calculate notification date
+        guard let notificationDate = Calendar.current.date(
+            byAdding: .day,
+            value: -daysBefore,
+            to: taskStartDate
+        ) else { return }
+
+        // Set specific time
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: notificationDate)
+        components.hour = noticeHour > 0 ? noticeHour : 8  // Default 8 AM
+        components.minute = noticeMinute
+
+        guard let scheduledDate = Calendar.current.date(from: components) else { return }
+
+        // Don't schedule if date is in the past
+        guard scheduledDate > Date() else {
+            print("[NOTIFICATIONS] Advance notice date already passed for task \(task.id)")
+            return
+        }
+
+        // Create notification content
+        let content = UNMutableNotificationContent()
+        content.title = "Upcoming Task"
+
+        let taskName = task.displayTitle
+        if daysBefore == 1 {
+            content.body = "\(taskName) on \(projectName) starts tomorrow"
+        } else {
+            content.body = "\(taskName) on \(projectName) starts in \(daysBefore) days"
+        }
+
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.projectAdvance.rawValue
+        content.userInfo = [
+            "taskId": task.id,
+            "projectId": task.project?.id ?? task.projectId,
+            "type": "advanceNotice",
+            "daysBefore": daysBefore
+        ]
+
+        // Create trigger
+        let triggerComponents = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: scheduledDate
+        )
+        let trigger = UNCalendarNotificationTrigger(dateMatching: triggerComponents, repeats: false)
+
+        // Create request with unique identifier
+        let identifier = "advance-\(task.id)-\(daysBefore)d"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("[NOTIFICATIONS] Failed to schedule advance notice: \(error)")
+            } else {
+                print("[NOTIFICATIONS] Scheduled \(daysBefore)-day advance notice for task \(task.id) at \(scheduledDate)")
+            }
+        }
+    }
+
+    /// Schedule advance notices for all tasks assigned to current user
+    /// Call this after sync completes
+    func scheduleAdvanceNoticesForUserTasks(tasks: [ProjectTask], currentUserId: String) {
+        // Get user's preferred lead times
+        let day1 = UserDefaults.standard.integer(forKey: "advanceNoticeDays1")
+        let day2 = UserDefaults.standard.integer(forKey: "advanceNoticeDays2")
+        let day3 = UserDefaults.standard.integer(forKey: "advanceNoticeDays3")
+        let leadTimes = [day1, day2, day3].filter { $0 > 0 }
+
+        guard !leadTimes.isEmpty else {
+            print("[NOTIFICATIONS] No advance notice days configured")
+            return
+        }
+
+        // Check if advance notices are enabled
+        guard UserDefaults.standard.bool(forKey: "notifyAdvanceNotice") else {
+            print("[NOTIFICATIONS] Advance notices disabled")
+            return
+        }
+
+        // Filter to only tasks user is assigned to (check teamMemberIdsString)
+        let assignedTasks = tasks.filter { task in
+            task.getTeamMemberIds().contains(currentUserId)
+        }
+
+        print("[NOTIFICATIONS] Scheduling advance notices for \(assignedTasks.count) assigned tasks with lead times: \(leadTimes)")
+
+        for task in assignedTasks {
+            let projectName = task.project?.title ?? "Project"
+
+            for days in leadTimes {
+                scheduleTaskAdvanceNotice(task: task, projectName: projectName, daysBefore: days)
+            }
+        }
+    }
+
+    /// Remove all advance notices for a specific task
+    func removeAdvanceNoticesForTask(taskId: String) {
+        // Remove all possible advance notice identifiers for this task
+        let possibleDays = [1, 2, 3, 4, 5, 6, 7, 14, 30]  // Cover all reasonable lead times
+        let identifiers = possibleDays.map { "advance-\(taskId)-\($0)d" }
+
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
+        print("[NOTIFICATIONS] Removed advance notices for task \(taskId)")
+    }
+
+    /// Remove all advance notices (e.g., when rescheduling all)
+    func removeAllAdvanceNotices() async {
+        let center = UNUserNotificationCenter.current()
+        let requests = await center.pendingNotificationRequests()
+
+        let advanceIds = requests
+            .filter { $0.identifier.hasPrefix("advance-") }
+            .map { $0.identifier }
+
+        if !advanceIds.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: advanceIds)
+            print("[NOTIFICATIONS] Removed \(advanceIds.count) advance notices")
+        }
+    }
+
+    /// Schedule advance notices for all tasks using ModelContext
+    /// Call this after sync or when preferences change
+    func scheduleAdvanceNoticesForAllTasks(using modelContext: ModelContext) async {
+        // First, clear all existing advance notices
+        await removeAllAdvanceNotices()
+
+        // Check if user wants advance notifications
+        guard UserDefaults.standard.bool(forKey: "notifyAdvanceNotice") else {
+            print("[NOTIFICATIONS] Advance notices disabled by user")
+            return
+        }
+
+        guard let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") else {
+            print("[NOTIFICATIONS] No current user ID found")
+            return
+        }
+
+        do {
+            // Fetch all tasks
+            let descriptor = FetchDescriptor<ProjectTask>()
+            let allTasks = try modelContext.fetch(descriptor)
+
+            // Filter for non-deleted tasks with future start dates
+            let now = Date()
+            let futureTasks = allTasks.filter { task in
+                guard task.deletedAt == nil,
+                      let startDate = task.scheduledDate else { return false }
+                return startDate > now
+            }
+
+            print("[NOTIFICATIONS] Found \(futureTasks.count) future tasks")
+
+            // Schedule notifications for assigned tasks
+            scheduleAdvanceNoticesForUserTasks(tasks: futureTasks, currentUserId: currentUserId)
+
+        } catch {
+            print("[NOTIFICATIONS] Failed to fetch tasks: \(error)")
+        }
     }
 }
 

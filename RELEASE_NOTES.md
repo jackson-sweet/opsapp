@@ -18,6 +18,11 @@ Major release featuring Firebase Analytics integration for Google Ads conversion
 - **Google Ads Integration**: Comprehensive analytics events for conversion tracking
 - **User Journey Tracking**: Track key user actions and conversions
 - **Marketing Attribution**: Enable data-driven marketing decisions
+- **Screen View Tracking**: Manual tracking for all main screens and forms
+- **CRUD Event Tracking**: Track task, client, and project create/edit/delete operations
+- **Status Change Tracking**: Monitor project and task status transitions
+- **Tab Navigation Tracking**: Track user navigation patterns across app tabs
+- See [ANALYTICS.md](ANALYTICS.md) for complete event reference
 
 #### In-App Messaging System
 - **App Messages**: New system for displaying in-app announcements and updates

@@ -3569,27 +3569,64 @@ class DataController: ObservableObject {
     // MARK: - Team Member Operations
 
     /// Update task team members - SINGLE SOURCE OF TRUTH
+    /// This is the ONLY method that should be used to update task team members.
+    /// It handles:
+    /// 1. Updating task.teamMemberIdsString
+    /// 2. Updating task.teamMembers relationship array
+    /// 3. Updating task's calendar event team members (both string and relationship)
+    /// 4. Syncing task team members to Bubble API
+    /// 5. Syncing calendar event team members to Bubble API
+    /// 6. Updating project team members to reflect changes
+    /// 7. Sending push notifications to newly assigned members
     @MainActor
     func updateTaskTeamMembers(task: ProjectTask, memberIds: [String]) async throws {
+        print("[UPDATE_TASK_TEAM] 🔄 Starting comprehensive task team update...")
+        print("[UPDATE_TASK_TEAM] Task ID: \(task.id)")
+        print("[UPDATE_TASK_TEAM] New member IDs: \(memberIds)")
+
         // Capture previous team members before update to detect new assignments
         let previousMemberIds = Set(task.getTeamMemberIds())
         let newMemberIds = Set(memberIds)
         let addedMemberIds = newMemberIds.subtracting(previousMemberIds)
+
+        print("[UPDATE_TASK_TEAM] Previous members: \(previousMemberIds.count), New members: \(newMemberIds.count), Added: \(addedMemberIds.count)")
+
+        // Fetch User objects for the team member IDs
+        let teamMemberUsers = fetchUsersById(Array(newMemberIds))
+        print("[UPDATE_TASK_TEAM] Fetched \(teamMemberUsers.count) User objects from database")
 
         try await performSyncedOperation(
             item: task,
             operationName: "UPDATE_TASK_TEAM",
             itemDescription: "Updating task \(task.id) team members",
             localUpdate: {
+                // Update task team member IDs string
                 task.setTeamMemberIds(memberIds)
+                // Update task team members relationship array
+                task.teamMembers = teamMemberUsers
                 task.needsSync = true
+                print("[UPDATE_TASK_TEAM] ✅ Task local state updated (IDs string + relationship)")
             },
             syncToAPI: {
                 try await self.apiService.updateTaskTeamMembers(id: task.id, teamMemberIds: memberIds)
                 task.needsSync = false
                 task.lastSyncedAt = Date()
+                print("[UPDATE_TASK_TEAM] ✅ Task team synced to Bubble API")
             }
         )
+
+        // Update calendar event team members if task has one
+        if let calendarEvent = task.calendarEvent {
+            print("[UPDATE_TASK_TEAM] 🔄 Updating associated calendar event team members...")
+            try await updateCalendarEventTeamMembersComprehensive(
+                event: calendarEvent,
+                memberIds: memberIds,
+                memberUsers: teamMemberUsers
+            )
+            print("[UPDATE_TASK_TEAM] ✅ Calendar event team members updated")
+        } else {
+            print("[UPDATE_TASK_TEAM] ℹ️ Task has no calendar event to update")
+        }
 
         // Send push notifications to newly added team members
         if !addedMemberIds.isEmpty, OneSignalService.shared.isConfigured {
@@ -3618,6 +3655,52 @@ class DataController: ObservableObject {
         if let project = task.project {
             await syncProjectTeamMembersFromTasks(project)
         }
+
+        print("[UPDATE_TASK_TEAM] ✅ Comprehensive task team update complete")
+    }
+
+    /// Fetch User objects by their IDs from the local database
+    @MainActor
+    private func fetchUsersById(_ userIds: [String]) -> [User] {
+        guard let context = modelContext, !userIds.isEmpty else { return [] }
+
+        do {
+            let predicate = #Predicate<User> { user in
+                userIds.contains(user.id)
+            }
+            let descriptor = FetchDescriptor<User>(predicate: predicate)
+            let users = try context.fetch(descriptor)
+            return users
+        } catch {
+            print("[FETCH_USERS] ❌ Error fetching users by ID: \(error)")
+            return []
+        }
+    }
+
+    /// Update calendar event team members comprehensively (both string and relationship)
+    @MainActor
+    private func updateCalendarEventTeamMembersComprehensive(
+        event: CalendarEvent,
+        memberIds: [String],
+        memberUsers: [User]
+    ) async throws {
+        try await performSyncedOperation(
+            item: event,
+            operationName: "UPDATE_EVENT_TEAM",
+            itemDescription: "Updating calendar event \(event.id) team members",
+            localUpdate: {
+                // Update calendar event team member IDs string
+                event.setTeamMemberIds(memberIds)
+                // Update calendar event team members relationship array
+                event.teamMembers = memberUsers
+                event.needsSync = true
+            },
+            syncToAPI: {
+                try await self.apiService.updateCalendarEventTeamMembers(id: event.id, teamMemberIds: memberIds)
+                event.needsSync = false
+                event.lastSyncedAt = Date()
+            }
+        )
     }
 
     /// Syncs project team members based on all its tasks

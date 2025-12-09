@@ -210,8 +210,8 @@ struct MainTabView: View {
         .onReceive(openProjectDetailsObserver) { notification in
             if let projectId = notification.userInfo?["projectId"] as? String {
                 print("[PUSH_NAVIGATION] Opening project details for: \(projectId)")
-                DispatchQueue.main.async {
-                    appState.viewProjectDetailsById(projectId)
+                Task {
+                    await openProjectWithSync(projectId: projectId)
                 }
             }
         }
@@ -221,13 +221,8 @@ struct MainTabView: View {
             if let taskId = notification.userInfo?["taskId"] as? String,
                let projectId = notification.userInfo?["projectId"] as? String {
                 print("[PUSH_NAVIGATION] Opening task details - Task: \(taskId), Project: \(projectId)")
-                DispatchQueue.main.async {
-                    // Post to ShowTaskDetailsFromHome which is handled by HomeView
-                    NotificationCenter.default.post(
-                        name: Notification.Name("ShowTaskDetailsFromHome"),
-                        object: nil,
-                        userInfo: ["taskID": taskId, "projectID": projectId]
-                    )
+                Task {
+                    await openTaskWithSync(taskId: taskId, projectId: projectId)
                 }
             }
         }
@@ -350,5 +345,111 @@ struct MainTabView: View {
             return window.rootViewController?.presentedViewController != nil
         }
         return false
+    }
+
+    // MARK: - Push Notification Sync Helpers
+
+    /// Open project details, syncing first if the project isn't in the local database
+    private func openProjectWithSync(projectId: String) async {
+        // Check if project exists locally
+        if dataController.getProject(id: projectId) != nil {
+            print("[PUSH_NAVIGATION] Project found locally, opening immediately")
+            await MainActor.run {
+                appState.viewProjectDetailsById(projectId)
+            }
+            return
+        }
+
+        // Project not found locally - sync first
+        print("[PUSH_NAVIGATION] Project not found locally, triggering sync...")
+        await syncAndOpenProject(projectId: projectId)
+    }
+
+    /// Open task details, syncing first if the task/project isn't in the local database
+    private func openTaskWithSync(taskId: String, projectId: String) async {
+        // Check if project and task exist locally
+        if let project = dataController.getProject(id: projectId),
+           project.tasks.contains(where: { $0.id == taskId }) {
+            print("[PUSH_NAVIGATION] Task found locally, opening immediately")
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: Notification.Name("ShowTaskDetailsFromHome"),
+                    object: nil,
+                    userInfo: ["taskID": taskId, "projectID": projectId]
+                )
+            }
+            return
+        }
+
+        // Task/project not found locally - sync first
+        print("[PUSH_NAVIGATION] Task not found locally, triggering sync...")
+        await syncAndOpenTask(taskId: taskId, projectId: projectId)
+    }
+
+    /// Sync data and then open project details
+    private func syncAndOpenProject(projectId: String) async {
+        // Trigger sync
+        if let syncManager = dataController.syncManager {
+            print("[PUSH_NAVIGATION] Starting sync for project: \(projectId)")
+
+            // Perform a full sync
+            do {
+                try await syncManager.syncAll()
+            } catch {
+                print("[PUSH_NAVIGATION] Sync failed: \(error)")
+            }
+
+            // Small delay for SwiftData to process
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+
+            // Try to open the project again
+            await MainActor.run {
+                if dataController.getProject(id: projectId) != nil {
+                    print("[PUSH_NAVIGATION] Project found after sync, opening")
+                    appState.viewProjectDetailsById(projectId)
+                } else {
+                    print("[PUSH_NAVIGATION] Project still not found after sync")
+                    // Could show an alert here if needed
+                }
+            }
+        } else {
+            print("[PUSH_NAVIGATION] No sync manager available")
+        }
+    }
+
+    /// Sync data and then open task details
+    private func syncAndOpenTask(taskId: String, projectId: String) async {
+        // Trigger sync
+        if let syncManager = dataController.syncManager {
+            print("[PUSH_NAVIGATION] Starting sync for task: \(taskId)")
+
+            // Perform a full sync
+            do {
+                try await syncManager.syncAll()
+            } catch {
+                print("[PUSH_NAVIGATION] Sync failed: \(error)")
+            }
+
+            // Small delay for SwiftData to process
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+
+            // Try to open the task again
+            await MainActor.run {
+                if let project = dataController.getProject(id: projectId),
+                   project.tasks.contains(where: { $0.id == taskId }) {
+                    print("[PUSH_NAVIGATION] Task found after sync, opening")
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ShowTaskDetailsFromHome"),
+                        object: nil,
+                        userInfo: ["taskID": taskId, "projectID": projectId]
+                    )
+                } else {
+                    print("[PUSH_NAVIGATION] Task still not found after sync")
+                    // Could show an alert here if needed
+                }
+            }
+        } else {
+            print("[PUSH_NAVIGATION] No sync manager available")
+        }
     }
 }

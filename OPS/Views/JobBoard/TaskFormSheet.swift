@@ -849,7 +849,22 @@ struct TaskFormSheet: View {
                 // Update task properties (for both create and edit modes)
                 task.status = selectedStatus
                 task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
-                task.setTeamMemberIds(Array(selectedTeamMemberIds))
+
+                // For edit mode, track if team members changed so we can use centralized update
+                let previousTeamMemberIds = Set(task.getTeamMemberIds())
+                let isEditMode: Bool
+                if case .edit = mode {
+                    isEditMode = true
+                } else {
+                    isEditMode = false
+                }
+                let teamMembersChanged = isEditMode && (previousTeamMemberIds != selectedTeamMemberIds)
+
+                // For create mode, set team member IDs directly
+                // For edit mode, we'll use centralized method below if changed
+                if !isEditMode {
+                    task.setTeamMemberIds(Array(selectedTeamMemberIds))
+                }
 
                 if let calendarEvent = task.calendarEvent {
                     // CalendarEvent title: "Client Name - Project Name"
@@ -875,6 +890,14 @@ struct TaskFormSheet: View {
 
                 try modelContext.save()
                 print("[TASK_FORM] ✅ Task saved locally")
+
+                // For edit mode with team member changes, use centralized method
+                // This handles task + calendar event + project team updates
+                if isEditMode && teamMembersChanged {
+                    print("[TASK_FORM] 👥 Team members changed in edit mode, using centralized update...")
+                    try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedTeamMemberIds))
+                    print("[TASK_FORM] ✅ Team members updated via centralized method")
+                }
 
             } catch {
                 await MainActor.run {

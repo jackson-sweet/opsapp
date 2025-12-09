@@ -549,35 +549,22 @@ struct TaskDetailsView: View {
 
         let newMemberIds = Array(selectedTeamMemberIds)
 
-        // Optimistically update UI
-        task.setTeamMemberIds(newMemberIds)
-        task.needsSync = true
-
-        // Also update calendar event if exists
-        if let calendarEvent = task.calendarEvent {
-            calendarEvent.setTeamMemberIds(newMemberIds)
-            calendarEvent.needsSync = true
-        }
-
-        // Save to local database
-        try? dataController.modelContext?.save()
-
         // Show confirmation message
         showTeamUpdateMessage = true
 
-        // Perform API sync in background
+        // Use centralized method which handles:
+        // - Task teamMemberIdsString + teamMembers relationship
+        // - Calendar event teamMemberIdsString + teamMembers relationship
+        // - API sync for both task and calendar event
+        // - Project team member updates
+        // - Push notifications for new assignments
         Task {
             do {
-                print("[TASK_TEAM_UPDATE] Syncing task team members to API...")
+                print("[TASK_DETAILS] Updating task team via centralized method...")
                 try await dataController.updateTaskTeamMembers(task: task, memberIds: newMemberIds)
-                print("[TASK_TEAM_UPDATE] ✅ Task team synced to API")
-
-                if let calendarEvent = task.calendarEvent {
-                    try await dataController.updateCalendarEventTeamMembers(event: calendarEvent, memberIds: newMemberIds)
-                    print("[TASK_TEAM_UPDATE] ✅ Calendar event team synced to API")
-                }
+                print("[TASK_DETAILS] ✅ Task team update complete")
             } catch {
-                print("[TASK_TEAM_UPDATE] ⚠️ Sync failed: \(error)")
+                print("[TASK_DETAILS] ⚠️ Team update failed: \(error)")
             }
         }
     }

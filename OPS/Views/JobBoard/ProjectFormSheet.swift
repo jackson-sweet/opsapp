@@ -1290,6 +1290,11 @@ struct ProjectFormSheet: View {
     }
 
     private func saveProject() {
+        // Prevent double-tap race condition
+        guard !isSaving else {
+            print("[PROJECT_SAVE] ⚠️ Save already in progress, ignoring duplicate call")
+            return
+        }
         isSaving = true
 
         Task {
@@ -1673,12 +1678,15 @@ struct ProjectFormSheet: View {
             }
 
             // Send task assignment notifications to team members
-            let teamMemberIds = task.teamMembers.map { $0.id }
+            // Use Set to deduplicate in case teamMembers has duplicates
+            let teamMemberIds = Set(task.teamMembers.map { $0.id })
+            print("[TASK_CREATE] 📬 Team member IDs for notification: \(teamMemberIds) (count: \(teamMemberIds.count))")
             if !teamMemberIds.isEmpty && OneSignalService.shared.isConfigured {
                 let taskName = task.displayTitle
                 let projectName = project.title
 
                 for userId in teamMemberIds {
+                    print("[TASK_CREATE] 📬 Sending notification to user: \(userId)")
                     Task {
                         do {
                             try await OneSignalService.shared.notifyTaskAssignment(

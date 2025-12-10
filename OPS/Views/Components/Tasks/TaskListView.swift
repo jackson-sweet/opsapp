@@ -71,7 +71,7 @@ struct TaskListView: View {
                 .padding(.horizontal, 16)
             } else {
                 // Task cards in single container (matching ProjectDetailsView card style)
-                VStack(spacing: 1) {
+                VStack(spacing: 8) {
                     ForEach(project.tasks.sorted { $0.displayOrder < $1.displayOrder }) { task in
                         TaskRow(
                             task: task,
@@ -85,6 +85,8 @@ struct TaskListView: View {
                         .transition(.opacity.combined(with: .move(edge: .trailing)))
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
                 // Animation removed - was causing parent sheet to dismiss when tasks were deleted
             }
         }
@@ -109,7 +111,7 @@ struct TaskListView: View {
     }
 }
 
-// Individual task row (matching ProjectDetailsView info row style)
+// Individual task row using reusable TaskLineItem component
 struct TaskRow: View {
     let task: ProjectTask
     let isFirst: Bool
@@ -122,132 +124,30 @@ struct TaskRow: View {
     @State private var showingTeamPicker = false
     @State private var showingScheduler = false
     @State private var showingDeleteConfirmation = false
-    @State private var isLongPressing = false
-    @State private var hasTriggeredHaptic = false
 
     private var canModify: Bool {
         guard let user = dataController.currentUser else { return false }
         return user.role == .admin || user.role == .officeCrew
     }
 
-    private var displayTeamMembers: [User] {
+    private var teamMemberCount: Int {
         if !task.teamMembers.isEmpty {
-            return Array(task.teamMembers)
+            return task.teamMembers.count
         }
-
-        let teamMemberIds = task.getTeamMemberIds()
-        guard !teamMemberIds.isEmpty else { return [] }
-
-        return teamMemberIds.compactMap { id in
-            users.first(where: { $0.id == id })
-        }
+        return task.getTeamMemberIds().count
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-                // Task type icon with color
-                ZStack {
-                    Circle()
-                        .fill(Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent)
-                        .frame(width: 32, height: 32)
-                    
-                    Image(systemName: task.taskType?.icon ?? "hammer.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.white)
-                }
-                .frame(width: 24)
-                
-                // Task info
-                VStack(alignment: .leading, spacing: 4) {
-                    Text((task.taskType?.display ?? "Task").uppercased())
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
-                    HStack(spacing: 6) {
-                        // Status indicator
-                        Circle()
-                            .fill(statusColor(for: task.status))
-                            .frame(width: 6, height: 6)
-                        
-                        Text(task.status.displayName)
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    
-                    // Date if available
-                    if let calendarEvent = task.calendarEvent, let start = calendarEvent.startDate, let end = calendarEvent.endDate {
-                        Text(formatDateRange(start, end))
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    } else if let scheduledDate = task.scheduledDate {
-                        Text(formatDate(scheduledDate))
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
-                
-                Spacer()
-
-                // Team member avatars (if any)
-                if !displayTeamMembers.isEmpty {
-                    HStack(spacing: -8) {
-                        ForEach(displayTeamMembers.prefix(3)) { member in
-                            UserAvatar(user: member, size: 24)
-                                .overlay(
-                                    Circle()
-                                        .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 2)
-                                )
-                        }
-
-                        if displayTeamMembers.count > 3 {
-                            ZStack {
-                                Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
-                                    .frame(width: 24, height: 24)
-
-                                Text("+\(displayTeamMembers.count - 3)")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            .overlay(
-                                Circle()
-                                    .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 2)
-                            )
-                        }
-                    }
-                }
-                
-                // Navigation chevron
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .contentShape(Rectangle())
-            .scaleEffect(isLongPressing ? 0.95 : 1.0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
-            .onTapGesture {
-                onTap()
-            }
-            .onLongPressGesture(minimumDuration: 0.3) {
-            showingActions = true
-        } onPressingChanged: { pressing in
-            if pressing {
-                isLongPressing = true
-                hasTriggeredHaptic = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    if isLongPressing && !hasTriggeredHaptic {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                        impactFeedback.impactOccurred()
-                        hasTriggeredHaptic = true
-                    }
-                }
-            } else {
-                isLongPressing = false
-                hasTriggeredHaptic = false
-            }
-        }
+        TaskLineItem(
+            title: task.taskType?.display ?? "Task",
+            color: Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent,
+            status: task.status,
+            startDate: task.calendarEvent?.startDate,
+            teamMemberCount: teamMemberCount,
+            onTap: onTap,
+            onDelete: canModify ? { showingDeleteConfirmation = true } : nil,
+            onLongPress: { showingActions = true }
+        )
         .confirmationDialog("Task Actions", isPresented: $showingActions, titleVisibility: .hidden) {
             Button("Change Status") {
                 showingStatusPicker = true
@@ -326,9 +226,6 @@ struct TaskRow: View {
             message: "This will permanently delete this task. This action cannot be undone.",
             onConfirm: deleteTask
         )
-        .onAppear {
-            logTaskRowTeamMemberData()
-        }
     }
 
     private func deleteTask() {
@@ -469,51 +366,4 @@ struct TaskRow: View {
         }
     }
     
-    // MARK: - Debug Logging
-    
-    private func logTaskRowTeamMemberData() {
-        
-        // Log team member data for this row
-        let teamMemberIds = task.getTeamMemberIds()
-        
-        // Log what's being displayed in the UI
-        if !task.teamMembers.isEmpty {
-            for (index, member) in task.teamMembers.prefix(3).enumerated() {
-            }
-            if task.teamMembers.count > 3 {
-            }
-        } else {
-        }
-        
-    }
-    
-    private func statusColor(for status: TaskStatus) -> Color {
-        switch status {
-        case .booked:
-            return OPSStyle.Colors.tertiaryText
-        case .inProgress:
-            return OPSStyle.Colors.warningStatus
-        case .completed:
-            return OPSStyle.Colors.successStatus
-        case .cancelled:
-            return OPSStyle.Colors.errorStatus
-        }
-    }
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        return formatter.string(from: date)
-    }
-    
-    private func formatDateRange(_ start: Date, _ end: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        
-        if Calendar.current.isDate(start, inSameDayAs: end) {
-            return formatter.string(from: start)
-        } else {
-            return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
-        }
-    }
 }

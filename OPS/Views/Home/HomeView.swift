@@ -79,15 +79,25 @@ struct HomeView: View {
                let projectId = userInfo["projectId"] as? String,
                let project = dataController.getProject(id: projectId),
                let task = project.tasks.first(where: { $0.id == taskId }) {
-                
+
                 // Start routing to the project location (tasks use project location)
                 if let coordinate = project.coordinate,
                    let userLocation = locationManager.userLocation {
                     inProgressManager.startRouting(to: coordinate, from: userLocation)
+
+                    // Also notify MapCoordinator to start navigation
+                    NotificationCenter.default.post(
+                        name: Notification.Name("StartNavigation"),
+                        object: nil,
+                        userInfo: ["projectId": projectId]
+                    )
                 }
-                
+
                 // Hide confirmation
                 showStartConfirmation = false
+
+                // Start route refresh timer
+                startRouteRefreshTimer()
             }
         }
         // Listen for complete project stop

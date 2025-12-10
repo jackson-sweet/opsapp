@@ -50,6 +50,8 @@ struct ProjectDetailsView: View {
     @State private var isEditingTitle = false
     @State private var editedTitle: String = ""
     @State private var showingAddTaskSheet = false
+    @State private var selectedTeamMember: User? = nil
+    @State private var isTeamExpanded = false
 
     // Initialize with project's existing notes
     init(project: Project, isEditMode: Bool = false) {
@@ -127,6 +129,10 @@ struct ProjectDetailsView: View {
             .sheet(isPresented: $showingClientContact) {
                 clientContactSheet
             }
+            .sheet(item: $selectedTeamMember) { member in
+                ContactDetailView(user: member)
+                    .environmentObject(dataController)
+            }
             .sheet(isPresented: $showingScheduler) {
                 CalendarSchedulerSheet(
                     isPresented: $showingScheduler,
@@ -176,17 +182,13 @@ struct ProjectDetailsView: View {
     }
 
     private var headerView: some View {
-        ZStack {
-            BlurView(style: .dark)
-                .edgesIgnoringSafeArea(.top)
-
-            VStack(spacing: 8) {
-                headerTopRow
-                headerTitleRow
-            }
-            .padding(.horizontal, 16)
+        VStack(spacing: 6) {
+            headerTopRow
+            headerTitleRow
         }
-        .frame(height: 90)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
         .background(Color.black)
     }
 
@@ -214,6 +216,7 @@ struct ProjectDetailsView: View {
 
     private var headerTitleRow: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Title row
             HStack {
                 if isEditingTitle {
                     TextField("Project Title", text: $editedTitle)
@@ -228,6 +231,66 @@ struct ProjectDetailsView: View {
                     Text(project.title.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+            }
+
+            // Client name
+            Text(project.effectiveClientName.uppercased())
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .lineLimit(1)
+
+            // Metadata row
+            HStack(spacing: 12) {
+                // Address
+                HStack(spacing: 4) {
+                    Image(systemName: "mappin.circle")
+                        .font(.system(size: 11))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text(project.address?.components(separatedBy: ",").first ?? "No address")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
+                }
+
+                // Calendar icon + date
+                HStack(spacing: 4) {
+                    Image(systemName: OPSStyle.Icons.calendar)
+                        .font(.system(size: 11))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    if let startDate = project.computedStartDate {
+                        Text(DateHelper.simpleDateString(from: startDate))
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    } else {
+                        Text("—")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+
+                // Team icon + count
+                HStack(spacing: 4) {
+                    Image(systemName: OPSStyle.Icons.personTwo)
+                        .font(.system(size: 11))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("\(project.teamMembers.count)")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                // Task icon + count
+                HStack(spacing: 4) {
+                    Image(systemName: OPSStyle.Icons.task)
+                        .font(.system(size: 11))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("\(project.tasks.count)")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
 
                 Spacer()
@@ -580,7 +643,6 @@ struct ProjectDetailsView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
-            .padding(.horizontal)
             .animation(.easeInOut(duration: 0.2), value: isEditingAddress)
 
             // Map view - larger and more prominent
@@ -818,56 +880,14 @@ struct ProjectDetailsView: View {
     }
 
     private var teamNotesField: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("TEAM NOTES")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            VStack(spacing: 0) {
-                // Expand/collapse button
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isNotesExpanded.toggle()
-                    }
-                }) {
-                    HStack {
-                        Text(isNotesExpanded ? "Hide Notes" : "Show Notes")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                        Spacer()
-
-                        Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                // Expandable notes content
-                if isNotesExpanded {
-                    Divider()
-                        .background(OPSStyle.Colors.inputFieldBorder)
-                        .padding(.top, 12)
-
-                    ExpandableNotesView(
-                        notes: project.notes ?? "",
-                        isExpanded: $isNotesExpanded,
-                        editedNotes: $noteText,
-                        onSave: saveNotes
-                    )
-                    .padding(.top, 12)
-                }
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
-            .background(Color.clear)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
-            )
-        }
+        NotesDisplayField(
+            title: "Team Notes",
+            notes: project.notes ?? "",
+            isExpanded: $isNotesExpanded,
+            editedNotes: $noteText,
+            canEdit: true,  // All users including field crew can edit team notes
+            onSave: saveNotes
+        )
     }
 
     private var assignedTeamField: some View {
@@ -911,30 +931,67 @@ struct ProjectDetailsView: View {
                     
                 } else {
                     // Has team members
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(project.teamMembers.prefix(3), id: \.id) { member in
-                            HStack(spacing: 12) {
-                                UserAvatar(user: member, size: 32)
+                    let displayedMembers = isTeamExpanded ? project.teamMembers : Array(project.teamMembers.prefix(3))
+                    let hiddenCount = project.teamMembers.count - 3
 
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(member.fullName)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(displayedMembers.enumerated()), id: \.element.id) { index, member in
+                            Button(action: {
+                                selectedTeamMember = member
+                            }) {
+                                HStack(spacing: 12) {
+                                    UserAvatar(user: member, size: 32)
 
-                                    Text(member.role.displayName)
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(member.fullName)
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                        Text(member.role.displayName)
+                                            .font(OPSStyle.Typography.caption)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: OPSStyle.Icons.chevronRight)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
+                                .padding(.vertical, 8)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
 
-                                Spacer()
+                            // Add divider between items (not after last one)
+                            if index < displayedMembers.count - 1 {
+                                Divider()
+                                    .background(OPSStyle.Colors.inputFieldBorder.opacity(0.5))
                             }
                         }
 
-                        if project.teamMembers.count > 3 {
-                            Text("+\(project.teamMembers.count - 3) more")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.top, 4)
+                        // Show more/less button when there are more than 3 members
+                        if hiddenCount > 0 {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isTeamExpanded.toggle()
+                                }
+                            }) {
+                                HStack {
+                                    Text(isTeamExpanded ? "Show less" : "+\(hiddenCount) more")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                                    Spacer()
+
+                                    Image(systemName: isTeamExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                }
+                                .padding(.top, 8)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                 }

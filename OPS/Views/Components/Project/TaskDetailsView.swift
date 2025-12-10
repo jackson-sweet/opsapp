@@ -56,72 +56,66 @@ struct TaskDetailsView: View {
             // Main content
             VStack(spacing: 0) {
                 // Modern header with frosted glass effect (matching ProjectDetailsView)
-                ZStack {
-                    // Blurred background
-                    BlurView(style: .dark)
-                        .edgesIgnoringSafeArea(.top)
-                    
-                    // Header content
-                    VStack(spacing: 8) {
-                        // Top row with status and buttons
-                        HStack {
-                            // Status badge
-                            Text(task.status.displayName.uppercased())
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(task.status.color)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(task.status.color.opacity(0.1))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(task.status.color, lineWidth: 1)
-                                )
-                            
-                            Spacer()
-                            
-                            // Done button
-                            Button("Done") {
-                                checkForUnsavedChanges()
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.white)
-                            .foregroundColor(Color.black)
-                            .cornerRadius(OPSStyle.Layout.buttonRadius)
-                            .font(OPSStyle.Typography.bodyBold)
-                        }
-                        
-                        // Breadcrumb navigation
-                        HStack {
-                            Button(action: {
-                                showingProjectDetails = true
-                            }) {
-                                Text(project.title)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    .lineLimit(1)
-                            }
+                VStack(spacing: 8) {
+                    // Top row with status and buttons
+                    HStack {
+                        // Status badge
+                        Text(task.status.displayName.uppercased())
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(task.status.color)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(task.status.color.opacity(0.1))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(task.status.color, lineWidth: 1)
+                            )
 
-                            Image(systemName: OPSStyle.Icons.chevronRight)
-                                .font(.system(size: 10))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            
-                            Text(task.taskType?.display ?? "Task")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                            
-                            Spacer()
+                        Spacer()
+
+                        // Done button
+                        Button("Done") {
+                            checkForUnsavedChanges()
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.white)
+                        .foregroundColor(Color.black)
+                        .cornerRadius(OPSStyle.Layout.buttonRadius)
+                        .font(OPSStyle.Typography.bodyBold)
                     }
-                    .padding(.horizontal, 16)
+
+                    // Breadcrumb navigation
+                    HStack {
+                        Button(action: {
+                            showingProjectDetails = true
+                        }) {
+                            Text(project.title)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        Image(systemName: OPSStyle.Icons.chevronRight)
+                            .font(.system(size: 10))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        Text(task.taskType?.display ?? "Task")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+
+                        Spacer()
+                    }
                 }
-                .frame(height: 90)
-                .background(task.status == .completed ? 
-                           OPSStyle.Colors.cardBackgroundDark : 
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+                .background(task.status == .completed ?
+                           OPSStyle.Colors.cardBackgroundDark :
                            Color.black)
                 
                 // Color stripe at bottom of header
@@ -457,33 +451,14 @@ struct TaskDetailsView: View {
     }
 
     private var notesField: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("TASK NOTES")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Spacer()
-
-                Image(systemName: isNotesExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                    .font(.system(size: 14))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isNotesExpanded.toggle()
-                }
-            }
-
-            // Expandable notes view
-            ExpandableNotesView(
-                notes: task.taskNotes ?? "",
-                isExpanded: $isNotesExpanded,
-                editedNotes: $taskNotes,
-                onSave: saveTaskNotes
-            )
-        }
+        NotesDisplayField(
+            title: "Task Notes",
+            notes: task.taskNotes ?? "",
+            isExpanded: $isNotesExpanded,
+            editedNotes: $taskNotes,
+            canEdit: canModify,
+            onSave: saveTaskNotes
+        )
     }
     
     // MARK: - Team Section

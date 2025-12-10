@@ -53,9 +53,6 @@ struct HomeContentView: View {
             
             // 3. UI content overlay
             contentOverlay
-            // Add padding when navigation header is showing
-            .padding(.top, inProgressManager.isRouting ? 160 : 0)
-            .animation(.easeInOut(duration: 0.5), value: inProgressManager.isRouting)
             
             // 4. Loading overlay
             if isLoading {

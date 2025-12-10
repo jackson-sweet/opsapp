@@ -854,118 +854,19 @@ struct ProjectFormSheet: View {
         let taskColor = (taskType.flatMap { Color(hex: $0.color) }) ?? OPSStyle.Colors.primaryText
         let taskTeamMembers = uniqueTeamMembers.filter { task.teamMemberIds.contains($0.id) }
 
-        return ZStack {
-            HStack(spacing: 0) {
-                // Colored left border
-                Rectangle()
-                    .fill(taskColor)
-                    .frame(width: 4)
-
-                // Main tappable content area
-                VStack(alignment: .leading, spacing: 8) {
-                    // Title
-                    Text(taskType?.display.uppercased() ?? "UNKNOWN TASK")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    // Metadata row with icons (matching UniversalJobBoardCard)
-                    HStack(spacing: 12) {
-                        // Calendar icon + date
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: 11))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            if let startDate = task.startDate {
-                                Text(DateHelper.simpleDateString(from: startDate))
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .lineLimit(1)
-                            } else {
-                                Text("—")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                        }
-
-                        // Team icon + count
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: 11))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            Text("\(taskTeamMembers.count)")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
-                    }
-
-                }
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 16)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    editingTaskIndex = index
-                    showingTaskForm = true
-                }
-
-                Spacer()
-
-                // Delete button (inside card, on the right)
-                Button(action: {
-                    localTasks.remove(at: index)
-                    #if !targetEnvironment(simulator)
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    #endif
-                }) {
-                    Image(systemName: "trash")
-                        .foregroundColor(OPSStyle.Colors.errorStatus)
-                        .font(.system(size: 16))
-                        .padding(.trailing, 16)
-                }
-                .buttonStyle(PlainButtonStyle())
+        return TaskLineItem(
+            title: taskType?.display ?? "Unknown Task",
+            color: taskColor,
+            status: task.status,
+            startDate: task.startDate,
+            teamMemberCount: taskTeamMembers.count,
+            onTap: {
+                editingTaskIndex = index
+                showingTaskForm = true
+            },
+            onDelete: {
+                localTasks.remove(at: index)
             }
-
-            
-            // Status badge overlay - top right, on same axis as title
-            VStack {
-                HStack {
-                    Spacer()
-                    Text(task.status.displayName.uppercased())
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(task.status.color)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(task.status.color.opacity(0.1))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(task.status.color, lineWidth: 1)
-                        )
-                        .padding(.trailing, 52) // Space for delete button (16 padding + 16 icon + 16 padding + extra)
-                       // .padding(.top, 8)
-                    
-                }
-                Spacer()
-            }
-            .padding(.top, 8)
-             
-        }
-        //.frame(height: 60)
-        .background(Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
     }
 

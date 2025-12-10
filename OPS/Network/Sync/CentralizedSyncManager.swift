@@ -452,7 +452,14 @@ class CentralizedSyncManager {
 
                 user.firstName = dto.nameFirst ?? ""  // UserDTO uses nameFirst
                 user.lastName = dto.nameLast ?? ""    // UserDTO uses nameLast
-                user.email = dto.email ?? ""
+                // Email can be in authentication.email.email or direct email field
+                if let authEmail = dto.authentication?.email?.email, !authEmail.isEmpty {
+                    user.email = authEmail
+                } else if let directEmail = dto.email, !directEmail.isEmpty {
+                    user.email = directEmail
+                } else {
+                    user.email = nil
+                }
                 user.phone = dto.phone
                 user.homeAddress = dto.homeAddress?.formattedAddress
                 user.latitude = dto.homeAddress?.lat

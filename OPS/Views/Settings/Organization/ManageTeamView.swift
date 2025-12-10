@@ -22,6 +22,7 @@ struct ManageTeamView: View {
     @State private var showInviteSheet = false
     @State private var showInviteSentMessage = false
     @State private var inviteSentCount = 0
+    @State private var memberToView: User? = nil
 
     private var company: Company? {
         dataController.getCurrentUserCompany()
@@ -159,6 +160,10 @@ struct ManageTeamView: View {
                 .environmentObject(dataController)
             }
         }
+        .sheet(item: $memberToView) { member in
+            ContactDetailView(user: member)
+                .environmentObject(dataController)
+        }
         .sheet(isPresented: $showInviteSheet) {
             TeamInviteSheet(companyId: company?.id ?? "")
                 .environmentObject(dataController)
@@ -201,98 +206,98 @@ struct ManageTeamView: View {
     private func teamMemberRow(_ member: User) -> some View {
         let isCurrentUser = member.id == dataController.currentUser?.id
 
-        return HStack(spacing: 12) {
-            // Avatar
-            UserAvatar(user: member, size: 44)
+        return Button(action: {
+            memberToView = member
+        }) {
+            HStack(spacing: 12) {
+                // Avatar
+                UserAvatar(user: member, size: 44)
 
-            // Info
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(member.fullName)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                // Info
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(member.fullName)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    if isCurrentUser {
-                        Text("YOU")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(OPSStyle.Colors.primaryAccent.opacity(0.2))
-                            .cornerRadius(4)
+                        if isCurrentUser {
+                            Text("YOU")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(OPSStyle.Colors.primaryAccent.opacity(0.2))
+                                .cornerRadius(4)
+                        }
+
+                        if member.isCompanyAdmin {
+                            Text("ADMIN")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(OPSStyle.Colors.warningStatus.opacity(0.2))
+                                .cornerRadius(4)
+                        }
                     }
 
-                    if member.isCompanyAdmin {
-                        Text("ADMIN")
+                    HStack(spacing: 8) {
+                        Text(member.roleDisplay.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.warningStatus)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(OPSStyle.Colors.warningStatus.opacity(0.2))
-                            .cornerRadius(4)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        if let email = member.email, !email.isEmpty {
+                            Text("•")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            Text(email)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                        }
                     }
                 }
 
-                HStack(spacing: 8) {
-                    Text(member.roleDisplay.uppercased())
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer()
 
-                    if let email = member.email, !email.isEmpty {
-                        Text("•")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                // Admin actions menu (only for admins, not for self)
+                if isCompanyAdmin && !isCurrentUser {
+                    Menu {
+                        Button(action: {
+                            selectedMember = member
+                            showEditSheet = true
+                        }) {
+                            Label("Edit Role", systemImage: "pencil")
+                        }
 
-                        Text(email)
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .lineLimit(1)
+                        Divider()
+
+                        Button(role: .destructive, action: {
+                            memberToRemove = member
+                            showRemoveConfirmation = true
+                        }) {
+                            Label("Remove from Team", systemImage: "person.badge.minus")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
-            }
 
-            Spacer()
-
-            // Actions (only for admins, not for self)
-            if isCompanyAdmin && !isCurrentUser {
-                Menu {
-                    Button(action: {
-                        selectedMember = member
-                        showEditSheet = true
-                    }) {
-                        Label("Edit Role", systemImage: "pencil")
-                    }
-
-                    Divider()
-
-                    Button(role: .destructive, action: {
-                        memberToRemove = member
-                        showRemoveConfirmation = true
-                    }) {
-                        Label("Remove from Team", systemImage: "person.badge.minus")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-            } else {
+                // Chevron indicator for navigation
                 Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if isCompanyAdmin && !isCurrentUser {
-                selectedMember = member
-                showEditSheet = true
-            }
-        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Supporting Views

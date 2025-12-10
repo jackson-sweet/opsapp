@@ -69,37 +69,6 @@ struct MapContainer: View {
             MapControlsView(coordinator: coordinator)
                 .zIndex(1)
             
-            /*
-            // Navigation overlay (when navigating)
-            if coordinator.isNavigating {
-                VStack {
-                    // Show NavigationBanner at the top
-                    if let navigationState = coordinator.navigationState,
-                       case .navigating = navigationState,
-                       let route = coordinator.currentRoute,
-                       coordinator.navigationEngine.currentStepIndex < route.steps.count {
-                        
-                        let currentStep = route.steps[coordinator.navigationEngine.currentStepIndex]
-                        
-                        NavigationBanner(
-                            instruction: currentStep.instructions,
-                            distance: formatDistance(coordinator.navigationEngine.distanceToNextStep),
-                            isLastStep: coordinator.navigationEngine.currentStepIndex >= route.steps.count - 2,
-                            onEndNavigation: {
-                                coordinator.stopNavigation()
-                            }
-                        )
-                        .padding(.horizontal)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    
-                    Spacer()
-                }
-                .zIndex(4)
-
-            }
-            */
-            
             // Project details card (when project selected and not navigating)
             // Hide ONLY if app is in project mode (active project uses popup instead)
             if !coordinator.isNavigating,
@@ -194,15 +163,19 @@ struct MapContainer: View {
             coordinator.stopNavigation()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartNavigation"))) { notification in
-            
-            // Check if we have the right project selected
-            if let projectId = notification.userInfo?["projectId"] as? String,
-               coordinator.selectedProjectId == projectId {
-                Task {
-                    do {
-                        try await coordinator.startNavigation()
-                    } catch {
-                    }
+            guard let projectId = notification.userInfo?["projectId"] as? String else { return }
+
+            // Select the project if not already selected
+            if coordinator.selectedProjectId != projectId {
+                coordinator.selectedProjectId = projectId
+            }
+
+            // Start navigation
+            Task {
+                do {
+                    try await coordinator.startNavigation()
+                } catch {
+                    print("[MAP_CONTAINER] ❌ Failed to start navigation: \(error)")
                 }
             }
         }

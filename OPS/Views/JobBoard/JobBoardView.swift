@@ -473,7 +473,7 @@ struct JobBoardTasksView: View {
     @State private var selectedStatuses: Set<TaskStatus> = []
     @State private var selectedTaskTypeIds: Set<String> = []
     @State private var selectedTeamMemberIds: Set<String> = []
-    @State private var sortOption: TaskSortOption = .createdDateDescending
+    @State private var sortOption: TaskSortOption = .scheduledDateDescending
     @State private var selectedTaskType: TaskType?
     @State private var showingTaskTypeDetails = false
     @State private var isCancelledExpanded = false
@@ -559,10 +559,6 @@ struct JobBoardTasksView: View {
 
         // Sort
         switch sortOption {
-        case .createdDateDescending:
-            return filtered.sorted(by: { ($0.scheduledDate ?? Date.distantPast) > ($1.scheduledDate ?? Date.distantPast) })
-        case .createdDateAscending:
-            return filtered.sorted(by: { ($0.scheduledDate ?? Date.distantPast) < ($1.scheduledDate ?? Date.distantPast) })
         case .scheduledDateDescending:
             return filtered.sorted(by: { ($0.scheduledDate ?? Date.distantPast) > ($1.scheduledDate ?? Date.distantPast) })
         case .scheduledDateAscending:

@@ -38,6 +38,7 @@ struct UniversalJobBoardCard: View {
     @State private var confirmingDirection: SwipeDirection? = nil
     @State private var showingDeleteConfirmation = false
     @State private var showingClientDeletionSheet = false
+    @State private var showingNoTasksAlert = false
     @State private var customAlert: CustomAlertConfig?
 
     private var isFieldCrew: Bool {
@@ -318,7 +319,7 @@ struct UniversalJobBoardCard: View {
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
                     .simultaneousGesture(
-                        DragGesture(minimumDistance: 5)
+                        DragGesture(minimumDistance: 20)
                             .onChanged { value in
                                 handleSwipeChanged(value: value, cardWidth: geometry.size.width)
                             }
@@ -491,6 +492,14 @@ struct UniversalJobBoardCard: View {
             onConfirm: deleteItem
         )
         .customAlert($customAlert)
+        .alert("No Tasks to Reschedule", isPresented: $showingNoTasksAlert) {
+            Button("Create Task") {
+                showingTaskForm = true
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This project has no tasks. Create one to schedule work.")
+        }
     }
 
     private var deleteItemName: String {
@@ -520,7 +529,7 @@ struct UniversalJobBoardCard: View {
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
                     .simultaneousGesture(
-                        DragGesture(minimumDistance: 5)
+                        DragGesture(minimumDistance: 20)
                             .onChanged { value in
                                 handleSwipeChanged(value: value, cardWidth: geometry.size.width)
                             }
@@ -1095,8 +1104,8 @@ struct UniversalJobBoardCard: View {
         let activeTasks = project.tasks.filter { $0.deletedAt == nil }
 
         if activeTasks.isEmpty {
-            // No tasks - reschedule the project itself
-            showingScheduler = true
+            // No tasks - show alert with option to create one
+            showingNoTasksAlert = true
         } else if activeTasks.count == 1 {
             // Exactly one task - reschedule it automatically
             selectedTaskForScheduling = activeTasks.first
@@ -1411,6 +1420,7 @@ struct UniversalJobBoardCard: View {
         let horizontalDrag = abs(value.translation.width)
         let verticalDrag = abs(value.translation.height)
 
+        // Only activate swipe if horizontal movement is clearly dominant
         guard horizontalDrag > verticalDrag else { return }
 
         let direction: SwipeDirection = value.translation.width > 0 ? .right : .left

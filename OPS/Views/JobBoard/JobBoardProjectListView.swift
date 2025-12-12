@@ -16,10 +16,10 @@ struct JobBoardProjectListView: View {
     @Binding var showingFilterSheet: Bool
     @State private var selectedStatuses: Set<Status> = []
     @State private var selectedTeamMemberIds: Set<String> = []
-    @State private var sortOption: ProjectSortOption = .createdDateDescending
+    @State private var sortOption: ProjectSortOption = .scheduledDateDescending
     @State private var showingCreateProject = false
-    @State private var isClosedExpanded = false
-    @State private var isArchivedExpanded = false
+    @State private var showingClosedSheet = false
+    @State private var showingArchivedSheet = false
 
     private var availableTeamMembers: [User] {
         guard let companyId = dataController.currentUser?.companyId else { return [] }
@@ -49,7 +49,7 @@ struct JobBoardProjectListView: View {
         }
 
         switch sortOption {
-        case .createdDateDescending, .scheduledDateDescending:
+        case .scheduledDateDescending:
             return filtered.sorted { p1, p2 in
                 let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
                 let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
@@ -60,7 +60,7 @@ struct JobBoardProjectListView: View {
                 if p1Unassigned != p2Unassigned { return p1Unassigned }
                 return (p1.startDate ?? Date.distantPast) > (p2.startDate ?? Date.distantPast)
             }
-        case .createdDateAscending, .scheduledDateAscending:
+        case .scheduledDateAscending:
             return filtered.sorted { p1, p2 in
                 let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
                 let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
@@ -131,32 +131,30 @@ struct JobBoardProjectListView: View {
                                 .id("\(project.id)-\(project.teamMemberIdsString)")
                         }
 
-                        if !closedProjects.isEmpty {
-                            CollapsibleSection(
-                                title: "CLOSED",
-                                count: closedProjects.count,
-                                isExpanded: $isClosedExpanded
-                            ) {
-                                ForEach(closedProjects) { project in
-                                    UniversalJobBoardCard(cardType: .project(project))
-                                        .environmentObject(dataController)
-                                        .id("\(project.id)-\(project.teamMemberIdsString)")
+                        // Closed and Archived section buttons
+                        if !closedProjects.isEmpty || !archivedProjects.isEmpty {
+                            HStack(spacing: 12) {
+                                if !closedProjects.isEmpty {
+                                    SectionButton(
+                                        title: "CLOSED",
+                                        count: closedProjects.count,
+                                        color: Status.closed.color
+                                    ) {
+                                        showingClosedSheet = true
+                                    }
                                 }
-                            }
-                        }
 
-                        if !archivedProjects.isEmpty {
-                            CollapsibleSection(
-                                title: "ARCHIVED",
-                                count: archivedProjects.count,
-                                isExpanded: $isArchivedExpanded
-                            ) {
-                                ForEach(archivedProjects) { project in
-                                    UniversalJobBoardCard(cardType: .project(project))
-                                        .environmentObject(dataController)
-                                        .id("\(project.id)-\(project.teamMemberIdsString)")
+                                if !archivedProjects.isEmpty {
+                                    SectionButton(
+                                        title: "ARCHIVED",
+                                        count: archivedProjects.count,
+                                        color: Status.archived.color
+                                    ) {
+                                        showingArchivedSheet = true
+                                    }
                                 }
                             }
+                            .padding(.top, 8)
                         }
                     }
                     .padding(.top, 12)
@@ -175,6 +173,20 @@ struct JobBoardProjectListView: View {
             .onDisappear {
                 updateFilterVisibility()
             }
+        }
+        .sheet(isPresented: $showingClosedSheet) {
+            ProjectListSheet(
+                title: "Closed Projects",
+                projects: closedProjects,
+                dataController: dataController
+            )
+        }
+        .sheet(isPresented: $showingArchivedSheet) {
+            ProjectListSheet(
+                title: "Archived Projects",
+                projects: archivedProjects,
+                dataController: dataController
+            )
         }
         .onChange(of: selectedStatuses) { _, _ in
             updateFilterVisibility()
@@ -370,6 +382,100 @@ struct CollapsibleSection<Content: View>: View {
                     content()
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+}
+
+// MARK: - Section Button
+/// Button that opens a sheet containing items (used for Closed/Archived sections)
+struct SectionButton: View {
+    let title: String
+    let count: Int
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+
+                Text(title)
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Text("(\(count))")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(OPSStyle.Colors.cardBackgroundDark)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Project List Sheet
+/// Sheet displaying a list of projects (used for Closed/Archived)
+struct ProjectListSheet: View {
+    let title: String
+    let projects: [Project]
+    let dataController: DataController
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                OPSStyle.Colors.background
+                    .ignoresSafeArea()
+
+                if projects.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 48))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text("No projects")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(projects) { project in
+                                UniversalJobBoardCard(cardType: .project(project))
+                                    .environmentObject(dataController)
+                                    .id("\(project.id)-\(project.teamMemberIdsString)")
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
             }
         }
     }

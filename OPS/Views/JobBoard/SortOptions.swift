@@ -8,8 +8,6 @@
 import Foundation
 
 enum ProjectSortOption: String, CaseIterable, Hashable {
-    case createdDateDescending = "Newest First"
-    case createdDateAscending = "Oldest First"
     case scheduledDateDescending = "Latest Scheduled"
     case scheduledDateAscending = "Earliest Scheduled"
     case statusAscending = "Status (A-Z)"
@@ -17,8 +15,6 @@ enum ProjectSortOption: String, CaseIterable, Hashable {
 }
 
 enum TaskSortOption: String, CaseIterable, Hashable {
-    case createdDateDescending = "Newest First"
-    case createdDateAscending = "Oldest First"
     case scheduledDateDescending = "Latest Scheduled"
     case scheduledDateAscending = "Earliest Scheduled"
     case statusAscending = "Status (A-Z)"

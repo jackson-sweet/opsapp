@@ -82,19 +82,24 @@ struct CalendarSchedulerSheet: View {
                 
                 // Calendar View
                 ScrollView {
-                    VStack(spacing: 24) {
-                        
-                        // Selected dates display
-                        if selectedStartDate != selectedEndDate {
-                            selectedDatesHeader
-                        } else {
-                            
-                            // Instructions (full width, not on card)
-                            instructionsSectionFullWidth
-                        }
-                        
-                        // Calendar Grid (full width)
+                    VStack(spacing: 20) {
+
+                        // Selected dates display (always visible, same size)
+                        selectedDatesHeader
+                            .padding(.top, 8)
+
+                        // Calendar Grid
                         calendarSectionFullWidth
+
+                        // Conflict Warning (show immediately after calendar when reviewing)
+                        if !conflictingEvents.isEmpty && viewMode == .reviewing {
+                            conflictWarningCard
+                                .padding(.horizontal, 20)
+                        }
+
+                        // Action Button (always visible, disabled when no dates)
+                        actionButtons
+                            .padding(.horizontal, 20)
 
                         // Filter toggles
                         teamFilterToggle
@@ -103,22 +108,6 @@ struct CalendarSchedulerSheet: View {
                         if case .task = itemType {
                             projectTasksFilterToggle
                         }
-
-                        // Selected Dates Summary
-                        if viewMode == .reviewing {
-                            selectedDatesSummary
-                                .padding(.horizontal, 20)
-                        }
-
-                        // Conflict Warning
-                        if !conflictingEvents.isEmpty && viewMode == .reviewing {
-                            conflictWarningCard
-                                .padding(.horizontal, 20)
-                        }
-
-                        // Action Buttons
-                        actionButtons
-                            .padding(.horizontal, 20)
                     }
                     .padding(.bottom, 20)
                 }
@@ -174,64 +163,60 @@ struct CalendarSchedulerSheet: View {
     }
 
     // MARK: - Selected Dates Header
-    private var selectedDatesHeader: some View {
-        VStack(alignment: .leading){
-            Spacer()
-            HStack(spacing: 12) {
-                Image(systemName: OPSStyle.Icons.schedule)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                
-                Text(formatDate(selectedStartDate))
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 12))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                
-                Text(formatDate(selectedEndDate))
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Spacer()
-            }
-            Text("\(daysBetween(selectedStartDate, selectedEndDate)) days")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-        Spacer()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 40)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+    private var hasSelectedDates: Bool {
+        // User has completed date selection (in reviewing mode)
+        viewMode == .reviewing
     }
 
-    // MARK: - Instructions Section (Full Width)
-    private var instructionsSectionFullWidth: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Spacer()
-            Label {
-                Text("SELECT DATES")
-                    .font(OPSStyle.Typography.captionBold)
+    private var selectedDatesHeader: some View {
+        HStack(spacing: 0) {
+            // Start date
+            VStack(alignment: .leading, spacing: 4) {
+                Text("START")
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-            } icon: {
-                Image(systemName: OPSStyle.Icons.schedule)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .font(.system(size: 14))
+                Text(hasSelectedDates ? formatDate(selectedStartDate) : "Select date")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
             }
-            
-            Text(viewMode == .selecting ?
-                 "Tap to select a start date, then tap again to select an end date" :
-                    "Review your selection and check for conflicts")
-            .font(OPSStyle.Typography.caption)
-            .foregroundColor(OPSStyle.Colors.tertiaryText)
-        Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Arrow
+            Image(systemName: "arrow.right")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                .padding(.horizontal, 12)
+
+            // End date
+            VStack(alignment: .leading, spacing: 4) {
+                Text("END")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text(hasSelectedDates ? formatDate(selectedEndDate) : "Select date")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Duration
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("DURATION")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text(hasSelectedDates ? "\(daysBetween(selectedStartDate, selectedEndDate)) days" : "—")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 40)
+        .padding(16)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .strokeBorder(hasSelectedDates ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.white.opacity(0.1), lineWidth: 1)
+        )
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .animation(.easeInOut(duration: 0.2), value: hasSelectedDates)
     }
 
     // MARK: - Calendar Section (Full Width)
@@ -253,36 +238,33 @@ struct CalendarSchedulerSheet: View {
 
     // MARK: - Team Filter Toggle
     private var teamFilterToggle: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: showOnlyTeamEvents ? OPSStyle.Icons.crew : OPSStyle.Icons.schedule)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .font(.system(size: 14))
+        HStack {
+            Image(systemName: OPSStyle.Icons.crew)
+                .foregroundColor(showOnlyTeamEvents ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                .font(.system(size: 14))
 
-                Text(showOnlyTeamEvents ? "Showing events with overlapping team members" : "Showing all calendar events")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Spacer()
-
-                Toggle("", isOn: $showOnlyTeamEvents)
-                    .labelsHidden()
-                    .tint(OPSStyle.Colors.primaryAccent)
-                    .scaleEffect(0.8)
-            }
-
-            if showOnlyTeamEvents {
-                Text("Only showing events that share team members with this \(itemType.displayName.lowercased()). Toggle to see all events.")
+            VStack(alignment: .leading, spacing: 2) {
+                Text("TEAM EVENTS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text("Show events with conflicting team assignments")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
+
+            Spacer()
+
+            Toggle("", isOn: $showOnlyTeamEvents)
+                .labelsHidden()
+                .tint(OPSStyle.Colors.primaryAccent)
+                .scaleEffect(0.8)
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+        .padding(14)
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
         )
         .padding(.horizontal, 20)
         .onChange(of: showOnlyTeamEvents) { _ in
@@ -295,36 +277,33 @@ struct CalendarSchedulerSheet: View {
 
     // MARK: - Project Tasks Filter Toggle
     private var projectTasksFilterToggle: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: showOnlyProjectTasks ? OPSStyle.Icons.taskType : OPSStyle.Icons.schedule)
-                    .foregroundColor(OPSStyle.Colors.secondaryAccent)
-                    .font(.system(size: 14))
+        HStack {
+            Image(systemName: OPSStyle.Icons.taskType)
+                .foregroundColor(showOnlyProjectTasks ? OPSStyle.Colors.secondaryAccent : OPSStyle.Colors.tertiaryText)
+                .font(.system(size: 14))
 
-                Text(showOnlyProjectTasks ? "Showing other tasks for this project" : "Show project tasks")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Spacer()
-
-                Toggle("", isOn: $showOnlyProjectTasks)
-                    .labelsHidden()
-                    .tint(OPSStyle.Colors.secondaryAccent)
-                    .scaleEffect(0.8)
-            }
-
-            if showOnlyProjectTasks {
-                Text("Showing only other tasks from the same project to help coordinate scheduling.")
+            VStack(alignment: .leading, spacing: 2) {
+                Text("PROJECT TASKS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text("Show other tasks from this project")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
+
+            Spacer()
+
+            Toggle("", isOn: $showOnlyProjectTasks)
+                .labelsHidden()
+                .tint(OPSStyle.Colors.secondaryAccent)
+                .scaleEffect(0.8)
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+        .padding(14)
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
         )
         .padding(.horizontal, 20)
         .onChange(of: showOnlyProjectTasks) { _ in
@@ -394,62 +373,6 @@ struct CalendarSchedulerSheet: View {
         }
     }
 
-    // MARK: - Selected Dates Summary
-    private var selectedDatesSummary: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label {
-                Text("SELECTED SCHEDULE")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            } icon: {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(OPSStyle.Colors.successStatus)
-                    .font(.system(size: 14))
-            }
-
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Start")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text(formatDate(selectedStartDate))
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-
-                Image(systemName: "arrow.right")
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("End")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text(formatDate(selectedEndDate))
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("Duration")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text("\(daysBetween(selectedStartDate, selectedEndDate)) days")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-            }
-        }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
-    }
-
     // MARK: - Conflict Warning Card
     private var conflictWarningCard: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -507,58 +430,59 @@ struct CalendarSchedulerSheet: View {
 
     // MARK: - Action Buttons
     private var actionButtons: some View {
-        HStack(spacing: 12) {
-            if viewMode == .reviewing {
-                if !conflictingEvents.isEmpty {
-                    // Show conflict buttons
+        VStack(spacing: 12) {
+            if !conflictingEvents.isEmpty && hasSelectedDates {
+                // Conflicts exist - show both options
+                HStack(spacing: 12) {
                     Button(action: {
-                        // Clear selected dates
+                        // Reset to single date selection
                         selectedStartDate = currentStartDate ?? Date()
                         selectedEndDate = selectedStartDate
                         conflictingEvents = []
                         viewMode = .selecting
                     }) {
-                        Text("Change Dates")
-                            .font(OPSStyle.Typography.bodyBold)
+                        Text("CHANGE")
+                            .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
+                            .padding(.vertical, 14)
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                    .strokeBorder(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
                             )
                     }
 
                     Button(action: handleConfirmSchedule) {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 14))
-
-                            Text("Schedule Anyway")
-                        }
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(OPSStyle.Colors.warningStatus)
-                        .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    }
-                } else {
-                    // No conflicts - show single confirm button
-                    Button(action: handleConfirmSchedule) {
-                        Text("Confirm")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                        Text("CONFIRM ANYWAY")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.warningStatus)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(OPSStyle.Colors.primaryAccent)
-                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                            .padding(.vertical, 14)
+                            .background(.white)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }
+            } else {
+                // Single confirm button (disabled when no dates selected)
+                Button(action: handleConfirmSchedule) {
+                    Text("CONFIRM DATES")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(hasSelectedDates ? .black : OPSStyle.Colors.tertiaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(hasSelectedDates ? .white : OPSStyle.Colors.cardBackgroundDark)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .strokeBorder(hasSelectedDates ? Color.clear : Color.white.opacity(0.1), lineWidth: 1)
+                        )
+                }
+                .disabled(!hasSelectedDates)
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: hasSelectedDates)
     }
 
     // MARK: - Helper Methods
@@ -650,7 +574,7 @@ struct CalendarSchedulerSheet: View {
                 currentTeamMembers = Set(project.getTeamMemberIds())
             case .task(let task):
                 currentTeamMembers = Set(task.getTeamMemberIds())
-            case .draftTask(_, let teamMemberIds):
+            case .draftTask(_, let teamMemberIds, _):
                 currentTeamMembers = Set(teamMemberIds)
             }
         }
@@ -679,24 +603,26 @@ struct CalendarSchedulerSheet: View {
     }
 
     private func handleDateSelection(_ date: Date) {
-        // Allow date selection in both modes
         // Haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
 
         if selectedStartDate == selectedEndDate {
-            // First selection or both are the same
-            if date < selectedStartDate {
-                selectedStartDate = date
+            // Second date selected - auto-sort so earlier date is start, later is end
+            let firstDate = selectedStartDate
+            let secondDate = date
+
+            if secondDate < firstDate {
+                selectedStartDate = secondDate
+                selectedEndDate = firstDate
             } else {
-                selectedEndDate = date
-
-                // End date selected - check for conflicts
-                checkForConflicts()
-
-                // Move to review mode to show confirm button (or conflicts)
-                viewMode = .reviewing
+                selectedStartDate = firstDate
+                selectedEndDate = secondDate
             }
+
+            // Check for conflicts and move to review mode
+            checkForConflicts()
+            viewMode = .reviewing
         } else {
             // Reset to single date selection
             selectedStartDate = date
@@ -721,23 +647,31 @@ struct CalendarSchedulerSheet: View {
     }
 
     private func filterCalendarEvents() {
-        // Handle project tasks filter (only for tasks with a project)
+        // Handle project tasks filter (only for items with a project)
         if showOnlyProjectTasks {
-            if case .task(let task) = itemType {
+            if let projectId = itemType.projectId {
                 // Show only other tasks from the same project
+                let currentTaskId: String? = {
+                    if case .task(let task) = itemType { return task.id }
+                    return nil
+                }()
+
                 filteredCalendarEvents = allCalendarEvents.filter { event in
-                    // All events are task events now - no type check needed
-
                     // Must be from the same project
-                    guard event.projectId == task.projectId else { return false }
+                    guard event.projectId == projectId else { return false }
 
-                    // Exclude the current task being scheduled
-                    return event.taskId != task.id
+                    // Exclude the current task being scheduled (if editing existing task)
+                    if let taskId = currentTaskId, event.taskId == taskId {
+                        return false
+                    }
+
+                    return true
                 }
                 return
-            } else if case .draftTask = itemType {
-                // Draft tasks have no project yet, so don't filter by project tasks
-                // Just continue to team member filtering below
+            } else {
+                // No project ID available - show nothing for project tasks filter
+                filteredCalendarEvents = []
+                return
             }
         }
 
@@ -760,7 +694,7 @@ struct CalendarSchedulerSheet: View {
                 currentTeamMembers = Set(project.getTeamMemberIds())
             case .task(let task):
                 currentTeamMembers = Set(task.getTeamMemberIds())
-            case .draftTask(_, let teamMemberIds):
+            case .draftTask(_, let teamMemberIds, _):
                 currentTeamMembers = Set(teamMemberIds)
             }
         }
@@ -858,7 +792,7 @@ struct CalendarSchedulerSheet: View {
     enum ScheduleItemType {
         case project(Project)
         case task(ProjectTask)
-        case draftTask(taskTypeId: String, teamMemberIds: [String])
+        case draftTask(taskTypeId: String, teamMemberIds: [String], projectId: String?)
 
         var displayName: String {
             switch self {
@@ -872,6 +806,17 @@ struct CalendarSchedulerSheet: View {
         var isDraft: Bool {
             if case .draftTask = self { return true }
             return false
+        }
+
+        var projectId: String? {
+            switch self {
+            case .project(let project):
+                return project.id
+            case .task(let task):
+                return task.projectId
+            case .draftTask(_, _, let projectId):
+                return projectId
+            }
         }
     }
 }
@@ -906,41 +851,47 @@ private struct SchedulerDayCell: View {
                         .fill(OPSStyle.Colors.primaryAccent)
                 }
 
-                // Border styling for selected dates
-                if isStartDate && isEndDate {
-                    // Single date selection: fully rounded border
-                    RoundedRectangle(cornerRadius: 8)
+                // Border styling for selected dates with animation
+                Group {
+                    if isStartDate && isEndDate {
+                        // Single date selection: fully rounded border
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: 2)
+                    } else if isStartDate {
+                        // Start date: rounded left corners only
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 8,
+                            bottomLeadingRadius: 8,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 0
+                        )
                         .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: 2)
-                } else if isStartDate {
-                    // Start date: rounded left corners only
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 8,
-                        bottomLeadingRadius: 8,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 0
-                    )
-                    .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: 2)
-                } else if isEndDate {
-                    // End date: rounded right corners only
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 0,
-                        bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 8,
-                        topTrailingRadius: 8
-                    )
-                    .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: 2)
-                } else if isInRange {
-                    // Top and bottom borders only for intermediate dates
-                    VStack(spacing: 0) {
-                        Rectangle()
-                            .fill(OPSStyle.Colors.primaryText)
-                            .frame(height: 2)
-                        Spacer()
-                        Rectangle()
-                            .fill(OPSStyle.Colors.primaryText)
-                            .frame(height: 2)
+                    } else if isEndDate {
+                        // End date: rounded right corners only
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 0,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 8,
+                            topTrailingRadius: 8
+                        )
+                        .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: 2)
+                    } else if isInRange {
+                        // Top and bottom borders only for intermediate dates
+                        VStack(spacing: 0) {
+                            Rectangle()
+                                .fill(OPSStyle.Colors.primaryText)
+                                .frame(height: 2)
+                            Spacer()
+                            Rectangle()
+                                .fill(OPSStyle.Colors.primaryText)
+                                .frame(height: 2)
+                        }
                     }
                 }
+                .opacity(isStartDate || isEndDate || isInRange ? 1 : 0)
+                .animation(.easeInOut(duration: 0.15), value: isStartDate)
+                .animation(.easeInOut(duration: 0.15), value: isEndDate)
+                .animation(.easeInOut(duration: 0.15), value: isInRange)
 
                 // Conflict indicator overlay
                 if hasConflicts {

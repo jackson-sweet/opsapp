@@ -542,7 +542,7 @@ struct CalendarSchedulerSheet: View {
 
     private func getEventsForDate(_ date: Date) -> [CalendarEvent] {
         // Return events scheduled on this date based on filter
-        let events = showOnlyTeamEvents ? filteredCalendarEvents : allCalendarEvents
+        let events = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredCalendarEvents : allCalendarEvents
         return events.filter { event in
             event.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
         }
@@ -559,7 +559,7 @@ struct CalendarSchedulerSheet: View {
 
     private func hasTeamConflicts(on date: Date) -> Bool {
         // Check if this date has events with overlapping team members
-        let eventsToCheck = showOnlyTeamEvents ? filteredCalendarEvents : allCalendarEvents
+        let eventsToCheck = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredCalendarEvents : allCalendarEvents
 
         // Get team members for the current item
         let currentTeamMembers: Set<String>
@@ -595,7 +595,13 @@ struct CalendarSchedulerSheet: View {
             }
 
             if !isSameItem && event.spannedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) }) {
-                let eventTeamMembers = Set(event.getTeamMemberIds())
+                // Use linked task's team members if available
+                let eventTeamMembers: Set<String>
+                if let task = event.task {
+                    eventTeamMembers = Set(task.getTeamMemberIds())
+                } else {
+                    eventTeamMembers = Set(event.getTeamMemberIds())
+                }
                 return !currentTeamMembers.isDisjoint(with: eventTeamMembers)
             }
             return false
@@ -700,8 +706,15 @@ struct CalendarSchedulerSheet: View {
         }
 
         // Filter events that share at least one team member
+        // Use the linked task's team members (more accurate than stored event team members)
         filteredCalendarEvents = allCalendarEvents.filter { event in
-            let eventTeamMembers = Set(event.getTeamMemberIds())
+            // Get team members from the linked task if available, otherwise fall back to event's stored IDs
+            let eventTeamMembers: Set<String>
+            if let task = event.task {
+                eventTeamMembers = Set(task.getTeamMemberIds())
+            } else {
+                eventTeamMembers = Set(event.getTeamMemberIds())
+            }
             return !currentTeamMembers.isDisjoint(with: eventTeamMembers)
         }
     }

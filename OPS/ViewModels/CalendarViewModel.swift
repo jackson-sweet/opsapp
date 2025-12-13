@@ -288,21 +288,19 @@ class CalendarViewModel: ObservableObject {
         var filteredEvents = events
         
         // Apply team member filter
+        // Only check TASK team members - this shows events where the team member is actually assigned to the task
+        // NOT project team members (which would show all tasks from any project they're on)
         if !selectedTeamMemberIds.isEmpty {
             filteredEvents = filteredEvents.filter { event in
-                // Check event team members
-                let hasInEvent = event.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } ||
+                // Prefer task team members (more accurate than event's stored team members)
+                if let task = event.task {
+                    return task.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } ||
+                        task.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) }
+                }
+
+                // Fall back to event's stored team members if no linked task
+                return event.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } ||
                     event.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) }
-                
-                // Check task team members
-                let hasInTask = event.task?.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } == true ||
-                    event.task?.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) } == true
-                
-                // Check project team members
-                let hasInProject = event.project?.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } == true ||
-                    event.project?.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) } == true
-                
-                return hasInEvent || hasInTask || hasInProject
             }
         }
         

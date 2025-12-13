@@ -476,8 +476,8 @@ struct JobBoardTasksView: View {
     @State private var sortOption: TaskSortOption = .scheduledDateDescending
     @State private var selectedTaskType: TaskType?
     @State private var showingTaskTypeDetails = false
-    @State private var isCancelledExpanded = false
-    @State private var isCompletedExpanded = false
+    @State private var showingCompletedSheet = false
+    @State private var showingCancelledSheet = false
 
     private var allTasks: [ProjectTask] {
         let projects = dataController.getAllProjects()
@@ -586,7 +586,7 @@ struct JobBoardTasksView: View {
         VStack(spacing: 0) {
             if showingFilters && hasActiveFilters {
                 activeFilterBadges
-                    .padding(.top, 8)
+                    .padding(.bottom, 8)
             }
 
             if allTasks.isEmpty {
@@ -605,32 +605,30 @@ struct JobBoardTasksView: View {
                                 .environment(\.modelContext, dataController.modelContext!)
                         }
 
-                        if !completedTasks.isEmpty {
-                            CollapsibleSection(
-                                title: "COMPLETED",
-                                count: completedTasks.count,
-                                isExpanded: $isCompletedExpanded
-                            ) {
-                                ForEach(completedTasks) { task in
-                                    UniversalJobBoardCard(cardType: .task(task))
-                                        .environmentObject(dataController)
-                                        .environment(\.modelContext, dataController.modelContext!)
+                        // Completed and Cancelled section buttons
+                        if !completedTasks.isEmpty || !cancelledTasks.isEmpty {
+                            HStack(spacing: 12) {
+                                if !completedTasks.isEmpty {
+                                    SectionButton(
+                                        title: "COMPLETED",
+                                        count: completedTasks.count,
+                                        color: TaskStatus.completed.color
+                                    ) {
+                                        showingCompletedSheet = true
+                                    }
                                 }
-                            }
-                        }
 
-                        if !cancelledTasks.isEmpty {
-                            CollapsibleSection(
-                                title: "CANCELLED",
-                                count: cancelledTasks.count,
-                                isExpanded: $isCancelledExpanded
-                            ) {
-                                ForEach(cancelledTasks) { task in
-                                    UniversalJobBoardCard(cardType: .task(task))
-                                        .environmentObject(dataController)
-                                        .environment(\.modelContext, dataController.modelContext!)
+                                if !cancelledTasks.isEmpty {
+                                    SectionButton(
+                                        title: "CANCELLED",
+                                        count: cancelledTasks.count,
+                                        color: TaskStatus.cancelled.color
+                                    ) {
+                                        showingCancelledSheet = true
+                                    }
                                 }
                             }
+                            .padding(.top, 8)
                         }
                     }
                     .padding(.top, 12)
@@ -656,6 +654,20 @@ struct JobBoardTasksView: View {
             .onDisappear {
                 updateFilterVisibility()
             }
+        }
+        .sheet(isPresented: $showingCompletedSheet) {
+            TaskListSheet(
+                title: "Completed Tasks",
+                tasks: completedTasks,
+                dataController: dataController
+            )
+        }
+        .sheet(isPresented: $showingCancelledSheet) {
+            TaskListSheet(
+                title: "Cancelled Tasks",
+                tasks: cancelledTasks,
+                dataController: dataController
+            )
         }
         .onChange(of: selectedStatuses) { _, _ in
             updateFilterVisibility()
@@ -1049,6 +1061,64 @@ struct TaskFilterBadge: View {
                         .stroke(color.opacity(0.3), lineWidth: 1)
                 )
         )
+    }
+}
+
+// MARK: - Task List Sheet
+/// Sheet displaying a list of tasks (used for Completed/Cancelled)
+struct TaskListSheet: View {
+    let title: String
+    let tasks: [ProjectTask]
+    let dataController: DataController
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                OPSStyle.Colors.background
+                    .ignoresSafeArea()
+
+                if tasks.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: OPSStyle.Icons.task)
+                            .font(.system(size: 48))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text("No tasks")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(tasks) { task in
+                                UniversalJobBoardCard(cardType: .task(task))
+                                    .environmentObject(dataController)
+                                    .environment(\.modelContext, dataController.modelContext!)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                }
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(title.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("DONE") {
+                        dismiss()
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+        }
     }
 }
 

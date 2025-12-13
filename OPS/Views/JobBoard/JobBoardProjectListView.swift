@@ -112,7 +112,7 @@ struct JobBoardProjectListView: View {
         VStack(spacing: 0) {
             if showingFilters && hasActiveFilters {
                 activeFilterBadges
-                    .padding(.top, 8)
+                    .padding(.bottom, 8)
             }
 
             if allProjects.isEmpty {
@@ -467,13 +467,20 @@ struct ProjectListSheet: View {
                     }
                 }
             }
-            .navigationTitle(title)
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(title.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
+                    Button("DONE") {
                         dismiss()
                     }
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }

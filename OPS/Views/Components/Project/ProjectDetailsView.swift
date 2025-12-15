@@ -165,6 +165,16 @@ struct ProjectDetailsView: View {
                     }
                 )
             }
+            .sheet(isPresented: $showingAddTaskSheet) {
+                TaskFormSheet(
+                    mode: .create,
+                    preselectedProjectId: project.id,
+                    onSave: { _ in
+                        // No manual refresh needed - @Bindable project automatically updates when tasks change
+                    }
+                )
+                .environmentObject(dataController)
+            }
     }
 
     // MARK: - Main View Components
@@ -791,8 +801,7 @@ struct ProjectDetailsView: View {
                         Spacer()
                         
                         Button(action: {
-                            // Trigger task creation
-                            // This will be handled by the tasks section
+                            showingAddTaskSheet = true
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "plus.circle.fill")
@@ -907,7 +916,7 @@ struct ProjectDetailsView: View {
                         Spacer()
                         
                         Button(action: {
-                            // Trigger task creation
+                            showingAddTaskSheet = true
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "plus.circle.fill")
@@ -996,14 +1005,6 @@ struct ProjectDetailsView: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
-            .background(Color.clear)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
-            )
         }
     }
 
@@ -1454,19 +1455,7 @@ struct ProjectDetailsView: View {
                 .environmentObject(appState)
         }
         .padding(.horizontal)
-        .sheet(isPresented: $showingAddTaskSheet) {
-            TaskFormSheet(
-                mode: .create,
-                preselectedProjectId: project.id,
-                onSave: { _ in
-                    // Task saved, refresh the view
-                    refreshTrigger.toggle()
-                }
-            )
-            .environmentObject(dataController)
-        }
     }
-
 
     private var completeButton: some View {
         Button(action: {
@@ -1637,32 +1626,32 @@ struct ProjectDetailsView: View {
     }
 
     private func deleteProject() {
-        // Capture values needed for deletion to avoid accessing the object after it's deleted
+        // Capture values needed for deletion before any async work
         let projectId = project.id
         let projectTitle = project.title
         let controller = dataController
 
-        // Dismiss immediately to prevent view from accessing deleted object
-        dismiss()
+        print("[PROJECT_DETAILS] 🗑️ Starting project deletion for: \(projectTitle)")
 
-        // Perform deletion in detached task to avoid SwiftData invalidation issues
-        Task.detached {
+        // STEP 1: Delete locally FIRST (while view is still valid)
+        // This uses the centralized deleteProject which handles local deletion immediately
+        Task {
             do {
-                print("[PROJECT_DETAILS] 🗑️ Starting project deletion for: \(projectTitle)")
+                // Get a fresh reference and delete
+                if let projectToDelete = controller.getProject(id: projectId) {
+                    try await controller.deleteProject(projectToDelete)
+                    print("[PROJECT_DETAILS] ✅ Project deleted successfully")
+                }
 
-                // We need to get a fresh reference to the project on the main actor
+                // STEP 2: Dismiss AFTER local deletion is complete
                 await MainActor.run {
-                    Task {
-                        do {
-                            // Fetch the project again to ensure we have a valid reference
-                            if let projectToDelete = controller.getProject(id: projectId) {
-                                try await controller.deleteProject(projectToDelete)
-                                print("[PROJECT_DETAILS] ✅ Project deleted successfully")
-                            }
-                        } catch {
-                            print("[PROJECT_DETAILS] ❌ Failed to delete project: \(error)")
-                        }
-                    }
+                    dismiss()
+                }
+            } catch {
+                print("[PROJECT_DETAILS] ❌ Failed to delete project: \(error)")
+                // Still dismiss on error to avoid stuck state
+                await MainActor.run {
+                    dismiss()
                 }
             }
         }

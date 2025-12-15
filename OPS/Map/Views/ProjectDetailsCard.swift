@@ -38,9 +38,10 @@ struct ProjectDetailsCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Handle to drag and dismiss button
+            // Dismiss button
             HStack {
-                // Dismiss button
+                Spacer()
+
                 Button(action: {
                     coordinator.showingProjectDetails = false
                 }) {
@@ -48,27 +49,10 @@ struct ProjectDetailsCard: View {
                         .font(.system(size: 22))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.leading, 16)
-                
-                Spacer()
-                
-                RoundedRectangle(cornerRadius: 2.5)
-                    .fill(OPSStyle.Colors.secondaryText.opacity(0.5))
-                    .frame(width: 40, height: 5)
-                
-                Spacer()
-                
-                // Balance the dismiss button
-                Color.clear
-                    .frame(width: 22, height: 22)
-                    .padding(.trailing, 16)
+                .padding(.trailing, 16)
             }
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                // Allow tapping the handle to dismiss
-                coordinator.showingProjectDetails = false
-            }
+            .padding(.top, 12)
+            .padding(.bottom, 4)
             
             // Project info
             VStack(alignment: .leading, spacing: 12) {

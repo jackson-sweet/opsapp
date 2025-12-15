@@ -216,7 +216,8 @@ struct TaskFormSheet: View {
                         isPresented: $showingScheduler,
                         itemType: .draftTask(
                             taskTypeId: selectedTaskTypeId ?? "",
-                            teamMemberIds: Array(selectedTeamMemberIds)
+                            teamMemberIds: Array(selectedTeamMemberIds),
+                            projectId: selectedProject?.id ?? preselectedProjectId
                         ),
                         currentStartDate: startDate,
                         currentEndDate: endDate,

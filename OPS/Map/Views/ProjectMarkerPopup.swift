@@ -9,127 +9,140 @@ import MapKit
 
 struct ProjectMarkerPopup: View {
     let project: Project
+    let task: ProjectTask?
     let isActiveProject: Bool
-    let onNavigate: () -> Void
     let onDismiss: () -> Void
-    
+
+    @EnvironmentObject private var appState: AppState
+
+    /// Extract just street number and name from full address
+    private var streetAddress: String {
+        guard let address = project.address else { return "No address" }
+        let components = address.split(separator: ",")
+        return components.first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? address
+    }
+
+    /// Task type display text
+    private var taskTypeText: String? {
+        task?.taskType?.display
+    }
+
+    /// Task color
+    private var taskColor: Color {
+        if let task = task, let color = Color(hex: task.effectiveColor) {
+            return color
+        }
+        return OPSStyle.Colors.tertiaryText
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Arrow pointing up to marker
             Triangle()
-                .fill(OPSStyle.Colors.cardBackground)
-                .frame(width: 20, height: 10)
+                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .frame(width: 14, height: 7)
                 .offset(y: 1)
-            
-            // Content
-            VStack(alignment: .leading, spacing: 8) {
-                // Title
+
+            // Content card
+            VStack(alignment: .leading, spacing: 12) {
+
+                // Project title
                 Text(project.title)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .lineLimit(1)
-                
-                // Client
-                Text(project.effectiveClientName)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(1)
-                
-                // Address
-                HStack(spacing: 4) {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    
-                    Text(project.address ?? "No address")
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Client and address
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(project.effectiveClientName)
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .lineLimit(2)
+                        .lineLimit(1)
+
+                    Text(streetAddress)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
                 }
-                
-                // Status
-                StatusBadge.forJobStatus(project.status)
-                    .scaleEffect(0.8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                
-                // Action buttons
+
+                // Badges row
                 HStack(spacing: 8) {
-                    if isActiveProject {
-                        // Show current project indicator
-                        HStack(spacing: 4) {
-                            Image(systemName: "location.circle.fill")
-                                .font(.system(size: 12))
-                            Text("Current Project")
-                                .font(OPSStyle.Typography.caption)
-                        }
-                        .foregroundColor(OPSStyle.Colors.secondaryAccent)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(OPSStyle.Colors.secondaryAccent.opacity(0.2))
-                        .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    } else {
-                        // View details button
-                        Button(action: {
-                            // Post notification to show project details
-                            NotificationCenter.default.post(
-                                name: Notification.Name("ShowProjectDetails"),
-                                object: nil,
-                                userInfo: ["projectID": project.id]
+                    // Status badge
+                    Text(project.status.displayName.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(project.status.color)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(project.status.color.opacity(0.1))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(project.status.color, lineWidth: 1)
+                        )
+
+                    // Task type badge
+                    if let taskType = taskTypeText {
+                        Text(taskType.uppercased())
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(taskColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(taskColor.opacity(0.1))
                             )
-                            onDismiss()
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "info.circle.fill")
-                                    .font(.system(size: 12))
-                                Text("Details")
-                                    .font(OPSStyle.Typography.caption)
-                            }
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(taskColor, lineWidth: 1)
+                            )
+                    }
+
+                    Spacer()
+                }
+
+                // Action button
+                if isActiveProject {
+                    HStack {
+                        Spacer()
+                        Text("CURRENT PROJECT")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                        Spacer()
+                    }
+                } else {
+                    Button(action: {
+                        if let task = task {
+                            appState.viewTaskDetails(task: task, project: project)
+                        } else {
+                            appState.viewProjectDetails(project)
                         }
-                        
-                        // Navigate button
-                        Button(action: onNavigate) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "location.fill")
-                                    .font(.system(size: 12))
-                                Text("Navigate")
-                                    .font(OPSStyle.Typography.caption)
-                            }
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(OPSStyle.Colors.primaryAccent)
-                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                        onDismiss()
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("VIEW DETAILS")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            Spacer()
                         }
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
+                        )
                     }
                 }
-                .padding(.top, 4)
             }
-            .padding(12)
-            .frame(width: 200)
-            .background(
-                ZStack {
-                    BlurView(style: .systemMaterialDark)
-                    OPSStyle.Colors.cardBackground.opacity(0.9)
-                }
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+            .padding(14)
+            .frame(width: 240)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(8)
         }
-        .contentShape(Rectangle()) // Make entire popup tappable
-        .onTapGesture {
-            // Prevent dismissal when tapping on popup content
-        }
-        .highPriorityGesture(
-            TapGesture()
-                .onEnded { _ in
-                    // Ensure tap on popup content doesn't dismiss it
-                }
-        )
+        .contentShape(Rectangle())
+        .onTapGesture { }
         .allowsHitTesting(true)
     }
 }

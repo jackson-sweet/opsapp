@@ -1544,6 +1544,9 @@ struct ProjectFormSheet: View {
             print("[TASK_CREATE] ✅ Task saved locally")
         }
 
+        // Update project status if needed (e.g., reopen completed/closed project)
+        await dataController.updateProjectStatusForNewTask(project: project, taskStatus: localTask.status)
+
         // Sync task to Bubble immediately
         var bubbleTaskId = taskId
         do {

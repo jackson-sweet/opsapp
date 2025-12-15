@@ -20,6 +20,8 @@ struct JobBoardDashboard: View {
     @State private var dragLocation: CGPoint = .zero
     @State private var dropZone: DragZone = .center
     @State private var currentPageIndex: Int = 0
+    @State private var projectPendingCompletion: Project? = nil
+    @State private var showingCompletionChecklist = false
     @Namespace private var cardNamespace
 
     private let statuses: [Status] = [.rfq, .estimated, .accepted, .inProgress, .completed]
@@ -86,6 +88,18 @@ struct JobBoardDashboard: View {
                         .allowsHitTesting(false)
                         .transition(.opacity)
                 }
+            }
+        }
+        .sheet(isPresented: $showingCompletionChecklist) {
+            if let project = projectPendingCompletion {
+                TaskCompletionChecklistSheet(
+                    project: project,
+                    onComplete: {
+                        // After all tasks are completed via the sheet, complete the project
+                        changeProjectStatus(project, to: .completed)
+                    }
+                )
+                .environmentObject(dataController)
             }
         }
     }
@@ -344,6 +358,17 @@ struct JobBoardDashboard: View {
     private func changeProjectStatus(_ project: Project, to newStatus: Status) {
         print("[ARCHIVE_DEBUG] 📦 Changing project '\(project.title)' status from \(project.status.rawValue) to \(newStatus.rawValue)")
 
+        // Check for incomplete tasks when completing a project
+        if newStatus == .completed {
+            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+            if !incompleteTasks.isEmpty {
+                // Show completion checklist sheet
+                projectPendingCompletion = project
+                showingCompletionChecklist = true
+                return
+            }
+        }
+
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
 
@@ -545,13 +570,11 @@ struct DirectionalDragCard: View {
     @State private var touchDownLocation: CGPoint?
     @State private var dragOffset: CGSize = .zero
 
-    private var cardGesture: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .global)
+    // Drag gesture only activates after long press is triggered
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 5, coordinateSpace: .global)
             .onChanged { value in
-                print("🔵 DragGesture onChanged - isLongPressing: \(isLongPressing)")
-
                 if isLongPressing {
-                    print("🟢 Long press active - calling onDragChanged")
                     if let startLocation = touchDownLocation {
                         dragOffset = CGSize(
                             width: value.location.x - startLocation.x,
@@ -559,49 +582,30 @@ struct DirectionalDragCard: View {
                         )
                     }
                     onDragChanged(project, value.location)
-                } else {
-                    if touchDownTime == nil {
-                        print("📍 Touch down - starting timer")
-                        touchDownTime = Date()
-                        touchDownLocation = value.location
-                    } else if let startTime = touchDownTime, let startLocation = touchDownLocation {
-                        let timeElapsed = Date().timeIntervalSince(startTime)
-                        let distance = hypot(value.location.x - startLocation.x, value.location.y - startLocation.y)
-
-                        print("⏱️  Time: \(timeElapsed)s, Distance: \(distance)px")
-
-                        if timeElapsed >= 0.3 && distance < 10 {
-                            print("🎯 Long press threshold met - triggering")
-                            triggerLongPress()
-                        }
-                    }
                 }
             }
-            .onEnded { value in
-                print("🔴 DragGesture onEnded - isLongPressing: \(isLongPressing)")
-
+            .onEnded { _ in
                 if isLongPressing {
-                    print("🟠 Ending drag - calling onDragEnded")
                     onDragEnded(project)
                     dragOffset = .zero
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         isLongPressing = false
                     }
-                } else {
-                    if let startTime = touchDownTime, let startLocation = touchDownLocation {
-                        let timeElapsed = Date().timeIntervalSince(startTime)
-                        let distance = hypot(value.location.x - startLocation.x, value.location.y - startLocation.y)
-
-                        if timeElapsed < 0.3 && distance < 10 {
-                            print("👆 Quick tap detected - opening details")
-                            showingDetails = true
-                        }
-                    }
                 }
-
-                touchDownTime = nil
-                touchDownLocation = nil
             }
+    }
+
+    // Long press gesture to activate drag mode
+    private var longPressGesture: some Gesture {
+        LongPressGesture(minimumDuration: 0.3)
+            .onEnded { _ in
+                triggerLongPress()
+            }
+    }
+
+    // Combined gesture: long press to activate, then drag
+    private var combinedGesture: some Gesture {
+        longPressGesture.sequenced(before: dragGesture)
     }
 
     var body: some View {
@@ -609,7 +613,10 @@ struct DirectionalDragCard: View {
             .opacity(isDragged ? 0.3 : 1.0)
             .scaleEffect(isLongPressing ? 0.95 : 1.0)
             .contentShape(Rectangle())
-            .simultaneousGesture(cardGesture)
+            .onTapGesture {
+                showingDetails = true
+            }
+            .simultaneousGesture(combinedGesture)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
             .sheet(isPresented: $showingDetails) {
                 NavigationView {

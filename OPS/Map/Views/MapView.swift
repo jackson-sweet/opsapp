@@ -51,30 +51,15 @@ struct MapView: View {
                             if showingMarkerPopup == project.id {
                                 ProjectMarkerPopup(
                                     project: project,
+                                    task: activeTaskForProject(project),
                                     isActiveProject: appState.activeProjectID == project.id,
-                                    onNavigate: {
-                                        showingMarkerPopup = nil
-                                        
-                                        // Exit current project mode
-                                        appState.exitProjectMode()
-                                        
-                                        // Select and navigate to the new project
-                                        coordinator.selectProject(project)
-                                        
-                                        // Trigger navigation start through the normal flow
-                                        NotificationCenter.default.post(
-                                            name: Notification.Name("StartProjectFromMap"),
-                                            object: nil,
-                                            userInfo: ["projectId": project.id]
-                                        )
-                                    },
                                     onDismiss: {
                                         withAnimation(.easeOut(duration: 0.2)) {
                                             showingMarkerPopup = nil
                                         }
                                     }
                                 )
-                                .offset(y: 35) // Position below marker
+                                .offset(y: 115) // Position below marker
                                 .zIndex(2000) // Ensure it's on top
                                 .transition(.scale.combined(with: .opacity))
                             }
@@ -184,8 +169,20 @@ struct MapView: View {
         }
     }
     
+    // MARK: - Helper Methods
+
+    /// Get the active task for a project (uses activeTaskID from appState, or first task)
+    private func activeTaskForProject(_ project: Project) -> ProjectTask? {
+        if let activeTaskID = appState.activeTaskID,
+           let task = project.tasks.first(where: { $0.id == activeTaskID }) {
+            return task
+        }
+        // Fall back to first task if no active task
+        return project.tasks.first
+    }
+
     // MARK: - Gesture Handling
-    
+
     private func handleRotationGesture(_ value: RotationGesture.Value) {
         // Only allow manual rotation when not in course mode
         guard coordinator.mapOrientationMode != "course" else { return }

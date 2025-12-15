@@ -475,8 +475,7 @@ struct TaskDetailsView: View {
                 // Load available team members
                 loadAvailableTeamMembers()
                 showingTeamMemberPicker = true
-            } : nil,
-            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+            } : nil
         ) {
             TaskTeamView(task: task)
                 .environmentObject(dataController)
@@ -550,57 +549,22 @@ struct TaskDetailsView: View {
         SectionCard(
             icon: "flag.fill",
             title: "Update Status",
-            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+            contentPadding: EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
         ) {
-            VStack(spacing: 1) {
-                ForEach(availableStatuses, id: \.self) { status in
-                    Button(action: {
-                        updateTaskStatus(to: status)
-                    }) {
-                        HStack(spacing: 16) {
-                            // Status indicator - checkmark for current, circle for others
-                            ZStack {
-                                if task.status == status {
-                                    Circle()
-                                        .fill(statusColor(for: status))
-                                        .frame(width: 24, height: 24)
-                                    Image(systemName: OPSStyle.Icons.checkmark)
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.white)
-                                } else {
-                                    Circle()
-                                        .stroke(OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 2)
-                                        .frame(width: 24, height: 24)
+            // Horizontal scrolling status chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(availableStatuses, id: \.self) { status in
+                        StatusChip(
+                            status: status,
+                            isSelected: task.status == status,
+                            onTap: {
+                                if task.status != status {
+                                    updateTaskStatus(to: status)
                                 }
                             }
-
-                            // Status icon and text
-                            Image(systemName: statusIcon(for: status))
-                                .font(.system(size: 16))
-                                .foregroundColor(task.status == status ?
-                                               OPSStyle.Colors.primaryText :
-                                               OPSStyle.Colors.secondaryText)
-                                .frame(width: 20)
-
-                            Text(status.displayName.uppercased())
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(task.status == status ?
-                                               OPSStyle.Colors.primaryText :
-                                               OPSStyle.Colors.secondaryText)
-
-                            Spacer()
-
-                            // Status color accent bar
-                            Rectangle()
-                                .fill(statusColor(for: status))
-                                .frame(width: 3, height: 30)
-                                .opacity(task.status == status ? 1.0 : 0.3)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(Color.clear)
+                        )
                     }
-                    .disabled(task.status == status)
                 }
             }
         }
@@ -608,17 +572,17 @@ struct TaskDetailsView: View {
     }
     
     // MARK: - Navigation Section
-    
+
     private var navigationSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             // Sort tasks and find current position
             let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
-            
+
             // Find previous and next tasks based on display order, not array position
             let currentOrder = task.displayOrder
             let previousTask = sortedTasks.last(where: { $0.displayOrder < currentOrder && $0.id != task.id })
             let nextTask = sortedTasks.first(where: { $0.displayOrder > currentOrder && $0.id != task.id })
-            
+
             // If display orders are the same, fallback to array position
             let fallbackIndex = sortedTasks.firstIndex(where: { $0.id == task.id })
             let fallbackPrevious = fallbackIndex.map { index in
@@ -627,127 +591,162 @@ struct TaskDetailsView: View {
             let fallbackNext = fallbackIndex.map { index in
                 index < sortedTasks.count - 1 ? sortedTasks[index + 1] : nil
             }?.flatMap { $0 }
-            
+
+            // Task navigation row - Previous / Next pills
             HStack(spacing: 12) {
-                // Previous task
+                // Previous task pill
                 if let prevTask = previousTask ?? fallbackPrevious {
-                    navigationCard(
-                        title: "Previous",
-                        task: prevTask,
-                        // NOTE: Missing icon in OPSStyle - "chevron.left.circle.fill" (Previous navigation with filled circle)
-                        icon: "chevron.left.circle.fill",
-                        alignment: .leading
+                    navigationPill(
+                        caption: "PREVIOUS",
+                        label: prevTask.taskType?.display ?? "Task",
+                        icon: "chevron.left",
+                        iconPosition: .leading,
+                        task: prevTask
                     )
+                } else {
+                    // Empty state for no previous task
+                    emptyNavigationPill(caption: "PREVIOUS", iconPosition: .leading)
                 }
 
-                // Next task
+                // Next task pill
                 if let nextTaskToShow = nextTask ?? fallbackNext {
-                    navigationCard(
-                        title: "Next",
-                        task: nextTaskToShow,
-                        // NOTE: Missing icon in OPSStyle - "chevron.right.circle.fill" (Next navigation with filled circle)
-                        icon: "chevron.right.circle.fill",
-                        alignment: .trailing
+                    navigationPill(
+                        caption: "NEXT",
+                        label: nextTaskToShow.taskType?.display ?? "Task",
+                        icon: "chevron.right",
+                        iconPosition: .trailing,
+                        task: nextTaskToShow
                     )
+                } else {
+                    // Empty state for no next task
+                    emptyNavigationPill(caption: "NEXT", iconPosition: .trailing)
                 }
             }
             .padding(.horizontal)
-            
-            // View Project button
+
+            // View Project pill - centered
             Button(action: {
-                // Save any unsaved notes before navigating
                 if taskNotes != originalTaskNotes {
                     saveTaskNotes()
                 }
                 showingProjectDetails = true
             }) {
-                HStack {
-                    Image(systemName: OPSStyle.Icons.project)
-                        .font(.system(size: 20))
+                VStack(spacing: 4) {
+                    Text("VIEW PROJECT")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Text(project.title.uppercased())
+                        .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("VIEW PROJECT")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        Text(project.title.uppercased())
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .lineLimit(1)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: 14))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
                 }
-                .padding()
                 .frame(maxWidth: .infinity)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .fill(Color.clear)
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .strokeBorder(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: 1)
                 )
             }
             .padding(.horizontal)
         }
     }
-    
-    private func navigationCard(title: String, task newTask: ProjectTask, icon: String, alignment: HorizontalAlignment) -> some View {
+
+    private enum IconPosition {
+        case leading, trailing
+    }
+
+    private func navigationPill(caption: String, label: String, icon: String, iconPosition: IconPosition, task newTask: ProjectTask) -> some View {
         Button(action: {
-            // Save current notes if needed before navigating
             if taskNotes != originalTaskNotes {
                 saveTaskNotes()
             }
-            
-            // Update to show the new task
+
             withAnimation(.easeInOut(duration: 0.3)) {
                 self.task = newTask
-                // Update notes state for the new task
                 let notes = newTask.taskNotes ?? ""
                 self.taskNotes = notes
                 self.originalTaskNotes = notes
-                // Reload team members for the new task
                 loadTaskTeamMembers()
             }
         }) {
-            VStack(alignment: alignment, spacing: 4) {
-                HStack {
-                    if alignment == .leading {
-                        Image(systemName: icon)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                    
-                    VStack(alignment: alignment, spacing: 2) {
-                        Text("\(title) Task")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        Text(newTask.taskType?.display ?? "Task")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    
-                    if alignment == .trailing {
-                        Image(systemName: icon)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
+            HStack(spacing: 8) {
+                if iconPosition == .leading {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+
+                VStack(alignment: iconPosition == .leading ? .leading : .trailing, spacing: 2) {
+                    Text(caption)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Text(label.uppercased())
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                }
+
+                if iconPosition == .trailing {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(Color.clear)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
             )
         }
+    }
+
+    private func emptyNavigationPill(caption: String, iconPosition: IconPosition) -> some View {
+        HStack(spacing: 8) {
+            if iconPosition == .leading {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
+            }
+
+            VStack(alignment: iconPosition == .leading ? .leading : .trailing, spacing: 2) {
+                Text(caption)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                Text("NO TASK")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
+            }
+
+            if iconPosition == .trailing {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .fill(Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .strokeBorder(OPSStyle.Colors.inputFieldBorder.opacity(0.3), lineWidth: 1)
+        )
     }
 
     // MARK: - Delete Task Section
@@ -756,25 +755,24 @@ struct TaskDetailsView: View {
         Button(action: {
             showingDeleteConfirmation = true
         }) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "trash")
-                    .font(.system(size: 16))
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
-
+                    .font(.system(size: 14))
                 Text("DELETE TASK")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                    .font(OPSStyle.Typography.captionBold)
             }
-            .frame(maxWidth: .infinity)
+            .foregroundColor(OPSStyle.Colors.errorStatus.opacity(0.7))
+            .padding(.horizontal, 20)
             .padding(.vertical, 14)
-            .background(Color.clear)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(Color.clear)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.errorStatus.opacity(0.5), lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.errorStatus.opacity(0.3), lineWidth: 1)
             )
         }
-        .padding(.horizontal)
         .padding(.top, 8)
     }
 
@@ -1368,6 +1366,34 @@ struct TaskDetailsView: View {
                 autoDismissAfter: 3.0
             )
         }
+    }
+}
+
+// MARK: - Status Chip Component
+
+/// Compact horizontal status chip for task status selection
+private struct StatusChip: View {
+    let status: TaskStatus
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(status.displayName.uppercased())
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(isSelected ? .white : status.color)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .fill(isSelected ? status.color : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .strokeBorder(status.color, lineWidth: 1)
+                )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

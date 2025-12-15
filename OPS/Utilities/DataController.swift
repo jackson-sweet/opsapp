@@ -1582,10 +1582,14 @@ class DataController: ObservableObject {
                         
                         // Create new user
                         let newUser = userDTO.toModel()
-                        
-                        // Create bidirectional relationship
-                        newUser.assignedProjects.append(project)
-                        project.teamMembers.append(newUser)
+
+                        // Create bidirectional relationship (with duplicate check)
+                        if !newUser.assignedProjects.contains(where: { $0.id == project.id }) {
+                            newUser.assignedProjects.append(project)
+                        }
+                        if !project.teamMembers.contains(where: { $0.id == newUser.id }) {
+                            project.teamMembers.append(newUser)
+                        }
                         
                         // Insert into database
                         context.insert(newUser)
@@ -1619,17 +1623,21 @@ class DataController: ObservableObject {
                             role: .fieldCrew,
                             companyId: project.companyId
                         )
-                        
-                        // Create bidirectional relationship
-                        placeholderUser.assignedProjects.append(project)
-                        project.teamMembers.append(placeholderUser)
+
+                        // Create bidirectional relationship (with duplicate check)
+                        if !placeholderUser.assignedProjects.contains(where: { $0.id == project.id }) {
+                            placeholderUser.assignedProjects.append(project)
+                        }
+                        if !project.teamMembers.contains(where: { $0.id == placeholderUser.id }) {
+                            project.teamMembers.append(placeholderUser)
+                        }
                         
                         // Insert into database
                         context.insert(placeholderUser)
                     }
                 } else {
                     // Offline and user doesn't exist - create placeholder
-                    
+
                     // Create placeholder user until we can fetch real data when online
                     let placeholderUser = User(
                         id: memberId,
@@ -1638,11 +1646,15 @@ class DataController: ObservableObject {
                         role: .fieldCrew,
                         companyId: project.companyId
                     )
-                    
-                    // Create bidirectional relationship
-                    placeholderUser.assignedProjects.append(project)
-                    project.teamMembers.append(placeholderUser)
-                    
+
+                    // Create bidirectional relationship (with duplicate check)
+                    if !placeholderUser.assignedProjects.contains(where: { $0.id == project.id }) {
+                        placeholderUser.assignedProjects.append(project)
+                    }
+                    if !project.teamMembers.contains(where: { $0.id == placeholderUser.id }) {
+                        project.teamMembers.append(placeholderUser)
+                    }
+
                     // Insert into database
                     context.insert(placeholderUser)
                 }
@@ -3350,8 +3362,41 @@ class DataController: ObservableObject {
             print("[PROJECT_STATUS] Project '\(project.title)' is completed but task changed to \(taskNewStatus.rawValue) - updating project to inProgress")
         }
 
-        // Case 3: Project is "completed" and a new task with non-completed/non-cancelled status is added
-        // This is handled separately when creating tasks
+        // Case 3: Project is "rfq" or "estimated" and task is set to "inProgress"
+        if (project.status == .rfq || project.status == .estimated) && taskNewStatus == .inProgress {
+            shouldUpdateToInProgress = true
+            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and task set to inProgress - updating project to inProgress")
+        }
+
+        if shouldUpdateToInProgress {
+            do {
+                try await updateProjectStatus(project: project, to: .inProgress)
+                print("[PROJECT_STATUS] ✅ Project '\(project.title)' status updated to inProgress")
+            } catch {
+                print("[PROJECT_STATUS] ❌ Failed to update project status: \(error)")
+            }
+        }
+    }
+
+    /// Updates project status when a NEW task is added
+    /// - If project is "completed" or "closed" and a non-completed/non-cancelled task is added → project becomes "inProgress"
+    /// - If project is "rfq" or "estimated" and task is "inProgress" → project becomes "inProgress"
+    @MainActor
+    func updateProjectStatusForNewTask(project: Project, taskStatus: TaskStatus) async {
+        var shouldUpdateToInProgress = false
+
+        // Case 1: Project is "completed" or "closed" and new task is not completed/cancelled
+        if (project.status == .completed || project.status == .closed) &&
+           (taskStatus != .completed && taskStatus != .cancelled) {
+            shouldUpdateToInProgress = true
+            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) but new task added with status \(taskStatus.rawValue) - updating project to inProgress")
+        }
+
+        // Case 2: Project is "rfq" or "estimated" and new task is "inProgress"
+        if (project.status == .rfq || project.status == .estimated) && taskStatus == .inProgress {
+            shouldUpdateToInProgress = true
+            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and new task is inProgress - updating project to inProgress")
+        }
 
         if shouldUpdateToInProgress {
             do {

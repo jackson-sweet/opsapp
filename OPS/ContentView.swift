@@ -106,9 +106,9 @@ struct ContentView: View {
 // Separate view to properly observe PIN manager state
 struct PINGatedView: View {
     @ObservedObject var pinManager: SimplePINManager
+    @ObservedObject var appState: AppState
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     let dataController: DataController
-    let appState: AppState
     let locationManager: LocationManager
 
     // State for unassigned roles overlay
@@ -135,7 +135,7 @@ struct PINGatedView: View {
     init(dataController: DataController, appState: AppState, locationManager: LocationManager) {
         self.dataController = dataController
         self.pinManager = dataController.simplePINManager
-        self.appState = appState
+        self._appState = ObservedObject(wrappedValue: appState)
         self.locationManager = locationManager
     }
 
@@ -306,6 +306,31 @@ struct PINGatedView: View {
             if !hasCheckedForAppMessage {
                 hasCheckedForAppMessage = true
                 await checkForAppMessage()
+            }
+        }
+        // MARK: - Global Project Completion Checklist Sheet
+        .sheet(isPresented: $appState.showingGlobalCompletionChecklist) {
+            if let project = appState.projectPendingCompletion {
+                TaskCompletionChecklistSheet(
+                    project: project,
+                    onComplete: {
+                        // Mark project as completed after tasks are done
+                        project.status = .completed
+                        project.needsSync = true
+
+                        Task {
+                            do {
+                                try await dataController.updateProjectStatus(project: project, to: .completed)
+                                print("[PROJECT_COMPLETION] ✅ Project '\(project.title)' marked as completed via global sheet")
+                            } catch {
+                                print("[PROJECT_COMPLETION] ❌ Failed to update project status: \(error)")
+                            }
+                        }
+
+                        appState.clearCompletionRequest()
+                    }
+                )
+                .environmentObject(dataController)
             }
         }
     }

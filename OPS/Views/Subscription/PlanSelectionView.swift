@@ -14,7 +14,7 @@ struct PlanSelectionView: View {
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @EnvironmentObject var dataController: DataController
     
-    @State var selectedPlan: SubscriptionPlan = .starter
+    @State var selectedPlan: SubscriptionPlan? = nil
     @State var selectedSchedule: PaymentSchedule = .monthly
     @State var isProcessingPayment = false
     @State var showPaymentError = false
@@ -611,6 +611,11 @@ struct PlanSelectionView: View {
     }
     
     private var shouldDisablePaymentButton: Bool {
+        // Disable if no plan selected
+        guard let selectedPlan = selectedPlan else {
+            return true
+        }
+
         // Disable if selecting current active plan with valid subscription
         if let current = currentPlan,
            let status = currentStatus,
@@ -618,13 +623,9 @@ struct PlanSelectionView: View {
 
             switch status {
             case .active:
-                // Only disable if subscription end date is in the future
-                // If subscriptionEnd is nil or in the past, allow reactivation
-                if let subscriptionEnd = subscriptionManager.subscriptionEnd,
-                   subscriptionEnd > Date() {
-                    return true  // Valid active subscription
-                }
-                return false  // Status says active but no valid end date - allow reactivation
+                // If status is active, trust it and disable the button
+                // The subscriptionEnd field may not always sync from Bubble
+                return true
 
             case .trial:
                 // Only disable if trial hasn't expired
@@ -649,18 +650,19 @@ struct PlanSelectionView: View {
     }
     
     private var paymentButtonText: String {
+        // No plan selected
+        guard let selectedPlan = selectedPlan else {
+            return "Select a Plan"
+        }
+
         // Check if this is the current active plan
         if let current = currentPlan,
            let status = currentStatus,
            selectedPlan == current {
             switch status {
             case .active:
-                // Check if actually active or needs reactivation
-                if let subscriptionEnd = subscriptionManager.subscriptionEnd,
-                   subscriptionEnd > Date() {
-                    return "This Plan Already Active"
-                }
-                return "Reactivate Plan"  // Status says active but subscription expired/invalid
+                // Trust the active status - button should be disabled anyway
+                return "This Plan Already Active"
 
             case .trial:
                 // Check if trial is actually active or expired
@@ -678,7 +680,7 @@ struct PlanSelectionView: View {
                 break
             }
         }
-        
+
         // Check if this is an upgrade
         if let current = currentPlan {
             if selectedPlan.maxSeats > current.maxSeats {
@@ -686,38 +688,38 @@ struct PlanSelectionView: View {
                 let price = selectedSchedule == .monthly ?
                     selectedPlan.monthlyPrice :
                     selectedPlan.annualPrice
-                
+
                 var displayPrice = Double(price) / 100.0
-                
+
                 // Apply discount if available
                 if let discount = promoDiscount {
                     let discountAmount = displayPrice * (Double(discount) / 100.0)
                     displayPrice = displayPrice - discountAmount
                 }
-                
+
                 let priceString = String(format: "$%.2f", displayPrice)
                 let period = selectedSchedule == .monthly ? "/mo" : "/yr"
-                
+
                 return "Upgrade • \(priceString)\(period)"
             }
         }
-        
+
         // Default subscribe text
         let price = selectedSchedule == .monthly ?
             selectedPlan.monthlyPrice :
             selectedPlan.annualPrice
-        
+
         var displayPrice = Double(price) / 100.0
-        
+
         // Apply discount if available
         if let discount = promoDiscount {
             let discountAmount = displayPrice * (Double(discount) / 100.0)
             displayPrice = displayPrice - discountAmount
         }
-        
+
         let priceString = String(format: "$%.2f", displayPrice)
         let period = selectedSchedule == .monthly ? "/mo" : "/yr"
-        
+
         // Show discount info in button
         if let discount = promoDiscount, discount == 100 {
             return "Complete Setup • FREE"
@@ -764,15 +766,21 @@ struct PlanSelectionView: View {
     // MARK: - Payment Processing
     
     private func initiatePayment() {
+        guard let selectedPlan = selectedPlan else {
+            errorMessage = "Please select a plan"
+            showPaymentError = true
+            return
+        }
+
         print("🔵 INITIATING PAYMENT:")
         print("  - Selected Plan: \(selectedPlan.displayName)")
         print("  - Schedule: \(selectedSchedule.displayName)")
-        
+
         isProcessingPayment = true
-        
+
         // Get the selected price ID
-        let priceId: String? = selectedSchedule == .monthly ? 
-            selectedPlan.stripePriceIds.monthly : 
+        let priceId: String? = selectedSchedule == .monthly ?
+            selectedPlan.stripePriceIds.monthly :
             selectedPlan.stripePriceIds.annual
         
         print("  - Price ID: \(priceId ?? "nil")")
@@ -876,11 +884,12 @@ struct PlanSelectionView: View {
                                         self.promoDiscount = Int(percentage)
                                     } else if let percentage = responseData["discount_percentage"] as? Int {
                                         self.promoDiscount = percentage
-                                    } else if let amountOff = responseData["discount_amount"] as? Int {
+                                    } else if let amountOff = responseData["discount_amount"] as? Int,
+                                              let plan = self.selectedPlan {
                                         // Calculate percentage from fixed amount if needed
-                                        let price = self.selectedSchedule == .monthly ? 
-                                            self.selectedPlan.monthlyPrice : 
-                                            self.selectedPlan.annualPrice
+                                        let price = self.selectedSchedule == .monthly ?
+                                            plan.monthlyPrice :
+                                            plan.annualPrice
                                         if price > 0 {
                                             self.promoDiscount = min(100, Int((Double(amountOff) / Double(price)) * 100))
                                         }
@@ -1151,11 +1160,12 @@ struct PlanSelectionView: View {
     
     private func presentPaymentSheet(clientSecret: String, ephemeralKey: String, customerId: String) {
         guard let company = dataController.getCurrentUserCompany(),
-              let user = dataController.currentUser else {
+              let user = dataController.currentUser,
+              let selectedPlan = selectedPlan else {
             isProcessingPayment = false
             return
         }
-        
+
         // Calculate the display amount
         let price = selectedSchedule == .monthly ?
             selectedPlan.monthlyPrice :
@@ -1225,17 +1235,18 @@ struct PlanSelectionView: View {
             
             if useSetupIntentFlow {
                 // For setup intent flow, we need to complete the subscription
-                guard let company = dataController.getCurrentUserCompany() else {
+                guard let company = dataController.getCurrentUserCompany(),
+                      let selectedPlan = selectedPlan else {
                     // Stop polling and show error
                     stopPollingWithError("Unable to load company information")
                     return
                 }
-                
+
                 // Get the selected price ID
-                let priceId: String? = selectedSchedule == .monthly ? 
-                    selectedPlan.stripePriceIds.monthly : 
+                let priceId: String? = selectedSchedule == .monthly ?
+                    selectedPlan.stripePriceIds.monthly :
                     selectedPlan.stripePriceIds.annual
-                
+
                 guard let priceId = priceId else {
                     // Stop polling and show error
                     stopPollingWithError("Invalid plan selection")
@@ -1474,53 +1485,53 @@ extension PlanSelectionView {
             
             if showHelpMeChoose {
                 VStack(alignment: .leading, spacing: 12) {
-                    // Starter plan
+                    // Starter plan (maxSeats: 3)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Image(systemName: "person")
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Text("STARTER (1-3 EMPLOYEES)")
+                            Text("STARTER (1-\(SubscriptionPlan.starter.maxSeats) EMPLOYEES)")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        Text("Perfect for small crews and independent contractors. Includes all core features with up to 3 team members.")
+                        Text("Perfect for small crews and independent contractors. Includes all core features with up to \(SubscriptionPlan.starter.maxSeats) team members.")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .padding(.vertical, 12)
                     .padding(.horizontal, 14)
                     // Remove card backgrounds for minimalist look
-                    
-                    // Team plan
+
+                    // Team plan (maxSeats: 5)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Image(systemName: "person.2")
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Text("TEAM (4-10 EMPLOYEES)")
+                            Text("TEAM (\(SubscriptionPlan.starter.maxSeats + 1)-\(SubscriptionPlan.team.maxSeats) EMPLOYEES)")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        Text("Ideal for growing companies. Supports up to 10 team members with enhanced collaboration features.")
+                        Text("Ideal for growing companies. Supports up to \(SubscriptionPlan.team.maxSeats) team members with enhanced collaboration features.")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .padding(.vertical, 12)
                     .padding(.horizontal, 14)
                     // Remove card backgrounds for minimalist look
-                    
-                    // Business plan
+
+                    // Business plan (maxSeats: 10)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Image(systemName: "person.3")
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Text("BUSINESS (11+ EMPLOYEES)")
+                            Text("BUSINESS (\(SubscriptionPlan.team.maxSeats + 1)-\(SubscriptionPlan.business.maxSeats) EMPLOYEES)")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        Text("For established companies. Unlimited team members, priority support, and advanced features.")
+                        Text("For established companies. Supports up to \(SubscriptionPlan.business.maxSeats) team members with priority support and advanced features.")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }

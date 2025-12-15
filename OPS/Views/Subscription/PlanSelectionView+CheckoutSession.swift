@@ -12,13 +12,19 @@ extension PlanSelectionView {
     
     /// Alternative payment method using Stripe Checkout hosted page
     func initiateCheckoutSession() {
+        guard let selectedPlan = selectedPlan else {
+            errorMessage = "Please select a plan"
+            showPaymentError = true
+            return
+        }
+
         isProcessingPayment = true
-        
+
         // Get the selected price ID
         let priceId: String? = selectedSchedule == .monthly ?
             selectedPlan.stripePriceIds.monthly :
             selectedPlan.stripePriceIds.annual
-        
+
         guard let priceId = priceId else {
             errorMessage = "Invalid plan selection"
             showPaymentError = true

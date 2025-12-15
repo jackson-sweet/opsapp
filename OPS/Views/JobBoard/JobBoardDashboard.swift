@@ -12,6 +12,7 @@ import UIKit
 
 struct JobBoardDashboard: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Query private var allProjects: [Project]
     @State private var draggedProject: Project? = nil
@@ -20,8 +21,6 @@ struct JobBoardDashboard: View {
     @State private var dragLocation: CGPoint = .zero
     @State private var dropZone: DragZone = .center
     @State private var currentPageIndex: Int = 0
-    @State private var projectPendingCompletion: Project? = nil
-    @State private var showingCompletionChecklist = false
     @Namespace private var cardNamespace
 
     private let statuses: [Status] = [.rfq, .estimated, .accepted, .inProgress, .completed]
@@ -90,18 +89,7 @@ struct JobBoardDashboard: View {
                 }
             }
         }
-        .sheet(isPresented: $showingCompletionChecklist) {
-            if let project = projectPendingCompletion {
-                TaskCompletionChecklistSheet(
-                    project: project,
-                    onComplete: {
-                        // After all tasks are completed via the sheet, complete the project
-                        changeProjectStatus(project, to: .completed)
-                    }
-                )
-                .environmentObject(dataController)
-            }
-        }
+        // Note: Completion checklist sheet is now handled globally via AppState in ContentView
     }
 
     struct ScrollOffsetPreferenceKey: PreferenceKey {
@@ -358,13 +346,10 @@ struct JobBoardDashboard: View {
     private func changeProjectStatus(_ project: Project, to newStatus: Status) {
         print("[ARCHIVE_DEBUG] 📦 Changing project '\(project.title)' status from \(project.status.rawValue) to \(newStatus.rawValue)")
 
-        // Check for incomplete tasks when completing a project
+        // CENTRALIZED COMPLETION CHECK: If completing project, check for incomplete tasks first
         if newStatus == .completed {
-            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
-            if !incompleteTasks.isEmpty {
-                // Show completion checklist sheet
-                projectPendingCompletion = project
-                showingCompletionChecklist = true
+            if !appState.requestProjectCompletion(project) {
+                // Has incomplete tasks - checklist sheet will be shown globally
                 return
             }
         }
@@ -374,32 +359,50 @@ struct JobBoardDashboard: View {
 
         // Update local status immediately
         project.status = newStatus
+        project.needsSync = true  // Mark for sync
 
         do {
             try modelContext.save()
             print("[ARCHIVE_DEBUG] ✅ Project status saved locally to \(newStatus.rawValue)")
         } catch {
             print("[ARCHIVE_DEBUG] ❌ Failed to save project status locally: \(error)")
+            return
         }
 
-        // Sync to backend immediately
-        Task {
-            do {
-                try await dataController.apiService.updateProject(
-                    id: project.id,
-                    updates: ["status": newStatus.rawValue]
-                )
-                await MainActor.run {
-                    project.needsSync = false
-                    project.lastSyncedAt = Date()
+        // Check connectivity and sync accordingly
+        if dataController.isConnected {
+            // Sync to backend immediately
+            Task {
+                do {
+                    try await dataController.apiService.updateProject(
+                        id: project.id,
+                        updates: ["status": newStatus.rawValue]
+                    )
+                    await MainActor.run {
+                        project.needsSync = false
+                        project.lastSyncedAt = Date()
+                    }
+                    print("[ARCHIVE_DEBUG] ✅ Project status synced to backend: \(newStatus.rawValue)")
+                } catch {
+                    await MainActor.run {
+                        project.needsSync = true
+                        // Trigger background sync to queue for later
+                        dataController.syncManager?.triggerBackgroundSync()
+                    }
+                    print("[ARCHIVE_DEBUG] ❌ Failed to sync project status to backend: \(error)")
                 }
-                print("[ARCHIVE_DEBUG] ✅ Project status synced to backend: \(newStatus.rawValue)")
-            } catch {
-                await MainActor.run {
-                    project.needsSync = true
-                }
-                print("[ARCHIVE_DEBUG] ❌ Failed to sync project status to backend: \(error)")
             }
+        } else {
+            // Offline - queue for background sync
+            print("[ARCHIVE_DEBUG] 📴 Offline - queueing status change for background sync")
+            dataController.syncManager?.triggerBackgroundSync()
+
+            // Show offline feedback
+            NotificationCenter.default.post(
+                name: NSNotification.Name("ShowSuccessMessage"),
+                object: nil,
+                userInfo: ["message": "Saved locally. Will sync when connection improves."]
+            )
         }
     }
 

@@ -816,7 +816,7 @@ struct JobBoardEmptyState: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, OPSStyle.Layout.spacing5)
     }
 }
@@ -1071,6 +1071,19 @@ struct TaskListSheet: View {
     let tasks: [ProjectTask]
     let dataController: DataController
     @Environment(\.dismiss) private var dismiss
+    @State private var searchText: String = ""
+
+    private var filteredTasks: [ProjectTask] {
+        if searchText.isEmpty {
+            return tasks
+        }
+        return tasks.filter { task in
+            task.displayTitle.localizedCaseInsensitiveContains(searchText) ||
+            (task.taskNotes?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+            (task.project?.title.localizedCaseInsensitiveContains(searchText) ?? false) ||
+            (task.project?.effectiveClientName.localizedCaseInsensitiveContains(searchText) ?? false)
+        }
+    }
 
     var body: some View {
         NavigationView {
@@ -1078,26 +1091,55 @@ struct TaskListSheet: View {
                 OPSStyle.Colors.background
                     .ignoresSafeArea()
 
-                if tasks.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: OPSStyle.Icons.task)
-                            .font(.system(size: 48))
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Text("No tasks")
-                            .font(OPSStyle.Typography.body)
+                VStack(spacing: 0) {
+                    // Search bar
+                    HStack(spacing: 12) {
+                        Image(systemName: OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(tasks) { task in
-                                UniversalJobBoardCard(cardType: .task(task))
-                                    .environmentObject(dataController)
-                                    .environment(\.modelContext, dataController.modelContext!)
+                            .font(.system(size: 16))
+
+                        TextField("Search tasks...", text: $searchText)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .autocorrectionDisabled()
+
+                        if !searchText.isEmpty {
+                            Button(action: { searchText = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .font(.system(size: 16))
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+
+                    if filteredTasks.isEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: OPSStyle.Icons.task)
+                                .font(.system(size: 48))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Text(searchText.isEmpty ? "No tasks" : "No matching tasks")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .frame(maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 12) {
+                                ForEach(filteredTasks) { task in
+                                    UniversalJobBoardCard(cardType: .task(task), disableSwipe: true)
+                                        .environmentObject(dataController)
+                                        .environment(\.modelContext, dataController.modelContext!)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                        }
                     }
                 }
             }

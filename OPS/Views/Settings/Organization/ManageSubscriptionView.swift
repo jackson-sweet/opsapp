@@ -20,6 +20,11 @@ struct ManageSubscriptionView: View {
     @State private var isCancelling = false
     @State private var errorMessage: String?
 
+    // Stripe subscription info (fetched fresh on view appear)
+    @State private var stripeSubscriptionInfo: BubbleSubscriptionService.SubscriptionInfoResponse?
+    @State private var isLoadingStripeInfo = false
+    @State private var stripeInfoError: String?
+
     private var company: Company? {
         dataController.getCurrentUserCompany()
     }
@@ -53,8 +58,8 @@ struct ManageSubscriptionView: View {
                             // Billing info card
                             billingInfoSection(company)
 
-                            // Cancel subscription (admin only)
-                            if isCompanyAdmin {
+                            // Cancel subscription (admin only, and only if active subscription exists)
+                            if isCompanyAdmin && stripeSubscriptionInfo?.subscriptionId != nil {
                                 cancelSubscriptionSection
                             }
 
@@ -99,6 +104,88 @@ struct ManageSubscriptionView: View {
         }
         .sheet(isPresented: $showCancelConfirmation) {
             cancelSubscriptionSheet
+        }
+        .onAppear {
+            fetchStripeSubscriptionInfo()
+        }
+    }
+
+    // MARK: - Fetch Stripe Subscription Info
+
+    private func fetchStripeSubscriptionInfo() {
+        guard let company = company,
+              let stripeCustomerId = company.stripeCustomerId,
+              !stripeCustomerId.isEmpty else {
+            print("[BILLING] No Stripe customer ID available")
+            stripeInfoError = "No payment account linked"
+            return
+        }
+
+        isLoadingStripeInfo = true
+        stripeInfoError = nil
+
+        print("[BILLING] Fetching subscription info for customer: \(stripeCustomerId)")
+
+        BubbleSubscriptionService.shared.fetchSubscriptionInfo(stripeCustomerId: stripeCustomerId) { result in
+            isLoadingStripeInfo = false
+
+            switch result {
+            case .success(let info):
+                if info.subscriptionId != nil {
+                    print("[BILLING] ✅ Subscription: \(info.planName ?? "unknown") (\(info.status ?? "unknown"))")
+                    // Update local company data with fresh Stripe data
+                    self.updateCompanyFromStripe(info)
+                } else {
+                    print("[BILLING] ✅ No active subscription (trial user)")
+                }
+                self.stripeSubscriptionInfo = info
+
+            case .failure(let error):
+                print("[BILLING] ❌ Failed: \(error.localizedDescription)")
+                self.stripeInfoError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Update local company data with fresh Stripe subscription info
+    private func updateCompanyFromStripe(_ info: BubbleSubscriptionService.SubscriptionInfoResponse) {
+        guard let company = company else { return }
+
+        var hasChanges = false
+
+        // Update subscription end date (next billing date)
+        if let periodEnd = info.currentPeriodEnd, company.subscriptionEnd != periodEnd {
+            company.subscriptionEnd = periodEnd
+            hasChanges = true
+        }
+
+        // Update billing period (Monthly/Yearly)
+        let newPeriod = formatBillingInterval(info.billingInterval)
+        if newPeriod != company.subscriptionPeriod {
+            company.subscriptionPeriod = newPeriod
+            hasChanges = true
+        }
+
+        // Update subscription status
+        if let status = info.status, company.subscriptionStatus != status {
+            company.subscriptionStatus = status
+            hasChanges = true
+        }
+
+        // Update subscription plan (starter/team/business)
+        if let planName = info.planName?.lowercased(), company.subscriptionPlan != planName {
+            company.subscriptionPlan = planName
+            hasChanges = true
+        }
+
+        // Save if there were changes
+        if hasChanges {
+            do {
+                try dataController.modelContext?.save()
+                print("[BILLING] 💾 Updated local company data from Stripe")
+            } catch {
+                print("[BILLING] ⚠️ Failed to save company updates: \(error)")
+            }
         }
     }
 
@@ -348,52 +435,217 @@ struct ManageSubscriptionView: View {
             title: "Billing"
         ) {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Next billing date")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Spacer()
-
-                    Text("—")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-
-                HStack {
-                    Text("Payment method")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Spacer()
-
-                    Text("Not configured")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-
-                if company.hasPrioritySupport {
+                // Loading state
+                if isLoadingStripeInfo {
                     HStack {
-                        Text("Priority support")
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                            .scaleEffect(0.8)
+                        Text("Loading billing info...")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        Spacer()
-
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(OPSStyle.Colors.successStatus)
-
-                            Text("Active")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.successStatus)
-                        }
                     }
+                } else if let error = stripeInfoError {
+                    // Error state - show cached data with error indicator
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                        Text("Using cached data")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                    }
+                    .padding(.bottom, 4)
+
+                    // Show cached company data when Stripe fetch fails
+                    billingInfoRows(
+                        nextBillingDate: company.subscriptionEnd,
+                        billingPeriod: displayBillingInterval(company.subscriptionPeriod),
+                        hasPrioritySupport: company.hasPrioritySupport,
+                        cancelAtPeriodEnd: false
+                    )
+                } else if let stripeInfo = stripeSubscriptionInfo {
+                    // Check if we got actual subscription data or empty response (trial user)
+                    if stripeInfo.subscriptionId != nil {
+                        // Success - show fresh Stripe data
+                        billingInfoRows(
+                            nextBillingDate: stripeInfo.currentPeriodEnd,
+                            billingPeriod: displayBillingInterval(stripeInfo.billingInterval),
+                            hasPrioritySupport: company.hasPrioritySupport,
+                            cancelAtPeriodEnd: stripeInfo.cancelAtPeriodEnd
+                        )
+                    } else {
+                        // No active subscription (trial user)
+                        noActiveSubscriptionView(company)
+                    }
+                } else {
+                    // No data yet - show cached
+                    billingInfoRows(
+                        nextBillingDate: company.subscriptionEnd,
+                        billingPeriod: displayBillingInterval(company.subscriptionPeriod),
+                        hasPrioritySupport: company.hasPrioritySupport,
+                        cancelAtPeriodEnd: false
+                    )
                 }
             }
         }
         .padding(.horizontal, 20)
+    }
+
+    @ViewBuilder
+    private func billingInfoRows(
+        nextBillingDate: Date?,
+        billingPeriod: String?,
+        hasPrioritySupport: Bool,
+        cancelAtPeriodEnd: Bool
+    ) -> some View {
+        // Next billing date
+        HStack {
+            Text("Next billing date")
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Spacer()
+
+            if let billingDate = nextBillingDate {
+                Text(formatBillingDate(billingDate))
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            } else {
+                Text("—")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+
+        // Billing period
+        HStack {
+            Text("Billing period")
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Spacer()
+
+            Text(billingPeriod ?? "—")
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(billingPeriod != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+        }
+
+        // Cancellation pending warning
+        if cancelAtPeriodEnd {
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+
+                Text("Cancels at period end")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+            }
+        }
+
+        // Priority support
+        if hasPrioritySupport {
+            HStack {
+                Text("Priority support")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.successStatus)
+
+                    Text("Active")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.successStatus)
+                }
+            }
+        }
+    }
+
+    private func formatBillingDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func formatBillingInterval(_ interval: String?) -> String? {
+        guard let interval = interval else { return nil }
+        switch interval.lowercased() {
+        case "month":
+            return "monthly"
+        case "year":
+            return "annual"
+        default:
+            return interval.lowercased()
+        }
+    }
+
+    /// Format billing interval for display (user-facing)
+    private func displayBillingInterval(_ interval: String?) -> String? {
+        guard let interval = interval else { return nil }
+        switch interval.lowercased() {
+        case "month", "monthly":
+            return "Monthly"
+        case "year", "annual":
+            return "Yearly"
+        default:
+            return interval.capitalized
+        }
+    }
+
+    @ViewBuilder
+    private func noActiveSubscriptionView(_ company: Company) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                Text("No active subscription")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+
+            // Show trial info if on trial
+            if let trialEnd = company.trialEndDate {
+                HStack {
+                    Text("Trial ends")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Spacer()
+
+                    Text(formatBillingDate(trialEnd))
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+
+            // Priority support if applicable
+            if company.hasPrioritySupport {
+                HStack {
+                    Text("Priority support")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Spacer()
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(OPSStyle.Colors.successStatus)
+
+                        Text("Active")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.successStatus)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Cancel Subscription Section

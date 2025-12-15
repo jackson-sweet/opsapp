@@ -733,6 +733,210 @@ class BubbleSubscriptionService {
             throw BubbleAPIError.bubbleError(error)
         }
     }
+
+    // MARK: - Fetch Subscription Info
+
+    /// Response from fetching subscription info from Stripe via Bubble
+    struct SubscriptionInfoResponse {
+        let subscriptionId: String?
+        let status: String?              // "active", "trialing", "past_due", "canceled", etc.
+        let planName: String?            // e.g., "Starter", "Team", "Business"
+        let priceId: String?
+        let currentPeriodStart: Date?
+        let currentPeriodEnd: Date?      // This is the next billing date
+        let billingInterval: String?     // "month" or "year"
+        let cancelAtPeriodEnd: Bool
+        let canceledAt: Date?
+        let trialEnd: Date?
+        let defaultPaymentMethod: String? // Last 4 digits or card brand
+    }
+
+    /// Fetch current subscription info directly from Stripe via Bubble
+    /// - Parameters:
+    ///   - stripeCustomerId: The Stripe customer ID
+    ///   - completion: Callback with result
+    func fetchSubscriptionInfo(
+        stripeCustomerId: String,
+        completion: @escaping (Result<SubscriptionInfoResponse, Error>) -> Void
+    ) {
+        let endpoint = baseURL + "get_subscription_info?api_token=\(apiKey)"
+
+        guard let url = URL(string: endpoint) else {
+            completion(.failure(BubbleAPIError.invalidURL))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "stripe_customer_id": stripeCustomerId
+        ]
+
+        print("📤 FETCH SUBSCRIPTION INFO REQUEST:")
+        print("  - Stripe Customer ID: \(stripeCustomerId)")
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            completion(.failure(error))
+            return
+        }
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    completion(.failure(error))
+                }
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                DispatchQueue.main.async {
+                    completion(.failure(BubbleAPIError.invalidResponse))
+                }
+                return
+            }
+
+            guard let data = data else {
+                DispatchQueue.main.async {
+                    completion(.failure(BubbleAPIError.noData))
+                }
+                return
+            }
+
+            #if DEBUG
+            print("📥 SUBSCRIPTION INFO: HTTP \(httpResponse.statusCode), \(data.count) bytes")
+            #endif
+
+            guard httpResponse.statusCode == 200 else {
+                print("❌ FETCH SUBSCRIPTION INFO ERROR \(httpResponse.statusCode)")
+                DispatchQueue.main.async {
+                    completion(.failure(BubbleAPIError.httpError(httpResponse.statusCode)))
+                }
+                return
+            }
+
+            // Parse the response - expecting raw Stripe response passed through from Bubble
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    // Check for Bubble success wrapper
+                    let stripeData: [String: Any]?
+
+                    if json["status"] as? String == "success",
+                       let response = json["response"] as? [String: Any] {
+                        // Bubble wrapped the response
+                        stripeData = response
+                    } else if json["data"] != nil {
+                        // Raw Stripe response (no Bubble wrapper)
+                        stripeData = json
+                    } else {
+                        stripeData = nil
+                    }
+
+                    guard let stripeResponse = stripeData,
+                          let subscriptions = stripeResponse["data"] as? [[String: Any]] else {
+                        DispatchQueue.main.async {
+                            completion(.failure(BubbleAPIError.invalidResponse))
+                        }
+                        return
+                    }
+
+                    // Check if there are any subscriptions
+                    if let firstSub = subscriptions.first {
+                        // Parse the first subscription from Stripe's raw format
+                        let info = self.parseStripeSubscription(firstSub)
+                        DispatchQueue.main.async {
+                            completion(.success(info))
+                        }
+                    } else {
+                        // No subscriptions found - return empty response (valid for trial users)
+                        let emptyInfo = SubscriptionInfoResponse(
+                            subscriptionId: nil,
+                            status: nil,
+                            planName: nil,
+                            priceId: nil,
+                            currentPeriodStart: nil,
+                            currentPeriodEnd: nil,
+                            billingInterval: nil,
+                            cancelAtPeriodEnd: false,
+                            canceledAt: nil,
+                            trialEnd: nil,
+                            defaultPaymentMethod: nil
+                        )
+                        DispatchQueue.main.async {
+                            completion(.success(emptyInfo))
+                        }
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        completion(.failure(BubbleAPIError.invalidResponse))
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(error))
+                }
+            }
+        }.resume()
+    }
+
+    /// Parse a raw Stripe subscription object into our response struct
+    private func parseStripeSubscription(_ sub: [String: Any]) -> SubscriptionInfoResponse {
+        // Get plan info from nested structure
+        let plan = sub["plan"] as? [String: Any]
+        let metadata = sub["metadata"] as? [String: Any]
+        let planMetadata = plan?["metadata"] as? [String: Any]
+
+        // Plan name from metadata (check both subscription and plan level)
+        let planName = metadata?["plan"] as? String ?? planMetadata?["planType"] as? String
+
+        // Parse dates (Stripe returns Unix timestamps as integers)
+        let currentPeriodStart = parseStripeTimestamp(sub["current_period_start"])
+        let currentPeriodEnd = parseStripeTimestamp(sub["current_period_end"])
+        let canceledAt = parseStripeTimestamp(sub["canceled_at"])
+        let trialEnd = parseStripeTimestamp(sub["trial_end"])
+
+        return SubscriptionInfoResponse(
+            subscriptionId: sub["id"] as? String,
+            status: sub["status"] as? String,
+            planName: planName,
+            priceId: plan?["id"] as? String,
+            currentPeriodStart: currentPeriodStart,
+            currentPeriodEnd: currentPeriodEnd,
+            billingInterval: plan?["interval"] as? String,
+            cancelAtPeriodEnd: sub["cancel_at_period_end"] as? Bool ?? false,
+            canceledAt: canceledAt,
+            trialEnd: trialEnd,
+            defaultPaymentMethod: sub["default_payment_method"] as? String
+        )
+    }
+
+    /// Async version of fetchSubscriptionInfo
+    func fetchSubscriptionInfo(stripeCustomerId: String) async throws -> SubscriptionInfoResponse {
+        try await withCheckedThrowingContinuation { continuation in
+            fetchSubscriptionInfo(stripeCustomerId: stripeCustomerId) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+
+    /// Parse Stripe timestamp (Unix seconds or milliseconds) to Date
+    private func parseStripeTimestamp(_ value: Any?) -> Date? {
+        guard let value = value else { return nil }
+
+        if let timestamp = value as? TimeInterval {
+            // Stripe uses seconds since epoch
+            return Date(timeIntervalSince1970: timestamp)
+        } else if let timestampInt = value as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(timestampInt))
+        } else if let timestampString = value as? String, let timestamp = Double(timestampString) {
+            return Date(timeIntervalSince1970: timestamp)
+        }
+
+        return nil
+    }
 }
 
 // MARK: - Error Types

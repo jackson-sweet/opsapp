@@ -45,10 +45,11 @@ struct ClientListView: View {
         VStack(spacing: 0) {
             if clients.isEmpty {
                 JobBoardEmptyState(
-                    icon: OPSStyle.Icons.crew,
+                    icon: OPSStyle.Icons.client,
                     title: "No Clients Yet",
                     subtitle: "Add your first client to get started"
                 )
+                .frame(maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: false) {

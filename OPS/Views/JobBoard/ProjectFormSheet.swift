@@ -1433,7 +1433,7 @@ struct ProjectFormSheet: View {
                 generator.notificationOccurred(.warning)
                 #endif
 
-                errorMessage = "WEAK/NO CONNECTION, QUEUING FOR LATER SYNC. SAVED LOCALLY"
+                errorMessage = "Saved locally. Will sync when connection improves."
                 showingError = true
                 isSaving = false
             } else {

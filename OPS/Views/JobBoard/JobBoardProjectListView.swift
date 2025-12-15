@@ -117,7 +117,7 @@ struct JobBoardProjectListView: View {
 
             if allProjects.isEmpty {
                 JobBoardEmptyState(
-                    icon: "folder.fill",
+                    icon: OPSStyle.Icons.project,
                     title: "No Projects Yet",
                     subtitle: "Create your first project to get started"
                 )
@@ -437,6 +437,19 @@ struct ProjectListSheet: View {
     let projects: [Project]
     let dataController: DataController
     @Environment(\.dismiss) private var dismiss
+    @State private var searchText: String = ""
+
+    private var filteredProjects: [Project] {
+        if searchText.isEmpty {
+            return projects
+        }
+        return projects.filter { project in
+            project.title.localizedCaseInsensitiveContains(searchText) ||
+            project.effectiveClientName.localizedCaseInsensitiveContains(searchText) ||
+            (project.projectDescription?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+            (project.address?.localizedCaseInsensitiveContains(searchText) ?? false)
+        }
+    }
 
     var body: some View {
         NavigationView {
@@ -444,26 +457,55 @@ struct ProjectListSheet: View {
                 OPSStyle.Colors.background
                     .ignoresSafeArea()
 
-                if projects.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: "folder")
-                            .font(.system(size: 48))
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Text("No projects")
-                            .font(OPSStyle.Typography.body)
+                VStack(spacing: 0) {
+                    // Search bar
+                    HStack(spacing: 12) {
+                        Image(systemName: OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(projects) { project in
-                                UniversalJobBoardCard(cardType: .project(project))
-                                    .environmentObject(dataController)
-                                    .id("\(project.id)-\(project.teamMemberIdsString)")
+                            .font(.system(size: 16))
+
+                        TextField("Search projects...", text: $searchText)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .autocorrectionDisabled()
+
+                        if !searchText.isEmpty {
+                            Button(action: { searchText = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .font(.system(size: 16))
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+
+                    if filteredProjects.isEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 48))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Text(searchText.isEmpty ? "No projects" : "No matching projects")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .frame(maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 12) {
+                                ForEach(filteredProjects) { project in
+                                    UniversalJobBoardCard(cardType: .project(project), disableSwipe: true)
+                                        .environmentObject(dataController)
+                                        .id("\(project.id)-\(project.teamMemberIdsString)")
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                        }
                     }
                 }
             }

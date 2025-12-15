@@ -21,6 +21,38 @@ class AppState: ObservableObject {
 
     // Track when home view is loading projects
     @Published var isLoadingProjects: Bool = false
+
+    // MARK: - Centralized Project Completion Cascade
+    // These properties allow any view to trigger the completion checklist sheet
+    @Published var projectPendingCompletion: Project?
+    @Published var showingGlobalCompletionChecklist: Bool = false
+
+    /// Centralized function to request project completion.
+    /// Call this BEFORE updating project status to .completed.
+    /// Returns true if completion can proceed directly, false if checklist sheet will be shown.
+    @discardableResult
+    func requestProjectCompletion(_ project: Project) -> Bool {
+        // Check for incomplete tasks (excluding cancelled)
+        let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+
+        if !incompleteTasks.isEmpty {
+            // Has incomplete tasks - show checklist sheet
+            print("[PROJECT_COMPLETION] 📋 Project '\(project.title)' has \(incompleteTasks.count) incomplete task(s) - showing checklist")
+            self.projectPendingCompletion = project
+            self.showingGlobalCompletionChecklist = true
+            return false
+        }
+
+        // No incomplete tasks - can complete directly
+        print("[PROJECT_COMPLETION] ✅ Project '\(project.title)' has no incomplete tasks - can complete directly")
+        return true
+    }
+
+    /// Clear the completion request (called after sheet is dismissed or completion is done)
+    func clearCompletionRequest() {
+        self.projectPendingCompletion = nil
+        self.showingGlobalCompletionChecklist = false
+    }
     
     var isInProjectMode: Bool {
         // Only consider in project mode if we're not just viewing details
@@ -139,6 +171,8 @@ class AppState: ObservableObject {
         self.activeProjectID = nil
         self.activeTaskID = nil
         self.isLoadingProjects = false
+        self.projectPendingCompletion = nil
+        self.showingGlobalCompletionChecklist = false
     }
     
     // Helper method to dismiss project details without exiting project mode

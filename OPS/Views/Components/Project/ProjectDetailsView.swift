@@ -42,7 +42,7 @@ struct ProjectDetailsView: View {
     @State private var isGeocodingAddress = false
     @State private var addressDebounceTask: Task<Void, Never>?
     @StateObject private var addressSearchCompleter = AddressSearchCompleter()
-    @State private var showingCompletionSheet = false
+    // Note: showingCompletionSheet removed - now handled globally via AppState in ContentView
     @State private var showingCompletionAlert = false
     @State private var showingDeleteAlert = false
     @State private var refreshTrigger = false  // Toggle to force view refresh
@@ -52,6 +52,7 @@ struct ProjectDetailsView: View {
     @State private var showingAddTaskSheet = false
     @State private var selectedTeamMember: User? = nil
     @State private var isTeamExpanded = false
+    @State private var isDeleting = false  // Flag to prevent accessing deleted project
 
     // Initialize with project's existing notes
     init(project: Project, isEditMode: Bool = false) {
@@ -101,80 +102,88 @@ struct ProjectDetailsView: View {
     }
     
     var body: some View {
-        mainView
-            .navigationBarHidden(true)
-            .overlay(saveNotificationOverlay)
-            .fullScreenCover(isPresented: $showingPhotoViewer) {
-                photoViewerContent
-            }
-            .sheet(isPresented: $showingImagePicker) {
-                imagePickerContent
-            }
-            .confirmationDialog(
-                "Unsaved Changes",
-                isPresented: $showingUnsavedChangesAlert,
-                titleVisibility: .visible
-            ) {
-                unsavedChangesButtons
-            } message: {
-                Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
-            }
-            .onAppear(perform: handleOnAppear)
-            .onDisappear(perform: handleOnDisappear)
-            .alert("Network Error", isPresented: $showingNetworkError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(networkErrorMessage)
-            }
-            .sheet(isPresented: $showingClientContact) {
-                clientContactSheet
-            }
-            .sheet(item: $selectedTeamMember) { member in
-                ContactDetailView(user: member)
-                    .environmentObject(dataController)
-            }
-            .sheet(isPresented: $showingScheduler) {
-                CalendarSchedulerSheet(
-                    isPresented: $showingScheduler,
-                    itemType: .project(project),
-                    currentStartDate: project.startDate,
-                    currentEndDate: project.endDate,
-                    onScheduleUpdate: { startDate, endDate in
-                        handleScheduleUpdate(startDate: startDate, endDate: endDate)
-                    },
-                    onClearDates: {
-                        handleClearDates()
+        Group {
+            if isDeleting {
+                // Show placeholder during deletion to avoid accessing deleted project
+                // CRITICAL: No modifiers that access project properties can be outside this if/else
+                ZStack {
+                    Color.black.edgesIgnoringSafeArea(.all)
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                }
+            } else {
+                mainView
+                    .navigationBarHidden(true)
+                    .overlay(saveNotificationOverlay)
+                    .fullScreenCover(isPresented: $showingPhotoViewer) {
+                        photoViewerContent
                     }
-                )
-                .environmentObject(dataController)
-            }
-            .sheet(isPresented: $showingCompletionSheet) {
-                TaskCompletionChecklistSheet(project: project, onComplete: {
-                    markProjectComplete()
-                })
-                .environmentObject(dataController)
-            }
-            .sheet(isPresented: $showingAddressEditor) {
-                AddressEditorSheet(
-                    address: $editedAddress,
-                    onSave: {
-                        saveAddress()
-                    },
-                    onCancel: {
-                        showingAddressEditor = false
+                    .sheet(isPresented: $showingImagePicker) {
+                        imagePickerContent
                     }
-                )
-            }
-            .sheet(isPresented: $showingAddTaskSheet) {
-                TaskFormSheet(
-                    mode: .create,
-                    preselectedProjectId: project.id,
-                    onSave: { _ in
-                        // No manual refresh needed - @Bindable project automatically updates when tasks change
+                    .confirmationDialog(
+                        "Unsaved Changes",
+                        isPresented: $showingUnsavedChangesAlert,
+                        titleVisibility: .visible
+                    ) {
+                        unsavedChangesButtons
+                    } message: {
+                        Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
                     }
-                )
-                .environmentObject(dataController)
+                    .onAppear(perform: handleOnAppear)
+                    .onDisappear(perform: handleOnDisappear)
+                    .alert("Network Error", isPresented: $showingNetworkError) {
+                        Button("OK", role: .cancel) { }
+                    } message: {
+                        Text(networkErrorMessage)
+                    }
+                    // ALL sheets that access project properties MUST be inside this else block
+                    .sheet(isPresented: $showingClientContact) {
+                        clientContactSheet
+                    }
+                    .sheet(item: $selectedTeamMember) { member in
+                        ContactDetailView(user: member)
+                            .environmentObject(dataController)
+                    }
+                    .sheet(isPresented: $showingScheduler) {
+                        CalendarSchedulerSheet(
+                            isPresented: $showingScheduler,
+                            itemType: .project(project),
+                            currentStartDate: project.startDate,
+                            currentEndDate: project.endDate,
+                            onScheduleUpdate: { startDate, endDate in
+                                handleScheduleUpdate(startDate: startDate, endDate: endDate)
+                            },
+                            onClearDates: {
+                                handleClearDates()
+                            }
+                        )
+                        .environmentObject(dataController)
+                    }
+                    // Note: Completion checklist sheet is now handled globally via AppState in ContentView
+                    .sheet(isPresented: $showingAddressEditor) {
+                        AddressEditorSheet(
+                            address: $editedAddress,
+                            onSave: {
+                                saveAddress()
+                            },
+                            onCancel: {
+                                showingAddressEditor = false
+                            }
+                        )
+                    }
+                    .sheet(isPresented: $showingAddTaskSheet) {
+                        TaskFormSheet(
+                            mode: .create,
+                            preselectedProjectId: project.id,
+                            onSave: { _ in
+                                // No manual refresh needed - @Bindable project automatically updates when tasks change
+                            }
+                        )
+                        .environmentObject(dataController)
+                    }
             }
+        }
     }
 
     // MARK: - Main View Components
@@ -347,6 +356,7 @@ struct ProjectDetailsView: View {
             initialIndex: selectedPhotoIndex,
             onDismiss: { showingPhotoViewer = false }
         )
+        .id(selectedPhotoIndex) // Force view recreation when index changes
     }
 
     private var imagePickerContent: some View {
@@ -1265,10 +1275,6 @@ struct ProjectDetailsView: View {
             // Photo display (empty state or grid)
             photoDisplayView
 
-            // Add photos button
-            addPhotosButton
-                .padding(.horizontal)
-
             // Loading indicator for processing images
             if processingImages {
                 processingIndicator
@@ -1291,23 +1297,41 @@ struct ProjectDetailsView: View {
         }
     }
     
-    // Empty state when no photos
+    // Empty state when no photos - shows add photo placeholder
     private var emptyPhotosView: some View {
         VStack(spacing: 16) {
-            // NOTE: Missing icon in OPSStyle - "photo.on.rectangle.angled" (empty photo state)
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 36))
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+            // Add photo placeholder button (same style as in carousel)
+            Button(action: {
+                showingImagePicker = true
+            }) {
+                ZStack {
+                    // Dashed border outline to look like a photo placeholder
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(
+                            style: StrokeStyle(lineWidth: 2, dash: [6, 4])
+                        )
+                        .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
 
-            Text("No photos added yet")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+                    // Plus icon centered
+                    VStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
 
-            Text("Tap the button below to add photos to this project")
+                        Text("ADD PHOTO")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
+                .frame(width: 110, height: 110)
+                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+                .cornerRadius(8)
+            }
+            .disabled(processingImages)
+
+            Text("Tap to add photos to this project")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
         }
         .frame(height: 180)
         .frame(maxWidth: .infinity)
@@ -1319,6 +1343,9 @@ struct ProjectDetailsView: View {
         VStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
+                    // Add photo button as first item in carousel
+                    addPhotoPlaceholderButton
+
                     ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                         photoThumbnailView(url: url, index: index)
                     }
@@ -1327,23 +1354,54 @@ struct ProjectDetailsView: View {
                 .padding(.vertical, 16)
             }
             .frame(height: 142) // 110 image + 32 padding
-            
+
             // Photo count indicator
             HStack {
                 // NOTE: Missing icon in OPSStyle - "photo.stack" (photo count indicator)
                 Image(systemName: "photo.stack")
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .font(.system(size: 14))
-                
+
                 Text("\(photos.count) \(photos.count == 1 ? "photo" : "photos")")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                
+
                 Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
         }
+    }
+
+    // Add photo placeholder button (first item in carousel)
+    private var addPhotoPlaceholderButton: some View {
+        Button(action: {
+            showingImagePicker = true
+        }) {
+            ZStack {
+                // Dashed border outline to look like a photo placeholder
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        style: StrokeStyle(lineWidth: 2, dash: [6, 4])
+                    )
+                    .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
+
+                // Plus icon centered
+                VStack(spacing: 8) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                    Text("ADD")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+            .frame(width: 110, height: 110)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+            .cornerRadius(8)
+        }
+        .disabled(processingImages)
     }
     
     // Individual photo thumbnail
@@ -1363,29 +1421,7 @@ struct ProjectDetailsView: View {
     }
     
     // REMOVED: No longer need to track long press for deletion
-    
-    // Add photos button
-    private var addPhotosButton: some View {
-        Button(action: {
-            showingImagePicker = true
-        }) {
-            HStack(spacing: 8) {
-                // NOTE: Missing icon in OPSStyle - "plus.viewfinder" (add photos)
-                Image(systemName: "plus.viewfinder")
-                    .font(.system(size: 16, weight: .medium))
-
-                Text("ADD PHOTOS")
-                    .font(OPSStyle.Typography.bodyBold)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(OPSStyle.Colors.primaryAccent)
-            .foregroundColor(.white)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-        }
-        .disabled(processingImages)
-        .padding(.horizontal)
-    }
+    // REMOVED: Old addPhotosButton - now using placeholder button in carousel
 
     // Processing indicator
     private var processingIndicator: some View {
@@ -1459,12 +1495,12 @@ struct ProjectDetailsView: View {
 
     private var completeButton: some View {
         Button(action: {
-            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
-            if !incompleteTasks.isEmpty {
-                showingCompletionAlert = true
-            } else {
+            // CENTRALIZED COMPLETION CHECK: Uses AppState for global checklist sheet
+            if appState.requestProjectCompletion(project) {
+                // No incomplete tasks - proceed with completion
                 markProjectComplete()
             }
+            // If false, the global checklist sheet will be shown via AppState in ContentView
         }) {
             Text("MARK PROJECT COMPLETE")
                 .font(OPSStyle.Typography.bodyBold)
@@ -1479,15 +1515,6 @@ struct ProjectDetailsView: View {
         }
         .padding(.horizontal)
         .padding(.top, 8)
-        .alert("Complete Project", isPresented: $showingCompletionAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Complete All") {
-                markProjectCompleteWithTasks()
-            }
-        } message: {
-            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
-            Text("This project has \(incompleteTasks.count) incomplete task\(incompleteTasks.count == 1 ? "" : "s"). All incomplete tasks will be marked as completed.")
-        }
     }
 
     private var closeJobButton: some View {
@@ -1626,33 +1653,22 @@ struct ProjectDetailsView: View {
     }
 
     private func deleteProject() {
-        // Capture values needed for deletion before any async work
-        let projectId = project.id
         let projectTitle = project.title
-        let controller = dataController
 
-        print("[PROJECT_DETAILS] 🗑️ Starting project deletion for: \(projectTitle)")
+        print("[PROJECT_DETAILS] 🗑️ Starting soft delete for project: \(projectTitle)")
 
-        // STEP 1: Delete locally FIRST (while view is still valid)
-        // This uses the centralized deleteProject which handles local deletion immediately
+        // Soft delete sets deletedAt - project object still exists, just marked as deleted
         Task {
             do {
-                // Get a fresh reference and delete
-                if let projectToDelete = controller.getProject(id: projectId) {
-                    try await controller.deleteProject(projectToDelete)
-                    print("[PROJECT_DETAILS] ✅ Project deleted successfully")
-                }
+                try await dataController.deleteProject(project)
+                print("[PROJECT_DETAILS] ✅ Project '\(projectTitle)' soft deleted successfully")
 
-                // STEP 2: Dismiss AFTER local deletion is complete
+                // Dismiss after soft delete completes
                 await MainActor.run {
                     dismiss()
                 }
             } catch {
-                print("[PROJECT_DETAILS] ❌ Failed to delete project: \(error)")
-                // Still dismiss on error to avoid stuck state
-                await MainActor.run {
-                    dismiss()
-                }
+                print("[PROJECT_DETAILS] ❌ Failed to soft delete project: \(error)")
             }
         }
     }
@@ -2306,109 +2322,45 @@ struct FullScreenPhotoViewer: View {
     }
 }
 
-// Zoomable photo view for individual photos
+// Zoomable photo view for individual photos using UIKit for proper pinch-to-zoom
 struct ZoomablePhotoView: View {
     let url: String
     @State private var image: UIImage?
-    @State private var scale: CGFloat = 1.0
-    @State private var offset: CGSize = .zero
     @State private var isLoading = true
     @State private var showingSaveDialog = false
     @State private var showingSaveAlert = false
     @State private var saveAlertMessage = ""
-    @State private var lastScaleValue: CGFloat = 1.0
-    @State private var pinchCenter: CGPoint? = nil
-    
+
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                Color.black
-                
-                if let image = image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .scaleEffect(scale, anchor: .center)
-                        .offset(offset)
-                        .onLongPressGesture {
-                            // Show save dialog on long press
-                            showingSaveDialog = true
-                        }
-                        .gesture(
-                            MagnificationGesture()
-                                .onChanged { value in
-                                    // Calculate the scale change
-                                    let delta = value / lastScaleValue
-                                    lastScaleValue = value
-                                    
-                                    // Apply zoom
-                                    let newScale = min(max(scale * delta, 1), 5)
-                                    
-                                    if newScale > 1 {
-                                        // Calculate zoom-to-pinch-point offset
-                                        if pinchCenter == nil {
-                                            // Store the initial pinch center
-                                            pinchCenter = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                                        }
-                                        
-                                        // Adjust offset based on zoom center
-                                        let scaleDiff = newScale - scale
-                                        if let center = pinchCenter {
-                                            let offsetX = (center.x - geometry.size.width / 2) * scaleDiff
-                                            let offsetY = (center.y - geometry.size.height / 2) * scaleDiff
-                                            offset.width -= offsetX
-                                            offset.height -= offsetY
-                                        }
-                                    }
-                                    
-                                    scale = newScale
-                                }
-                                .onEnded { _ in
-                                    // Always reset to 1x when fingers are lifted
-                                    withAnimation(.spring()) {
-                                        scale = 1.0
-                                        offset = .zero
-                                        lastScaleValue = 1.0
-                                        pinchCenter = nil
-                                    }
-                                }
-                        )
-                        .highPriorityGesture(
-                            // Only allow drag when zoomed in
-                            scale > 1 ? DragGesture()
-                                .onChanged { value in
-                                    offset = CGSize(
-                                        width: offset.width + value.translation.width,
-                                        height: offset.height + value.translation.height
-                                    )
-                                }
-                                .onEnded { _ in
-                                    // Keep offset when zoomed
-                                } : nil
-                        )
-                } else if isLoading {
-                    VStack {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(1.5)
-                        
-                        Text("Loading image...")
-                            .foregroundColor(.gray)
-                            .padding(.top, 10)
-                    }
-                } else {
-                    VStack {
-                        Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
-                            .font(.system(size: 40))
-                            .foregroundColor(.gray)
-                        
-                        Text("Failed to load image")
-                            .foregroundColor(.gray)
-                            .padding(.top, 10)
-                    }
+        ZStack {
+            Color.black
+
+            if let image = image {
+                // Use UIKit-based scroll view for proper pinch-to-zoom at touch location
+                ZoomableScrollView(image: image, onLongPress: {
+                    showingSaveDialog = true
+                })
+            } else if isLoading {
+                VStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.5)
+
+                    Text("Loading image...")
+                        .foregroundColor(.gray)
+                        .padding(.top, 10)
+                }
+            } else {
+                VStack {
+                    Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
+                        .font(.system(size: 40))
+                        .foregroundColor(.gray)
+
+                    Text("Failed to load image")
+                        .foregroundColor(.gray)
+                        .padding(.top, 10)
                 }
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .onAppear(perform: loadImage)
         .alert("Save Image", isPresented: $showingSaveDialog) {
@@ -2531,6 +2483,129 @@ struct ZoomablePhotoView: View {
         
         saveAlertMessage = "Image saved to Photos"
         showingSaveAlert = true
+    }
+}
+
+// MARK: - UIKit-based Zoomable Scroll View
+// Uses UIScrollView for proper pinch-to-zoom at touch location
+struct ZoomableScrollView: UIViewRepresentable {
+    let image: UIImage
+    let onLongPress: () -> Void
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.delegate = context.coordinator
+        scrollView.maximumZoomScale = 5.0
+        scrollView.minimumZoomScale = 1.0
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.bouncesZoom = true
+        scrollView.backgroundColor = .black
+
+        let imageView = UIImageView(image: image)
+        imageView.contentMode = .scaleAspectFit
+        imageView.isUserInteractionEnabled = true
+        imageView.tag = 100 // Tag to find it later
+
+        scrollView.addSubview(imageView)
+
+        // Add double-tap gesture for zoom toggle
+        let doubleTapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap(_:)))
+        doubleTapGesture.numberOfTapsRequired = 2
+        scrollView.addGestureRecognizer(doubleTapGesture)
+
+        // Add long press gesture for save dialog
+        let longPressGesture = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
+        scrollView.addGestureRecognizer(longPressGesture)
+
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        guard let imageView = scrollView.viewWithTag(100) as? UIImageView else { return }
+
+        // Update image if changed
+        if imageView.image !== image {
+            imageView.image = image
+        }
+
+        // Update frame to match scroll view bounds
+        DispatchQueue.main.async {
+            imageView.frame = scrollView.bounds
+            context.coordinator.centerImageView(scrollView: scrollView)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onLongPress: onLongPress)
+    }
+
+    class Coordinator: NSObject, UIScrollViewDelegate {
+        let onLongPress: () -> Void
+
+        init(onLongPress: @escaping () -> Void) {
+            self.onLongPress = onLongPress
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            return scrollView.viewWithTag(100)
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            centerImageView(scrollView: scrollView)
+        }
+
+        func centerImageView(scrollView: UIScrollView) {
+            guard let imageView = scrollView.viewWithTag(100) else { return }
+
+            let boundsSize = scrollView.bounds.size
+            var frameToCenter = imageView.frame
+
+            // Center horizontally
+            if frameToCenter.size.width < boundsSize.width {
+                frameToCenter.origin.x = (boundsSize.width - frameToCenter.size.width) / 2
+            } else {
+                frameToCenter.origin.x = 0
+            }
+
+            // Center vertically
+            if frameToCenter.size.height < boundsSize.height {
+                frameToCenter.origin.y = (boundsSize.height - frameToCenter.size.height) / 2
+            } else {
+                frameToCenter.origin.y = 0
+            }
+
+            imageView.frame = frameToCenter
+        }
+
+        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+            guard let scrollView = gesture.view as? UIScrollView else { return }
+
+            if scrollView.zoomScale > scrollView.minimumZoomScale {
+                // Zoom out to minimum
+                scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+            } else {
+                // Zoom in to the tapped location
+                let location = gesture.location(in: scrollView.viewWithTag(100))
+                let zoomRect = zoomRectForScale(scale: 2.5, center: location, scrollView: scrollView)
+                scrollView.zoom(to: zoomRect, animated: true)
+            }
+        }
+
+        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+            if gesture.state == .began {
+                onLongPress()
+            }
+        }
+
+        private func zoomRectForScale(scale: CGFloat, center: CGPoint, scrollView: UIScrollView) -> CGRect {
+            var zoomRect = CGRect.zero
+            zoomRect.size.height = scrollView.frame.size.height / scale
+            zoomRect.size.width = scrollView.frame.size.width / scale
+            zoomRect.origin.x = center.x - (zoomRect.size.width / 2.0)
+            zoomRect.origin.y = center.y - (zoomRect.size.height / 2.0)
+            return zoomRect
+        }
     }
 }
 

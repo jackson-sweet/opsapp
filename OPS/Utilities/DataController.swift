@@ -2577,8 +2577,8 @@ class DataController: ObservableObject {
 
     // MARK: - Data Deletion Methods
 
-    /// Delete a project and all related data from both Bubble API and local storage
-    /// - Parameter project: The project to delete
+    /// Soft delete a project by setting deletedAt timestamp
+    /// - Parameter project: The project to soft delete
     /// - Throws: API or database errors
     @MainActor
     func deleteProject(_ project: Project) async throws {
@@ -2586,76 +2586,27 @@ class DataController: ObservableObject {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
 
-        // Capture all necessary IDs before any deletion to avoid accessing invalidated objects
-        let projectId = project.id
         let projectTitle = project.title
-        let taskIds = project.tasks.map { $0.id }
-        let taskCalendarEventIds = project.tasks.compactMap { $0.calendarEvent?.id }
+        let deletionDate = Date()
 
-        // Get references to all SwiftData objects we'll need to delete
-        let tasksToDelete = Array(project.tasks) // Create array copy to avoid relationship issues
-        let taskCalendarEvents = tasksToDelete.compactMap { $0.calendarEvent }
+        print("[DELETE_PROJECT] 🗑️ Soft deleting project '\(projectTitle)' (setting deletedAt)")
 
-        // STEP 1: Delete from local SwiftData FIRST (UI updates immediately)
-        print("[DELETE_PROJECT] 🗑️ Deleting project '\(projectTitle)' locally (UI will update)")
+        // SOFT DELETE: Set deletedAt timestamp instead of physical deletion
+        project.deletedAt = deletionDate
+        project.needsSync = true
 
-        // Delete all task calendar events
-        for event in taskCalendarEvents {
-            modelContext.delete(event)
+        // Cascade soft delete to all tasks
+        for task in project.tasks where task.deletedAt == nil {
+            task.deletedAt = deletionDate
+            task.needsSync = true
         }
 
-        // Delete all tasks
-        for task in tasksToDelete {
-            modelContext.delete(task)
-        }
-
-        // Delete the project
-        modelContext.delete(project)
-
-        // Save changes
+        // Save changes locally
         try modelContext.save()
-        print("[DELETE_PROJECT] ✅ Project deleted from local database (UI updated)")
+        print("[DELETE_PROJECT] ✅ Project '\(projectTitle)' soft deleted locally")
 
-        // STEP 2: Delete from Bubble in background
-        Task {
-            do {
-                // Delete all task calendar events from Bubble
-                print("[DELETE_PROJECT] 🗑️ Deleting \(taskCalendarEventIds.count) calendar events from Bubble...")
-                for eventId in taskCalendarEventIds {
-                    try await apiService.deleteCalendarEvent(id: eventId)
-                }
-                print("[DELETE_PROJECT] ✅ Calendar events deleted from Bubble")
-
-                // Delete all tasks from Bubble
-                print("[DELETE_PROJECT] 🗑️ Deleting \(taskIds.count) tasks from Bubble...")
-                for taskId in taskIds {
-                    try await apiService.deleteTask(id: taskId)
-                }
-                print("[DELETE_PROJECT] ✅ Tasks deleted from Bubble")
-
-                // Delete project from Bubble
-                print("[DELETE_PROJECT] 🗑️ Deleting project from Bubble...")
-                try await apiService.deleteProject(id: projectId)
-                print("[DELETE_PROJECT] ✅ Project '\(projectTitle)' deleted from Bubble")
-            } catch {
-                print("[DELETE_PROJECT] ❌ Error deleting project from Bubble: \(error)")
-                // Project is already deleted from UI, but will reappear on next sync if Bubble deletion failed
-                await MainActor.run {
-                    let content = UNMutableNotificationContent()
-                    content.title = "Delete Failed"
-                    content.body = "Project deleted locally but failed to sync. It may reappear on next sync."
-                    content.sound = .default
-
-                    let request = UNNotificationRequest(
-                        identifier: UUID().uuidString,
-                        content: content,
-                        trigger: nil
-                    )
-
-                    UNUserNotificationCenter.current().add(request)
-                }
-            }
-        }
+        // Trigger background sync to push changes to Bubble
+        syncManager?.triggerBackgroundSync()
     }
 
     /// Delete a task and its calendar event from both Bubble API and local storage
@@ -3225,7 +3176,7 @@ class DataController: ObservableObject {
         print("[\(operationName)] 🔵 \(itemDescription)")
         print("[\(operationName)] 📊 Current state - Connected: \(isConnected), Authenticated: \(isAuthenticated)")
 
-        // Perform local update
+        // Perform local update FIRST - user sees immediate feedback
         try localUpdate()
         try? modelContext?.save()
         print("[\(operationName)] ✅ Updated locally and marked for sync")
@@ -3233,32 +3184,59 @@ class DataController: ObservableObject {
         // Update pending sync count
         await checkPendingSyncs()
 
-        // LAYER 1: Immediate sync attempt if connected
+        // LAYER 1: Immediate sync attempt with 5-second retry window
         if isConnected && isAuthenticated {
-            do {
-                print("[\(operationName)] 🚀 [LAYER 1] Connected & Authenticated - attempting immediate sync to Bubble...")
-                try await syncToAPI()
+            let maxRetryDuration: TimeInterval = 5.0  // Try for 5 seconds total
+            let retryInterval: UInt64 = 1_000_000_000 // 1 second between retries
+            let startTime = Date()
+            var lastError: Error?
+            var attemptCount = 0
 
-                // syncToAPI closure is responsible for marking item as synced
-                try? modelContext?.save()
-                print("[\(operationName)] ✅ [LAYER 1] Immediate sync successful - item synced to Bubble")
+            while Date().timeIntervalSince(startTime) < maxRetryDuration {
+                attemptCount += 1
+                do {
+                    print("[\(operationName)] 🚀 [LAYER 1] Sync attempt \(attemptCount)...")
+                    try await syncToAPI()
 
-                await checkPendingSyncs()
-            } catch {
-                print("[\(operationName)] ❌ [LAYER 1] Immediate sync failed: \(error)")
-                print("[\(operationName)] 🔄 [LAYER 2] Will retry on network change")
-                print("[\(operationName)] ⏱️ [LAYER 3] Will retry via 3-minute timer")
-                throw error
+                    // syncToAPI closure is responsible for marking item as synced
+                    try? modelContext?.save()
+                    print("[\(operationName)] ✅ [LAYER 1] Sync successful on attempt \(attemptCount)")
+
+                    await checkPendingSyncs()
+                    return  // Success - exit function
+                } catch {
+                    lastError = error
+                    let elapsed = Date().timeIntervalSince(startTime)
+                    print("[\(operationName)] ⚠️ [LAYER 1] Attempt \(attemptCount) failed after \(String(format: "%.1f", elapsed))s: \(error.localizedDescription)")
+
+                    // If we still have time, wait before retrying
+                    if Date().timeIntervalSince(startTime) + 1.0 < maxRetryDuration {
+                        try? await Task.sleep(nanoseconds: retryInterval)
+                    }
+                }
             }
+
+            // After 5 seconds of retrying, fall back to background sync
+            print("[\(operationName)] ⏱️ [LAYER 1] 5-second retry window exhausted after \(attemptCount) attempts")
+            print("[\(operationName)] 🔄 [LAYER 2] Queueing for background sync")
+            print("[\(operationName)] 📴 Last error: \(lastError?.localizedDescription ?? "unknown")")
+
+            // Trigger background sync to handle this later
+            syncManager?.triggerBackgroundSync()
+
+            // DON'T throw - the operation succeeded locally and will sync in background
+            // This ensures the user isn't blocked by network issues
         } else {
             if !isConnected {
-                print("[\(operationName)] 📴 [LAYER 1] SKIPPED - No connection (isConnected: false)")
+                print("[\(operationName)] 📴 [LAYER 1] SKIPPED - No connection")
             } else if !isAuthenticated {
-                print("[\(operationName)] 🔒 [LAYER 1] SKIPPED - Not authenticated (isAuthenticated: false)")
+                print("[\(operationName)] 🔒 [LAYER 1] SKIPPED - Not authenticated")
             }
             print("[\(operationName)] 🔄 [LAYER 2] Will sync when connection is restored")
-            print("[\(operationName)] ⏱️ [LAYER 3] Periodic retry timer active")
             print("[\(operationName)] 📊 Total pending syncs: \(pendingSyncCount)")
+
+            // Trigger background sync
+            syncManager?.triggerBackgroundSync()
         }
     }
 

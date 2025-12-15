@@ -89,7 +89,12 @@ struct ProjectActionBar: View {
                 title: Text("Complete Project"),
                 message: Text("Are you sure you want to mark this project as complete?"),
                 primaryButton: .default(Text("Complete")) {
-                    updateProjectStatus(.completed)
+                    // CENTRALIZED COMPLETION CHECK: If completing project, check for incomplete tasks first
+                    if appState.requestProjectCompletion(project) {
+                        // No incomplete tasks - proceed with completion
+                        updateProjectStatus(.completed)
+                    }
+                    // If false, the global checklist sheet will be shown via AppState
                 },
                 secondaryButton: .cancel()
             )

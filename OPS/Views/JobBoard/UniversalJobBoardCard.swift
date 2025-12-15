@@ -16,7 +16,9 @@ enum JobBoardCardType {
 
 struct UniversalJobBoardCard: View {
     let cardType: JobBoardCardType
+    var disableSwipe: Bool = false  // When true, disables swipe gestures (useful in sheets where scrolling is needed)
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Query private var allClients: [Client]
     @State private var showingMoreActions = false
@@ -318,15 +320,17 @@ struct UniversalJobBoardCard: View {
                 projectCardContent
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 20)
-                            .onChanged { value in
-                                handleSwipeChanged(value: value, cardWidth: geometry.size.width)
-                            }
-                            .onEnded { value in
-                                handleSwipeEnded(value: value, cardWidth: geometry.size.width)
-                            }
-                    )
+                    .if(canSwipeInAnyDirection) { view in
+                        view.simultaneousGesture(
+                            DragGesture(minimumDistance: 20)
+                                .onChanged { value in
+                                    handleSwipeChanged(value: value, cardWidth: geometry.size.width)
+                                }
+                                .onEnded { value in
+                                    handleSwipeEnded(value: value, cardWidth: geometry.size.width)
+                                }
+                        )
+                    }
 
                 if isChangingStatus, let confirmingStatus = confirmingStatus, let direction = confirmingDirection {
                     RevealedStatusCard(status: confirmingStatus, direction: direction)
@@ -528,15 +532,17 @@ struct UniversalJobBoardCard: View {
                 taskCardContent
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 20)
-                            .onChanged { value in
-                                handleSwipeChanged(value: value, cardWidth: geometry.size.width)
-                            }
-                            .onEnded { value in
-                                handleSwipeEnded(value: value, cardWidth: geometry.size.width)
-                            }
-                    )
+                    .if(canSwipeInAnyDirection) { view in
+                        view.simultaneousGesture(
+                            DragGesture(minimumDistance: 20)
+                                .onChanged { value in
+                                    handleSwipeChanged(value: value, cardWidth: geometry.size.width)
+                                }
+                                .onEnded { value in
+                                    handleSwipeEnded(value: value, cardWidth: geometry.size.width)
+                                }
+                        )
+                    }
 
                 if isChangingStatus, let confirmingStatus = confirmingStatus, let direction = confirmingDirection {
                     RevealedStatusCard(status: confirmingStatus, direction: direction)
@@ -1387,10 +1393,23 @@ struct UniversalJobBoardCard: View {
         }
     }
 
+    /// Returns true if the card can swipe in at least one direction (and swipe is not disabled)
+    private var canSwipeInAnyDirection: Bool {
+        !disableSwipe && (canSwipe(direction: .left) || canSwipe(direction: .right))
+    }
+
     private func performStatusChange(to newStatus: Any) {
         switch cardType {
         case .project(let project):
             if let status = newStatus as? Status {
+                // CENTRALIZED COMPLETION CHECK: If completing project, check for incomplete tasks first
+                if status == .completed {
+                    if !appState.requestProjectCompletion(project) {
+                        // Has incomplete tasks - checklist sheet will be shown globally
+                        return
+                    }
+                }
+
                 Task {
                     do {
                         try await dataController.updateProjectStatus(project: project, to: status)
@@ -1517,14 +1536,13 @@ struct UniversalJobBoardCard: View {
                     print("[DELETE_TASK_CARD] ✅ Task deleted successfully")
                 }
 
-                // Show success feedback
+                // Show success feedback (in-app popup only, no push notification)
                 await MainActor.run {
                     customAlert = CustomAlertConfig(
                         title: "DELETED",
                         message: itemName,
                         color: OPSStyle.Colors.successStatus
                     )
-                    scheduleDeletionNotification(itemType: itemType, itemName: itemName)
                 }
             } catch {
                 print("[DELETE] ❌ Error deleting item: \(error)")
@@ -1532,24 +1550,7 @@ struct UniversalJobBoardCard: View {
         }
     }
 
-    private func scheduleDeletionNotification(itemType: String, itemName: String) {
-        let content = UNMutableNotificationContent()
-        content.title = "OPS"
-        content.body = "\(itemName) deleted"
-        content.sound = .default
-
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("[NOTIFICATION] Error scheduling notification: \(error)")
-            }
-        }
-    }
+    // REMOVED: scheduleDeletionNotification - now using in-app popup only
 
     // Helper function to determine if UNSCHEDULED badge should be shown
     private func shouldShowUnscheduledBadge(for project: Project) -> Bool {

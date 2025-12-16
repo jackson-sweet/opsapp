@@ -55,11 +55,11 @@ struct CompanyDetailsView: View {
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
-                                .font(OPSStyle.Typography.captionBold)
+                                .font(OPSStyle.Typography.button)
                             Text("Back")
-                                .font(OPSStyle.Typography.bodyBold)
+                                .font(OPSStyle.Typography.button)
                         }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     
                     Spacer()
@@ -67,21 +67,21 @@ struct CompanyDetailsView: View {
                     Button(action: {
                         onboardingViewModel.logoutAndReturnToLogin()
                     }) {
-                        Text("Sign Out")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.button)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                
+
                 // Step indicator bars
                 HStack(spacing: 4) {
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
-                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
-                            .frame(height: 4)
+                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText.opacity(0.3))
+                            .frame(height: 2)
                     }
                 }
                 .padding(.bottom, 16)
@@ -141,11 +141,10 @@ struct CompanyDetailsView: View {
                         }
                         .transition(.opacity)
                     }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, 40) // Add consistent top padding
-                    
+
                     Spacer()
                 }
+                .padding(40)
             }
             .sheet(isPresented: $showingIndustryPicker) {
                 IndustryPickerView(selectedIndustry: $selectedIndustry, searchText: $searchText, filteredIndustries: filteredIndustries)
@@ -172,11 +171,11 @@ struct IndustryPhaseView: View {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("WHAT'S YOUR")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
+
                 Text("INDUSTRY?")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.bottom, 12)
                 
@@ -245,11 +244,11 @@ struct SizePhaseView: View {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("HOW BIG")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
+
                 Text("IS YOUR CREW?")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.bottom, 12)
                 
@@ -328,11 +327,11 @@ struct AgePhaseView: View {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("HOW LONG HAVE")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
+
                 Text("YOU BEEN RUNNING?")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.bottom, 12)
                 

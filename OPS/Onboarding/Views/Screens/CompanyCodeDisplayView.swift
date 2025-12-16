@@ -50,11 +50,11 @@ struct CompanyCodeDisplayView: View {
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
-                                .font(OPSStyle.Typography.caption)
+                                .font(OPSStyle.Typography.button)
                             Text("Back")
-                                .font(OPSStyle.Typography.body)
+                                .font(OPSStyle.Typography.button)
                         }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(secondaryTextColor)
                     }
                     
                     Spacer()
@@ -62,21 +62,21 @@ struct CompanyCodeDisplayView: View {
                     Button(action: {
                         viewModel.logoutAndReturnToLogin()
                     }) {
-                        Text("Sign Out")
-                            .font(OPSStyle.Typography.captionBold)
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.button)
                             .foregroundColor(secondaryTextColor)
                     }
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                
+
                 // Step indicator bars
                 HStack(spacing: 4) {
                     ForEach(0..<totalSteps) { step in
                         Rectangle()
-                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : secondaryTextColor.opacity(0.4))
-                            .frame(height: 4)
+                            .fill(step < currentStepNumber ? primaryTextColor : secondaryTextColor.opacity(0.3))
+                            .frame(height: 2)
                     }
                 }
                 .padding(.bottom, 16)

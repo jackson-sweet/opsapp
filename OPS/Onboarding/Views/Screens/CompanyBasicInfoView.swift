@@ -45,21 +45,20 @@ struct CompanyBasicInfoView: View {
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
-                                .font(OPSStyle.Typography.caption)
+                                .font(OPSStyle.Typography.button)
                             Text("Back")
-                                .font(OPSStyle.Typography.body)
+                                .font(OPSStyle.Typography.button)
                         }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    
-                    Spacer()
+
                     Spacer()
                     
                     Button(action: {
                         onboardingViewModel.logoutAndReturnToLogin()
                     }) {
-                        Text("Sign Out")
-                            .font(OPSStyle.Typography.captionBold)
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.button)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
@@ -71,8 +70,8 @@ struct CompanyBasicInfoView: View {
                 HStack(spacing: 4) {
                     ForEach(0..<totalSteps) { step in
                         Rectangle()
-                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
-                            .frame(height: 4)
+                            .fill(step < currentStepNumber ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText.opacity(0.3))
+                            .frame(height: 2)
                     }
                 }
                 .padding(.bottom, 16)
@@ -108,11 +107,10 @@ struct CompanyBasicInfoView: View {
                         }
                     }
                     .transition(.opacity)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, 40) // Add consistent top padding
-                    
+
                     Spacer()
                 }
+                .padding(40)
             }
         }
         .dismissKeyboardOnTap()
@@ -135,11 +133,11 @@ struct CompanyNamePhaseView: View {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("LET'S WRITE DOWN YOUR")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(.white)
-                
+
                 Text("COMPANY NAME.")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(.white)
                     .padding(.bottom, 12)
                 
@@ -184,11 +182,11 @@ struct CompanyLogoPhaseView: View {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("ADD YOUR")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(.white)
 
                 Text("COMPANY LOGO")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(.white)
                     .padding(.bottom, 12)
 

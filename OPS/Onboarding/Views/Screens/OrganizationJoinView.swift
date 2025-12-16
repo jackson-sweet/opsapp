@@ -44,8 +44,8 @@ struct OrganizationJoinView: View {
                         Button(action: {
                             viewModel.logoutAndReturnToLogin()
                         }) {
-                            Text("Sign Out")
-                                .font(OPSStyle.Typography.captionBold)
+                            Text("Cancel")
+                                .font(OPSStyle.Typography.button)
                                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                         }
                     }
@@ -58,18 +58,23 @@ struct OrganizationJoinView: View {
                     // Fixed VStack instead of ScrollView since this content should fit on screen
                     VStack(spacing: 0) {
                         // Header
-                        OnboardingHeaderView(
-                            title: "Account Created".uppercased(),
-                            subtitle: "Now let's get your profile set up.",
-                            isLightTheme: viewModel.shouldUseLightTheme
-                        )
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("ACCOUNT CREATED")
+                                .font(OPSStyle.Typography.largeTitle.weight(.bold))
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
+
+                            Text("Now let's get your profile set up.")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                                .lineSpacing(4)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 20)
-                        
-                        
+
+
                         Spacer() // This will push content up and button to the bottom
                     }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, 40)
+                    .padding(40)
                     
                     // Continue button
                     StandardContinueButton(

@@ -42,110 +42,92 @@ struct CompanyCodeInputView: View {
         ZStack {
             // Background color
             backgroundColor.ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
-                // Navigation header with step indicator
+                // Navigation header
                 HStack {
                     Button(action: {
                         viewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
-                                .font(OPSStyle.Typography.caption)
+                                .font(OPSStyle.Typography.caption.weight(.semibold))
                             Text("Back")
-                                .font(OPSStyle.Typography.body)
+                                .font(OPSStyle.Typography.button)
                         }
-                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(secondaryTextColor)
                     }
-                    
+
                     Spacer()
-                    
+
                     Button(action: {
                         viewModel.logoutAndReturnToLogin()
                     }) {
-                        Text("Sign Out")
-                            .font(OPSStyle.Typography.captionBold)
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.button)
                             .foregroundColor(secondaryTextColor)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 8)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                
+
                 // Step indicator bars
                 HStack(spacing: 4) {
-                    ForEach(0..<totalSteps) { step in
+                    ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
-                            .fill(step < currentStepNumber ? 
-                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
-                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
-                            .frame(height: 4)
+                            .fill(step < currentStepNumber ?
+                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText) :
+                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.3) : OPSStyle.Colors.secondaryText.opacity(0.3)))
+                            .frame(height: 2)
                     }
                 }
-                .padding(.bottom, 16)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.top, 16)
                 
-                // Main content - top-justified
-                VStack(spacing: 0) {
-                    if showWelcomePhase {
-                        // Welcome phase after successful join
-                        VStack(spacing: 24) {
-                            VStack(spacing: 16) {
-                                Image(systemName: "checkmark.circle")
-                                    .font(.system(size: 80))
-                                    .foregroundColor(OPSStyle.Colors.successStatus)
-                                
-                                Text("WELCOME TO")
-                                    .font(OPSStyle.Typography.title)
-                                    .foregroundColor(primaryTextColor)
-                                
-                                Text("[ \(viewModel.companyName.uppercased()) ]")
-                                    .font(OPSStyle.Typography.subtitle)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    .multilineTextAlignment(.center)
-                                
-                                Text("You've successfully joined your organization.")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(secondaryTextColor)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.top, 8)
-                            }
-                            .opacity(welcomeOpacity)
-                        }
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.top, 80) // Add padding for welcome phase
-                    } else {
-                        // Input form
-                        VStack(spacing: 24) {
+                Spacer()
+
+                // Main content
+                if showWelcomePhase {
+                    // Welcome phase after successful join
+                    VStack(spacing: 16) {
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 60))
+                            .foregroundColor(OPSStyle.Colors.successStatus)
+
+                        Text("WELCOME TO")
+                            .font(OPSStyle.Typography.largeTitle.weight(.bold))
+                            .foregroundColor(primaryTextColor)
+
+                        Text(viewModel.companyName.uppercased())
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(secondaryTextColor)
+                            .multilineTextAlignment(.center)
+                    }
+                    .opacity(welcomeOpacity)
+                } else {
+                    // Input form
+                    VStack(alignment: .leading, spacing: 24) {
                         // Header
                         VStack(alignment: .leading, spacing: 8) {
                             Text("ENTER COMPANY")
-                                .font(OPSStyle.Typography.title)
+                                .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(primaryTextColor)
-                            
                             Text("CODE")
-                                .font(OPSStyle.Typography.title)
+                                .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(primaryTextColor)
-                                .padding(.bottom, 12)
-                            
-                            Text("Your company code connects your account to your organization.")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(secondaryTextColor)
-                                .lineSpacing(4)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.bottom, 10)
-                        
-                        // Company code input with larger text
+                        .padding(.bottom, 8)
+
+                        Text("Your company code connects your account to your organization.")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(secondaryTextColor)
+
+                        // Company code input
                         VStack(spacing: 12) {
                             ZStack(alignment: .leading) {
-                                // Custom placeholder with proper color
                                 if viewModel.companyCode.isEmpty {
                                     Text("Company code")
                                         .font(OPSStyle.Typography.subtitle)
-                                        .foregroundColor(secondaryTextColor)
+                                        .foregroundColor(secondaryTextColor.opacity(0.6))
                                 }
-                                
+
                                 TextField("", text: $viewModel.companyCode)
                                     .font(OPSStyle.Typography.subtitle)
                                     .autocapitalization(.none)
@@ -156,58 +138,28 @@ struct CompanyCodeInputView: View {
                                         viewModel.errorMessage = ""
                                     }
                             }
-                            
+
                             Rectangle()
-                                .fill(!viewModel.companyCode.isEmpty ? 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
-                                    secondaryTextColor.opacity(0.3))
+                                .fill(!viewModel.companyCode.isEmpty ? primaryTextColor : secondaryTextColor.opacity(0.3))
                                 .frame(height: 1)
-                                .animation(.easeInOut(duration: 0.2), value: viewModel.companyCode.isEmpty)
                         }
-                        
-                        // Code explanation with icon
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: OPSStyle.Icons.info)
-                                .foregroundColor(primaryTextColor.opacity(0.7))
-                                .font(OPSStyle.Typography.caption)
-                            
-                            Text("Obtain your company code from your manager or organization administrator.")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(primaryTextColor.opacity(0.6))
-                        }
-                        .padding(.top, 8)
-                        
+
+                        // Code explanation
+                        Text("Obtain your company code from your manager or organization administrator.")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(secondaryTextColor)
+
                         // Error message
                         if !viewModel.errorMessage.isEmpty {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "exclamationmark.circle.fill")
-                                    .foregroundColor(Color("StatusError"))
-                                    .font(OPSStyle.Typography.caption)
-                                
-                                Text(viewModel.errorMessage)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(Color("StatusError"))
-                                    .multilineTextAlignment(.leading)
-                            }
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .fill(Color("StatusError").opacity(0.1))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color("StatusError").opacity(0.3), lineWidth: 1)
-                                    )
-                            )
+                            Text(viewModel.errorMessage)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.errorStatus)
                         }
-                        }
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.top, 40) // Add consistent top padding
-                    } // End of else block
-                    
-                    Spacer()
+                    }
                 }
-                
+
+                Spacer()
+
                 // Bottom button section
                 VStack(spacing: 16) {
                     if showWelcomePhase {
@@ -224,20 +176,19 @@ struct CompanyCodeInputView: View {
                                 joinCompany()
                             }
                         )
-                        
+
                         Button(action: {
-                            // Show help or contact info
                             viewModel.errorMessage = "Contact your organization administrator for your company code."
                         }) {
                             Text("Need Help?")
-                                .font(OPSStyle.Typography.body)
+                                .font(OPSStyle.Typography.button)
                                 .foregroundColor(secondaryTextColor)
                         }
                     }
                 }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.bottom, 34)
+                .padding(.bottom, 20)
             }
+            .padding(40)
         }
         .dismissKeyboardOnTap()
     }

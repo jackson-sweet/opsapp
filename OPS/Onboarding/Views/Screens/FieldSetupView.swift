@@ -39,11 +39,11 @@ struct FieldSetupView: View {
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
-                                .font(OPSStyle.Typography.caption)
+                                .font(OPSStyle.Typography.button)
                             Text("Back")
-                                .font(OPSStyle.Typography.body)
+                                .font(OPSStyle.Typography.button)
                         }
-                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     }
                     
                     Spacer()
@@ -51,23 +51,23 @@ struct FieldSetupView: View {
                     Button(action: {
                         viewModel.logoutAndReturnToLogin()
                     }) {
-                        Text("Sign Out")
-                            .font(OPSStyle.Typography.captionBold)
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.button)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     }
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                
+
                 // Step indicator bars
                 HStack(spacing: 4) {
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
-                            .fill(step < currentStepNumber ? 
-                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
-                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
-                            .frame(height: 4)
+                            .fill(step < currentStepNumber ?
+                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText) :
+                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.3) : OPSStyle.Colors.secondaryText.opacity(0.3)))
+                            .frame(height: 2)
                     }
                 }
                 .padding(.bottom, 16)
@@ -77,12 +77,17 @@ struct FieldSetupView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         // Header
-                        OnboardingHeaderView(
-                            title: "FIELD SETUP",
-                            subtitle: "Customize how OPS should work when you're on job sites with limited connectivity.",
-                            isLightTheme: viewModel.shouldUseLightTheme
-                        )
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("FIELD SETUP")
+                                .font(OPSStyle.Typography.largeTitle.weight(.bold))
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
+
+                            Text("Customize how OPS should work when you're on job sites with limited connectivity.")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                                .lineSpacing(4)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 30)
                         
                         // Field settings
@@ -97,14 +102,11 @@ struct FieldSetupView: View {
                             }
                             .environmentObject(viewModel)
                         }
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.bottom, 40) // Add bottom padding to prevent cutoff
                     }
-                    .padding(.top, 40) // Add consistent top padding
                 }
-                
+
                 Spacer(minLength: 0)
-                
+
                 // Continue button
                 StandardContinueButton(
                     isLoading: isLoading,

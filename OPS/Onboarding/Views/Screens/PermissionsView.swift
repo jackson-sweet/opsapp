@@ -46,11 +46,11 @@ struct PermissionsView: View {
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
-                                .font(OPSStyle.Typography.captionBold)
+                                .font(OPSStyle.Typography.button)
                             Text("Back")
-                                .font(OPSStyle.Typography.bodyBold)
+                                .font(OPSStyle.Typography.button)
                         }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     }
                     
                     Spacer()
@@ -58,8 +58,8 @@ struct PermissionsView: View {
                     Button(action: {
                         viewModel.logoutAndReturnToLogin()
                     }) {
-                        Text("Sign Out")
-                            .font(OPSStyle.Typography.captionBold)
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.button)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     }
                 }
@@ -72,9 +72,9 @@ struct PermissionsView: View {
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ?
-                                  (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) :
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
-                            .frame(height: 4)
+                                  (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText) :
+                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.3) : OPSStyle.Colors.secondaryText.opacity(0.3)))
+                            .frame(height: 2)
                     }
                 }
                 .padding(.bottom, 16)
@@ -151,12 +151,11 @@ struct LocationPermissionPhase: View {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("LOCATION ACCESS")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.top, 40)
+            .padding(.top, 16)
             
             Spacer()
             
@@ -259,10 +258,9 @@ struct LocationPermissionPhase: View {
                         .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                 )
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.bottom, 40)
             .disabled(isRequestingLocation)
         }
+        .padding(40)
         .transition(.opacity)
     }
 }
@@ -279,12 +277,11 @@ struct NotificationPermissionPhase: View {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("GET NOTIFIED")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.top, 40)
+            .padding(.top, 16)
             
             Spacer()
             
@@ -397,10 +394,9 @@ struct NotificationPermissionPhase: View {
                         .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                 )
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.bottom, 40)
             .disabled(isRequestingNotifications)
         }
+        .padding(40)
         .transition(.opacity)
     }
 }

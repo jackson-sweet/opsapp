@@ -57,120 +57,109 @@ struct UserInfoView: View {
             // Background color - conditional theming
             (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.background)
                 .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
-                // Top navigation and progress section
-                VStack(spacing: 0) {
-                    // Navigation bar with back button and step indicator
-                    HStack {
-                        Button(action: {
-                            if currentPhase == .firstName {
-                                // Don't allow going back if user is already signed up
-                                if !viewModel.isSignedUp {
-                                    viewModel.moveToPreviousStep()
-                                }
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    currentPhase = UserInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .firstName
-                                }
+                // Top navigation
+                HStack {
+                    Button(action: {
+                        if currentPhase == .firstName {
+                            if !viewModel.isSignedUp {
+                                viewModel.moveToPreviousStep()
                             }
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                    .font(OPSStyle.Typography.captionBold)
-                                Text("Back")
-                                    .font(OPSStyle.Typography.bodyBold)
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentPhase = UserInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .firstName
                             }
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
-                        .opacity(currentPhase == .firstName && viewModel.isSignedUp ? 0 : 1)
-                        .disabled(currentPhase == .firstName && viewModel.isSignedUp)
-                        
-                        Spacer()
-                        Spacer()
-                        
-                        Button(action: {
-                            viewModel.logoutAndReturnToLogin()
-                        }) {
-                            Text("Sign Out")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(OPSStyle.Typography.caption.weight(.semibold))
+                            Text("Back")
+                                .font(OPSStyle.Typography.button)
                         }
+                        .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     }
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
-                    
-                    // Step indicator bars
-                    HStack(spacing: 4) {
-                        ForEach(0..<totalSteps, id: \.self) { step in
-                            Rectangle()
-                                .fill(step < currentStepNumber ? 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
-                                    (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.4) : OPSStyle.Colors.secondaryText.opacity(0.4)))
-                                .frame(height: 4)
-                        }
-                    }
-                    .padding(.bottom, 16)
-                }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                
-                // Main content area - top-justified
-                VStack(spacing: 0) {
-                    // Phase content
-                    Group {
-                        switch currentPhase {
-                        case .firstName:
-                            FirstNamePhaseView(
-                                firstName: $viewModel.firstName,
-                                viewModel: viewModel,
-                                onContinue: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        currentPhase = .lastName
-                                    }
-                                }
-                            )
-                        case .lastName:
-                            LastNamePhaseView(
-                                lastName: $viewModel.lastName,
-                                viewModel: viewModel,
-                                onContinue: {
-                                    // Always go to phone number phase for all users
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        currentPhase = .phoneNumber
-                                    }
-                                }
-                            )
-                        case .phoneNumber:
-                            PhoneNumberPhaseView(
-                                phoneNumber: $viewModel.phoneNumber,
-                                viewModel: viewModel,
-                                onContinue: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        currentPhase = .profilePicture
-                                    }
-                                }
-                            )
-                        case .profilePicture:
-                            ProfilePicturePhaseView(
-                                profileImage: $viewModel.profileImage,
-                                viewModel: viewModel,
-                                onContinue: {
-                                    viewModel.moveToNextStep()
-                                },
-                                onSkip: {
-                                    viewModel.profileImage = nil
-                                    viewModel.moveToNextStep()
-                                }
-                            )
-                        }
-                    }
-                    .transition(.opacity)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, 40) // Add consistent top padding
-                    
+                    .opacity(currentPhase == .firstName && viewModel.isSignedUp ? 0 : 1)
+                    .disabled(currentPhase == .firstName && viewModel.isSignedUp)
+
                     Spacer()
+
+                    Button(action: {
+                        viewModel.logoutAndReturnToLogin()
+                    }) {
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.button)
+                            .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
+                    }
                 }
+
+                // Step indicator bars
+                HStack(spacing: 4) {
+                    ForEach(0..<totalSteps, id: \.self) { step in
+                        Rectangle()
+                            .fill(step < currentStepNumber ?
+                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText) :
+                                (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.3) : OPSStyle.Colors.secondaryText.opacity(0.3)))
+                            .frame(height: 2)
+                    }
+                }
+                .padding(.top, 16)
+
+                Spacer()
+
+                // Phase content
+                Group {
+                    switch currentPhase {
+                    case .firstName:
+                        FirstNamePhaseView(
+                            firstName: $viewModel.firstName,
+                            viewModel: viewModel,
+                            onContinue: {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    currentPhase = .lastName
+                                }
+                            }
+                        )
+                    case .lastName:
+                        LastNamePhaseView(
+                            lastName: $viewModel.lastName,
+                            viewModel: viewModel,
+                            onContinue: {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    currentPhase = .phoneNumber
+                                }
+                            }
+                        )
+                    case .phoneNumber:
+                        PhoneNumberPhaseView(
+                            phoneNumber: $viewModel.phoneNumber,
+                            viewModel: viewModel,
+                            onContinue: {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    currentPhase = .profilePicture
+                                }
+                            }
+                        )
+                    case .profilePicture:
+                        ProfilePicturePhaseView(
+                            profileImage: $viewModel.profileImage,
+                            viewModel: viewModel,
+                            onContinue: {
+                                viewModel.moveToNextStep()
+                            },
+                            onSkip: {
+                                viewModel.profileImage = nil
+                                viewModel.moveToNextStep()
+                            }
+                        )
+                    }
+                }
+                .transition(.opacity)
+
+                Spacer()
             }
+            .padding(40)
         }
         .dismissKeyboardOnTap()
         .onAppear {
@@ -202,36 +191,27 @@ struct FirstNamePhaseView: View {
     @Binding var firstName: String
     @ObservedObject var viewModel: OnboardingViewModel
     let onContinue: () -> Void
-    
+
     private var primaryTextColor: Color {
         viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
     }
-    
+
     private var secondaryTextColor: Color {
         viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
     }
-    
-    private var placeholderColor: Color {
-        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.6) : OPSStyle.Colors.secondaryText.opacity(0.6)
-    }
-    
+
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(alignment: .leading, spacing: 24) {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("WHAT'S YOUR")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
-                
                 Text("FIRST NAME?")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
-                    .padding(.bottom, 12)
-                
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 30)
-            
+
             // First name input
             UnderlineTextField(
                 placeholder: "First name",
@@ -240,16 +220,15 @@ struct FirstNamePhaseView: View {
                 autocapitalization: .words,
                 viewModel: viewModel
             )
-        }
-        
-        Spacer()
-        
-        // Continue button
-        VStack {
+
+            Spacer()
+
+            // Continue button
             StandardContinueButton(
                 isDisabled: firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 onTap: onContinue
             )
+            .padding(.bottom, 20)
         }
     }
 }
@@ -258,32 +237,23 @@ struct LastNamePhaseView: View {
     @Binding var lastName: String
     @ObservedObject var viewModel: OnboardingViewModel
     let onContinue: () -> Void
-    
+
     private var primaryTextColor: Color {
         viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
     }
-    
-    private var secondaryTextColor: Color {
-        viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
-    }
-    
+
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(alignment: .leading, spacing: 24) {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("AND YOUR")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
-                
                 Text("LAST NAME?")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
-                    .padding(.bottom, 12)
-                
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 30)
-            
+
             // Last name input
             UnderlineTextField(
                 placeholder: "Last name",
@@ -292,16 +262,15 @@ struct LastNamePhaseView: View {
                 autocapitalization: .words,
                 viewModel: viewModel
             )
-        }
-        
-        Spacer()
-        
-        // Continue button
-        VStack {
+
+            Spacer()
+
+            // Continue button
             StandardContinueButton(
                 isDisabled: lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 onTap: onContinue
             )
+            .padding(.bottom, 20)
         }
     }
 }
@@ -310,41 +279,37 @@ struct PhoneNumberPhaseView: View {
     @Binding var phoneNumber: String
     @ObservedObject var viewModel: OnboardingViewModel
     let onContinue: () -> Void
-    
+
     private var primaryTextColor: Color {
         viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
     }
-    
+
     private var secondaryTextColor: Color {
         viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText
     }
-    
+
     private var isPhoneValid: Bool {
         let digits = phoneNumber.filter { $0.isNumber }
         return digits.count >= 10
     }
-    
+
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(alignment: .leading, spacing: 24) {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("PHONE")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
-                
                 Text("NUMBER")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
-                    .padding(.bottom, 12)
-                
-                Text("This will be used to update your team contact information.")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(secondaryTextColor)
-                    .lineSpacing(4)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 30)
-            
+            .padding(.bottom, 8)
+
+            Text("This will be used to update your team contact information.")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(secondaryTextColor)
+
             // Phone number input
             UnderlineTextField(
                 placeholder: "(___) ___-____",
@@ -352,23 +317,21 @@ struct PhoneNumberPhaseView: View {
                 keyboardType: .phonePad,
                 viewModel: viewModel,
                 onChange: { newValue in
-                    // Only keep digits and format
                     let digits = newValue.filter { $0.isNumber }
                     if digits.count <= 10 {
                         phoneNumber = formatPhoneNumber(newValue)
                     }
                 }
             )
-        }
-        
-        Spacer()
-        
-        // Continue button
-        VStack {
+
+            Spacer()
+
+            // Continue button
             StandardContinueButton(
                 isDisabled: !isPhoneValid,
                 onTap: onContinue
             )
+            .padding(.bottom, 20)
         }
     }
 }
@@ -390,66 +353,61 @@ struct ProfilePicturePhaseView: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(alignment: .leading, spacing: 24) {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 Text("ADD A")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
-
                 Text("PROFILE PHOTO")
-                    .font(OPSStyle.Typography.title)
+                    .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
-                    .padding(.bottom, 12)
-
-                Text("Your photo helps your team recognize you. You can add or change this later.")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(secondaryTextColor)
-                    .lineSpacing(4)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 20)
+            .padding(.bottom, 8)
+
+            Text("Your photo helps your team recognize you.")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(secondaryTextColor)
 
             // Use ProfileImageUploader
             ProfileImageUploader(
                 config: ImageUploaderConfig(
                     currentImageURL: nil,
                     currentImageData: imageData,
-                    placeholderText: "", // Empty - let camera icon show clearly during upload
+                    placeholderText: "",
                     size: 120,
                     shape: .circle,
                     allowDelete: false,
-                    backgroundColor: OPSStyle.Colors.primaryAccent
+                    backgroundColor: OPSStyle.Colors.cardBackgroundDark
                 ),
                 onUpload: { image in
-                    // Store the image locally for upload during completion
                     profileImage = image
                     if let data = image.jpegData(compressionQuality: 0.8) {
                         imageData = data
                     }
-                    return "" // Return empty string since we're not uploading yet
+                    return ""
                 },
                 onDelete: nil
             )
-        }
 
-        Spacer()
+            Spacer()
 
-        // Continue/Skip buttons
-        VStack(spacing: 12) {
-            StandardContinueButton(
-                isDisabled: profileImage == nil,
-                onTap: onContinue
-            )
+            // Continue/Skip buttons
+            VStack(spacing: 12) {
+                StandardContinueButton(
+                    isDisabled: profileImage == nil,
+                    onTap: onContinue
+                )
 
-            Button(action: onSkip) {
-                Text("Skip for now")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(secondaryTextColor)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
+                Button(action: onSkip) {
+                    Text("Skip for now")
+                        .font(OPSStyle.Typography.button)
+                        .foregroundColor(secondaryTextColor)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: OPSStyle.Layout.touchTargetStandard)
+                }
             }
+            .padding(.bottom, 20)
         }
     }
 }

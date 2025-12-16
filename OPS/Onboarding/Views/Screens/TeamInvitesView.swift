@@ -25,33 +25,33 @@ struct TeamInvitesView: View {
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
-                            .font(OPSStyle.Typography.caption)
+                            .font(OPSStyle.Typography.button)
                         Text("Back")
-                            .font(OPSStyle.Typography.body)
+                            .font(OPSStyle.Typography.button)
                     }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                
+
                 Spacer()
-                
+
                 Button(action: {
                     onboardingViewModel.logoutAndReturnToLogin()
                 }) {
-                    Text("Sign Out")
-                        .font(OPSStyle.Typography.captionBold)
+                    Text("Cancel")
+                        .font(OPSStyle.Typography.button)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
             .padding(.top, 8)
             .padding(.bottom, 8)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            
+
             // Step indicator bars
             HStack(spacing: 4) {
                 ForEach(0..<totalSteps, id: \.self) { step in
                     Rectangle()
-                        .fill(step < currentStepNumber ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText.opacity(0.4))
-                        .frame(height: 4)
+                        .fill(step < currentStepNumber ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText.opacity(0.3))
+                        .frame(height: 2)
                 }
             }
             .padding(.bottom, 16)
@@ -63,7 +63,7 @@ struct TeamInvitesView: View {
                     VStack(spacing: 32) {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("READY TO BUILD YOUR TEAM?")
-                            .font(OPSStyle.Typography.title)
+                            .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(Color("TextPrimary"))
                         
                         Text("Invite team members to join your company. They'll receive an email with instructions to download the app and join your organization.")
@@ -151,12 +151,11 @@ struct TeamInvitesView: View {
                             .fill(Color("AccentPrimary").opacity(0.1))
                     )
                     }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, 40) // Add consistent top padding
                 }
-                
+
                 Spacer()
             }
+            .padding(40)
             
             // Bottom button section
             VStack(spacing: 16) {

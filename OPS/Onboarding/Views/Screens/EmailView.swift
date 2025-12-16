@@ -6,13 +6,19 @@
 //
 
 import SwiftUI
+import GoogleSignIn
+import AuthenticationServices
 
 struct EmailView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    
+
     // For confirm password functionality
     @State private var localConfirmPassword: String = ""
     @State private var currentFieldIndex: Int = 0 // 0: email, 1: password, 2: confirm password
+
+    // Social sign-in states
+    @State private var isSigningInWithSocial = false
+    @State private var socialSignInError: String?
     
     // Check if passwords match
     private var passwordsMatch: Bool {
@@ -178,20 +184,56 @@ struct EmailView: View {
                                     }
                                 )
                                 .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
-                                
+
                                 // Validation indicator for email
                                 if !viewModel.email.isEmpty {
                                     HStack {
                                         Image(systemName: viewModel.isEmailValid ? "checkmark.circle.fill" : "xmark.circle.fill")
                                             .font(OPSStyle.Typography.caption)
                                             .foregroundColor(viewModel.isEmailValid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
-                                        
+
                                         Text(viewModel.isEmailValid ? "Valid email" : "Invalid email format")
                                             .font(OPSStyle.Typography.caption)
                                             .foregroundColor(viewModel.isEmailValid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.top, 4)
+                                }
+
+                                // OR Divider
+                                HStack {
+                                    Rectangle()
+                                        .fill(secondaryTextColor.opacity(0.3))
+                                        .frame(height: 1)
+
+                                    Text("OR")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(secondaryTextColor)
+                                        .padding(.horizontal, 16)
+
+                                    Rectangle()
+                                        .fill(secondaryTextColor.opacity(0.3))
+                                        .frame(height: 1)
+                                }
+                                .padding(.vertical, 16)
+
+                                // Social sign-in buttons
+                                VStack(spacing: 12) {
+                                    // Google Sign-In button
+                                    SignupGoogleButton(
+                                        isLoading: isSigningInWithSocial,
+                                        isLightTheme: viewModel.shouldUseLightTheme,
+                                        onSignIn: handleGoogleSignIn
+                                    )
+                                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+
+                                    // Apple Sign-In button
+                                    SignupAppleButton(
+                                        isLoading: isSigningInWithSocial,
+                                        isLightTheme: viewModel.shouldUseLightTheme,
+                                        onSignIn: handleAppleSignIn
+                                    )
+                                    .frame(height: OPSStyle.Layout.touchTargetStandard)
                                 }
                             } else if currentFieldIndex == 1 {
                                 // Password input
@@ -319,6 +361,221 @@ struct EmailView: View {
             }
         }
         .dismissKeyboardOnTap()
+    }
+
+    // MARK: - Social Sign-In Handlers
+
+    private func handleGoogleSignIn() {
+        guard !isSigningInWithSocial else { return }
+
+        isSigningInWithSocial = true
+        viewModel.errorMessage = ""
+
+        Task { @MainActor in
+            // Get the root view controller
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let rootViewController = windowScene.windows.first?.rootViewController else {
+                viewModel.errorMessage = "Cannot present Google Sign-In"
+                isSigningInWithSocial = false
+                return
+            }
+
+            do {
+                // Perform Google Sign-In
+                let googleUser = try await GoogleSignInManager.shared.signIn(presenting: rootViewController)
+
+                // Authenticate with Bubble backend (handles both signup and login)
+                guard let dataController = viewModel.dataController else {
+                    viewModel.errorMessage = "Unable to complete sign-in"
+                    isSigningInWithSocial = false
+                    return
+                }
+
+                let success = await dataController.loginWithGoogle(googleUser: googleUser)
+
+                isSigningInWithSocial = false
+
+                if success {
+                    // Store user info from Google
+                    if let email = googleUser.profile?.email {
+                        viewModel.email = email
+                    }
+                    if let givenName = googleUser.profile?.givenName {
+                        viewModel.firstName = givenName
+                    }
+                    if let familyName = googleUser.profile?.familyName {
+                        viewModel.lastName = familyName
+                    }
+
+                    // Mark as signed up and move to next step
+                    viewModel.isSignedUp = true
+                    viewModel.moveToNextStep()
+                } else {
+                    viewModel.errorMessage = "Google sign-in failed. Please try again."
+                }
+            } catch {
+                isSigningInWithSocial = false
+
+                // Check if it was a cancellation
+                if let gidError = error as? GIDSignInError, gidError.code == .canceled {
+                    // User canceled, don't show error
+                } else {
+                    viewModel.errorMessage = "Google Sign-In failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func handleAppleSignIn() {
+        guard !isSigningInWithSocial else { return }
+
+        isSigningInWithSocial = true
+        viewModel.errorMessage = ""
+
+        Task { @MainActor in
+            // Get the key window for presentation
+            guard let window = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap({ $0.windows })
+                .first(where: { $0.isKeyWindow }) else {
+                viewModel.errorMessage = "Cannot present Apple Sign-In"
+                isSigningInWithSocial = false
+                return
+            }
+
+            do {
+                // Perform Apple Sign-In
+                let appleResult = try await AppleSignInManager.shared.signIn(presenting: window)
+
+                // Authenticate with Bubble backend (handles both signup and login)
+                guard let dataController = viewModel.dataController else {
+                    viewModel.errorMessage = "Unable to complete sign-in"
+                    isSigningInWithSocial = false
+                    return
+                }
+
+                let success = await dataController.loginWithApple(appleResult: appleResult)
+
+                isSigningInWithSocial = false
+
+                if success {
+                    // Store user info from Apple (if provided)
+                    if let email = appleResult.email {
+                        viewModel.email = email
+                    }
+                    if let givenName = appleResult.givenName {
+                        viewModel.firstName = givenName
+                    }
+                    if let familyName = appleResult.familyName {
+                        viewModel.lastName = familyName
+                    }
+
+                    // Mark as signed up and move to next step
+                    viewModel.isSignedUp = true
+                    viewModel.moveToNextStep()
+                } else {
+                    viewModel.errorMessage = "Apple sign-in failed. Please try again."
+                }
+            } catch {
+                isSigningInWithSocial = false
+
+                // Check if it was a cancellation
+                if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+                    // User canceled, don't show error
+                } else {
+                    viewModel.errorMessage = "Apple Sign-In failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Social Sign-In Buttons
+
+/// Google Sign-In button styled for signup flow
+struct SignupGoogleButton: View {
+    let isLoading: Bool
+    let isLightTheme: Bool
+    let onSignIn: () -> Void
+
+    private var textColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+
+    private var borderColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.tertiaryText
+    }
+
+    var body: some View {
+        Button(action: onSignIn) {
+            HStack(spacing: 12) {
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: textColor))
+                } else {
+                    // Google logo
+                    Image("google_logo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 40, height: 40)
+
+                    Text("Continue with Google")
+                        .font(OPSStyle.Typography.button)
+                        .foregroundColor(textColor)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: OPSStyle.Layout.touchTargetStandard)
+            .background(Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(borderColor, lineWidth: 1)
+            )
+        }
+        .disabled(isLoading)
+    }
+}
+
+/// Apple Sign-In button styled for signup flow
+struct SignupAppleButton: View {
+    let isLoading: Bool
+    let isLightTheme: Bool
+    let onSignIn: () -> Void
+
+    private var textColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText
+    }
+
+    private var borderColor: Color {
+        isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.tertiaryText
+    }
+
+    var body: some View {
+        Button(action: onSignIn) {
+            HStack(spacing: 12) {
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: textColor))
+                } else {
+                    // Apple logo
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(textColor)
+
+                    Text("Continue with Apple")
+                        .font(OPSStyle.Typography.button)
+                        .foregroundColor(textColor)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: OPSStyle.Layout.touchTargetStandard)
+            .background(Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(borderColor, lineWidth: 1)
+            )
+        }
+        .disabled(isLoading)
     }
 }
 

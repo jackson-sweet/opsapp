@@ -31,61 +31,65 @@ struct UserTypeSelectionView: View {
         ZStack {
             // Background - changes based on selection
             backgroundColor.ignoresSafeArea()
-            
-            VStack(spacing: 32) {
+
+            VStack(spacing: 0) {
                 // Header
-                HStack(alignment: .bottom, spacing: 16) {
+                HStack(alignment: .bottom) {
                     Image("LogoWhite")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(height: 60)
-                        .colorMultiply(viewModel.shouldUseLightTheme ? .black : .white) // Adjust logo color
-                    
+                        .frame(width: 44, height: 44)
+                        .padding(.bottom, 8)
+                        .colorMultiply(viewModel.shouldUseLightTheme ? .black : .white)
                     Text("OPS")
-                        .font(OPSStyle.Typography.largeTitle)
+                        .font(OPSStyle.Typography.largeTitle.weight(.bold))
                         .foregroundColor(primaryTextColor)
                     Spacer()
                 }
-                .padding(.top, 60)
-                
+                .padding(.leading, 4)
+
                 Spacer()
-                
-                // Content
-                VStack(spacing: 24) {
 
-                    // User type options
-                    VStack(spacing: 16) {
-                        UserTypeOption(
-                            type: .company,
-                            title: "COMPANY LEAD",
-                            description: "Command operations. Coordinate teams. Control the outcomes.",
-                            isSelected: viewModel.selectedUserType == .company,
-                            isLightTheme: viewModel.shouldUseLightTheme,
-                            action: {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    viewModel.selectedUserType = .company
-                                }
+                // Title
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("WHO ARE YOU?")
+                        .font(OPSStyle.Typography.largeTitle.weight(.bold))
+                        .foregroundColor(primaryTextColor)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 32)
+
+                // User type options
+                VStack(spacing: 16) {
+                    UserTypeOption(
+                        type: .company,
+                        title: "COMPANY LEAD",
+                        description: "Command operations. Coordinate teams. Control the outcomes.",
+                        isSelected: viewModel.selectedUserType == .company,
+                        isLightTheme: viewModel.shouldUseLightTheme,
+                        action: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                viewModel.selectedUserType = .company
                             }
-                        )
+                        }
+                    )
 
-                        UserTypeOption(
-                            type: .employee,
-                            title: "TEAM MEMBER",
-                            description: "Execute plans. Crush projects. Rise through the ranks.",
-                            isSelected: viewModel.selectedUserType == .employee,
-                            isLightTheme: viewModel.shouldUseLightTheme,
-                            action: {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    viewModel.selectedUserType = .employee
-                                }
+                    UserTypeOption(
+                        type: .employee,
+                        title: "TEAM MEMBER",
+                        description: "Execute plans. Crush projects. Rise through the ranks.",
+                        isSelected: viewModel.selectedUserType == .employee,
+                        isLightTheme: viewModel.shouldUseLightTheme,
+                        action: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                viewModel.selectedUserType = .employee
                             }
-                        )
-                    }
-
+                        }
+                    )
                 }
 
                 Spacer()
-                
+
                 // Continue button
                 StandardContinueButton(
                     isDisabled: viewModel.selectedUserType == nil,
@@ -95,9 +99,9 @@ struct UserTypeSelectionView: View {
                         }
                     }
                 )
-                .padding(.bottom, 50)
+                .padding(.bottom, 20)
             }
-            .padding(OPSStyle.Layout.spacing3)
+            .padding(40)
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.selectedUserType)
     }

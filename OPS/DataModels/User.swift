@@ -32,6 +32,7 @@ final class User {
     var userColor: String?  // User's unique color in HEX
     var devPermission: Bool = false  // Dev permission for testing features
     var hasCompletedAppOnboarding: Bool = false  // Track if user has completed onboarding
+    var hasCompletedAppTutorial: Bool = false  // Track if user has completed the interactive tutorial
     var isCompanyAdmin: Bool = false  // Whether user is an admin for their company
     
     // Stripe integration

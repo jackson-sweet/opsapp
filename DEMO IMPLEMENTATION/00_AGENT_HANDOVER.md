@@ -26,6 +26,11 @@
 - [x] Specification files reviewed
 - [x] Codebase audit completed
 - [x] Technical implementation guides created (6 documents)
+- [x] **Phase 0: Model Updates** - `hasCompletedAppTutorial` field added
+  - `User.swift` - Added property
+  - `BubbleFields.User` - Added constant
+  - `UserDTO.swift` - Added field, coding key, and mapping
+  - Build verified successful
 
 ### In Progress
 - [ ] Nothing currently in progress

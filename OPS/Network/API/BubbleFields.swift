@@ -109,6 +109,7 @@ struct BubbleFields {
         static let phone = "phone"
         static let homeAddress = "homeAddress"
         static let deviceToken = "deviceToken"  // APNs device token for push notifications
+        static let hasCompletedAppTutorial = "hasCompletedAppTutorial"  // Bool for tutorial completion
     }
     
     /// Company entity fields (match your Bubble field names exactly)

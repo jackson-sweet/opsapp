@@ -19,6 +19,7 @@ struct UserDTO: Codable {
     let userColor: String?
     let devPermission: Bool?
     let hasCompletedAppOnboarding: Bool?
+    let hasCompletedAppTutorial: Bool?
     let authentication: Authentication?
     let stripeCustomerId: String?
     let deviceToken: String?  // APNs device token for push notifications
@@ -57,6 +58,7 @@ struct UserDTO: Codable {
         case userColor = "userColor" // The user's unique color in HEX.
         case devPermission = "devPermission" // Bool indicating if user has dev permission for testing features.
         case hasCompletedAppOnboarding = "hasCompletedAppOnboarding" // Bool indicating if user has completed app onboarding.
+        case hasCompletedAppTutorial = "hasCompletedAppTutorial" // Bool indicating if user has completed the interactive tutorial.
         case stripeCustomerId = "stripeCustomerId" // User's Stripe customer ID
         case deviceToken = "deviceToken" // APNs device token for push notifications
         case deletedAt = "deletedAt" // Soft delete timestamp
@@ -109,7 +111,8 @@ struct UserDTO: Codable {
         user.userColor = userColor
         user.devPermission = devPermission ?? false
         user.hasCompletedAppOnboarding = hasCompletedAppOnboarding ?? false
-        
+        user.hasCompletedAppTutorial = hasCompletedAppTutorial ?? false
+
         // Handle Stripe customer ID
         user.stripeCustomerId = stripeCustomerId
 

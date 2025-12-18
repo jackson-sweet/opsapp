@@ -162,8 +162,19 @@ class DataController: ObservableObject {
     }
     
     @MainActor
-    private func initializeSyncManager() {
-        guard let modelContext = modelContext else { return }
+    func initializeSyncManager() {
+        guard let modelContext = modelContext else {
+            print("[DATA_CONTROLLER] ⚠️ Cannot initialize SyncManager - no modelContext")
+            return
+        }
+
+        // Skip if already initialized
+        guard syncManager == nil else {
+            print("[DATA_CONTROLLER] SyncManager already initialized")
+            return
+        }
+
+        print("[DATA_CONTROLLER] Initializing SyncManager...")
 
         // Initialize the centralized sync manager
         self.syncManager = CentralizedSyncManager(
@@ -1107,6 +1118,9 @@ class DataController: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "onboarding_completed")
         UserDefaults.standard.removeObject(forKey: "resume_onboarding")
         UserDefaults.standard.removeObject(forKey: "last_onboarding_step_v2")
+
+        // Clear onboarding state to prevent auto-triggering onboarding after logout
+        UserDefaults.standard.removeObject(forKey: "onboarding_state_v2")
         
         // Clear all user data
         UserDefaults.standard.removeObject(forKey: "user_id")

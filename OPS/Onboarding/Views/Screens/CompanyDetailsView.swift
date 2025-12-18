@@ -179,7 +179,7 @@ struct IndustryPhaseView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.bottom, 12)
                 
-                Text("This helps us figure out what areas of the platform we should work on.")
+                Text("Helps us prioritize what to build next.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)
@@ -252,7 +252,7 @@ struct SizePhaseView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.bottom, 12)
                 
-                Text("This helps us determine the scale of your operations.")
+                Text("Helps us understand your crew size.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)
@@ -335,7 +335,7 @@ struct AgePhaseView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.bottom, 12)
                 
-                Text("This will read us in on your company's experience.")
+                Text("Tells us about your experience.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)

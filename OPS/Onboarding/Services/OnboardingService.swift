@@ -8,14 +8,130 @@
 import Foundation
 
 class OnboardingService {
-    
+
     // API base URL
     private let baseURL: URL
-    
+
     init(baseURL: URL = AppConfiguration.bubbleBaseURL) {
         self.baseURL = baseURL
     }
-    
+
+    // MARK: - OnboardingManager Convenience Methods
+
+    /// Sign up a new user and return the user ID
+    /// Used by OnboardingManager for simplified interface
+    func signUp(
+        email: String,
+        password: String,
+        firstName: String,
+        lastName: String,
+        phone: String?,
+        userType: UserType
+    ) async throws -> String {
+        let response = try await signUpUser(email: email, password: password, userType: userType)
+
+        guard let userId = response.extractedUserId else {
+            throw SignUpError.serverError("No user ID returned from signup")
+        }
+
+        return userId
+    }
+
+    /// Create a new company and return (companyId, companyCode)
+    /// Used by OnboardingManager for simplified interface
+    func createCompany(
+        name: String,
+        address: String?,
+        city: String?,
+        state: String?,
+        zip: String?,
+        phone: String?,
+        email: String?,
+        ownerId: String,
+        dataController: DataController
+    ) async throws -> (companyId: String, companyCode: String?) {
+        // Build full address from components
+        var fullAddress = ""
+        if let addr = address, !addr.isEmpty {
+            fullAddress = addr
+        }
+        if let c = city, !c.isEmpty {
+            fullAddress += fullAddress.isEmpty ? c : ", \(c)"
+        }
+        if let s = state, !s.isEmpty {
+            fullAddress += fullAddress.isEmpty ? s : ", \(s)"
+        }
+        if let z = zip, !z.isEmpty {
+            fullAddress += fullAddress.isEmpty ? z : " \(z)"
+        }
+
+        let response = try await updateCompany(
+            companyId: nil,
+            name: name,
+            email: email ?? "",
+            phone: phone,
+            industry: "",
+            size: "",
+            age: "",
+            address: fullAddress,
+            userId: ownerId,
+            firstName: "",  // Already set during profile step
+            lastName: "",
+            userPhone: phone ?? ""
+        )
+
+        guard let company = response.extractedCompany,
+              let companyId = company.extractedId else {
+            throw SignUpError.serverError("No company ID returned from creation")
+        }
+
+        // Trigger sync to load company data
+        if let syncManager = dataController.syncManager {
+            try? await syncManager.syncCompany()
+        }
+
+        return (companyId, company.extractedCode)
+    }
+
+    /// Join an existing company and return the company ID
+    /// Used by OnboardingManager for simplified interface
+    func joinCompany(
+        code: String,
+        userId: String,
+        dataController: DataController
+    ) async throws -> String {
+        // Get user info from state (may be empty if already set via profile step)
+        let firstName = UserDefaults.standard.string(forKey: "user_first_name") ?? ""
+        let lastName = UserDefaults.standard.string(forKey: "user_last_name") ?? ""
+        let phone = UserDefaults.standard.string(forKey: "user_phone_number") ?? ""
+
+        let response = try await joinCompany(
+            userId: userId,
+            firstName: firstName,
+            lastName: lastName,
+            phoneNumber: phone,
+            companyCode: code
+        )
+
+        guard let companyData = response.extractedCompanyData else {
+            throw SignUpError.companyJoinFailed
+        }
+
+        let companyId = companyData.id
+        guard !companyId.isEmpty else {
+            throw SignUpError.companyJoinFailed
+        }
+
+        // Trigger sync to load company data
+        if let syncManager = dataController.syncManager {
+            try? await syncManager.syncCompany()
+        }
+
+        return companyId
+    }
+
+    // MARK: - Original API Methods
+
     /// Sign up a new user with Bubble API (email and password only)
     /// - Parameters:
     ///   - email: User's email address
@@ -268,30 +384,41 @@ class OnboardingService {
             
             // First try to parse as JSON to see structure
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                for (key, value) in json {
+                print("[ONBOARDING_API] 📥 Parsed JSON keys: \(json.keys.sorted())")
+                for (key, value) in json.sorted(by: { $0.key < $1.key }) {
+                    print("[ONBOARDING_API]   \(key): \(value)")
                 }
             }
-            
+
             // Try to decode the response
             do {
                 let updateResponse = try JSONDecoder().decode(CompanyUpdateResponse.self, from: data)
-                
-                // Debug the parsed response
-                
-                if let company = updateResponse.extractedCompany {
-                }
-                
+                print("[ONBOARDING_API] ✅ Successfully decoded CompanyUpdateResponse")
                 return updateResponse
-            } catch {
-                
-                // Try a simpler response structure
+            } catch let decodeError {
+                print("[ONBOARDING_API] ⚠️ Decode error: \(decodeError)")
+
+                // Try a simpler response structure - handle various Bubble response formats
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    // Create a manual response if we can extract company ID
-                    if let companyId = json["company"] as? String {
-                        
-                        // Create a response with just the ID
+
+                    // Try to extract company ID from various possible fields
+                    let companyId = json["company"] as? String
+                        ?? json["company_id"] as? String
+                        ?? json["_id"] as? String
+                        ?? (json["response"] as? [String: Any])?["company"] as? String
+                        ?? (json["response"] as? [String: Any])?["_id"] as? String
+
+                    // Try to extract company code
+                    let companyCode = json["company_code"] as? String
+                        ?? json["companyId"] as? String
+                        ?? (json["response"] as? [String: Any])?["companyId"] as? String
+                        ?? companyId
+
+                    if let id = companyId {
+                        print("[ONBOARDING_API] ✅ Extracted company ID: \(id), code: \(companyCode ?? "none")")
+
                         let companyData = CompanyResponseData(
-                            id: companyId,
+                            id: id,
                             name: nil,
                             email: nil,
                             phone: nil,
@@ -299,18 +426,20 @@ class OnboardingService {
                             size: nil,
                             age: nil,
                             address: nil,
-                            code: companyId // Use ID as code
+                            code: companyCode ?? id
                         )
-                        
+
                         return CompanyUpdateResponse(
                             success: "yes",
                             company: companyData,
                             error_message: nil
                         )
                     }
+
+                    print("[ONBOARDING_API] ❌ Could not extract company ID from response")
                 }
-                
-                throw error
+
+                throw decodeError
             }
             
         } catch let error as SignUpError {

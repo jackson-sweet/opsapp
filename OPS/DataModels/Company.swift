@@ -38,6 +38,9 @@ final class Company {
     var projectIdsString: String = ""
     var teamIdsString: String = ""
     var adminIdsString: String = ""
+
+    // Account holder (company owner)
+    var accountHolderId: String?
     
     // Relationship to team members
     @Relationship(deleteRule: .cascade)

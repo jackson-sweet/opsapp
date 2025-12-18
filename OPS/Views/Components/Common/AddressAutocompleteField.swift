@@ -20,7 +20,6 @@ struct AddressAutocompleteField: View {
     @State private var completer = MKLocalSearchCompleter()
     @StateObject private var searchCompleterDelegate = SearchCompleterDelegate()
     @State private var searchDebouncer = PassthroughSubject<String, Never>()
-    @EnvironmentObject private var locationManager: LocationManager
     @FocusState private var isFocused: Bool
 
     init(address: Binding<String>,
@@ -35,9 +34,13 @@ struct AddressAutocompleteField: View {
         VStack(alignment: .leading, spacing: 0) {
             // Input field
             HStack {
-                TextField(placeholder, text: $searchText)
-                    .font(.body)
-                    .foregroundColor(.white)
+                TextField("", text: $searchText)
+                    .placeholder(when: searchText.isEmpty) {
+                        Text(placeholder)
+                            .foregroundColor(OPSStyle.Colors.placeholderText)
+                    }
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.words)
                     .focused($isFocused)
@@ -51,7 +54,7 @@ struct AddressAutocompleteField: View {
                             searchDebouncer.send(newValue)
                         }
                     }
-                
+
                 if !searchText.isEmpty {
                     Button(action: {
                         searchText = ""
@@ -70,7 +73,7 @@ struct AddressAutocompleteField: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.separator, lineWidth: 1)
+                    .stroke(isFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
             )
             
             // Search results
@@ -82,13 +85,13 @@ struct AddressAutocompleteField: View {
                         }) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(result.title)
-                                    .font(.body)
+                                    .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .lineLimit(1)
-                                
+
                                 if !result.subtitle.isEmpty {
                                     Text(result.subtitle)
-                                        .font(.caption)
+                                        .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                         .lineLimit(1)
                                 }
@@ -140,19 +143,12 @@ struct AddressAutocompleteField: View {
         completer.delegate = searchCompleterDelegate
         completer.resultTypes = .address
 
-        // Use user's current location if available, otherwise default region
-        if let userLocation = locationManager.userLocation {
-            completer.region = MKCoordinateRegion(
-                center: userLocation,
-                span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5) // ~50km radius for local results
-            )
-        } else {
-            // Fallback to wide search if no location available
-            completer.region = MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-                span: MKCoordinateSpan(latitudeDelta: 50, longitudeDelta: 50)
-            )
-        }
+        // Use wide search region for address autocomplete
+        // This works well for any location in North America
+        completer.region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795), // Center of US
+            span: MKCoordinateSpan(latitudeDelta: 50, longitudeDelta: 50)
+        )
 
         searchCompleterDelegate.onResultsUpdated = { results in
             searchResults = results

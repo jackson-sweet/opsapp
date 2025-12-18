@@ -57,22 +57,14 @@ struct ContentView: View {
             
             // Wait longer to ensure auth check completes
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                // Check for auth state again
-                let finalAuthState = dataController.isAuthenticated
-                
-                // Check if the user has an account but is in the middle of onboarding
-                let hasUserId = UserDefaults.standard.string(forKey: "user_id") != nil
-                let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
-                
-                if hasUserId && !onboardingCompleted {
-                    // Set authentication to false if they created an account but need to complete onboarding
+                // Check if we need to show onboarding using new system
+                let (shouldShowOnboarding, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
+
+                if shouldShowOnboarding {
+                    // User needs to complete onboarding - show LoginView which handles it
                     dataController.isAuthenticated = false
-                    
-                    // Set a flag in UserDefaults to indicate we need to resume onboarding
-                    UserDefaults.standard.set(true, forKey: "resume_onboarding")
                 }
-                
-                
+
                 // Finish the loading phase to show the appropriate screen
                 isCheckingAuth = false
             }

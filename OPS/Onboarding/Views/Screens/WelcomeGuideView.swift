@@ -81,34 +81,46 @@ struct WelcomeGuideView: View {
                                 currentPage += 1
                             }
                         }) {
-                            Text("NEXT")
-                                .font(OPSStyle.Typography.button)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 56)
-                                .background(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
-                                )
+                            HStack {
+                                Text("NEXT")
+                                    .font(OPSStyle.Typography.bodyBold)
+
+                                Spacer()
+
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .padding(.horizontal, 20)
                         }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(Color.white)
+                        .foregroundColor(.black)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                     } else {
                         Button(action: {
                             onboardingViewModel.completeOnboarding()
                         }) {
-                            Text("GET STARTED")
-                                .font(OPSStyle.Typography.button)
-                                .foregroundColor(.black)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 56)
-                                .background(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .fill(Color.white)
-                                )
+                            HStack {
+                                Text("LET'S GO")
+                                    .font(OPSStyle.Typography.bodyBold)
+
+                                Spacer()
+
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .padding(.horizontal, 20)
                         }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(Color.white)
+                        .foregroundColor(.black)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.bottom, 40)
+                .padding(.horizontal, 40)
+                .padding(.bottom, 50)
             }
         }
     }
@@ -233,20 +245,20 @@ struct WelcomeGuidePage {
     // Pages for employees
     static let employeePages: [WelcomeGuidePage] = [
         WelcomeGuidePage(
-            title: " YOUR PROJECTS ",
-            description: "See assigned jobs.\nMark projects complete.\nAdd photos and notes from the field.",
+            title: " YOUR JOBS ",
+            description: "See what's scheduled. Tap for details. Update when done.",
             iconName: "",
             features: []
         ),
         WelcomeGuidePage(
             title: " WORKS OFFLINE ",
-            description: "No signal required.\nUpdates your progress when you're back online.",
+            description: "No signal? No problem. Syncs when you're back.",
             iconName: "",
             features: []
         ),
         WelcomeGuidePage(
-            title: " KEEP IT SIMPLE ",
-            description: "Designed for simplicity.\nTested for reliability.",
+            title: " READY? ",
+            description: "Your schedule is waiting.",
             iconName: "",
             features: []
         )
@@ -255,31 +267,20 @@ struct WelcomeGuidePage {
     // Pages for crew leads / business owners
     static let crewLeadPages: [WelcomeGuidePage] = [
         WelcomeGuidePage(
-            title: " TRACK PROJECTS ",
-            description: "Monitor job progress.\nView team assignments.\nUpdate from field."
+            title: " CREATE YOUR FIRST JOB ",
+            description: "Takes 30 seconds. Your crew will see it instantly."
         ),
         WelcomeGuidePage(
-            title: " TAKE CONTROL ",
-            description: "All the functionality you need, anywhere you need it. Offline, in the mud, OPS is your wingman. Create jobs, clients, tasks, update assignments. All in your pocket."
+            title: " WORKS OFFLINE ",
+            description: "Manage from the truck. Syncs when you have signal."
         ),
         WelcomeGuidePage(
-            title: " TASK-BASED WORKFLOWS ",
-            description: "",
-            screenshots: [
-                ScreenshotInfo(imageName: "Group 12", description: "Create tasks or projects directly from the job board. Organize work by trade or phase."),
-                ScreenshotInfo(imageName: "Group 10", description: "Detailed task view showing location, client, dates, team members, and notes. Update status from the field."),
-                ScreenshotInfo(imageName: "Group 11", description: "Calendar auto-populated with tasks and projects. Color coded by type. Pinch to expand/minimize rows."),
-                ScreenshotInfo(imageName: "Group 13", description: "Month view for high-level overview. Pinch to expand days or minimize for compact view.")
-            ]
+            title: " YOUR CREW GETS NOTIFIED ",
+            description: "New job? Schedule change? They see it automatically."
         ),
         WelcomeGuidePage(
-            title: "JOB BOARD",
-            description: "",
-            screenshots: [
-                ScreenshotInfo(imageName: "Group 15", description: "Drag projects left or right to move between workflow stages. Simple gestures for fast management."),
-                ScreenshotInfo(imageName: "Group 14", description: "All clients in one list with active project counts, color coded by status. Long-press for quick actions."),
-                ScreenshotInfo(imageName: "Group 3", description: "Swipe project or task cards to advance status. From In Progress to Complete in one gesture.")
-            ]
+            title: " READY? ",
+            description: "Let's create your first job."
         )
     ]
 }

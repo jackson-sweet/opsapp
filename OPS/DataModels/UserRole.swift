@@ -18,9 +18,9 @@ enum UserRole: String, Codable {
 }
 
 enum UserType: String, CaseIterable, Codable {
-    case employee = "employee"
-    case company = "company"
-    
+    case employee = "Employee"
+    case company = "Company"
+
     var displayName: String {
         switch self {
         case .employee:
@@ -29,13 +29,13 @@ enum UserType: String, CaseIterable, Codable {
             return "Business Owner"
         }
     }
-    
-    // Custom decoding to handle migration from old capitalized values
+
+    // Custom decoding to handle both capitalized and lowercase values
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
-        
-        // Handle old capitalized values
+
+        // Handle both capitalized and lowercase values
         switch rawValue.lowercased() {
         case "employee":
             self = .employee

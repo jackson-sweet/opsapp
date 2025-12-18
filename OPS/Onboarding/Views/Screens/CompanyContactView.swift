@@ -66,11 +66,11 @@ struct CompanyContactView: View {
                 VStack(spacing: 0) {
                     VStack(spacing: 32) {
                         VStack(alignment: .leading, spacing: 16) {
-                        Text("HOW CAN CUSTOMERS REACH YOU?")
+                        Text("HOW DO CLIENTS REACH YOU?")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(Color("TextPrimary"))
-                        
-                        Text("This information will be visible to clients and team members for project coordination.")
+
+                        Text("Visible to clients and crew.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(Color("TextSecondary"))
                     }

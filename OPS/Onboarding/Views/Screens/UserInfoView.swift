@@ -306,7 +306,7 @@ struct PhoneNumberPhaseView: View {
             }
             .padding(.bottom, 8)
 
-            Text("This will be used to update your team contact information.")
+            Text("For team contact info.")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(secondaryTextColor)
 
@@ -365,30 +365,34 @@ struct ProfilePicturePhaseView: View {
             }
             .padding(.bottom, 8)
 
-            Text("Your photo helps your team recognize you.")
+            Text("Helps your crew recognize you.")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(secondaryTextColor)
 
-            // Use ProfileImageUploader
-            ProfileImageUploader(
-                config: ImageUploaderConfig(
-                    currentImageURL: nil,
-                    currentImageData: imageData,
-                    placeholderText: "",
-                    size: 120,
-                    shape: .circle,
-                    allowDelete: false,
-                    backgroundColor: OPSStyle.Colors.cardBackgroundDark
-                ),
-                onUpload: { image in
-                    profileImage = image
-                    if let data = image.jpegData(compressionQuality: 0.8) {
-                        imageData = data
-                    }
-                    return ""
-                },
-                onDelete: nil
-            )
+            // Profile image uploader - centered
+            HStack {
+                Spacer()
+                ProfileImageUploader(
+                    config: ImageUploaderConfig(
+                        currentImageURL: nil,
+                        currentImageData: imageData,
+                        placeholderText: "",
+                        size: 120,
+                        shape: .circle,
+                        allowDelete: false,
+                        backgroundColor: OPSStyle.Colors.primaryAccent
+                    ),
+                    onUpload: { image in
+                        profileImage = image
+                        if let data = image.jpegData(compressionQuality: 0.8) {
+                            imageData = data
+                        }
+                        return ""
+                    },
+                    onDelete: nil
+                )
+                Spacer()
+            }
 
             Spacer()
 

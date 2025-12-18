@@ -161,7 +161,7 @@ struct JobBoardProjectListView: View {
                     .padding(.bottom, 120)
                 }
             }
-        }
+        } 
         .sheet(isPresented: $showingFilterSheet) {
             ProjectListFilterSheet(
                 selectedStatuses: $selectedStatuses,

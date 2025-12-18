@@ -170,52 +170,40 @@ struct ProfileSettingsView: View {
                                 VStack(spacing: 16) {
                                     // Name fields in HStack
                                     HStack(spacing: 16) {
-                                        FormTextField(
-                                            title: "First Name",
-                                            text: $firstName
+                                        OPSProfileInput(
+                                            label: "First Name",
+                                            text: $firstName,
+                                            placeholder: "Enter first name"
                                         )
 
-                                        FormTextField(
-                                            title: "Last Name",
-                                            text: $lastName
+                                        OPSProfileInput(
+                                            label: "Last Name",
+                                            text: $lastName,
+                                            placeholder: "Enter last name"
                                         )
                                     }
 
-                                    // Email - disabled field with grey border
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text("EMAIL ADDRESS")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    // Email - non-editable field
+                                    OPSProfileInput(
+                                        label: "Email Address",
+                                        text: $email,
+                                        type: .email,
+                                        isEditable: false,
+                                        helperText: "You cannot change your email address, it is the foundation of your account"
+                                    )
 
-                                        Text(email)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .padding()
-                                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 1)
-                                            )
-
-                                        Text("You cannot change your email address, it is the foundation of your account")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                            .italic()
-                                    }
-
-                                    // Phone - directly editable
-                                    FormTextField(
-                                        title: "Phone Number",
+                                    // Phone - editable
+                                    OPSProfileInput(
+                                        label: "Phone Number",
                                         text: $phone,
-                                        keyboardType: .phonePad
+                                        placeholder: "Enter phone number",
+                                        type: .phone
                                     )
 
                                     // Home address - with autocomplete
                                     VStack(alignment: .leading, spacing: 8) {
                                         Text("HOME ADDRESS")
-                                            .font(OPSStyle.Typography.caption)
+                                            .font(OPSStyle.Typography.captionBold)
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                         AddressAutocompleteField(
@@ -223,8 +211,6 @@ struct ProfileSettingsView: View {
                                             placeholder: "Enter your home address"
                                         ) { address, coordinate in
                                             // Optional: Could store coordinates if needed
-                                            if let coord = coordinate {
-                                            }
                                         }
                                     }
                                 }

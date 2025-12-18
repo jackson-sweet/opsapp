@@ -63,7 +63,7 @@ struct OrganizationJoinView: View {
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
 
-                            Text("Now let's get your profile set up.")
+                            Text("Let's set up your profile.")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                                 .lineSpacing(4)

@@ -16,6 +16,7 @@ struct DeveloperDashboard: View {
     enum DeveloperTool: String, CaseIterable, Identifiable {
         var id: String { self.rawValue }
 
+        case onboardingPreview = "Onboarding"
         case taskTest = "Task Test"
         case taskList = "Task List"
         case calendarEvents = "Calendar Events"
@@ -24,9 +25,10 @@ struct DeveloperDashboard: View {
         case apiCalls = "API Calls"
         case clearData = "Clear Data"
         case taskTypes = "Task Types"
-        
+
         var icon: String {
             switch self {
+            case .onboardingPreview: return "person.crop.circle.badge.plus"
             case .taskTest: return "hammer.circle"
             case .taskList: return "list.bullet.rectangle"
             case .calendarEvents: return "calendar.badge.clock"
@@ -37,9 +39,10 @@ struct DeveloperDashboard: View {
             case .taskTypes: return "square.grid.2x2"
             }
         }
-        
+
         var description: String {
             switch self {
+            case .onboardingPreview: return "Preview onboarding flow with company data"
             case .taskTest: return "Test task-based scheduling models"
             case .taskList: return "View all tasks with full details"
             case .calendarEvents: return "View and sync calendar events"
@@ -50,9 +53,10 @@ struct DeveloperDashboard: View {
             case .taskTypes: return "Manage task type definitions"
             }
         }
-        
+
         var color: Color {
             switch self {
+            case .onboardingPreview: return Color.blue
             case .taskTest: return OPSStyle.Colors.primaryAccent
             case .taskList: return OPSStyle.Colors.successStatus
             case .calendarEvents: return OPSStyle.Colors.warningStatus
@@ -152,15 +156,19 @@ struct DeveloperDashboard: View {
                             
                             // Testing Tools
                             SectionHeader(title: "TESTING & DEBUG")
-                            
+
                             LazyVGrid(columns: [
                                 GridItem(.flexible()),
                                 GridItem(.flexible())
                             ], spacing: 12) {
+                                ToolCard(tool: .onboardingPreview) {
+                                    selectedTool = .onboardingPreview
+                                }
+
                                 ToolCard(tool: .taskTest) {
                                     selectedTool = .taskTest
                                 }
-                                
+
                                 ToolCard(tool: .apiCalls) {
                                     selectedTool = .apiCalls
                                 }
@@ -179,6 +187,9 @@ struct DeveloperDashboard: View {
         .fullScreenCover(item: $selectedTool) { tool in
             NavigationStack {
                 switch tool {
+                case .onboardingPreview:
+                    OnboardingPreviewView()
+                        .environmentObject(dataController)
                 case .taskTest:
                     TaskTestView()
                         .environmentObject(dataController)

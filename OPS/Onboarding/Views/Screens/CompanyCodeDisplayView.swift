@@ -91,7 +91,7 @@ struct CompanyCodeDisplayView: View {
                                 .font(OPSStyle.Typography.title)
                                 .foregroundColor(primaryTextColor)
                             
-                            Text("Share this code with your employees so they can join \(viewModel.companyName) on OPS.")
+                            Text("Share this with your crew to join \(viewModel.companyName) on OPS.")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(secondaryTextColor)
                                 .lineSpacing(4)
@@ -172,7 +172,7 @@ struct CompanyCodeDisplayView: View {
                                             .foregroundColor(primaryTextColor)
                                         
                                         VStack(alignment: .leading, spacing: 6) {
-                                            Text("Your employees will use this code to register with your company.")
+                                            Text("Your crew uses this code to join your company.")
                                         }
                                         .font(OPSStyle.Typography.cardBody)
                                         .foregroundColor(secondaryTextColor)
@@ -185,12 +185,12 @@ struct CompanyCodeDisplayView: View {
                                         .font(OPSStyle.Typography.body)
                                     
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text("Keep this code secure".uppercased())
+                                        Text("Keep it secure".uppercased())
                                             .font(OPSStyle.Typography.cardSubtitle)
                                             .fontWeight(.semibold)
                                             .foregroundColor(primaryTextColor)
-                                        
-                                        Text("Only share with employees you want to have access to your company's projects and data.")
+
+                                        Text("Only share with crew you trust.")
                                             .font(OPSStyle.Typography.cardBody)
                                             .foregroundColor(secondaryTextColor)
                                     }

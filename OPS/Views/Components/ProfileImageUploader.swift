@@ -146,10 +146,10 @@ struct ProfileImageUploader: View {
         ZStack {
             // Background shape
             Circle()
-                .fill(config.backgroundColor.opacity(0.1))
+                .fill(config.backgroundColor.opacity(0.3))
                 .overlay(
                     Circle()
-                        .stroke(config.backgroundColor, lineWidth: 2)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
                 )
 
             // Image or placeholder
@@ -162,7 +162,7 @@ struct ProfileImageUploader: View {
             } else {
                 Text(config.placeholderText)
                     .font(.custom("Mohave-Bold", size: config.size * 0.35))
-                    .foregroundColor(config.backgroundColor)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
 
             // Upload overlay when uploading
@@ -186,15 +186,18 @@ struct ProfileImageUploader: View {
                     )
             }
 
-            // Camera icon hint - centered when no image
-            if !isUploading && !isLoadingImage && !hasImage {
-                VStack(spacing: 4) {
+            // Camera icon hint - only show when no image AND no initials displayed
+            // Scales icon and hides text for small sizes to prevent overflow
+            if !isUploading && !isLoadingImage && !hasImage && config.placeholderText.isEmpty {
+                VStack(spacing: config.size > 60 ? 4 : 0) {
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(config.backgroundColor.opacity(0.6))
-                    Text("TAP TO UPLOAD")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(config.backgroundColor.opacity(0.6))
+                        .font(.system(size: min(24, config.size * 0.25)))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    if config.size > 60 {
+                        Text("TAP TO UPLOAD")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
                 }
             }
         }
@@ -205,10 +208,10 @@ struct ProfileImageUploader: View {
         ZStack {
             // Background shape
             RoundedRectangle(cornerRadius: cornerRadius)
-                .fill(config.backgroundColor.opacity(0.1))
+                .fill(config.backgroundColor.opacity(0.3))
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(config.backgroundColor, lineWidth: 2)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
                 )
 
             // Image or placeholder
@@ -245,15 +248,18 @@ struct ProfileImageUploader: View {
                     )
             }
 
-            // Camera icon hint - centered when no image
-            if !isUploading && !isLoadingImage && !hasImage {
-                VStack(spacing: 4) {
+            // Camera icon hint - only show when no image AND no initials displayed
+            // Scales icon and hides text for small sizes to prevent overflow
+            if !isUploading && !isLoadingImage && !hasImage && config.placeholderText.isEmpty {
+                VStack(spacing: config.size > 60 ? 4 : 0) {
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(config.backgroundColor.opacity(0.6))
-                    Text("TAP TO UPLOAD")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(config.backgroundColor.opacity(0.6))
+                        .font(.system(size: min(24, config.size * 0.25)))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    if config.size > 60 {
+                        Text("TAP TO UPLOAD")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
                 }
             }
         }
@@ -376,6 +382,66 @@ struct ProfileImageUploader: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Initials Image Generator
+
+/// Utility to generate a UIImage with initials on a colored background
+enum InitialsImageGenerator {
+    /// Generate a UIImage with initials text on a colored circular background
+    /// - Parameters:
+    ///   - initials: The initials text (1-2 characters)
+    ///   - size: The size of the image (width and height)
+    ///   - backgroundColor: The background color
+    ///   - textColor: The text color (default: white)
+    /// - Returns: A UIImage with the initials rendered on the background
+    static func generateImage(
+        initials: String,
+        size: CGFloat = 200,
+        backgroundColor: UIColor,
+        textColor: UIColor = .white
+    ) -> UIImage? {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+
+        return renderer.image { context in
+            // Draw circular background
+            let rect = CGRect(x: 0, y: 0, width: size, height: size)
+            backgroundColor.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+
+            // Configure text attributes
+            let fontSize = size * 0.4
+            let font = UIFont(name: "Mohave-Bold", size: fontSize) ?? UIFont.boldSystemFont(ofSize: fontSize)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: textColor
+            ]
+
+            // Calculate text size and position
+            let text = initials.uppercased()
+            let textSize = text.size(withAttributes: attributes)
+            let textRect = CGRect(
+                x: (size - textSize.width) / 2,
+                y: (size - textSize.height) / 2,
+                width: textSize.width,
+                height: textSize.height
+            )
+
+            // Draw text
+            text.draw(in: textRect, withAttributes: attributes)
+        }
+    }
+
+    /// Generate initials from first and last name
+    /// - Parameters:
+    ///   - firstName: First name
+    ///   - lastName: Last name
+    /// - Returns: Up to 2 character initials string
+    static func getInitials(firstName: String, lastName: String) -> String {
+        let first = firstName.first.map { String($0) } ?? ""
+        let last = lastName.first.map { String($0) } ?? ""
+        return (first + last).uppercased()
     }
 }
 

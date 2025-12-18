@@ -98,7 +98,7 @@ struct EmailView: View {
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(primaryTextColor)
                         } else if currentFieldIndex == 1 {
-                            Text("CREATE A")
+                            Text("SET YOUR")
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(primaryTextColor)
                             Text("PASSWORD.")
@@ -116,9 +116,9 @@ struct EmailView: View {
                     .padding(.bottom, 8)
 
                     // Subtitle
-                    Text(currentFieldIndex == 0 ? "Enter your email address to get started." :
-                         currentFieldIndex == 1 ? "Use at least 8 characters." :
-                         "Re-enter your password to confirm.")
+                    Text(currentFieldIndex == 0 ? "Enter your email. That's it." :
+                         currentFieldIndex == 1 ? "Minimum 8 characters." :
+                         "One more time.")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(secondaryTextColor)
 

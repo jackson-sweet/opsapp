@@ -322,14 +322,36 @@ class CentralizedSyncManager {
     /// Sync company information and subscription status
     func syncCompany() async throws {
         debugLog("🔵 FUNCTION CALLED", enabled: DebugFlags.syncCompany)
+        print("[SYNC_COMPANY] ========== SYNC COMPANY START ==========")
         print("[SYNC_COMPANY] 📊 Syncing company data...")
+
+        // Debug: Check UserDefaults
+        let udCurrentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let udCompanyId = UserDefaults.standard.string(forKey: "company_id")
+        print("[SYNC_COMPANY] UserDefaults currentUserId: \(udCurrentUserId ?? "nil")")
+        print("[SYNC_COMPANY] UserDefaults company_id: \(udCompanyId ?? "nil")")
+
+        // Debug: Check currentUser
+        if let user = currentUser {
+            print("[SYNC_COMPANY] currentUser found:")
+            print("[SYNC_COMPANY]   - id: \(user.id)")
+            print("[SYNC_COMPANY]   - companyId: \(user.companyId ?? "nil")")
+            print("[SYNC_COMPANY]   - firstName: \(user.firstName)")
+        } else {
+            print("[SYNC_COMPANY] ⚠️ currentUser is NIL!")
+            print("[SYNC_COMPANY]   - This means either:")
+            print("[SYNC_COMPANY]     1. currentUserId not in UserDefaults")
+            print("[SYNC_COMPANY]     2. User not found in modelContext")
+        }
 
         guard let companyId = currentUser?.companyId else {
             debugLog("⚠️ No company ID found for current user", enabled: DebugFlags.syncCompany)
-            print("[SYNC_COMPANY] ⚠️ No company ID")
+            print("[SYNC_COMPANY] ⚠️ No company ID - currentUser?.companyId is nil")
+            print("[SYNC_COMPANY] ========== SYNC COMPANY END (FAILED) ==========")
             throw SyncError.missingCompanyId
         }
 
+        print("[SYNC_COMPANY] ✅ Got companyId: \(companyId)")
         debugLog("📥 Fetching company from API with ID: \(companyId)", enabled: DebugFlags.syncCompany)
 
         do {
@@ -381,6 +403,22 @@ class CentralizedSyncManager {
                 print("[SYNC_COMPANY] ⚠️ No seated employees from API")
             }
 
+            // Admin IDs
+            if let adminRefs = dto.admin {
+                let adminIds = adminRefs.compactMap { $0.stringValue }
+                company.setAdminIds(adminIds)
+                print("[SYNC_COMPANY] 👑 Set \(adminIds.count) admin IDs")
+            } else {
+                company.setAdminIds([])
+                print("[SYNC_COMPANY] ⚠️ No admin IDs from API")
+            }
+
+            // Account holder
+            if let accountHolderRef = dto.accountHolder {
+                company.accountHolderId = accountHolderRef.stringValue
+                print("[SYNC_COMPANY] 🏠 Set accountHolderId: \(accountHolderRef.stringValue ?? "nil")")
+            }
+
             company.trialStartDate = dto.trialStartDate
             company.trialEndDate = dto.trialEndDate
             company.stripeCustomerId = dto.stripeCustomerId
@@ -397,10 +435,12 @@ class CentralizedSyncManager {
             debugLog("💾 Saving company to modelContext...", enabled: DebugFlags.syncCompany)
             try modelContext.save()
             debugLog("✅ Company saved successfully", enabled: DebugFlags.syncCompany)
-            print("[SYNC_COMPANY] ✅ Company synced")
+            print("[SYNC_COMPANY] ✅ Company synced: \(company.name)")
+            print("[SYNC_COMPANY] ========== SYNC COMPANY END (SUCCESS) ==========")
         } catch {
             debugLog("❌ Sync failed with error: \(error)", enabled: DebugFlags.syncCompany)
             print("[SYNC_COMPANY] ❌ Failed: \(error)")
+            print("[SYNC_COMPANY] ========== SYNC COMPANY END (FAILED) ==========")
             throw error
         }
     }
@@ -1524,12 +1564,25 @@ class CentralizedSyncManager {
                 role = .fieldCrew
             }
 
+            // Extract email from authentication or direct field
+            let userEmail: String?
+            if let authEmail = userDTO.authentication?.email?.email, !authEmail.isEmpty {
+                userEmail = authEmail
+            } else if let directEmail = userDTO.email, !directEmail.isEmpty {
+                userEmail = directEmail
+            } else {
+                userEmail = nil
+            }
+
             // Update or create User object
             if let existingUser = existingUsers.first(where: { $0.id == userDTO.id }) {
                 // Update existing user
                 existingUser.firstName = userDTO.nameFirst ?? ""
                 existingUser.lastName = userDTO.nameLast ?? ""
-                existingUser.email = userDTO.email
+                // Only overwrite email if we have a value from API
+                if let email = userEmail {
+                    existingUser.email = email
+                }
                 existingUser.phone = userDTO.phone
                 existingUser.role = role
                 existingUser.isCompanyAdmin = isAdmin
@@ -1547,7 +1600,7 @@ class CentralizedSyncManager {
                     role: role,
                     companyId: companyId
                 )
-                newUser.email = userDTO.email
+                newUser.email = userEmail
                 newUser.phone = userDTO.phone
                 newUser.profileImageURL = userDTO.avatar
                 newUser.isActive = true

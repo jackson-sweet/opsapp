@@ -63,8 +63,8 @@ struct UserTypeSelectionView: View {
                 VStack(spacing: 16) {
                     UserTypeOption(
                         type: .company,
-                        title: "COMPANY LEAD",
-                        description: "Command operations. Coordinate teams. Control the outcomes.",
+                        title: "CREW LEAD",
+                        description: "Run jobs. Manage your crew. Build your business.",
                         isSelected: viewModel.selectedUserType == .company,
                         isLightTheme: viewModel.shouldUseLightTheme,
                         action: {
@@ -76,8 +76,8 @@ struct UserTypeSelectionView: View {
 
                     UserTypeOption(
                         type: .employee,
-                        title: "TEAM MEMBER",
-                        description: "Execute plans. Crush projects. Rise through the ranks.",
+                        title: "CREW MEMBER",
+                        description: "See your jobs. Update progress. Get it done.",
                         isSelected: viewModel.selectedUserType == .employee,
                         isLightTheme: viewModel.shouldUseLightTheme,
                         action: {

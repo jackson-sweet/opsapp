@@ -10,7 +10,6 @@
 import SwiftUI
 
 struct BillingInfoView: View {
-    @EnvironmentObject var onboardingViewModel: OnboardingViewModel
     @EnvironmentObject var dataController: DataController
     @EnvironmentObject var subscriptionManager: SubscriptionManager
 
@@ -22,9 +21,16 @@ struct BillingInfoView: View {
     // Optional closure to call when continue is tapped (for use in WelcomeGuideView)
     var onContinue: (() -> Void)? = nil
 
+    // User type passed in (defaults to checking current user)
+    var userType: UserType?
+
     // Determine if current user is the company creator
     private var isCompanyCreator: Bool {
-        onboardingViewModel.selectedUserType == .company
+        if let type = userType {
+            return type == .company
+        }
+        // Fallback: check current user's type
+        return dataController.currentUser?.userType == .company
     }
 
     // Get trial end date
@@ -70,7 +76,7 @@ struct BillingInfoView: View {
                         Button(action: {
                             showPlanSelection = true
                         }) {
-                            Text("UPGRADE")
+                            Text("SEE PLANS")
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(maxWidth: .infinity)
@@ -82,15 +88,11 @@ struct BillingInfoView: View {
                         }
                         .frame(width: UIScreen.main.bounds.width * 0.25)
 
-                        // Continue Trial button (2/3 width)
+                        // Start Trial button (2/3 width)
                         Button(action: {
-                            if let onContinue = onContinue {
-                                onContinue()
-                            } else {
-                                onboardingViewModel.moveToNextStep()
-                            }
+                            onContinue?()
                         }) {
-                            Text("CONTINUE TRIAL")
+                            Text("START TRIAL")
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(.black)
                                 .frame(maxWidth: .infinity)
@@ -103,11 +105,7 @@ struct BillingInfoView: View {
                 } else {
                     // Employee - Continue button (matches NEXT button styling)
                     Button(action: {
-                        if let onContinue = onContinue {
-                            onContinue()
-                        } else {
-                            onboardingViewModel.moveToNextStep()
-                        }
+                        onContinue?()
                     }) {
                         Text("NEXT")
                             .font(OPSStyle.Typography.button)
@@ -133,7 +131,7 @@ struct BillingInfoView: View {
                     // If they completed payment, move to next step
                     if let company = dataController.getCurrentUserCompany(),
                        company.subscriptionStatus != "trial" {
-                        onboardingViewModel.moveToNextStep()
+                        onContinue?()
                     }
                 }
         }
@@ -219,27 +217,21 @@ struct BillingInfoView: View {
         VStack(alignment: .leading, spacing: 20) {
             // Header
             VStack(alignment: .leading, spacing: 6) {
-                Text("YOUR TRIAL")
+                Text("30 DAYS FREE.")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                if let endDate = trialEndDate {
-                    Text("Expires \(formatDate(endDate))")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                } else {
-                    Text("30 days free access")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
+                Text("Full access. No card needed.")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             // Trial benefits
             VStack(alignment: .leading, spacing: 8) {
-                FeatureBullet(text: "Full access to all features")
-                FeatureBullet(text: "Up to 10 team members")
-                FeatureBullet(text: "No credit card required")
+                FeatureBullet(text: "Everything works")
+                FeatureBullet(text: "Add up to 10 crew")
+                FeatureBullet(text: "Cancel anytime")
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -249,11 +241,11 @@ struct BillingInfoView: View {
 
             // Pricing tiers header
             VStack(alignment: .leading, spacing: 4) {
-                Text("UPGRADE ANYTIME")
+                Text("PLANS")
                     .font(OPSStyle.Typography.cardSubtitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                Text("Choose a plan that fits your team")
+                Text("You can upgrade whenever you're ready.")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -289,7 +281,7 @@ struct BillingInfoView: View {
         VStack(alignment: .leading, spacing: 20) {
             // Header
             VStack(alignment: .leading, spacing: 6) {
-                Text("COMPANY SUBSCRIPTION")
+                Text("YOU'RE IN.")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -354,7 +346,7 @@ struct BillingInfoView: View {
 
             // Seat information
             VStack(alignment: .leading, spacing: 12) {
-                Text("SEAT ASSIGNMENT")
+                Text("YOUR SEAT")
                     .font(OPSStyle.Typography.cardSubtitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -365,7 +357,7 @@ struct BillingInfoView: View {
                         .foregroundColor(isSeated ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(isSeated ? "You have a seat" : "No seat assigned")
+                        Text(isSeated ? "You have a seat. ✓" : "No seat assigned yet.")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -382,7 +374,7 @@ struct BillingInfoView: View {
                 if !isSeated {
                     VStack(spacing: 24) {
                         // Simple message
-                        Text("You don't have a seat in your company's OPS subscription. Contact your administrator to request access.")
+                        Text("Contact your admin to get access.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .multilineTextAlignment(.center)
@@ -401,7 +393,7 @@ struct BillingInfoView: View {
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                    Text("ADMINISTRATOR")
+                                    Text("YOUR ADMIN")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
@@ -537,33 +529,13 @@ struct FeatureBullet: View {
 // MARK: - Preview
 
 #Preview("Company Creator") {
-    PreviewWrapper(userType: .company)
+    BillingInfoView(userType: .company)
+        .environmentObject(DataController())
+        .environmentObject(SubscriptionManager.shared)
 }
 
 #Preview("Employee") {
-    PreviewWrapper(userType: .employee)
-}
-
-// Helper view for previews
-private struct PreviewWrapper: View {
-    let userType: UserType
-    @StateObject private var viewModel: OnboardingViewModel
-    @StateObject private var dataController: DataController
-
-    init(userType: UserType) {
-        self.userType = userType
-        let dc = OnboardingPreviewHelpers.createPreviewDataController()
-        _dataController = StateObject(wrappedValue: dc)
-
-        let vm = OnboardingViewModel()
-        vm.selectedUserType = userType
-        _viewModel = StateObject(wrappedValue: vm)
-    }
-
-    var body: some View {
-        BillingInfoView()
-            .environmentObject(viewModel)
-            .environmentObject(dataController)
-            .environmentObject(SubscriptionManager.shared)
-    }
+    BillingInfoView(userType: .employee)
+        .environmentObject(DataController())
+        .environmentObject(SubscriptionManager.shared)
 }

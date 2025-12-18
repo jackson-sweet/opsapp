@@ -140,7 +140,7 @@ struct OrganizationDetailsView: View {
                                                 HStack {
                                                     Text(editedAddress.isEmpty ? "Enter company address" : editedAddress)
                                                         .font(OPSStyle.Typography.body)
-                                                        .foregroundColor(editedAddress.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                                                        .foregroundColor(editedAddress.isEmpty ? OPSStyle.Colors.placeholderText : OPSStyle.Colors.primaryText)
                                                         .lineLimit(2)
                                                         .multilineTextAlignment(.leading)
 
@@ -160,7 +160,7 @@ struct OrganizationDetailsView: View {
                                     } else {
                                         Text(editedAddress.isEmpty ? "NO ADDRESS" : editedAddress)
                                             .font(OPSStyle.Typography.body)
-                                            .foregroundColor(editedAddress.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                                            .foregroundColor(editedAddress.isEmpty ? OPSStyle.Colors.placeholderText : OPSStyle.Colors.primaryText)
                                             .padding(.vertical, 12)
                                             .padding(.horizontal, 16)
                                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -442,7 +442,11 @@ struct OrganizationDetailsView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             if isCompanyAdmin {
-                TextField(placeholder, text: text)
+                TextField("", text: text)
+                    .placeholder(when: text.wrappedValue.isEmpty) {
+                        Text(placeholder)
+                            .foregroundColor(OPSStyle.Colors.placeholderText)
+                    }
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .keyboardType(keyboardType)
@@ -466,7 +470,7 @@ struct OrganizationDetailsView: View {
             } else {
                 Text(text.wrappedValue.isEmpty ? placeholder : text.wrappedValue)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(text.wrappedValue.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                    .foregroundColor(text.wrappedValue.isEmpty ? OPSStyle.Colors.placeholderText : OPSStyle.Colors.primaryText)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)

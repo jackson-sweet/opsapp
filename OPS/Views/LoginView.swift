@@ -12,8 +12,7 @@ import AuthenticationServices
 
 struct LoginView: View {
     @EnvironmentObject private var dataController: DataController
-    // Always use consolidated onboarding flow
-    
+
     // Login states
     @State private var username = ""
     @State private var password = ""
@@ -21,11 +20,10 @@ struct LoginView: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var showOnboarding = false
-    @State private var resumeFromCompanyStep = false
-    
-    // Used to check if we need to automatically resume onboarding
-    private let resumeOnboarding = UserDefaults.standard.bool(forKey: "resume_onboarding")
-    
+
+    // New onboarding manager (created when needed)
+    @State private var onboardingManager: OnboardingManager?
+
     // UI states
     @State private var showLoginMode = false
     @State private var pageScale: CGFloat = 1.0
@@ -92,15 +90,17 @@ struct LoginView: View {
                         Spacer()
                         // Primary action - Sign Up button
                         Button(action: {
-                            // Clear any existing user data before starting new onboarding
+                            // Clear any existing state and start fresh onboarding
+                            OnboardingManager.clearState()
                             UserDefaults.standard.removeObject(forKey: "resume_onboarding")
                             UserDefaults.standard.removeObject(forKey: "is_authenticated")
                             UserDefaults.standard.removeObject(forKey: "user_id")
-                            UserDefaults.standard.removeObject(forKey: "user_email")
-                            
-                            // Show onboarding directly
+
+                            // Create fresh onboarding manager
+                            onboardingManager = OnboardingManager(dataController: dataController)
+
+                            // Show onboarding
                             withAnimation(.easeInOut(duration: 0.3)) {
-                                resumeFromCompanyStep = false
                                 showOnboarding = true
                             }
                         }) {
@@ -323,48 +323,21 @@ struct LoginView: View {
                     .zIndex(2)
             }
             
-            // Onboarding overlay
-            if showOnboarding {
-                // Determine the starting step based on existing data
-                let startingStep: OnboardingStep = {
-                    // If we have authenticated user with data, start from welcome to allow skip logic
-                    if dataController.currentUser != nil {
-                        return .welcome
-                    } else if resumeFromCompanyStep {
-                        return .organizationJoin
-                    } else {
-                        return .welcome
+            // Onboarding overlay - using new consolidated onboarding
+            if showOnboarding, let manager = onboardingManager {
+                OnboardingContainer(manager: manager) {
+                    // Onboarding completed
+                    showOnboarding = false
+                    onboardingManager = nil
+
+                    // User has completed onboarding, so they must be authenticated
+                    DispatchQueue.main.async {
+                        dataController.isAuthenticated = true
                     }
-                }()
-                
-                // Use the consolidated flow with the appropriate starting step
-                OnboardingView(
-                    initialStep: startingStep,
-                    onComplete: {
-                        // Hide onboarding when complete
-                        showOnboarding = false
-                        
-                        // Check if the onboarding set authentication flag directly
-                        if UserDefaults.standard.bool(forKey: "is_authenticated") {
-                            // Force update the dataController authentication state
-                            DispatchQueue.main.async {
-                                dataController.isAuthenticated = true
-                            }
-                        }
-                        // Fallback to old behavior if needed
-                        else if UserDefaults.standard.bool(forKey: "has_joined_company") {
-                            // Attempt to log in again to enter the app
-                            login()
-                        }
-                    }
-                )
+                }
                 .environmentObject(dataController)
                 .transition(.opacity)
-                .zIndex(3) // Ensure it appears above login content and success screen
-                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("DismissOnboarding"))) { _ in
-                    // Dismiss onboarding when notification is received
-                    showOnboarding = false
-                }
+                .zIndex(3)
             }
             
             // Forgot password overlay
@@ -389,6 +362,13 @@ struct LoginView: View {
         })
         .onAppear {
             checkResumeOnboarding()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("DismissOnboarding"))) { _ in
+            // Dismiss onboarding and return to login
+            withAnimation {
+                showOnboarding = false
+                onboardingManager = nil
+            }
         }
     }
     
@@ -416,60 +396,20 @@ struct LoginView: View {
                         // Wait a moment before proceeding
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             showLoginSuccess = false
-                            
-                            // Check if the user has completed onboarding
-                            let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
-                            
-                            if !hasCompletedOnboarding {
-                            
-                            // Try to detect user type from the current user data
-                            if let currentUser = dataController.currentUser {
-                                // Only update user type if it's not already saved
-                                let savedUserType = UserDefaults.standard.string(forKey: "selected_user_type")
-                                
-                                if savedUserType == nil {
-                                    // First check if user has explicit userType
-                                    if let userType = currentUser.userType {
-                                        UserDefaults.standard.set(userType.rawValue, forKey: "selected_user_type")
-                                    } else {
-                                        // Fall back to determining from role
-                                        if currentUser.role == .fieldCrew || currentUser.role == .officeCrew {
-                                            UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
-                                        } else if currentUser.role == .admin {
-                                            // Admin users might be company owners
-                                            UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
-                                        }
-                                    }
-                                } else {
-                                }
-                                
-                                // Pre-populate user data if available
-                                if !currentUser.firstName.isEmpty {
-                                    UserDefaults.standard.set(currentUser.firstName, forKey: "user_first_name")
-                                }
-                                if !currentUser.lastName.isEmpty {
-                                    UserDefaults.standard.set(currentUser.lastName, forKey: "user_last_name")
-                                }
-                                if let phone = currentUser.phone, !phone.isEmpty {
-                                    UserDefaults.standard.set(phone, forKey: "user_phone_number")
-                                }
-                            }
-                            
-                            // Ensure all data is saved before showing onboarding
-                            UserDefaults.standard.synchronize()
-                            
-                                // Reset any UI state before showing onboarding
+
+                            // Check if we need to show onboarding using new system
+                            let (shouldShowOnboarding, manager) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
+
+                            if shouldShowOnboarding {
+                                // Use manager from shouldShowOnboarding or create new one
+                                onboardingManager = manager ?? OnboardingManager(dataController: dataController)
+
+                                // Reset UI state before showing onboarding
                                 showLoginMode = false
                                 pageScale = 1.0
-                                
-                                // Check if they need to resume from company step
-                                let hasJoinedCompany = UserDefaults.standard.bool(forKey: "has_joined_company") || 
-                                                       (dataController.currentUser?.companyId != nil && !dataController.currentUser!.companyId!.isEmpty)
-                                resumeFromCompanyStep = !hasJoinedCompany
-                                
+
                                 // Small delay to ensure UI is reset
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    // Show onboarding
                                     showOnboarding = true
                                 }
                             }
@@ -511,57 +451,18 @@ struct LoginView: View {
     }
     
     private func checkResumeOnboarding() {
-        // If the resume flag is set, check what step to resume from
-        if resumeOnboarding {
-            
-            // Check for authentication state
-            let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
-            let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
-            
-            // If onboarding is already completed but we somehow have the resume flag set,
-            // just clear it and let the user proceed to the main app
-            if isAuthenticated && onboardingCompleted {
-                UserDefaults.standard.set(false, forKey: "resume_onboarding")
-                
-                // Set authentication in DataController
-                DispatchQueue.main.async {
-                    self.dataController.isAuthenticated = true
-                }
-                return
-            }
-            
-            // Determine which step to resume from
-            let hasUserId = UserDefaults.standard.string(forKey: "user_id") != nil
-            let lastStepRaw = UserDefaults.standard.integer(forKey: "last_onboarding_step_v2")
-            
-            if hasUserId && isAuthenticated {
-                
-                // Resume from the appropriate step
-                if lastStepRaw > 0 {
-                    // Use the saved step if available
-                    let lastStep = OnboardingStep(rawValue: lastStepRaw) ?? .organizationJoin
-                    resumeFromCompanyStep = true
-                    
-                    // Show onboarding at the appropriate step
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.showOnboarding = true
-                    }
-                } else {
-                    // Default to organization join if no step was saved
-                    resumeFromCompanyStep = true
-                    
-                    // Show onboarding starting from organization join
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.showOnboarding = true
-                    }
-                }
-                
-                // Don't clear the resume flag until onboarding is completed
-                // It will be cleared in CompletionView when onboarding is finished
-            } else {
-                // No user ID or not authenticated - this shouldn't happen, but clear the flag
-                UserDefaults.standard.set(false, forKey: "resume_onboarding")
-            }
+        // Use the new OnboardingManager to check if we should show onboarding
+        let (shouldShow, manager) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
+
+        if shouldShow {
+            // Resume onboarding with the appropriate state
+            onboardingManager = manager ?? OnboardingManager(dataController: dataController)
+
+            // Show immediately - no delay needed
+            self.showOnboarding = true
+        } else {
+            // Clear any stale resume flags
+            UserDefaults.standard.removeObject(forKey: "resume_onboarding")
         }
     }
     
@@ -594,34 +495,30 @@ struct LoginView: View {
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
                 } else {
-                    
-                    // Check if the user has completed onboarding
-                    let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
-                    let hasCompany = !(dataController.currentUser?.companyId ?? "").isEmpty
-                    let hasUserType = dataController.currentUser?.userType != nil
-                    
-                    
-                    if !hasCompletedOnboarding || !hasCompany || !hasUserType {
-                        
-                        // Dismiss keyboard first
+                    // Check if we need to show onboarding using new system
+                    let (shouldShowOnboarding, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
+
+                    if shouldShowOnboarding {
+                        // Create onboarding manager - it will prefill data from dataController
+                        onboardingManager = OnboardingManager(dataController: dataController)
+
+                        // Dismiss keyboard and reset UI state
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        
-                        // Reset any UI state before showing onboarding
                         showLoginMode = false
                         pageScale = 1.0
-                        
-                        // Small delay to ensure UI is reset and keyboard is dismissed
+
+                        // Show onboarding
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             showOnboarding = true
                         }
                     } else {
-                        // Only now set isAuthenticated to trigger the transition
+                        // Onboarding complete - proceed to app
                         dataController.isAuthenticated = true
                     }
                 }
             } catch {
                 isLoggingIn = false
-                
+
                 // Check if it was a cancellation
                 if let authError = error as? ASAuthorizationError, authError.code == .canceled {
                     // User canceled, don't show error
@@ -632,7 +529,7 @@ struct LoginView: View {
             }
         }
     }
-    
+
     private func handleGoogleSignIn() {
         isLoggingIn = true
         errorMessage = nil
@@ -660,33 +557,30 @@ struct LoginView: View {
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
                 } else {
-                    
-                    // Check if the user has completed onboarding
-                    let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
-                    let hasCompany = !(dataController.currentUser?.companyId ?? "").isEmpty
-                    
-                    
-                    if !hasCompletedOnboarding || !hasCompany {
-                        
-                        // Dismiss keyboard first
+                    // Check if we need to show onboarding using new system
+                    let (shouldShowOnboarding, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
+
+                    if shouldShowOnboarding {
+                        // Create onboarding manager - it will prefill data from dataController
+                        onboardingManager = OnboardingManager(dataController: dataController)
+
+                        // Dismiss keyboard and reset UI state
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        
-                        // Reset any UI state before showing onboarding
                         showLoginMode = false
                         pageScale = 1.0
-                        
-                        // Small delay to ensure UI is reset and keyboard is dismissed
+
+                        // Show onboarding
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             showOnboarding = true
                         }
                     } else {
-                        // Only now set isAuthenticated to trigger the transition
+                        // Onboarding complete - proceed to app
                         dataController.isAuthenticated = true
                     }
                 }
             } catch {
                 isLoggingIn = false
-                
+
                 // Check if it was a cancellation
                 if let gidError = error as? GIDSignInError, gidError.code == .canceled {
                     // User canceled, don't show error

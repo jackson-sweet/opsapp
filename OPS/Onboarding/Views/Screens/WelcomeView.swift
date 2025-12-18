@@ -66,15 +66,15 @@ struct WelcomeView: View {
                 VStack(alignment: .leading, spacing: 32) {
                     // Headline
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("GET YOUR CREW")
+                        Text("FROM WHITEBOARD")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        Text("ON THE SAME PAGE.")
+                        Text("TO WORKFORCE.")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
 
-                    Text("Schedule, assign, and track jobs from one place.")
+                    Text("Job management built by trades, for trades.")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }

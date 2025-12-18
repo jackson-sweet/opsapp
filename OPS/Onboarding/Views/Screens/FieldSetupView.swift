@@ -82,7 +82,7 @@ struct FieldSetupView: View {
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
 
-                            Text("Customize how OPS should work when you're on job sites with limited connectivity.")
+                            Text("How OPS works when signal drops.")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                                 .lineSpacing(4)
@@ -95,7 +95,7 @@ struct FieldSetupView: View {
                             // Offline data settings with storage slider
                             SettingsSection(
                                 title: "Offline Storage",
-                                description: "Choose how much data to store for offline use when connectivity is limited"
+                                description: "How much data to store when you're offline."
                             ) {
                                 StorageOptionSlider(selectedStorageIndex: $selectedStorageIndex)
                                     .environmentObject(viewModel)

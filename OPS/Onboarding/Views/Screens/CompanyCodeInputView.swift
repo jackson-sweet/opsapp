@@ -115,7 +115,7 @@ struct CompanyCodeInputView: View {
                         }
                         .padding(.bottom, 8)
 
-                        Text("Your company code connects your account to your organization.")
+                        Text("Connects you to your company.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(secondaryTextColor)
 
@@ -145,7 +145,7 @@ struct CompanyCodeInputView: View {
                         }
 
                         // Code explanation
-                        Text("Obtain your company code from your manager or organization administrator.")
+                        Text("Get this code from your crew lead or boss.")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(secondaryTextColor)
 

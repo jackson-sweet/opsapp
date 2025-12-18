@@ -132,16 +132,16 @@ struct CompanyNamePhaseView: View {
         VStack(spacing: 32) {
             // Header
             VStack(alignment: .leading, spacing: 8) {
-                Text("LET'S WRITE DOWN YOUR")
+                Text("WHAT'S YOUR")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(.white)
 
-                Text("COMPANY NAME.")
+                Text("COMPANY NAME?")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(.white)
                     .padding(.bottom, 12)
-                
-                Text("This information will be visible to your team members and organization.")
+
+                Text("Your crew will see this.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)
@@ -190,7 +190,7 @@ struct CompanyLogoPhaseView: View {
                     .foregroundColor(.white)
                     .padding(.bottom, 12)
 
-                Text("Your logo will appear on projects and help your team recognize your company. You can add or change this later.")
+                Text("Appears on projects. You can change this later.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)

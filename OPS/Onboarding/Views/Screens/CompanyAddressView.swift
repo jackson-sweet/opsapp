@@ -69,11 +69,11 @@ struct CompanyAddressView: View {
                 ScrollView {
                     VStack(spacing: 32) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("WHERE IS YOUR COMPANY LOCATED?")
+                        Text("WHERE ARE YOU BASED?")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(Color("TextPrimary"))
-                        
-                        Text("This helps us connect you with local projects and team members.")
+
+                        Text("Helps with local projects and crew.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(Color("TextSecondary"))
                     }

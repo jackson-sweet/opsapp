@@ -191,19 +191,19 @@ struct LocationPermissionPhase: View {
                         .font(OPSStyle.Typography.body)
                     
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Why we need location access:".uppercased())
+                        Text("Why we need this:".uppercased())
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
-                        
-                        Text("• Show nearby job sites on the map".uppercased())
+
+                        Text("• Show nearby job sites".uppercased())
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
-                        
-                        Text("• Navigate to work locations".uppercased())
+
+                        Text("• Navigate to sites".uppercased())
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
-                        
-                        Text("• Help teammates find you in the field".uppercased())
+
+                        Text("• Help crew find you".uppercased())
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     }
@@ -276,7 +276,7 @@ struct NotificationPermissionPhase: View {
         VStack(alignment: .leading, spacing: 24) {
             // Header
             VStack(alignment: .leading, spacing: 8) {
-                Text("GET NOTIFIED")
+                Text("STAY UPDATED")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
             }
@@ -320,19 +320,19 @@ struct NotificationPermissionPhase: View {
                         .font(OPSStyle.Typography.body)
                     
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Why we need notifications:".uppercased())
+                        Text("Why we need this:".uppercased())
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
-                        
-                        Text("• Job assignments and updates".uppercased())
+
+                        Text("• Job assignments".uppercased())
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
-                        
-                        Text("• Schedule changes and reminders".uppercased())
+
+                        Text("• Schedule changes".uppercased())
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
-                        
-                        Text("• Important team messages".uppercased())
+
+                        Text("• Crew messages".uppercased())
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     }

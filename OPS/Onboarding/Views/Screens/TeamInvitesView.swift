@@ -62,11 +62,11 @@ struct TeamInvitesView: View {
                 ScrollView {
                     VStack(spacing: 32) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("READY TO BUILD YOUR TEAM?")
+                        Text("READY TO ADD YOUR CREW?")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(Color("TextPrimary"))
-                        
-                        Text("Invite team members to join your company. They'll receive an email with instructions to download the app and join your organization.")
+
+                        Text("Invite crew to join. They'll get an email with download instructions.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(Color("TextSecondary"))
                     }
@@ -76,7 +76,7 @@ struct TeamInvitesView: View {
                         ForEach(inviteEmails.indices, id: \.self) { index in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("Team Member \(index + 1)")
+                                    Text("Crew Member \(index + 1)")
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(Color("TextPrimary"))
                                     
@@ -115,11 +115,12 @@ struct TeamInvitesView: View {
                             Button(action: addEmailField) {
                                 HStack {
                                     Image(systemName: "plus.circle.fill")
-                                        .foregroundColor(Color("AccentPrimary"))
-                                    
-                                    Text("Add another team member")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                                    Text("Add email")
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(Color("AccentPrimary"))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
                                 .padding(.vertical, 8)
                             }
@@ -137,10 +138,10 @@ struct TeamInvitesView: View {
                         }
                         
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Team members will receive an email invite")
-                            Text("They will download the app and create account")
-                            Text("They will join using your company code")
-                            Text("You can invite members later from settings")
+                            Text("Crew gets email invite")
+                            Text("Downloads app and creates account")
+                            Text("Joins using your company code")
+                            Text("You can invite more later in settings")
                         }
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(Color("TextSecondary"))

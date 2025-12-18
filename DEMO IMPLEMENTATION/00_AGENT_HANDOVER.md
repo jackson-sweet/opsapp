@@ -105,6 +105,14 @@ OPS/Onboarding/Components/TypewriterText.swift - Existing animation component
    - Projects with future tasks use `.accepted` status
    - Status is computed from task dates, not stored
 
+5. **Tutorial Completion Tracking:** New Bubble field `hasCompletedAppTutorial` on User
+   - Field will be added to Bubble User table
+   - Must add to local `User` SwiftData model
+   - Must add to `BubbleFields.User` constants
+   - Must add to `UserDTO` for API sync
+   - Check this field to determine if tutorial should show
+   - Set to `true` on tutorial completion and sync to Bubble
+
 ### Technical Notes
 - **Calendar View:** Composed of `MonthGridView.swift` + components in `Calendar Tab/Components/`
 - **Status Mapping:** ACCEPTED, IN_PROGRESS, COMPLETED only (no SCHEDULED)

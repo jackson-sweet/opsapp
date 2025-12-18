@@ -381,6 +381,46 @@ if shouldShowTutorial {
 }
 ```
 
+### Tutorial Completion Tracking
+
+**Bubble Field:** `hasCompletedAppTutorial` (Boolean) on User table
+
+**Files to Modify:**
+1. `OPS/DataModels/User.swift` - Add `hasCompletedAppTutorial: Bool` property
+2. `OPS/Network/API/BubbleFields.swift` - Add constant to `BubbleFields.User`
+3. `OPS/Network/DTOs/UserDTO.swift` - Add field for API sync
+
+**Check Logic:**
+```swift
+// In OnboardingManager or ReadyScreen
+func shouldShowTutorial() -> Bool {
+    guard let user = dataController.currentUser else { return false }
+    // Show tutorial if hasCompletedAppTutorial is nil or false
+    return user.hasCompletedAppTutorial != true
+}
+```
+
+**Trigger Point:** After user login, check `hasCompletedAppTutorial`:
+- If `nil` or `false` → Show tutorial
+- If `true` → Skip tutorial, proceed to main app
+
+**Completion Logic:**
+```swift
+// In TutorialStateManager.complete()
+func complete() async {
+    guard let start = startTime else { return }
+    completionTime = Date().timeIntervalSince(start)
+    currentPhase = .completed
+
+    // Update local and sync to Bubble
+    if let user = dataController.currentUser {
+        user.hasCompletedAppTutorial = true
+        user.needsSync = true
+        try? await dataController.syncUser(user)
+    }
+}
+```
+
 ### OnboardingManager Integration
 Add new phase to `OnboardingManager`:
 ```swift

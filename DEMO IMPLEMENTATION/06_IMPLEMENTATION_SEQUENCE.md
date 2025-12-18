@@ -4,6 +4,26 @@ Ordered build plan with dependencies, parallelization opportunities, and testing
 
 ---
 
+## PHASE 0: MODEL UPDATES (Prerequisite)
+
+### 0.1 Add Tutorial Completion Tracking Field
+**Build Order:** Sequential
+**Estimated Files:** 3 modifications
+
+| Step | File | Changes |
+|------|------|---------|
+| 0.1.1 | `OPS/DataModels/User.swift` | Add `hasCompletedAppTutorial: Bool = false` property |
+| 0.1.2 | `OPS/Network/API/BubbleFields.swift` | Add `hasCompletedAppTutorial` to `BubbleFields.User` |
+| 0.1.3 | `OPS/Network/DTOs/UserDTO.swift` | Add `hasCompletedAppTutorial: Bool?` field + mapping |
+
+**Testing Checkpoint 0:**
+- [ ] User model compiles with new field
+- [ ] BubbleFields constant exists
+- [ ] UserDTO maps field correctly from API
+- [ ] Field syncs to Bubble on user update
+
+---
+
 ## PHASE 1: FOUNDATION (Must Build First)
 
 ### 1.1 Environment & State Core
@@ -14,7 +34,7 @@ Ordered build plan with dependencies, parallelization opportunities, and testing
 |------|------|--------------|-------------|
 | 1.1.1 | `TutorialEnvironment.swift` | None | Environment keys for tutorialMode |
 | 1.1.2 | `TutorialPhase.swift` | None | Phase enum with tooltip text |
-| 1.1.3 | `TutorialStateManager.swift` | 1.1.1, 1.1.2 | State management class |
+| 1.1.3 | `TutorialStateManager.swift` | 1.1.1, 1.1.2, Phase 0 | State management class |
 
 **Testing Checkpoint 1:**
 - [ ] Can compile all three files

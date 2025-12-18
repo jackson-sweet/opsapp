@@ -16,6 +16,7 @@ struct CredentialsScreen: View {
 
     @State private var email = ""
     @State private var password = ""
+    @State private var showPassword = false
     @State private var isSigningUp = false
     @State private var isSocialSignIn = false
     @State private var errorMessage: String?
@@ -90,12 +91,32 @@ struct CredentialsScreen: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     HStack(spacing: 12) {
-                        SecureField("", text: $password)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .textContentType(.newPassword)
-                            .focused($focusedField, equals: .password)
+                        // Conditional TextField/SecureField based on showPassword
+                        if showPassword {
+                            TextField("", text: $password)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .textContentType(.newPassword)
+                                .autocapitalization(.none)
+                                .focused($focusedField, equals: .password)
+                        } else {
+                            SecureField("", text: $password)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .textContentType(.newPassword)
+                                .focused($focusedField, equals: .password)
+                        }
 
+                        // Show/hide password toggle
+                        Button {
+                            showPassword.toggle()
+                        } label: {
+                            Image(systemName: showPassword ? "eye.slash" : "eye")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+
+                        // Validation indicator
                         if !password.isEmpty {
                             Image(systemName: isPasswordValid ? "checkmark" : "xmark")
                                 .font(.system(size: 14, weight: .semibold))

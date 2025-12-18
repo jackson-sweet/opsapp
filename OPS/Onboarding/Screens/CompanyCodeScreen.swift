@@ -293,7 +293,8 @@ struct InviteTeamSheet: View {
     @State private var showEmailInvite = false
     @State private var inviteEmails: [String] = [""]
     @State private var isSendingInvites = false
-    @State private var inviteSentSuccess = false
+    @State private var sentEmails: [String] = []
+    @FocusState private var focusedEmailIndex: Int?
 
     private let onboardingService = OnboardingService()
 
@@ -332,6 +333,7 @@ struct InviteTeamSheet: View {
                 }
             }
         }
+        .tint(OPSStyle.Colors.primaryText)
     }
 
     // MARK: - Main Invite Options
@@ -426,7 +428,8 @@ struct InviteTeamSheet: View {
                                         if inviteEmails[index].isEmpty {
                                             Text("team.member@example.com")
                                                 .font(OPSStyle.Typography.body)
-                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                .foregroundStyle(Color(red: 0.6, green: 0.6, blue: 0.6))
+                                                .tint(Color(red: 0.6, green: 0.6, blue: 0.6))
                                                 .padding(.horizontal, 16)
                                         }
                                         TextField("", text: $inviteEmails[index])
@@ -434,6 +437,7 @@ struct InviteTeamSheet: View {
                                             .foregroundColor(OPSStyle.Colors.primaryText)
                                             .keyboardType(.emailAddress)
                                             .autocapitalization(.none)
+                                            .focused($focusedEmailIndex, equals: index)
                                             .padding(.horizontal, 16)
                                     }
                                     .padding(.vertical, 14)
@@ -467,30 +471,20 @@ struct InviteTeamSheet: View {
                             // Add another email button
                             if inviteEmails.count < 10 {
                                 Button {
+                                    let newIndex = inviteEmails.count
                                     inviteEmails.append("")
+                                    focusedEmailIndex = newIndex
                                 } label: {
-                                    HStack {
+                                    HStack(spacing: 6) {
                                         Image(systemName: "plus.circle.fill")
                                             .font(.system(size: 16))
 
-                                        Text("+ Add another")
+                                        Text("Add email")
                                             .font(OPSStyle.Typography.body)
                                     }
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-
-                            // Success message
-                            if inviteSentSuccess {
-                                HStack {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(OPSStyle.Colors.successStatus)
-
-                                    Text("Sent.")
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.successStatus)
-                                }
                             }
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -531,6 +525,15 @@ struct InviteTeamSheet: View {
                             .stroke(showEmailInvite ? Color.clear : Color.white.opacity(0.1), lineWidth: 1)
                     )
                     .disabled(showEmailInvite && (!hasValidEmails || isSendingInvites))
+
+                    // Success message showing sent emails
+                    if !sentEmails.isEmpty {
+                        Text("Invite sent to \(sentEmails.joined(separator: ", "))")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.successStatus)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 8)
+                    }
                 }
             }
 
@@ -586,12 +589,12 @@ struct InviteTeamSheet: View {
 
                 await MainActor.run {
                     isSendingInvites = false
-                    inviteSentSuccess = true
-                    inviteEmails = [""]
 
-                    // Reset success message after delay
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        inviteSentSuccess = false
+                    // Store sent emails and collapse section
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        sentEmails = validEmails
+                        showEmailInvite = false
+                        inviteEmails = [""]
                     }
                 }
             } catch {

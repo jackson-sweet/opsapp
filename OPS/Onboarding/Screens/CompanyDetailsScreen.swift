@@ -4,6 +4,7 @@
 //
 //  Company details screen - page 2: industry, size, age.
 //  Part of the company creator flow.
+//  Uses phased animation system for entrance effects.
 //
 
 import SwiftUI
@@ -18,6 +19,9 @@ struct CompanyDetailsScreen: View {
     @State private var showIndustryPicker = false
     @State private var isCreating = false
     @State private var errorMessage: String?
+
+    // Animation coordinator
+    @StateObject private var animationCoordinator = OnboardingAnimationCoordinator()
 
     private var isFormValid: Bool {
         selectedIndustry != nil &&
@@ -36,13 +40,12 @@ struct CompanyDetailsScreen: View {
             .padding(.horizontal, 40)
             .padding(.top, 16)
 
-            // Title section with typing animation
-            AnimatedOnboardingHeader(
+            // Title section with phased typing animation
+            PhasedOnboardingHeader(
                 title: "ALMOST DONE",
-                subtitle: "Quick details to set you up right."
-            ) {
-                // Header animation complete
-            }
+                subtitle: "Quick details to set you up right.",
+                coordinator: animationCoordinator
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
             .padding(.top, 16)
@@ -50,124 +53,107 @@ struct CompanyDetailsScreen: View {
             Spacer()
                 .frame(height: 32)
 
-            // Industry picker
-            VStack(alignment: .leading, spacing: 8) {
-                Text("WHAT DO YOU DO?")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            // Content section - fades in upward
+            PhasedContent(coordinator: animationCoordinator) {
+                VStack(spacing: 0) {
+                    // Industry picker
+                    VStack(alignment: .leading, spacing: 8) {
+                        PhasedLabel("WHAT DO YOU DO?", index: 0, coordinator: animationCoordinator)
 
-                Button {
-                    showIndustryPicker = true
-                } label: {
-                    HStack {
-                        Text(selectedIndustry?.displayName ?? "Select your trade")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(selectedIndustry != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                        Button {
+                            showIndustryPicker = true
+                        } label: {
+                            HStack {
+                                Text(selectedIndustry?.displayName ?? "Select your trade")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(selectedIndustry != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
 
-                        Spacer()
+                                Spacer()
 
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 14))
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                    .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    )
-                }
-            }
-            .padding(.horizontal, 40)
-
-            // Company Size section
-            Text("HOW MANY ON YOUR CREW?")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 40)
-                .padding(.top, 24)
-
-            // Company Size pills
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(CompanySize.allCases, id: \.self) { size in
-                        PillButton(
-                            title: size.rawValue,
-                            isSelected: selectedSize == size
-                        ) {
-                            selectedSize = size
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 16)
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            )
                         }
                     }
-                }
-                .padding(.horizontal, 40)
-            }
-            .padding(.top, 8)
-
-            // Company Age section
-            Text("HOW LONG IN BUSINESS?")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 40)
-                .padding(.top, 24)
-
-            // Company Age pills
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(CompanyAge.allCases, id: \.self) { age in
-                        PillButton(
-                            title: age.rawValue,
-                            isSelected: selectedAge == age
-                        ) {
-                            selectedAge = age
-                        }
-                    }
-                }
-                .padding(.horizontal, 40)
-            }
-            .padding(.top, 8)
-
-            // Error message
-            if let error = errorMessage {
-                Text(error)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 40)
-                    .padding(.top, 16)
+
+                    // Company Size section
+                    PhasedLabel("HOW MANY ON YOUR CREW?", index: 1, coordinator: animationCoordinator)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 40)
+                        .padding(.top, 24)
+
+                    // Company Size pills
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(CompanySize.allCases, id: \.self) { size in
+                                PillButton(
+                                    title: size.rawValue,
+                                    isSelected: selectedSize == size
+                                ) {
+                                    selectedSize = size
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 40)
+                    }
+                    .padding(.top, 8)
+
+                    // Company Age section
+                    PhasedLabel("HOW LONG IN BUSINESS?", index: 2, isLast: true, coordinator: animationCoordinator)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 40)
+                        .padding(.top, 24)
+
+                    // Company Age pills
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(CompanyAge.allCases, id: \.self) { age in
+                                PillButton(
+                                    title: age.rawValue,
+                                    isSelected: selectedAge == age
+                                ) {
+                                    selectedAge = age
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 40)
+                    }
+                    .padding(.top, 8)
+
+                    // Error message
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 40)
+                            .padding(.top, 16)
+                    }
+                }
             }
 
             Spacer()
 
-            // Create button
-            Button {
+            // Create button with phased animation
+            PhasedPrimaryButton(
+                "CREATE COMPANY",
+                isEnabled: isFormValid,
+                isLoading: isCreating,
+                loadingText: "Creating...",
+                coordinator: animationCoordinator
+            ) {
                 createCompany()
-            } label: {
-                HStack {
-                    if isCreating {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                    } else {
-                        Text("CREATE COMPANY")
-                            .font(OPSStyle.Typography.bodyBold)
-
-                        Spacer()
-
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                }
-                .padding(.horizontal, 20)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .background(isFormValid && !isCreating ? Color.white : Color.white.opacity(0.5))
-            .foregroundColor(.black)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .disabled(!isFormValid || isCreating)
             .padding(.horizontal, 40)
             .padding(.bottom, 50)
         }
@@ -180,6 +166,7 @@ struct CompanyDetailsScreen: View {
         }
         .onAppear {
             prefillData()
+            animationCoordinator.start()
         }
     }
 

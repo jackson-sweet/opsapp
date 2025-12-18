@@ -4,6 +4,7 @@
 //
 //  Displays the company code after successful company creation.
 //  Clean celebration screen with copy functionality.
+//  Uses phased animation system for entrance effects.
 //
 
 import SwiftUI
@@ -17,6 +18,9 @@ struct CompanyCodeScreen: View {
     @State private var showInviteSheet = false
     @State private var isSyncing = false
 
+    // Animation coordinator
+    @StateObject private var animationCoordinator = OnboardingAnimationCoordinator()
+
     private var companyCode: String {
         manager.state.companyData.companyCode ?? "------"
     }
@@ -27,13 +31,12 @@ struct CompanyCodeScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header area with typing animation
-            AnimatedOnboardingHeader(
+            // Header area with phased typing animation
+            PhasedOnboardingHeader(
                 title: "YOU'RE SET UP.",
-                subtitle: "\(companyName) is ready."
-            ) {
-                // Header animation complete
-            }
+                subtitle: "\(companyName) is ready.",
+                coordinator: animationCoordinator
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
             .padding(.top, 60)
@@ -41,67 +44,70 @@ struct CompanyCodeScreen: View {
             Spacer()
                 .frame(height: 48)
 
-            // Company code section
-            VStack(alignment: .leading, spacing: 16) {
-                Text("CREW CODE")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            // Content section - fades in upward
+            PhasedContent(coordinator: animationCoordinator) {
+                VStack(spacing: 0) {
+                    // Company code section
+                    VStack(alignment: .leading, spacing: 16) {
+                        PhasedLabel("CREW CODE", index: 0, isLast: true, coordinator: animationCoordinator)
 
-                // Code display
-                Button {
-                    copyCode()
-                } label: {
-                    HStack(spacing: 12) {
-                        Text("[\(companyCode)]")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        // Code display
+                        Button {
+                            copyCode()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text("[\(companyCode)]")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
 
-                        Spacer()
+                                Spacer()
 
-                        Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 14))
-                            .foregroundColor(showCopied ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText)
+                                Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(showCopied ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText)
+                            }
+                            .padding(16)
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            )
+                        }
+
+                        Text("Share this with your crew so they can join.")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
-                    .padding(16)
+                    .padding(.horizontal, 40)
+
+                    Spacer()
+                        .frame(height: 32)
+
+                    // Invite team button
+                    Button {
+                        showInviteSheet = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "person.2")
+                                .font(.system(size: 14, weight: .semibold))
+
+                            Text("INVITE CREW")
+                                .font(OPSStyle.Typography.bodyBold)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(Color.white.opacity(0.1), lineWidth: 1)
                     )
-                }
-
-                Text("Share this with your crew so they can join.")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-            .padding(.horizontal, 40)
-
-            Spacer()
-                .frame(height: 32)
-
-            // Invite team button
-            Button {
-                showInviteSheet = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "person.2")
-                        .font(.system(size: 14, weight: .semibold))
-
-                    Text("INVITE CREW")
-                        .font(OPSStyle.Typography.bodyBold)
+                    .padding(.horizontal, 40)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            )
-            .padding(.horizontal, 40)
 
             Spacer()
 
@@ -113,37 +119,15 @@ struct CompanyCodeScreen: View {
                 .padding(.horizontal, 40)
                 .padding(.bottom, 24)
 
-            // Continue button
-            Button {
+            // Continue button with phased animation
+            PhasedPrimaryButton(
+                "LET'S GO",
+                isLoading: isSyncing,
+                loadingText: "Setting up...",
+                coordinator: animationCoordinator
+            ) {
                 syncAndContinue()
-            } label: {
-                if isSyncing {
-                    HStack {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
-
-                        Text("Setting up...")
-                            .font(OPSStyle.Typography.bodyBold)
-                    }
-                } else {
-                    HStack {
-                        Text("LET'S GO")
-                            .font(OPSStyle.Typography.bodyBold)
-
-                        Spacer()
-
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .padding(.horizontal, 20)
-                }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .background(Color.white)
-            .foregroundColor(.black)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .disabled(isSyncing)
             .padding(.horizontal, 40)
             .padding(.bottom, 50)
         }
@@ -155,6 +139,9 @@ struct CompanyCodeScreen: View {
                 companyId: manager.state.companyData.companyId ?? "",
                 isPresented: $showInviteSheet
             )
+        }
+        .onAppear {
+            animationCoordinator.start()
         }
     }
 

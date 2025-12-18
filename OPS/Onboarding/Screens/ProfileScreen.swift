@@ -4,6 +4,7 @@
 //
 //  Personal profile screen - name, phone, avatar.
 //  Clean, focused screen with centered avatar.
+//  Uses phased animation system for entrance effects.
 //
 
 import SwiftUI
@@ -17,6 +18,9 @@ struct ProfileScreen: View {
     @State private var phone: String = ""
     @State private var avatarData: Data?
     @FocusState private var isPhoneFocused: Bool
+
+    // Animation coordinator
+    @StateObject private var animationCoordinator = OnboardingAnimationCoordinator()
 
     private var isFormValid: Bool {
         !firstName.isEmpty && !lastName.isEmpty
@@ -39,13 +43,12 @@ struct ProfileScreen: View {
             .padding(.horizontal, 40)
             .padding(.top, 16)
 
-            // Title section with typing animation
-            AnimatedOnboardingHeader(
+            // Title section with phased typing animation
+            PhasedOnboardingHeader(
                 title: "YOUR INFO",
-                subtitle: "Your crew will see this."
-            ) {
-                // Header animation complete
-            }
+                subtitle: "Your crew will see this.",
+                coordinator: animationCoordinator
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
             .padding(.top, 16)
@@ -53,144 +56,129 @@ struct ProfileScreen: View {
             Spacer()
                 .frame(height: 48)
 
-            // Centered avatar
-            VStack(spacing: 12) {
-                ProfileImageUploader(
-                    config: ImageUploaderConfig(
-                        currentImageData: avatarData,
-                        placeholderText: initials,
-                        size: 120,
-                        shape: .circle,
-                        allowDelete: true,
-                        backgroundColor: OPSStyle.Colors.cardBackgroundDark
-                    ),
-                    onUpload: { image in
-                        avatarData = image.jpegData(compressionQuality: 0.8)
-                        return ""
-                    },
-                    onDelete: {
-                        avatarData = nil
-                    }
-                )
-
-                VStack(spacing: 2) {
-                    Text("ADD PHOTO")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text("Optional")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-            }
-
-            Spacer()
-                .frame(height: 40)
-
-            // Form fields
-            VStack(spacing: 20) {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("FIRST NAME")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        TextField("", text: $firstName)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .autocapitalization(.words)
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
-                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                            )
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("LAST NAME")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        TextField("", text: $lastName)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .autocapitalization(.words)
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
-                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                            )
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("PHONE (optional)")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    TextField("", text: $phone)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .keyboardType(.phonePad)
-                        .focused($isPhoneFocused)
-                        .padding(.vertical, 14)
-                        .padding(.horizontal, 16)
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            // Content section - fades in upward
+            PhasedContent(coordinator: animationCoordinator) {
+                VStack(spacing: 0) {
+                    // Centered avatar
+                    VStack(spacing: 12) {
+                        ProfileImageUploader(
+                            config: ImageUploaderConfig(
+                                currentImageData: avatarData,
+                                placeholderText: initials,
+                                size: 120,
+                                shape: .circle,
+                                allowDelete: true,
+                                backgroundColor: OPSStyle.Colors.cardBackgroundDark
+                            ),
+                            onUpload: { image in
+                                avatarData = image.jpegData(compressionQuality: 0.8)
+                                return ""
+                            },
+                            onDelete: {
+                                avatarData = nil
+                            }
                         )
-                        .toolbar {
-                            ToolbarItemGroup(placement: .keyboard) {
-                                if isPhoneFocused {
-                                    Spacer()
-                                    Button("Done") {
-                                        isPhoneFocused = false
-                                    }
-                                    .font(OPSStyle.Typography.bodyBold)
+
+                        VStack(spacing: 2) {
+                            PhasedLabel("ADD PHOTO", index: 0, coordinator: animationCoordinator)
+                            Text("Optional")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                    }
+
+                    Spacer()
+                        .frame(height: 40)
+
+                    // Form fields
+                    VStack(spacing: 20) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                PhasedLabel("FIRST NAME", index: 1, coordinator: animationCoordinator)
+
+                                TextField("", text: $firstName)
+                                    .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
-                                }
+                                    .autocapitalization(.words)
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 16)
+                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    )
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                PhasedLabel("LAST NAME", index: 2, coordinator: animationCoordinator)
+
+                                TextField("", text: $lastName)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .autocapitalization(.words)
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 16)
+                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    )
                             }
                         }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            PhasedLabel("PHONE (optional)", index: 3, isLast: true, coordinator: animationCoordinator)
+
+                            TextField("", text: $phone)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .keyboardType(.phonePad)
+                                .focused($isPhoneFocused)
+                                .padding(.vertical, 14)
+                                .padding(.horizontal, 16)
+                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
+                                .toolbar {
+                                    ToolbarItemGroup(placement: .keyboard) {
+                                        if isPhoneFocused {
+                                            Spacer()
+                                            Button("Done") {
+                                                isPhoneFocused = false
+                                            }
+                                            .font(OPSStyle.Typography.bodyBold)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                        }
+                                    }
+                                }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 40)
 
             Spacer()
 
-            // Continue button
-            Button {
+            // Continue button with phased animation
+            PhasedPrimaryButton(
+                "CONTINUE",
+                isEnabled: isFormValid,
+                coordinator: animationCoordinator
+            ) {
                 saveAndContinue()
-            } label: {
-                HStack {
-                    Text("CONTINUE")
-                        .font(OPSStyle.Typography.bodyBold)
-
-                    Spacer()
-
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .padding(.horizontal, 20)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .background(isFormValid ? Color.white : Color.white.opacity(0.5))
-            .foregroundColor(.black)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .disabled(!isFormValid)
             .padding(.horizontal, 40)
             .padding(.bottom, 50)
         }
         .background(OPSStyle.Colors.background)
         .onAppear {
             prefillData()
+            animationCoordinator.start()
         }
     }
 

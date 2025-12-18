@@ -4,6 +4,7 @@
 //
 //  Employee screen for entering crew code to join a company.
 //  Features expanding bracket animation on focus.
+//  Uses phased animation system for entrance effects.
 //
 
 import SwiftUI
@@ -21,6 +22,9 @@ struct CodeEntryScreen: View {
     @State private var showSwitchConfirmation = false
     @FocusState private var isInputFocused: Bool
 
+    // Animation coordinator
+    @StateObject private var animationCoordinator = OnboardingAnimationCoordinator()
+
     private var isFormValid: Bool {
         !companyCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -36,58 +40,55 @@ struct CodeEntryScreen: View {
             .padding(.horizontal, 40)
             .padding(.top, 16)
 
-            // Title area with typing animation
-            AnimatedOnboardingHeader(
+            // Title area with phased typing animation
+            PhasedOnboardingHeader(
                 title: "JOIN YOUR CREW",
-                subtitle: "Enter the code your boss gave you."
-            ) {
-                // Header animation complete
-            }
+                subtitle: "Enter the code your boss gave you.",
+                coordinator: animationCoordinator
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
             .padding(.top, 32)
 
             Spacer()
 
-            // Code input with expanding brackets
-            ExpandingBracketInput(
-                text: $companyCode,
-                isFocused: _isInputFocused,
-                placeholder: "CODE"
-            )
-            .padding(.horizontal, 40)
+            // Content section - fades in upward
+            PhasedContent(coordinator: animationCoordinator) {
+                VStack(spacing: 0) {
+                    // Code input with expanding brackets
+                    ExpandingBracketInput(
+                        text: $companyCode,
+                        isFocused: _isInputFocused,
+                        placeholder: "CODE"
+                    )
 
-            // Error message
-            if let error = errorMessage {
-                Text(error)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                    .padding(.top, 16)
+                    // Error message
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                            .padding(.top, 16)
+                    }
+                }
             }
+            .padding(.horizontal, 40)
 
             Spacer()
 
             // Bottom section: Help button + Join button
             VStack(spacing: 16) {
-                // Help button
-                Button {
+                // Help button - trigger button phase when this appears
+                PhasedHelpButton(coordinator: animationCoordinator) {
                     showHelpSheet = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "questionmark.circle")
-                            .font(.system(size: 14))
-                        Text("Where is my code?")
-                            .font(OPSStyle.Typography.caption)
-                    }
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
 
-                // Join button with haptic feedback
-                OnboardingPrimaryButton(
+                // Join button with phased animation
+                PhasedPrimaryButton(
                     "JOIN CREW",
                     isEnabled: isFormValid,
                     isLoading: isJoining,
-                    loadingText: "Joining..."
+                    loadingText: "Joining...",
+                    coordinator: animationCoordinator
                 ) {
                     joinCrew()
                 }
@@ -101,6 +102,7 @@ struct CodeEntryScreen: View {
         }
         .onAppear {
             prefillCode()
+            animationCoordinator.start()
         }
         .sheet(isPresented: $showHelpSheet) {
             CompanyCodeHelpSheet(
@@ -164,6 +166,42 @@ struct CodeEntryScreen: View {
     private func switchToCompanyCreator() {
         manager.state.companyData = OnboardingCompanyData()
         manager.goToScreen(.userTypeSelection)
+    }
+}
+
+// MARK: - Phased Help Button
+
+struct PhasedHelpButton: View {
+    @ObservedObject var coordinator: OnboardingAnimationCoordinator
+    let action: () -> Void
+
+    @State private var isVisible = false
+
+    var body: some View {
+        Button {
+            action()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 14))
+                Text("Where is my code?")
+                    .font(OPSStyle.Typography.caption)
+            }
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+        .opacity(isVisible ? 1 : 0)
+        .offset(y: isVisible ? 0 : 10)
+        .onChange(of: coordinator.phase) { _, newPhase in
+            if newPhase >= .labelsTyping && !isVisible {
+                withAnimation(.easeOut(duration: 0.4)) {
+                    isVisible = true
+                }
+                // Trigger button phase after help button appears
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    coordinator.advanceTo(.buttonContainerFadeIn)
+                }
+            }
+        }
     }
 }
 

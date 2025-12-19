@@ -1,6 +1,6 @@
 # AGENT HANDOVER DOCUMENT
 **Last Updated:** Dec 18, 2025
-**Current Phase:** Phase 4 Complete - View Modifications Done
+**Current Phase:** Phase 5 Complete - Tutorial Flow Wrappers Done
 **Branch:** `feature/interactive-tutorial-system`
 
 ---
@@ -70,15 +70,39 @@
   - Modified `ProjectDetailsView.swift` - Added tutorialMode environment property
   - Modified `UniversalJobBoardCard.swift` - Added tutorialMode environment property
   - Build verified successful
+- [x] **Phase 5: Tutorial Flow Wrappers** - COMPLETE
+  - Built `TutorialCreatorFlowWrapper.swift` - Wraps JobBoard tab for company creator flow
+    - Injects tutorialMode=true into environment
+    - Routes to correct content based on TutorialPhase
+    - Displays TutorialSpotlight overlay with cutout frame
+    - Shows TutorialSwipeIndicator when applicable
+    - Shows TutorialTooltipCard at bottom with typewriter animation
+  - Built `TutorialEmployeeFlowWrapper.swift` - Wraps Home tab for employee flow
+    - Same pattern as creator wrapper
+    - Routes to HomeView, JobBoardDashboard, ScheduleView based on phase
+    - Frame tracking for projectCard, noteButton, photoButton, completeButton
+  - Built `TutorialLauncherView.swift` - Entry point that chooses which flow to launch
+    - Seeds demo data on appear via TutorialDemoDataManager
+    - Detects flow type based on user role (admin/office -> creator, fieldCrew -> employee)
+    - Shows loading view during seeding
+    - Shows error view if seeding fails
+    - Cleans up demo data on completion
+    - Marks `hasCompletedAppTutorial = true` on user model
+  - Build verified successful
 
 ### In Progress
 - [ ] Nothing currently in progress
 
-### Next Steps (Phase 5 - Tutorial Flow Wrappers)
-1. Build `TutorialCreatorFlowWrapper.swift` - Wraps JobBoard tab for company creator flow
-2. Build `TutorialEmployeeFlowWrapper.swift` - Wraps Home tab for employee flow
-3. Build `TutorialLauncherView.swift` - Entry point that chooses which flow to launch
-4. Integrate with onboarding to trigger tutorial for new users
+### Next Steps (Phase 6 - Onboarding Integration)
+1. Modify `OnboardingManager.swift` - Add `.tutorial` screen case
+2. Modify `OnboardingContainer.swift` - Route to TutorialLauncherView
+3. Test full onboarding flow with tutorial integration
+
+**Frame Capture Wiring (Phase 6 Follow-up):**
+The flow wrappers have frame state variables declared, but only `fabFrame` in the Creator wrapper is actively captured. Additional frame captures need to be wired:
+- Add `.tutorialTarget(for: .phase)` modifiers to target UI elements
+- Wire up `onTutorialFrameChange(for:)` handlers in the wrappers
+- Use the existing `PreferenceKeys.swift` utilities (do NOT create duplicate preference keys)
 
 See `06_IMPLEMENTATION_SEQUENCE.md` for complete build order.
 
@@ -242,3 +266,6 @@ When you finish work:
 | `OPS/Tutorial/Views/TutorialSwipeIndicator.swift` | Shimmer animation for swipe hints |
 | `OPS/Tutorial/Views/TutorialCompletionView.swift` | Completion screen with time display |
 | `OPS/Tutorial/Utilities/PreferenceKeys.swift` | Frame capture utilities for cutout positioning |
+| `OPS/Tutorial/Wrappers/TutorialCreatorFlowWrapper.swift` | Flow wrapper for company creator tutorial |
+| `OPS/Tutorial/Wrappers/TutorialEmployeeFlowWrapper.swift` | Flow wrapper for employee tutorial |
+| `OPS/Tutorial/Flows/TutorialLauncherView.swift` | Entry point that seeds data and launches flows |

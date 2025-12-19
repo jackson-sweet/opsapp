@@ -47,13 +47,36 @@ struct TaskFormSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.tutorialMode) private var tutorialMode
     @Query private var allProjects: [Project]
     @Query private var allTaskTypes: [TaskType]
     @Query private var allTeamMembers: [TeamMember]
 
+    // Tutorial mode filtering - only show DEMO_ entities when in tutorial
+    private var availableProjects: [Project] {
+        if tutorialMode {
+            return allProjects.filter { $0.id.hasPrefix("DEMO_") }
+        }
+        return allProjects
+    }
+
+    private var availableTaskTypes: [TaskType] {
+        if tutorialMode {
+            return allTaskTypes.filter { $0.id.hasPrefix("DEMO_") }
+        }
+        return allTaskTypes
+    }
+
+    private var availableTeamMembers: [TeamMember] {
+        if tutorialMode {
+            return allTeamMembers.filter { $0.id.hasPrefix("DEMO_") }
+        }
+        return allTeamMembers
+    }
+
     private var uniqueTeamMembers: [TeamMember] {
         var seen = Set<String>()
-        return allTeamMembers.filter { member in
+        return availableTeamMembers.filter { member in
             guard !seen.contains(member.id) else { return false }
             seen.insert(member.id)
             return true
@@ -107,9 +130,9 @@ struct TaskFormSheet: View {
 
     private var filteredProjects: [Project] {
         if projectSearchText.isEmpty {
-            return allProjects.sorted(by: { $0.title < $1.title })
+            return availableProjects.sorted(by: { $0.title < $1.title })
         }
-        return allProjects.filter {
+        return availableProjects.filter {
             $0.title.localizedCaseInsensitiveContains(projectSearchText) ||
             $0.effectiveClientName.localizedCaseInsensitiveContains(projectSearchText)
         }.sorted(by: { $0.title < $1.title })
@@ -531,7 +554,7 @@ struct TaskFormSheet: View {
                     .frame(width: 4)
 
                 Menu {
-                    ForEach(allTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
+                    ForEach(availableTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
                         Button(action: {
                             selectedTaskTypeId = taskType.id
                         }) {

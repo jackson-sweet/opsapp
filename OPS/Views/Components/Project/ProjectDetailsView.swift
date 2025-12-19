@@ -15,6 +15,7 @@ struct ProjectDetailsView: View {
     @Bindable var project: Project
     var isEditMode: Bool = false
     @Environment(\.dismiss) var dismiss
+    @Environment(\.tutorialMode) private var tutorialMode
     @State private var noteText: String
     @State private var originalNoteText: String
     @EnvironmentObject private var dataController: DataController

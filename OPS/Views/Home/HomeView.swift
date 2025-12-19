@@ -12,9 +12,10 @@ struct HomeView: View {
     
     @State private var showProjectDetails = false
     @State private var selectedProject: Project? // Not used anymore but keeping for backward compatibility
-    
+
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @Environment(\.tutorialMode) private var tutorialMode
     @StateObject private var inProgressManager = InProgressManager.shared
     @EnvironmentObject private var locationManager: LocationManager
     
@@ -241,25 +242,34 @@ struct HomeView: View {
     
     private func loadTodaysProjects() {
         isLoading = true
-        
+
         Task {
             let today = Calendar.current.startOfDay(for: Date())
-            
+
             // Get calendar events for today
-            let calendarEvents = dataController.getCalendarEventsForCurrentUser(for: today)
-            
+            var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: today)
+
+            // Tutorial mode only shows demo events/projects
+            if tutorialMode {
+                calendarEvents = calendarEvents.filter { $0.id.hasPrefix("DEMO_") }
+            }
+
             // Extract unique projects from calendar events
             var uniqueProjects: [Project] = []
             var seenProjectIds = Set<String>()
-            
+
             for event in calendarEvents {
                 if !seenProjectIds.contains(event.projectId),
                    let project = dataController.getProject(id: event.projectId) {
+                    // In tutorial mode, only include demo projects
+                    if tutorialMode && !project.id.hasPrefix("DEMO_") {
+                        continue
+                    }
                     seenProjectIds.insert(event.projectId)
                     uniqueProjects.append(project)
                 }
             }
-            
+
             await MainActor.run {
                 self.todaysCalendarEvents = calendarEvents
                 self.todaysProjects = uniqueProjects

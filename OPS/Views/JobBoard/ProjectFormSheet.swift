@@ -32,13 +32,29 @@ struct ProjectFormSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.tutorialMode) private var tutorialMode
     @Query private var allClients: [Client]
     @Query private var allTeamMembers: [TeamMember]
     @Query private var allTaskTypes: [TaskType]
 
+    // Tutorial mode filtering - only show DEMO_ entities when in tutorial
+    private var availableClients: [Client] {
+        if tutorialMode {
+            return allClients.filter { $0.id.hasPrefix("DEMO_") }
+        }
+        return allClients
+    }
+
+    private var availableTeamMembers: [TeamMember] {
+        if tutorialMode {
+            return allTeamMembers.filter { $0.id.hasPrefix("DEMO_") }
+        }
+        return allTeamMembers
+    }
+
     private var uniqueTeamMembers: [TeamMember] {
         var seen = Set<String>()
-        return allTeamMembers.filter { member in
+        return availableTeamMembers.filter { member in
             guard !seen.contains(member.id) else { return false }
             seen.insert(member.id)
             return true
@@ -124,7 +140,7 @@ struct ProjectFormSheet: View {
 
     private var matchingClients: [Client] {
         guard !clientSearchText.isEmpty else { return [] }
-        return allClients.filter {
+        return availableClients.filter {
             $0.name.localizedCaseInsensitiveContains(clientSearchText)
         }
     }

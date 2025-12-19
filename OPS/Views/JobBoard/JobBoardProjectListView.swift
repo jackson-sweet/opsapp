@@ -10,6 +10,7 @@ import SwiftData
 
 struct JobBoardProjectListView: View {
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.tutorialMode) private var tutorialMode
     @Query private var allProjects: [Project]
     let searchText: String
     @Binding var showingFilters: Bool
@@ -28,6 +29,11 @@ struct JobBoardProjectListView: View {
 
     private var filteredProjects: [Project] {
         var filtered = allProjects
+
+        // Tutorial mode only shows demo projects
+        if tutorialMode {
+            filtered = filtered.filter { $0.id.hasPrefix("DEMO_") }
+        }
 
         if !selectedStatuses.isEmpty {
             filtered = filtered.filter { selectedStatuses.contains($0.status) }

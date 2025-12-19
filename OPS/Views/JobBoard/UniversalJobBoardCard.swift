@@ -20,6 +20,7 @@ struct UniversalJobBoardCard: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.tutorialMode) private var tutorialMode
     @Query private var allClients: [Client]
     @State private var showingMoreActions = false
     @State private var showingDetails = false

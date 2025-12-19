@@ -10,6 +10,7 @@ import SwiftUI
 
 struct FloatingActionMenu: View {
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.tutorialMode) private var tutorialMode
     @State private var showCreateMenu = false
     @State private var showingCreateProject = false
     @State private var showingCreateClient = false
@@ -51,6 +52,7 @@ struct FloatingActionMenu: View {
                         VStack(alignment: .trailing, spacing: 24) {
                             // Floating menu items (shown when expanded)
                             if showCreateMenu {
+                                // New Task Type - disabled in tutorial mode
                                 FloatingActionItem(
                                     icon: OPSStyle.Icons.taskType,
                                     label: "New Task Type",
@@ -62,7 +64,10 @@ struct FloatingActionMenu: View {
                                 .offset(x: -10) // Center 48pt icon over 64pt main button
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                                 .animation(.easeInOut(duration: 0.3).delay(0.8), value: showCreateMenu)
+                                .opacity(tutorialMode ? 0.4 : 1.0)
+                                .allowsHitTesting(!tutorialMode)
 
+                                // Create Task - disabled in tutorial mode
                                 FloatingActionItem(
                                     icon: OPSStyle.Icons.task,
                                     label: "Create Task",
@@ -74,7 +79,10 @@ struct FloatingActionMenu: View {
                                 .offset(x: -10) // Center 48pt icon over 64pt main button
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                                 .animation(.easeInOut(duration: 0.3).delay(0.6), value: showCreateMenu)
+                                .opacity(tutorialMode ? 0.4 : 1.0)
+                                .allowsHitTesting(!tutorialMode)
 
+                                // Create Project - always enabled
                                 FloatingActionItem(
                                     icon: OPSStyle.Icons.project,
                                     label: "Create Project",
@@ -87,6 +95,7 @@ struct FloatingActionMenu: View {
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                                 .animation(.easeInOut(duration: 0.3).delay(0.4), value: showCreateMenu)
 
+                                // Create Client - disabled in tutorial mode
                                 FloatingActionItem(
                                     icon: OPSStyle.Icons.client,
                                     label: "Create Client",
@@ -98,6 +107,8 @@ struct FloatingActionMenu: View {
                                 .offset(x: -10) // Center 48pt icon over 64pt main button
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                                 .animation(.easeInOut(duration: 0.3).delay(0.2), value: showCreateMenu)
+                                .opacity(tutorialMode ? 0.4 : 1.0)
+                                .allowsHitTesting(!tutorialMode)
                             }
 
                             // Main plus button

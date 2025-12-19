@@ -66,7 +66,7 @@ class MonthGridCache: ObservableObject {
 
     private let calendar = Calendar.current
 
-    func loadEvents(from dataController: DataController, viewModel: CalendarViewModel) {
+    func loadEvents(from dataController: DataController, viewModel: CalendarViewModel, tutorialMode: Bool = false) {
         isLoading = true
 
         Task { @MainActor in
@@ -75,7 +75,12 @@ class MonthGridCache: ObservableObject {
             let oneYearAgo = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
 
             // Task-only scheduling migration: active property removed
-            let allEvents = dataController.getAllCalendarEvents(from: oneYearAgo)
+            var allEvents = dataController.getAllCalendarEvents(from: oneYearAgo)
+
+            // Tutorial mode only shows demo events
+            if tutorialMode {
+                allEvents = allEvents.filter { $0.id.hasPrefix("DEMO_") }
+            }
 
             let filteredEvents = viewModel.applyEventFilters(to: allEvents)
 
@@ -163,6 +168,7 @@ struct MonthGridView: View {
     @State private var isProgrammaticScroll = false
     @State private var updateWorkItem: DispatchWorkItem?
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.tutorialMode) private var tutorialMode
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     private let weekdayLabels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
@@ -493,7 +499,7 @@ struct MonthGridView: View {
             }
             .onAppear {
                 if let dataController = viewModel.dataController {
-                    cache.loadEvents(from: dataController, viewModel: viewModel)
+                    cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
                 }
 
                 if !hasScrolledToCurrentMonth {
@@ -536,22 +542,22 @@ struct MonthGridView: View {
             }
             .onChange(of: viewModel.selectedTeamMemberIds) { _, _ in
                 if let dataController = viewModel.dataController {
-                    cache.loadEvents(from: dataController, viewModel: viewModel)
+                    cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
                 }
             }
             .onChange(of: viewModel.selectedTaskTypeIds) { _, _ in
                 if let dataController = viewModel.dataController {
-                    cache.loadEvents(from: dataController, viewModel: viewModel)
+                    cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
                 }
             }
             .onChange(of: viewModel.selectedClientIds) { _, _ in
                 if let dataController = viewModel.dataController {
-                    cache.loadEvents(from: dataController, viewModel: viewModel)
+                    cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
                 }
             }
             .onChange(of: dataController.calendarEventsDidChange) { _, _ in
                 if let dataController = viewModel.dataController {
-                    cache.loadEvents(from: dataController, viewModel: viewModel)
+                    cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
                 }
             }
             .sheet(item: $sheetDate) { identifiableDate in

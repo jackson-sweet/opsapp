@@ -14,6 +14,7 @@ struct JobBoardDashboard: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.tutorialMode) private var tutorialMode
     @Query private var allProjects: [Project]
     @State private var draggedProject: Project? = nil
     @State private var isDragging = false
@@ -413,6 +414,11 @@ struct JobBoardDashboard: View {
 
     private func projectsForStatus(_ status: Status) -> [Project] {
         var filteredProjects = allProjects.filter { $0.status == status }
+
+        // Tutorial mode only shows demo projects
+        if tutorialMode {
+            filteredProjects = filteredProjects.filter { $0.id.hasPrefix("DEMO_") }
+        }
 
         // Field crew only sees projects they're assigned to
         if let currentUser = dataController.currentUser, currentUser.role == .fieldCrew {

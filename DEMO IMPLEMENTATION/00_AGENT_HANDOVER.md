@@ -1,6 +1,6 @@
 # AGENT HANDOVER DOCUMENT
 **Last Updated:** Dec 18, 2025
-**Current Phase:** Phase 1 Complete - Foundation Built
+**Current Phase:** Phase 2 Complete - Data Layer Built
 **Branch:** `feature/interactive-tutorial-system`
 
 ---
@@ -42,16 +42,24 @@
   - Built `DemoTaskTypes.swift` - 12 task types with colors and icons
   - Built `DemoProjects.swift` - 15 projects with 36 tasks, date calculator
   - Build verified successful
+- [x] **Phase 2: Data Layer** - COMPLETE
+  - Built `TutorialDemoDataManager.swift` - Full seeding and cleanup implementation
+  - Implemented `seedAllDemoData()` - Seeds TaskTypes, Users, Clients, Projects (with Tasks and CalendarEvents)
+  - Implemented `cleanupAllDemoData()` - Deletes all DEMO_ prefixed entities in correct order
+  - Implemented `assignCurrentUserToTasks(userId:)` - For employee flow assignment
+  - Utility methods: `hasDemoData()`, `getDemoDataCounts()` for debugging
+  - SwiftData predicates use `starts(with:)` for DEMO_ prefix matching
+  - Build verified successful
 
 ### In Progress
 - [ ] Nothing currently in progress
 
-### Next Steps (Phase 2 - Data Layer)
-1. Build `TutorialDemoDataManager.swift` - Seeding and cleanup logic
-   - Seed all demo entities to SwiftData
-   - Create relationships between entities
-   - Compute task/project statuses from dates
-   - Cleanup all demo data on tutorial exit
+### Next Steps (Phase 3 - UI Components)
+1. Build `TutorialContainerView.swift` - 80% scaled container with touch passthrough
+2. Build `TutorialOverlayView.swift` - Dark overlay with animated cutout
+3. Build `TutorialTooltipView.swift` - Tooltip using TypewriterText animation
+4. Build `TutorialSwipeIndicator.swift` - Shimmer animation for swipe hints
+5. Build `TutorialCompletionView.swift` - Completion screen with stats
 
 See `06_IMPLEMENTATION_SEQUENCE.md` for complete build order.
 
@@ -102,6 +110,29 @@ OPS/Onboarding/Components/TypewriterText.swift - Existing animation component
 - **SwipeDirection:** The codebase has an existing `SwipeDirection` enum in `UniversalJobBoardCard.swift`
 - Tutorial uses `TutorialSwipeDirection` to avoid ambiguity
 - Located in `OPS/Tutorial/State/TutorialPhase.swift`
+
+### SwiftData Predicate Syntax - IMPORTANT
+- SwiftData `#Predicate` does NOT support `hasPrefix()` - use `starts(with:)` instead
+- Enum values CANNOT be used directly in predicates - capture in local variable first
+- Example:
+  ```swift
+  let demoPrefix = "DEMO_"
+  let inProgressStatus = TaskStatus.inProgress
+  let descriptor = FetchDescriptor<ProjectTask>(
+      predicate: #Predicate { $0.id.starts(with: demoPrefix) && $0.status == inProgressStatus }
+  )
+  ```
+
+### Avatar Loading for Demo Users
+- Demo user avatars are loaded from asset catalog and stored as `profileImageData`
+- Asset names: `pete`, `nick`, `tom`, `mike`, `rick` (in `Assets.xcassets/Images/Demo/`)
+- Do NOT use `profileImageURL` for asset names - `UserAvatar` expects valid URLs
+- The `seedUsers()` method converts UIImage assets to JPEG Data
+
+### Employee Task Assignment
+- `assignCurrentUserToTasks()` intentionally limits to 3 tasks per tutorial spec
+- Employee flow only demonstrates 2-3 task interactions
+- This is NOT a bug - it's the designed tutorial experience
 
 ---
 
@@ -185,3 +216,4 @@ When you finish work:
 | `OPS/Tutorial/Data/DemoClients.swift` | 5 clients with addresses |
 | `OPS/Tutorial/Data/DemoTaskTypes.swift` | 12 task types with colors/icons |
 | `OPS/Tutorial/Data/DemoProjects.swift` | 15 projects with 36 tasks |
+| `OPS/Tutorial/Data/TutorialDemoDataManager.swift` | SwiftData seeding/cleanup manager |

@@ -230,6 +230,10 @@ class OnboardingManager: ObservableObject {
         case .ready:
             // Can't go back from ready
             break
+
+        case .tutorial:
+            // Can't go back from tutorial
+            break
         }
     }
 
@@ -281,6 +285,24 @@ class OnboardingManager: ObservableObject {
             goToScreen(.ready)
 
         case .ready:
+            // Check if user needs to complete tutorial
+            // For new users, always show tutorial (hasCompletedAppTutorial defaults to false)
+            let user = dataController.currentUser
+            let hasCompletedTutorial = user?.hasCompletedAppTutorial ?? false
+
+            print("[ONBOARDING_MANAGER] Ready screen - checking tutorial status:")
+            print("[ONBOARDING_MANAGER]   - currentUser exists: \(user != nil)")
+            print("[ONBOARDING_MANAGER]   - hasCompletedAppTutorial: \(hasCompletedTutorial)")
+
+            if !hasCompletedTutorial {
+                print("[ONBOARDING_MANAGER]   -> Navigating to tutorial")
+                goToScreen(.tutorial)
+            } else {
+                print("[ONBOARDING_MANAGER]   -> Skipping tutorial, completing onboarding")
+                completeOnboarding()
+            }
+
+        case .tutorial:
             completeOnboarding()
         }
     }

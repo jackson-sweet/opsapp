@@ -288,7 +288,15 @@ struct HomeView: View {
     }
     
     private func startProject(_ project: Project) {
-        
+
+        // Tutorial mode: notify project tapped/started
+        if tutorialMode {
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialProjectTapped"),
+                object: nil
+            )
+        }
+
         // Enter project mode
         appState.enterProjectMode(projectID: project.id)
         showStartConfirmation = false

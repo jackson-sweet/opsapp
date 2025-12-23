@@ -33,6 +33,7 @@ struct ProjectFormSheet: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
     @Query private var allClients: [Client]
     @Query private var allTeamMembers: [TeamMember]
     @Query private var allTaskTypes: [TaskType]
@@ -126,7 +127,10 @@ struct ProjectFormSheet: View {
     @State private var tempNotes: String = ""
     @State private var tempDescription: String = ""
 
-    enum FormField: Hashable {
+    // Tutorial highlight animation state
+    @State private var tutorialHighlightPulse: Bool = false
+
+    enum FormField: Hashable, CaseIterable {
         case client
         case title
         case address
@@ -134,11 +138,35 @@ struct ProjectFormSheet: View {
         case description
     }
 
+    /// Advances focus to the next field, or dismisses keyboard if at the last field
+    private func advanceToNextField() {
+        guard let current = focusedField else {
+            focusedField = nil
+            return
+        }
+
+        let allFields = FormField.allCases
+        if let currentIndex = allFields.firstIndex(of: current) {
+            let nextIndex = currentIndex + 1
+            if nextIndex < allFields.count {
+                focusedField = allFields[nextIndex]
+            } else {
+                focusedField = nil // Dismiss keyboard at last field
+            }
+        } else {
+            focusedField = nil
+        }
+    }
+
     private var isValid: Bool {
         !title.isEmpty && selectedClientId != nil
     }
 
     private var matchingClients: [Client] {
+        // In tutorial mode, show all demo clients when text is empty for easy selection
+        if tutorialMode && clientSearchText.isEmpty {
+            return availableClients
+        }
         guard !clientSearchText.isEmpty else { return [] }
         return availableClients.filter {
             $0.name.localizedCaseInsensitiveContains(clientSearchText)
@@ -160,6 +188,56 @@ struct ProjectFormSheet: View {
         if !notes.isEmpty { fields.insert("notes") }
         if !localTasks.isEmpty { fields.insert("tasks") }
         return fields
+    }
+
+    // MARK: - Tutorial Phase Control
+
+    /// Whether client field is enabled for current tutorial phase
+    private var isClientFieldEnabled: Bool {
+        guard tutorialMode else { return true }
+        return tutorialPhase == .projectFormClient
+    }
+
+    /// Whether project name field is enabled for current tutorial phase
+    private var isNameFieldEnabled: Bool {
+        guard tutorialMode else { return true }
+        return tutorialPhase == .projectFormName
+    }
+
+    /// Whether add task button is enabled for current tutorial phase
+    private var isAddTaskEnabled: Bool {
+        guard tutorialMode else { return true }
+        return tutorialPhase == .projectFormAddTask
+    }
+
+    /// Whether CREATE button is enabled for current tutorial phase
+    private var isCreateButtonEnabled: Bool {
+        guard tutorialMode else { return true }
+        return tutorialPhase == .projectFormComplete
+    }
+
+    /// Tutorial highlight state for client field
+    private var clientHighlight: TutorialInputHighlight {
+        let isHighlighted = tutorialMode && tutorialPhase == .projectFormClient
+        return TutorialInputHighlight(isHighlighted: isHighlighted, animatePulse: tutorialHighlightPulse)
+    }
+
+    /// Tutorial highlight state for title field
+    private var titleHighlight: TutorialInputHighlight {
+        let isHighlighted = tutorialMode && tutorialPhase == .projectFormName
+        return TutorialInputHighlight(isHighlighted: isHighlighted, animatePulse: tutorialHighlightPulse)
+    }
+
+    /// Tutorial highlight state for add tasks pill
+    private var addTasksPillHighlight: TutorialInputHighlight {
+        let isHighlighted = tutorialMode && tutorialPhase == .projectFormAddTask && !isTasksExpanded
+        return TutorialInputHighlight(isHighlighted: isHighlighted, animatePulse: tutorialHighlightPulse)
+    }
+
+    /// Tutorial highlight state for add task button (inside expanded section)
+    private var addTaskButtonHighlight: TutorialInputHighlight {
+        let isHighlighted = tutorialMode && tutorialPhase == .projectFormAddTask && isTasksExpanded
+        return TutorialInputHighlight(isHighlighted: isHighlighted, animatePulse: tutorialHighlightPulse)
     }
 
     init(mode: Mode, preselectedClient: Client? = nil, onSave: @escaping (Project) -> Void) {
@@ -213,62 +291,127 @@ struct ProjectFormSheet: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                OPSStyle.Colors.background
-                    .ignoresSafeArea()
+        // Tutorial mode uses custom header since NavigationView toolbar doesn't render in custom containers
+        if tutorialMode {
+            tutorialModeProjectContent
+        } else {
+            standardProjectContent
+        }
+    }
 
-                ScrollView {
-                    ScrollViewReader { proxy in
-                        VStack(spacing: 24) {
-                            // PREVIEW CARD
-                            previewCard
+    /// Content with custom header for tutorial mode
+    private var tutorialModeProjectContent: some View {
+        ZStack {
+            VStack(spacing: 0) {
+                // Extra padding to push nav bar below tooltip during projectFormComplete phase
+                if tutorialMode && tutorialPhase == .projectFormComplete {
+                    Color.clear
+                        .frame(height: 90)
+                }
 
-                            // MANDATORY FIELDS (always visible)
-                            mandatoryFieldsSection
+                // Custom navigation bar for tutorial mode
+                HStack {
+                    Button("CANCEL") {
+                        // Cancel is disabled in tutorial mode
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .allowsHitTesting(false)
+                    .opacity(0.5)
 
-                            // OPTIONAL SECTIONS
-                            optionalSectionsArea
-                                .onChange(of: sectionOrder) { _, _ in
-                                    // Scroll to the first section in the order (most recently opened)
-                                    if let firstSection = sectionOrder.first {
-                                        // Small delay to allow expansion animation to complete
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                            withAnimation {
-                                                proxy.scrollTo(firstSection, anchor: .top)
-                                            }
-                                        }
-                                    }
-                                }
+                    Spacer()
 
-                        // COPY FROM BUTTON (at bottom)
-                        if mode.isCreate {
-                            Button(action: { showingCopyFromProject = true }) {
-                                HStack {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text(mode.isCreate ? "CREATE PROJECT" : "EDIT PROJECT")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                    Text("COPY FROM PROJECT")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
-                                )
+                    Spacer()
+
+                    Button("CREATE") {
+                        saveProject()
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(isValid && isCreateButtonEnabled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .disabled(!isValid || isSaving || !isCreateButtonEnabled)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .tutorialHighlight(for: .projectFormComplete, cornerRadius: 6)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(OPSStyle.Colors.background)
+
+                // Divider
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 1)
+
+                mainProjectContent
+                    .overlay(
+                        Group {
+                            if tutorialMode && tutorialPhase == .projectFormComplete {
+                                Color.black.opacity(0.6)
+                                    .allowsHitTesting(true)
                             }
                         }
-                    }
-                    .padding()
-                    .padding(.bottom, 24)
-                    }
+                    )
+            }
+
+            // Radial gradient overlay centered on CREATE button for visibility
+            if tutorialMode && tutorialPhase == .projectFormComplete {
+                RadialGradient(
+                    gradient: Gradient(colors: [.clear, Color.black.opacity(0.6)]),
+                    center: UnitPoint(x: 0.85, y: 0.12),
+                    startRadius: 60,
+                    endRadius: 350
+                )
+                .allowsHitTesting(false)
+                .ignoresSafeArea()
+            }
+        }
+        .sheet(isPresented: $showingCreateClient) {
+            ClientSheet(mode: .create, prefilledName: clientSearchText) { newClient in
+                selectedClientId = newClient.id
+                clientSearchText = newClient.name
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialTaskSaved"))) { notification in
+            if tutorialMode, let task = notification.userInfo?["task"] as? LocalTask {
+                localTasks.append(task)
+            }
+        }
+        .onAppear {
+            // Tutorial mode: auto-set status to estimated
+            if tutorialMode && mode.isCreate {
+                selectedStatus = .estimated
+                // Do NOT auto-expand tasks section - user must tap the pill
+                isTasksExpanded = false
+                // Do NOT auto-focus client field - let user tap to focus
+                // Start pulse animation for highlights
+                withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
+                    tutorialHighlightPulse = true
                 }
             }
+        }
+        .onChange(of: tutorialPhase) { _, newPhase in
+            // Only auto-focus on phase change to project name (after client selection)
+            // Client field should NOT be auto-focused - user taps to focus
+            if tutorialMode {
+                switch newPhase {
+                case .projectFormName:
+                    focusedField = .title
+                default:
+                    break
+                }
+            }
+        }
+        .loadingOverlay(isPresented: $isSaving, message: "Saving...")
+    }
+
+    /// Standard content with NavigationView
+    private var standardProjectContent: some View {
+        NavigationView {
+            mainProjectContent
             .standardSheetToolbar(
                 title: mode.isCreate ? "Create Project" : "Edit Project",
                 actionText: mode.isCreate ? "Create" : "Save",
@@ -293,45 +436,114 @@ struct ProjectFormSheet: View {
                     currentStartDate: start,
                     currentEndDate: end,
                     onScheduleUpdate: { newStart, newEnd in
-                        self.startDate = newStart
-                        self.endDate = newEnd
+                        startDate = newStart
+                        endDate = newEnd
                     }
                 )
                 .environmentObject(dataController)
             }
         }
-        .sheet(isPresented: $showingCopyFromProject) {
-            CopyFromProjectSheet(
-                onCopy: handleCopyFromProject,
-                populatedFields: populatedFields
-            )
+        .sheet(isPresented: $showingTaskForm) {
+            TaskFormSheet(draftMode: editingTaskIndex != nil ?
+                .draft(localTasks[editingTaskIndex!]) :
+                .draft(nil)
+            ) { savedTask in
+                if let editIndex = editingTaskIndex {
+                    localTasks[editIndex] = savedTask
+                } else {
+                    localTasks.append(savedTask)
+                }
+                editingTaskIndex = nil
+            }
             .environmentObject(dataController)
         }
-        .sheet(isPresented: $showingTaskForm) {
-            TaskFormSheet(
-                draftMode: editingTaskIndex != nil ? .editDraft(localTasks[editingTaskIndex!]) : .draft(nil),
-                onSaveDraft: { task in
-                    if let editingIndex = editingTaskIndex {
-                        localTasks[editingIndex] = task
-                        editingTaskIndex = nil
-                    } else {
-                        localTasks.append(task)
-                    }
-                }
-            )
-            .environmentObject(dataController)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialTaskSaved"))) { notification in
+            if tutorialMode, let task = notification.userInfo?["task"] as? LocalTask {
+                localTasks.append(task)
+            }
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text(errorMessage ?? "An error occurred")
-        }
-        .onAppear {
-            if mode.isCreate {
-                selectedStatus = defaultProjectStatus
-            }
+            Text(errorMessage ?? "An unknown error occurred")
         }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
+    }
+
+    /// Main scrollable content
+    private var mainProjectContent: some View {
+        ZStack {
+            OPSStyle.Colors.background
+                .ignoresSafeArea()
+
+            ScrollView {
+                    ScrollViewReader { proxy in
+                        VStack(spacing: 24) {
+                            // PREVIEW CARD (greyed out in tutorial mode to reduce distraction)
+                            previewCard
+                                .opacity(tutorialMode ? 0.3 : 1.0)
+                                .allowsHitTesting(false)
+
+                            // MANDATORY FIELDS (always visible)
+                            mandatoryFieldsSection
+
+                            // OPTIONAL SECTIONS
+                            optionalSectionsArea
+                                .onChange(of: sectionOrder) { _, _ in
+                                    // Scroll to the first section in the order (most recently opened)
+                                    if let firstSection = sectionOrder.first {
+                                        // Small delay to allow expansion animation to complete
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            withAnimation {
+                                                proxy.scrollTo(firstSection, anchor: .top)
+                                            }
+                                        }
+                                    }
+                                }
+
+                        // COPY FROM BUTTON (at bottom) - disabled in tutorial mode
+                        if mode.isCreate && !tutorialMode {
+                            Button(action: { showingCopyFromProject = true }) {
+                                HStack {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                    Text("COPY FROM PROJECT")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
+                                )
+                            }
+                        }
+                    }
+                    .padding()
+                    .padding(.bottom, 24)
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button {
+                    advanceToNextField()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Enter")
+                        Image(systemName: "return")
+                    }
+                }
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+        }
     }
 
     // MARK: - Mandatory Fields Section
@@ -344,12 +556,19 @@ struct ProjectFormSheet: View {
                     title: "PROJECT DETAILS",
                     icon: "doc.text",
                     isExpanded: $isBasicInfoExpanded,
-                    onDelete: nil // Can't delete mandatory section
+                    onDelete: nil, // Can't delete mandatory section
+                    collapsible: false // Never show collapse chevron for mandatory section
                 ) {
                     VStack(spacing: 16) {
                         clientField
+                            .allowsHitTesting(isClientFieldEnabled)
+                            .opacity(tutorialMode && !isClientFieldEnabled ? 0.5 : 1.0)
                         titleField
+                            .allowsHitTesting(isNameFieldEnabled)
+                            .opacity(tutorialMode && !isNameFieldEnabled ? 0.5 : 1.0)
                         statusField
+                            .allowsHitTesting(!tutorialMode) // Always disabled in tutorial
+                            .opacity(tutorialMode ? 0.5 : 1.0)
                     }
                 }
             }
@@ -360,7 +579,8 @@ struct ProjectFormSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("CLIENT")
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .foregroundColor(clientHighlight.labelColor)
+                .modifier(TutorialPulseModifier(isHighlighted: clientHighlight.isHighlighted))
 
             if let selectedClient = selectedClient {
                 selectedClientCard
@@ -386,12 +606,15 @@ struct ProjectFormSheet: View {
 
             Spacer()
 
-            Button(action: {
-                selectedClientId = nil
-                clientSearchText = ""
-            }) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            // Hide clear button in tutorial mode - prevents undoing client selection
+            if !tutorialMode {
+                Button(action: {
+                    selectedClientId = nil
+                    clientSearchText = ""
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
             }
         }
         .padding(.vertical, 12)
@@ -432,14 +655,16 @@ struct ProjectFormSheet: View {
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(
-                        focusedField == .client ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                        lineWidth: 1
+                        clientHighlight.isHighlighted ? clientHighlight.borderColor : (focusedField == .client ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
+                        lineWidth: clientHighlight.isHighlighted ? 2 : 1
                     )
+                    .modifier(TutorialPulseModifier(isHighlighted: clientHighlight.isHighlighted))
             )
 
-            if !clientSearchText.isEmpty {
+            // Show suggestions when input is focused and (text is not empty OR in tutorial mode during client phase)
+            if focusedField == .client && (!clientSearchText.isEmpty || (tutorialMode && tutorialPhase == .projectFormClient)) {
                 VStack(spacing: 0) {
-                    if matchingClients.isEmpty {
+                    if matchingClients.isEmpty && !tutorialMode {
                         Button(action: { showingCreateClient = true }) {
                             HStack {
                                 Image(systemName: "plus.circle.fill")
@@ -457,6 +682,13 @@ struct ProjectFormSheet: View {
                             Button(action: {
                                 selectedClientId = client.id
                                 clientSearchText = client.name
+                                // Tutorial mode: notify client selected
+                                if tutorialMode {
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("TutorialClientSelected"),
+                                        object: nil
+                                    )
+                                }
                             }) {
                                 HStack {
                                     Text(client.name)
@@ -490,7 +722,8 @@ struct ProjectFormSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("PROJECT NAME")
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .foregroundColor(titleHighlight.labelColor)
+                .modifier(TutorialPulseModifier(isHighlighted: titleHighlight.isHighlighted))
 
             TextField("Enter project name", text: $title)
                 .font(OPSStyle.Typography.body)
@@ -505,10 +738,24 @@ struct ProjectFormSheet: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
-                            focusedField == .title ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                            lineWidth: 1
+                            titleHighlight.isHighlighted ? titleHighlight.borderColor : (focusedField == .title ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
+                            lineWidth: titleHighlight.isHighlighted ? 2 : 1
                         )
+                        .modifier(TutorialPulseModifier(isHighlighted: titleHighlight.isHighlighted))
                 )
+                .onChange(of: title) { _, newValue in
+                    // Tutorial mode: notify project name entered when user types AND keyboard is dismissed
+                    // We'll send the notification on keyboard dismiss instead
+                }
+                .onSubmit {
+                    // Tutorial mode: notify project name entered when keyboard is dismissed via return key
+                    if tutorialMode && !title.isEmpty {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("TutorialProjectNameEntered"),
+                            object: nil
+                        )
+                    }
+                }
         }
     }
 
@@ -575,38 +822,47 @@ struct ProjectFormSheet: View {
     private var optionalSectionsArea: some View {
         VStack(spacing: 16) {
             // Collapsed pills for unexpanded sections
-            OptionalSectionPillGroup(pills: [
-                (title: "SITE ADDRESS", icon: "mappin.circle", isExpanded: isAddressExpanded, action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        bringSectionToTop(.address)
-                        isAddressExpanded = true
-                    }
-                }),
-                (title: "DESCRIPTION", icon: "text.alignleft", isExpanded: isDescriptionExpanded, action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        bringSectionToTop(.description)
-                        isDescriptionExpanded = true
-                    }
-                }),
-                (title: "NOTES", icon: "note.text", isExpanded: isNotesExpanded, action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        bringSectionToTop(.notes)
-                        isNotesExpanded = true
-                    }
-                }),
-                (title: "ADD TASKS", icon: "checklist", isExpanded: isTasksExpanded, action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        bringSectionToTop(.tasks)
-                        isTasksExpanded = true
-                    }
-                }),
-                (title: "PHOTOS", icon: "photo", isExpanded: isPhotosExpanded, action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        bringSectionToTop(.photos)
-                        isPhotosExpanded = true
-                    }
-                })
-            ])
+            // In tutorial mode, all pills except ADD TASKS are disabled
+            OptionalSectionPillGroup(
+                pills: [
+                    (title: "SITE ADDRESS", icon: "mappin.circle", isExpanded: isAddressExpanded,
+                     isDisabled: tutorialMode, isHighlighted: false, action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            bringSectionToTop(.address)
+                            isAddressExpanded = true
+                        }
+                    }),
+                    (title: "DESCRIPTION", icon: "text.alignleft", isExpanded: isDescriptionExpanded,
+                     isDisabled: tutorialMode, isHighlighted: false, action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            bringSectionToTop(.description)
+                            isDescriptionExpanded = true
+                        }
+                    }),
+                    (title: "NOTES", icon: "note.text", isExpanded: isNotesExpanded,
+                     isDisabled: tutorialMode, isHighlighted: false, action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            bringSectionToTop(.notes)
+                            isNotesExpanded = true
+                        }
+                    }),
+                    (title: "ADD TASKS", icon: "checklist", isExpanded: isTasksExpanded,
+                     isDisabled: tutorialMode && !isAddTaskEnabled, isHighlighted: addTasksPillHighlight.isHighlighted, action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            bringSectionToTop(.tasks)
+                            isTasksExpanded = true
+                        }
+                    }),
+                    (title: "PHOTOS", icon: "photo", isExpanded: isPhotosExpanded,
+                     isDisabled: tutorialMode, isHighlighted: false, action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            bringSectionToTop(.photos)
+                            isPhotosExpanded = true
+                        }
+                    })
+                ],
+                highlightPulse: tutorialHighlightPulse
+            )
 
             // Expanded sections - displayed in dynamic order
             ForEach(sectionOrder, id: \.self) { section in
@@ -841,7 +1097,15 @@ struct ProjectFormSheet: View {
 
                 Button(action: {
                     editingTaskIndex = nil
-                    showingTaskForm = true
+                    // Tutorial mode: post notification for wrapper to show inline sheet
+                    if tutorialMode {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("TutorialAddTaskTapped"),
+                            object: nil
+                        )
+                    } else {
+                        showingTaskForm = true
+                    }
                 }) {
                     HStack {
                         Image(systemName: "plus.circle.fill")
@@ -849,7 +1113,8 @@ struct ProjectFormSheet: View {
                         Text(localTasks.isEmpty ? "Add Task" : "Add Another Task")
                             .font(OPSStyle.Typography.body)
                     }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(addTaskButtonHighlight.isHighlighted ? addTaskButtonHighlight.labelColor : OPSStyle.Colors.primaryAccent)
+                    .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 16)
@@ -857,10 +1122,15 @@ struct ProjectFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(style: StrokeStyle(lineWidth: 2, dash: [5]))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.3))
+                            .stroke(
+                                addTaskButtonHighlight.isHighlighted ? addTaskButtonHighlight.borderColor : OPSStyle.Colors.primaryAccent.opacity(0.3),
+                                style: addTaskButtonHighlight.isHighlighted ? StrokeStyle(lineWidth: 2) : StrokeStyle(lineWidth: 2, dash: [5])
+                            )
+                            .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
                     )
                 }
+                .allowsHitTesting(isAddTaskEnabled)
+                .opacity(tutorialMode && !isAddTaskEnabled ? 0.5 : 1.0)
             }
         }
     }
@@ -1242,6 +1512,15 @@ struct ProjectFormSheet: View {
                         )
                     }
 
+                    // Tutorial mode: notify project form complete with project ID for cleanup
+                    if tutorialMode {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("TutorialProjectFormComplete"),
+                            object: nil,
+                            userInfo: ["projectId": project.id]
+                        )
+                    }
+
                     onSave(project)
 
                     // Brief delay for graceful dismissal
@@ -1273,7 +1552,8 @@ struct ProjectFormSheet: View {
             throw ProjectError.missingRequiredFields
         }
 
-        let projectId = UUID().uuidString
+        // Use DEMO_ prefix in tutorial mode for cleanup
+        let projectId = tutorialMode ? "DEMO_PROJECT_\(UUID().uuidString)" : UUID().uuidString
         print("[PROJECT_CREATE] Creating project locally with ID: \(projectId)")
 
         let project = Project(
@@ -1319,6 +1599,21 @@ struct ProjectFormSheet: View {
             client.projects.append(project)
             try? modelContext.save()
             print("[PROJECT_CREATE] ✅ Project saved locally")
+        }
+
+        // Tutorial mode: skip API calls, only save locally
+        if tutorialMode {
+            print("[PROJECT_CREATE] 📚 Tutorial mode - skipping API sync, project saved locally only")
+
+            // Create tasks locally without API sync
+            if !localTasks.isEmpty {
+                print("[PROJECT_CREATE] Creating \(localTasks.count) task(s) locally for tutorial")
+                for localTask in localTasks {
+                    await createTaskLocally(for: project, localTask: localTask)
+                }
+            }
+
+            return project
         }
 
         var savedOffline = false
@@ -1722,6 +2017,89 @@ struct ProjectFormSheet: View {
         }
 
         print("[TASK_CREATE] ✅ Task creation complete")
+    }
+
+    /// Creates a task locally without API sync (for tutorial mode)
+    private func createTaskLocally(for project: Project, localTask: LocalTask) async {
+        guard let companyId = dataController.currentUser?.companyId else {
+            print("[TASK_CREATE_LOCAL] ❌ No company ID available")
+            return
+        }
+
+        guard let taskType = allTaskTypes.first(where: { $0.id == localTask.taskTypeId }) else {
+            print("[TASK_CREATE_LOCAL] ❌ Task type not found: \(localTask.taskTypeId)")
+            return
+        }
+
+        let taskId = "DEMO_TASK_\(UUID().uuidString)"
+        print("[TASK_CREATE_LOCAL] Creating task locally with ID: \(taskId)")
+
+        let task = ProjectTask(
+            id: taskId,
+            projectId: project.id,
+            taskTypeId: localTask.taskTypeId,
+            companyId: companyId,
+            status: localTask.status,
+            taskColor: taskType.color
+        )
+
+        if let customTitle = localTask.customTitle {
+            task.customTitle = customTitle
+        }
+
+        task.project = project
+        task.taskType = taskType
+
+        // Use task-specific team members if any, otherwise inherit from project
+        if !localTask.teamMemberIds.isEmpty {
+            let taskMembers = allTeamMembers.filter { localTask.teamMemberIds.contains($0.id) }
+            task.teamMembers = taskMembers.map { member in
+                let user = User(
+                    id: member.id,
+                    firstName: member.firstName,
+                    lastName: member.lastName,
+                    role: UserRole(rawValue: member.role.lowercased()) ?? .fieldCrew,
+                    companyId: companyId
+                )
+                user.email = member.email
+                return user
+            }
+            task.setTeamMemberIds(localTask.teamMemberIds)
+        } else {
+            task.teamMembers = project.teamMembers
+            task.setTeamMemberIds(project.teamMembers.map { $0.id })
+        }
+
+        // Create calendar event for the task (local only)
+        let startDate = localTask.startDate
+        let endDate = localTask.endDate
+        let calendarEventId = "DEMO_EVENT_\(UUID().uuidString)"
+        let eventTitle = "\(project.effectiveClientName) - \(project.title)"
+
+        let calendarEvent = CalendarEvent(
+            id: calendarEventId,
+            projectId: project.id,
+            companyId: companyId,
+            title: eventTitle,
+            startDate: startDate,
+            endDate: endDate,
+            color: taskType.color
+        )
+
+        calendarEvent.taskId = taskId
+        calendarEvent.setTeamMemberIds(task.teamMembers.map { $0.id })
+        calendarEvent.teamMembers = task.teamMembers
+
+        task.calendarEvent = calendarEvent
+        task.calendarEventId = calendarEventId
+
+        await MainActor.run {
+            modelContext.insert(task)
+            modelContext.insert(calendarEvent)
+            project.tasks.append(task)
+            try? modelContext.save()
+            print("[TASK_CREATE_LOCAL] ✅ Task and calendar event saved locally (tutorial mode)")
+        }
     }
 }
 

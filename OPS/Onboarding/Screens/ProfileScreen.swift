@@ -148,8 +148,13 @@ struct ProfileScreen: View {
                                     ToolbarItemGroup(placement: .keyboard) {
                                         if isPhoneFocused {
                                             Spacer()
-                                            Button("Done") {
+                                            Button {
                                                 isPhoneFocused = false
+                                            } label: {
+                                                HStack(spacing: 4) {
+                                                    Text("Enter")
+                                                    Image(systemName: "return")
+                                                }
                                             }
                                             .font(OPSStyle.Typography.bodyBold)
                                             .foregroundColor(OPSStyle.Colors.primaryText)

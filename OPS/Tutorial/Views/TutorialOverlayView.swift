@@ -78,13 +78,11 @@ struct TutorialOverlayView: View {
 // MARK: - Animated Highlight Border
 
 /// Optional animated border around the cutout area for extra emphasis
+/// Uses a subtle glow effect instead of pulsing scale animation
 struct TutorialHighlightBorder: View {
     let cutoutFrame: CGRect
     let cornerRadius: CGFloat
     let padding: CGFloat
-
-    @State private var pulseScale: CGFloat = 1.0
-    @State private var pulseOpacity: Double = 0.6
 
     var body: some View {
         if cutoutFrame != .zero {
@@ -94,22 +92,11 @@ struct TutorialHighlightBorder: View {
                     width: cutoutFrame.width + padding * 2,
                     height: cutoutFrame.height + padding * 2
                 )
-                .scaleEffect(pulseScale)
-                .opacity(pulseOpacity)
                 .position(
                     x: cutoutFrame.midX,
                     y: cutoutFrame.midY
                 )
                 .allowsHitTesting(false)
-                .onAppear {
-                    withAnimation(
-                        .easeInOut(duration: 1.0)
-                        .repeatForever(autoreverses: true)
-                    ) {
-                        pulseScale = 1.05
-                        pulseOpacity = 1.0
-                    }
-                }
                 .animation(.easeInOut(duration: 0.3), value: cutoutFrame)
         }
     }

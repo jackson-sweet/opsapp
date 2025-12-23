@@ -11,6 +11,8 @@ import SwiftUI
 struct OnboardingContainer: View {
     @ObservedObject var manager: OnboardingManager
     @EnvironmentObject var dataController: DataController
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var locationManager: LocationManager
     var onComplete: (() -> Void)?
 
     init(manager: OnboardingManager, onComplete: (() -> Void)? = nil) {
@@ -117,6 +119,17 @@ struct OnboardingContainer: View {
 
         case .ready:
             ReadyScreen(manager: manager)
+
+        case .tutorial:
+            TutorialLauncherView(
+                flowType: TutorialLauncherView.detectFlowType(for: dataController.currentUser),
+                onComplete: {
+                    manager.goForward() // Will call completeOnboarding()
+                }
+            )
+            .environmentObject(dataController)
+            .environmentObject(appState)
+            .environmentObject(locationManager)
         }
     }
 
@@ -144,7 +157,7 @@ struct OnboardingContainer: View {
             return "Creating your company..."
         case .codeEntry:
             return "Joining crew..."
-        case .welcome, .signup, .userTypeSelection, .profile, .companyCode, .ready:
+        case .welcome, .signup, .userTypeSelection, .profile, .companyCode, .ready, .tutorial:
             return "Loading..."
         }
     }
@@ -155,8 +168,10 @@ struct OnboardingContainer: View {
 #Preview {
     let dataController = DataController()
     let manager = OnboardingManager(dataController: dataController)
+    let appState = AppState()
 
     OnboardingContainer(manager: manager)
         .environmentObject(dataController)
+        .environmentObject(appState)
         .environmentObject(SubscriptionManager.shared)
 }

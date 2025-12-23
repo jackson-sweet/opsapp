@@ -32,6 +32,9 @@ class TutorialStateManager: ObservableObject {
     /// The current tooltip text
     @Published var tooltipText: String = ""
 
+    /// The current tooltip description (optional)
+    @Published var tooltipDescription: String? = nil
+
     /// Whether to show the tooltip
     @Published var showTooltip: Bool = false
 
@@ -67,10 +70,10 @@ class TutorialStateManager: ObservableObject {
     }
 
     /// Whether to show completion time on the completion screen
-    /// Only shown if completed in under 3 minutes (180 seconds)
+    /// Only shown if completed in under 2 minutes (120 seconds)
     var showTimeInCompletion: Bool {
         guard let time = completionTime else { return false }
-        return time < 180
+        return time < 120
     }
 
     /// Current elapsed time since tutorial start
@@ -93,6 +96,11 @@ class TutorialStateManager: ObservableObject {
         startTime = Date()
         currentPhase = TutorialPhase.firstPhase(for: flowType)
         updateForCurrentPhase()
+
+        // Handle auto-advancing phases (like jobBoardIntro, homeOverview)
+        if currentPhase.autoAdvances {
+            scheduleAutoAdvance()
+        }
     }
 
     /// Advances to the next phase
@@ -102,6 +110,12 @@ class TutorialStateManager: ObservableObject {
         autoAdvanceTask = nil
 
         guard let nextPhase = currentPhase.next(for: flowType) else {
+            complete()
+            return
+        }
+
+        // If the next phase is .completed, call complete() to calculate completion time
+        if nextPhase == .completed {
             complete()
             return
         }
@@ -182,6 +196,7 @@ class TutorialStateManager: ObservableObject {
     private func updateForCurrentPhase() {
         // Update tooltip
         tooltipText = currentPhase.tooltipText
+        tooltipDescription = currentPhase.tooltipDescription
         showTooltip = !tooltipText.isEmpty
 
         // Update swipe hint

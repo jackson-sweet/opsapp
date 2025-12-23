@@ -28,8 +28,15 @@ struct ScheduleView: View {
         .publisher(for: Notification.Name("ShowCalendarTaskDetails"))
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
     @StateObject private var viewModel = CalendarViewModel()
     @State private var showDaySheet = false
+    @State private var hasPostedWeekScrollNotification = false
+    @State private var hasPostedMonthExploredNotification = false
+    @State private var hasUserScrolledInWeekView = false
+    @State private var hasUserScrolledInMonthView = false
+    @State private var hasUserPinchedInMonthView = false
     @State private var selectedProjectID: String? = nil
     @State private var selectedTaskDetail: TaskDetailInfo? = nil
     @State private var showSearchSheet = false
@@ -92,18 +99,30 @@ struct ScheduleView: View {
                 VStack(spacing: 16) {
                     // View toggle
                     CalendarToggleView(viewModel: viewModel)
-                    
-                    // Day selector
-                    CalendarDaySelector(viewModel: viewModel)
-                    
-                    // Project list - only shown in week view
-                    if viewModel.viewMode == .week {
-                        ProjectListView(viewModel: viewModel)
-                    } else {
-                        // Spacer for month view to push content up
-                        //Spacer()
+
+                    // Content below toggle with tutorial gray-out
+                    ZStack {
+                        VStack(spacing: 16) {
+                            // Day selector
+                            CalendarDaySelector(viewModel: viewModel)
+
+                            // Project list - only shown in week view
+                            if viewModel.viewMode == .week {
+                                ProjectListView(viewModel: viewModel)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            } else {
+                                // Spacer for month view to push content up
+                                //Spacer()
+                            }
+                        }
+                        .animation(.easeInOut(duration: 0.3), value: viewModel.viewMode)
+
+                        // Tutorial gray-out overlay when in calendarMonthPrompt phase
+                        if tutorialMode && tutorialPhase == .calendarMonthPrompt {
+                            Color.black.opacity(0.6)
+                                .allowsHitTesting(true)
+                        }
                     }
-                    
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 90) // Add padding for tab bar
@@ -283,6 +302,60 @@ struct ScheduleView: View {
                 .environmentObject(dataController)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        // Tutorial mode: Listen for scroll in week view
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarWeekViewScrolled"))) { _ in
+            if tutorialMode && tutorialPhase == .calendarWeek && !hasPostedWeekScrollNotification {
+                hasUserScrolledInWeekView = true
+                hasPostedWeekScrollNotification = true
+                NotificationCenter.default.post(
+                    name: Notification.Name("TutorialCalendarWeekScrolled"),
+                    object: nil
+                )
+            }
+        }
+        // Tutorial mode: post notification when view mode changes to month
+        .onChange(of: viewModel.viewMode) { _, newMode in
+            if tutorialMode && newMode == .month {
+                NotificationCenter.default.post(
+                    name: Notification.Name("TutorialCalendarMonthTapped"),
+                    object: nil
+                )
+            }
+        }
+        // Tutorial mode: Listen for scroll in month view - advance 2s after user scrolls
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarMonthViewScrolled"))) { _ in
+            if tutorialMode && tutorialPhase == .calendarMonth && !hasUserScrolledInMonthView {
+                hasUserScrolledInMonthView = true
+
+                // Wait 2 seconds after user scrolls, then advance
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    if tutorialPhase == .calendarMonth && !hasPostedMonthExploredNotification {
+                        hasPostedMonthExploredNotification = true
+                        NotificationCenter.default.post(
+                            name: Notification.Name("TutorialCalendarMonthExplored"),
+                            object: nil
+                        )
+                    }
+                }
+            }
+        }
+        // Tutorial mode: Listen for pinch in month view (also triggers advancement if they pinch first)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarMonthViewPinched"))) { _ in
+            if tutorialMode && tutorialPhase == .calendarMonth && !hasUserPinchedInMonthView {
+                hasUserPinchedInMonthView = true
+
+                // Wait 2 seconds after user pinches, then advance
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    if tutorialPhase == .calendarMonth && !hasPostedMonthExploredNotification {
+                        hasPostedMonthExploredNotification = true
+                        NotificationCenter.default.post(
+                            name: Notification.Name("TutorialCalendarMonthExplored"),
+                            object: nil
+                        )
+                    }
+                }
+            }
         }
     }
 }

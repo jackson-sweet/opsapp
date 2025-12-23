@@ -107,7 +107,8 @@ struct ReadyScreen: View {
                         }
                     } else {
                         OnboardingPrimaryButton("LET'S GO") {
-                            manager.completeOnboarding()
+                            // Use goForward() to check if tutorial is needed before completing
+                            manager.goForward()
                         }
                     }
                 }

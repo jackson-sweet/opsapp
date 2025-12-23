@@ -48,6 +48,7 @@ struct TaskFormSheet: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
     @Query private var allProjects: [Project]
     @Query private var allTaskTypes: [TaskType]
     @Query private var allTeamMembers: [TeamMember]
@@ -118,6 +119,54 @@ struct TaskFormSheet: View {
         return selectedProjectId != nil && selectedTaskTypeId != nil
     }
 
+    // MARK: - Tutorial Phase Control
+
+    /// Whether task type field is enabled for current tutorial phase
+    private var isTaskTypeFieldEnabled: Bool {
+        guard tutorialMode else { return true }
+        return tutorialPhase == .taskFormType
+    }
+
+    /// Whether crew field is enabled for current tutorial phase
+    private var isCrewFieldEnabled: Bool {
+        guard tutorialMode else { return true }
+        return tutorialPhase == .taskFormCrew
+    }
+
+    /// Whether dates field is enabled for current tutorial phase
+    private var isDatesFieldEnabled: Bool {
+        guard tutorialMode else { return true }
+        return tutorialPhase == .taskFormDate
+    }
+
+    /// Whether DONE button is enabled for current tutorial phase
+    private var isDoneButtonEnabled: Bool {
+        guard tutorialMode else { return true }
+        return tutorialPhase == .taskFormDone
+    }
+
+    // MARK: - Tutorial Highlight States
+
+    @State private var tutorialHighlightPulse: Bool = false
+
+    /// Highlight state for task type field
+    private var taskTypeHighlight: TutorialInputHighlight {
+        let isHighlighted = tutorialMode && tutorialPhase == .taskFormType
+        return TutorialInputHighlight(isHighlighted: isHighlighted, animatePulse: tutorialHighlightPulse)
+    }
+
+    /// Highlight state for crew field
+    private var crewHighlight: TutorialInputHighlight {
+        let isHighlighted = tutorialMode && tutorialPhase == .taskFormCrew
+        return TutorialInputHighlight(isHighlighted: isHighlighted, animatePulse: tutorialHighlightPulse)
+    }
+
+    /// Highlight state for dates field
+    private var datesHighlight: TutorialInputHighlight {
+        let isHighlighted = tutorialMode && tutorialPhase == .taskFormDate
+        return TutorialInputHighlight(isHighlighted: isHighlighted, animatePulse: tutorialHighlightPulse)
+    }
+
     private var selectedProject: Project? {
         guard let id = selectedProjectId else { return nil }
         return allProjects.first { $0.id == id }
@@ -181,49 +230,24 @@ struct TaskFormSheet: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                OPSStyle.Colors.background
-                    .ignoresSafeArea()
-
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Live preview card at top
-                        previewCard
-
-                        // TASK DETAILS section - ALL FIELDS IN ONE SECTION
-                        ExpandableSection(
-                            title: "TASK DETAILS",
-                            icon: "checklist",
-                            isExpanded: .constant(true),
-                            onDelete: nil
-                        ) {
-                            VStack(spacing: 16) {
-                                // Only show project field if not in draft mode
-                                if !mode.isDraft {
-                                    projectField
-                                }
-                                taskTypeField
-                                statusField
-                                teamField
-                                datesField
-                                notesField
-                            }
-                        }
-                    }
-                    .padding()
-                    .padding(.bottom, 100)
+        // Tutorial mode uses custom header since NavigationView toolbar doesn't render in custom containers
+        Group {
+            if tutorialMode {
+                tutorialModeContent
+            } else {
+                NavigationView {
+                    mainContent
+                        .standardSheetToolbar(
+                            title: mode.isCreate ? "Create Task" : "Edit Task",
+                            actionText: mode.isCreate ? "Create" : "Save",
+                            isActionEnabled: isValid,
+                            isSaving: isSaving,
+                            onCancel: { dismiss() },
+                            onAction: { saveTask() }
+                        )
+                        .interactiveDismissDisabled()
                 }
             }
-            .standardSheetToolbar(
-                title: mode.isCreate ? "Create Task" : "Edit Task",
-                actionText: mode.isCreate ? "Create" : "Save",
-                isActionEnabled: isValid,
-                isSaving: isSaving,
-                onCancel: { dismiss() },
-                onAction: { saveTask() }
-            )
-            .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showingScheduler, onDismiss: {
             // If scheduler was dismissed without confirming and dates didn't exist before, clear them
@@ -248,10 +272,19 @@ struct TaskFormSheet: View {
                             schedulerConfirmed = true  // Mark as confirmed
                             self.startDate = newStart
                             self.endDate = newEnd
+                            // Tutorial mode: notify date set
+                            if tutorialMode {
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("TutorialDateSet"),
+                                    object: nil
+                                )
+                            }
                         },
                         preselectedTeamMemberIds: selectedTeamMemberIds.isEmpty ? nil : selectedTeamMemberIds
                     )
+                    .environment(\.tutorialMode, tutorialMode)
                     .environmentObject(dataController)
+                    .interactiveDismissDisabled(tutorialMode)
                 } else if let project = selectedProject {
                     CalendarSchedulerSheet(
                         isPresented: $showingScheduler,
@@ -268,10 +301,19 @@ struct TaskFormSheet: View {
                             schedulerConfirmed = true  // Mark as confirmed
                             self.startDate = newStart
                             self.endDate = newEnd
+                            // Tutorial mode: notify date set
+                            if tutorialMode {
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("TutorialDateSet"),
+                                    object: nil
+                                )
+                            }
                         },
                         preselectedTeamMemberIds: selectedTeamMemberIds.isEmpty ? nil : selectedTeamMemberIds
                     )
+                    .environment(\.tutorialMode, tutorialMode)
                     .environmentObject(dataController)
+                    .interactiveDismissDisabled(tutorialMode)
                 }
             }
         }
@@ -301,8 +343,153 @@ struct TaskFormSheet: View {
             if let selectedProject = selectedProject {
                 projectSearchText = selectedProject.title
             }
+
+            // Tutorial mode: Start pulse animation for input highlights
+            if tutorialMode {
+                tutorialHighlightPulse = true
+            }
         }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
+    }
+
+    // MARK: - Tutorial Mode Content
+
+    /// Content wrapped with custom header for tutorial mode
+    private var tutorialModeContent: some View {
+        ZStack {
+            VStack(spacing: 0) {
+                // Extra padding to push nav bar below tooltip during taskFormDone phase
+                if tutorialMode && tutorialPhase == .taskFormDone {
+                    Color.clear
+                        .frame(height: 90)
+                }
+
+                // Custom navigation bar for tutorial mode
+                HStack {
+                    Button("CANCEL") {
+                        // Cancel is disabled in tutorial mode
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .allowsHitTesting(false)
+                    .opacity(0.5)
+
+                    Spacer()
+
+                    Text(mode.isCreate ? "CREATE TASK" : "EDIT TASK")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    Button("DONE") {
+                        saveTask()
+                    }
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(isValid && isDoneButtonEnabled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .disabled(!isValid || !isDoneButtonEnabled)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .tutorialHighlight(for: .taskFormDone, cornerRadius: 6)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(OPSStyle.Colors.background)
+
+                // Divider
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 1)
+
+                mainContent
+                    .overlay(
+                        Group {
+                            if tutorialMode && tutorialPhase == .taskFormDone {
+                                Color.black.opacity(0.6)
+                                    .allowsHitTesting(true)
+                            }
+                        }
+                    )
+            }
+
+            // Radial gradient overlay centered on DONE button for visibility
+            if tutorialMode && tutorialPhase == .taskFormDone {
+                RadialGradient(
+                    gradient: Gradient(colors: [.clear, Color.black.opacity(0.6)]),
+                    center: UnitPoint(x: 0.85, y: 0.12),
+                    startRadius: 60,
+                    endRadius: 350
+                )
+                .allowsHitTesting(false)
+                .ignoresSafeArea()
+            }
+        }
+    }
+
+    /// Main scrollable content
+    private var mainContent: some View {
+        ZStack {
+            OPSStyle.Colors.background
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Live preview card at top (greyed out in tutorial mode to reduce distraction)
+                    previewCard
+                        .opacity(tutorialMode ? 0.3 : 1.0)
+                        .allowsHitTesting(false)
+
+                    // TASK DETAILS section - ALL FIELDS IN ONE SECTION
+                    ExpandableSection(
+                        title: "TASK DETAILS",
+                        icon: "checklist",
+                        isExpanded: .constant(true),
+                        onDelete: nil
+                    ) {
+                        VStack(spacing: 16) {
+                            // Only show project field if not in draft mode
+                            if !mode.isDraft {
+                                projectField
+                                    .allowsHitTesting(!tutorialMode) // Always disabled in tutorial
+                                    .opacity(tutorialMode ? 0.5 : 1.0)
+                            }
+                            taskTypeField
+                                .allowsHitTesting(isTaskTypeFieldEnabled)
+                                .opacity(tutorialMode && !isTaskTypeFieldEnabled ? 0.5 : 1.0)
+                            statusField
+                                .allowsHitTesting(!tutorialMode) // Always disabled in tutorial
+                                .opacity(tutorialMode ? 0.5 : 1.0)
+                            teamField
+                                .allowsHitTesting(isCrewFieldEnabled)
+                                .opacity(tutorialMode && !isCrewFieldEnabled ? 0.5 : 1.0)
+                            datesField
+                                .allowsHitTesting(isDatesFieldEnabled)
+                                .opacity(tutorialMode && !isDatesFieldEnabled ? 0.5 : 1.0)
+                            notesField
+                                .allowsHitTesting(!tutorialMode) // Always disabled in tutorial
+                                .opacity(tutorialMode ? 0.5 : 1.0)
+                        }
+                    }
+                }
+                .padding()
+                .padding(.bottom, 100)
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button {
+                    focusedField = nil
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Enter")
+                        Image(systemName: "return")
+                    }
+                }
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+        }
     }
 
     // MARK: - Sections
@@ -530,11 +717,13 @@ struct TaskFormSheet: View {
             HStack {
                 Text("TASK TYPE")
                     .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .foregroundColor(taskTypeHighlight.labelColor)
+                    .modifier(TutorialPulseModifier(isHighlighted: taskTypeHighlight.isHighlighted))
 
                 Spacer()
 
                 Button(action: {
+                    guard !tutorialMode else { return } // Disabled in tutorial mode
                     showingCreateTaskType = true
                 }) {
                     HStack(spacing: 4) {
@@ -542,8 +731,10 @@ struct TaskFormSheet: View {
                         Text("NEW TYPE")
                     }
                     .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(tutorialMode ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
                 }
+                .allowsHitTesting(!tutorialMode)
+                .opacity(tutorialMode ? 0.5 : 1.0)
             }
 
             // Task type picker with colored left border
@@ -557,6 +748,13 @@ struct TaskFormSheet: View {
                     ForEach(availableTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
                         Button(action: {
                             selectedTaskTypeId = taskType.id
+                            // Tutorial mode: notify task type selected
+                            if tutorialMode {
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("TutorialTaskTypeSelected"),
+                                    object: nil
+                                )
+                            }
                         }) {
                             HStack {
                                 // Colored dot in menu
@@ -597,7 +795,8 @@ struct TaskFormSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(taskTypeHighlight.borderColor, lineWidth: taskTypeHighlight.isHighlighted ? 2 : 1)
+                    .modifier(TutorialPulseModifier(isHighlighted: taskTypeHighlight.isHighlighted))
             )
         }
     }
@@ -649,7 +848,8 @@ struct TaskFormSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("ASSIGN TEAM")
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .foregroundColor(crewHighlight.labelColor)
+                .modifier(TutorialPulseModifier(isHighlighted: crewHighlight.isHighlighted))
 
             // Team member picker showing avatars
             Button(action: {
@@ -693,7 +893,8 @@ struct TaskFormSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(crewHighlight.borderColor, lineWidth: crewHighlight.isHighlighted ? 2 : 1)
+                    .modifier(TutorialPulseModifier(isHighlighted: crewHighlight.isHighlighted))
             )
         }
         }
@@ -703,7 +904,8 @@ struct TaskFormSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("DATES")
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .foregroundColor(datesHighlight.labelColor)
+                .modifier(TutorialPulseModifier(isHighlighted: datesHighlight.isHighlighted))
 
             Button(action: {
                     // Track if dates existed before opening scheduler
@@ -754,7 +956,8 @@ struct TaskFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(datesHighlight.borderColor, lineWidth: datesHighlight.isHighlighted ? 2 : 1)
+                            .modifier(TutorialPulseModifier(isHighlighted: datesHighlight.isHighlighted))
                     )
                 }
                 // In draft mode, always enabled. In regular mode, requires project
@@ -1117,6 +1320,14 @@ struct TaskFormSheet: View {
         // Call the draft save callback
         onSaveDraft?(localTask)
 
+        // Tutorial mode: notify task form done
+        if tutorialMode {
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialTaskFormDone"),
+                object: nil
+            )
+        }
+
         // Success haptic feedback
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
@@ -1137,6 +1348,7 @@ struct TeamMemberPickerSheet: View {
     @Binding var selectedTeamMemberIds: Set<String>
     let allTeamMembers: [TeamMember]
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.tutorialMode) private var isTutorialMode
 
     var body: some View {
         NavigationView {
@@ -1152,6 +1364,13 @@ struct TeamMemberPickerSheet: View {
                                     selectedTeamMemberIds.remove(member.id)
                                 } else {
                                     selectedTeamMemberIds.insert(member.id)
+                                    // Tutorial mode: notify crew assigned
+                                    if isTutorialMode {
+                                        NotificationCenter.default.post(
+                                            name: Notification.Name("TutorialCrewAssigned"),
+                                            object: nil
+                                        )
+                                    }
                                 }
                             }) {
                                 HStack(spacing: 12) {

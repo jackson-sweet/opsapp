@@ -1,6 +1,6 @@
 # AGENT HANDOVER DOCUMENT
-**Last Updated:** Dec 18, 2025
-**Current Phase:** Phase 5 Complete - Tutorial Flow Wrappers Done
+**Last Updated:** Dec 19, 2025
+**Current Phase:** Phase 8 Complete - Phase Advancement Triggers Implemented
 **Branch:** `feature/interactive-tutorial-system`
 
 ---
@@ -19,6 +19,47 @@
 
 ---
 
+## 🚨 CRITICAL: UI REDESIGN REQUIRED
+
+### Problem Discovered During Testing
+
+The original approach used a **scaled-down phone-shaped container** (80% scale, iPhone 16 aspect ratio) to display the tutorial. During testing, we discovered critical usability issues:
+
+1. **Touch targets too small** - Scaling the UI makes buttons/controls harder to tap
+2. **Text illegible** - Scaled text is difficult to read
+3. **Cramped experience** - Doesn't feel like the real app
+4. **Sheet presentation issues** - iOS sheets escape the container (fixed with custom overlay, but adds complexity)
+
+### New Approach: Full-Screen Tutorial
+
+**Decision:** Display the tutorial at **full screen with floating overlays** instead of in a scaled container.
+
+**How it works:**
+- App UI displays at **native full-screen size** (no scaling)
+- **Dark overlay with spotlight cutout** highlights current target element
+- **Floating tooltip card** appears at bottom of screen
+- Same tutorial flow logic, just different presentation layer
+
+**Benefits:**
+- Normal touch targets (same as production app)
+- Legible text (no scaling)
+- Natural feel (user learns the real UI)
+- Simpler code (no container/scaling complexity)
+- Native sheets work normally
+
+### Implementation Changes Required
+
+| Component | Current State | Required Change |
+|-----------|---------------|-----------------|
+| `TutorialContainerView.swift` | iPhone-shaped scaled container | **DELETE or repurpose** - no longer needed |
+| `TutorialCreatorFlowWrapper.swift` | Wraps content in container | Show content full-screen with overlay |
+| `TutorialEmployeeFlowWrapper.swift` | Wraps content in container | Show content full-screen with overlay |
+| `TutorialSpotlight` | Works correctly | Keep as-is |
+| `TutorialTooltipCard` | Works correctly | Keep as-is, position at screen bottom |
+| `TutorialSheetOverlay.swift` | Custom sheet in container | May not be needed if using native sheets |
+
+---
+
 ## CURRENT STATUS
 
 ### Completed
@@ -27,84 +68,111 @@
 - [x] Codebase audit completed
 - [x] Technical implementation guides created (6 documents)
 - [x] **Phase 0: Model Updates** - `hasCompletedAppTutorial` field added
-  - `User.swift` - Added property
-  - `BubbleFields.User` - Added constant
-  - `UserDTO.swift` - Added field, coding key, and mapping
-  - Build verified successful
-- [x] **Phase 1: Foundation** - COMPLETE
-  - Created `OPS/Tutorial/` folder structure (Environment, State, Data, Views, Flows, Wrappers)
-  - Built `TutorialEnvironment.swift` - Environment keys for tutorialMode, tutorialPhase, tutorialStateManager
-  - Built `TutorialPhase.swift` - Phase enum with 28 phases, tooltip text, flow navigation
-  - Built `TutorialStateManager.swift` - ObservableObject state manager with timing, haptics
-  - Built `DemoIDs.swift` - All DEMO_ prefix ID constants
-  - Built `DemoTeamMembers.swift` - 5 team members with specializations
-  - Built `DemoClients.swift` - 5 clients with addresses and coordinates
-  - Built `DemoTaskTypes.swift` - 12 task types with colors and icons
-  - Built `DemoProjects.swift` - 15 projects with 36 tasks, date calculator
-  - Build verified successful
-- [x] **Phase 2: Data Layer** - COMPLETE
-  - Built `TutorialDemoDataManager.swift` - Full seeding and cleanup implementation
-  - Implemented `seedAllDemoData()` - Seeds TaskTypes, Users, Clients, Projects (with Tasks and CalendarEvents)
-  - Implemented `cleanupAllDemoData()` - Deletes all DEMO_ prefixed entities in correct order
-  - Implemented `assignCurrentUserToTasks(userId:)` - For employee flow assignment
-  - Utility methods: `hasDemoData()`, `getDemoDataCounts()` for debugging
-  - SwiftData predicates use `starts(with:)` for DEMO_ prefix matching
-  - Build verified successful
-- [x] **Phase 3: UI Components** - COMPLETE
-  - Built `TutorialContainerView.swift` - 80% scaled container with touch passthrough
-  - Built `TutorialOverlayView.swift` - Dark overlay with animated cutout + TutorialSpotlight + TutorialHighlightBorder
-  - Built `TutorialTooltipView.swift` - Tooltip using TypewriterText animation + PositionedTooltip + TutorialTooltipCard
-  - Built `TutorialSwipeIndicator.swift` - Shimmer animation with directional arrows
-  - Built `TutorialCompletionView.swift` - Completion screen with conditional time display
-  - Built `PreferenceKeys.swift` - Frame capture utilities with TutorialFrameCoordinator
-  - Note: TutorialHaptics is embedded in TutorialStateManager.swift (no separate file needed)
-  - Build verified successful
-- [x] **Phase 4: View Modifications** - COMPLETE
-  - Modified `JobBoardDashboard.swift` - Added tutorialMode environment, filters to DEMO_ projects
-  - Modified `ProjectFormSheet.swift` - Added tutorialMode, availableClients/availableTeamMembers filter DEMO_ entities
-  - Modified `TaskFormSheet.swift` - Added tutorialMode, availableProjects/availableTaskTypes/availableTeamMembers filter DEMO_ entities
-  - Modified `FloatingActionMenu.swift` - Added tutorialMode, disables non-project actions (Create Client, Create Task, New Task Type) with opacity/allowsHitTesting
-  - Modified `JobBoardProjectListView.swift` - Added tutorialMode, filters to DEMO_ projects
-  - Modified `HomeView.swift` - Added tutorialMode, filters calendar events and projects to DEMO_ prefixed items
-  - Modified `MonthGridView.swift` - Added tutorialMode, passes to cache.loadEvents for DEMO_ event filtering
-  - Modified `ProjectDetailsView.swift` - Added tutorialMode environment property
-  - Modified `UniversalJobBoardCard.swift` - Added tutorialMode environment property
-  - Build verified successful
-- [x] **Phase 5: Tutorial Flow Wrappers** - COMPLETE
-  - Built `TutorialCreatorFlowWrapper.swift` - Wraps JobBoard tab for company creator flow
-    - Injects tutorialMode=true into environment
-    - Routes to correct content based on TutorialPhase
-    - Displays TutorialSpotlight overlay with cutout frame
-    - Shows TutorialSwipeIndicator when applicable
-    - Shows TutorialTooltipCard at bottom with typewriter animation
-  - Built `TutorialEmployeeFlowWrapper.swift` - Wraps Home tab for employee flow
-    - Same pattern as creator wrapper
-    - Routes to HomeView, JobBoardDashboard, ScheduleView based on phase
-    - Frame tracking for projectCard, noteButton, photoButton, completeButton
-  - Built `TutorialLauncherView.swift` - Entry point that chooses which flow to launch
-    - Seeds demo data on appear via TutorialDemoDataManager
-    - Detects flow type based on user role (admin/office -> creator, fieldCrew -> employee)
-    - Shows loading view during seeding
-    - Shows error view if seeding fails
-    - Cleans up demo data on completion
-    - Marks `hasCompletedAppTutorial = true` on user model
+- [x] **Phase 1: Foundation** - Core tutorial infrastructure
+- [x] **Phase 2: Data Layer** - Demo data seeding/cleanup
+- [x] **Phase 3: UI Components** - Overlay, tooltip, swipe indicator, completion view
+- [x] **Phase 4: View Modifications** - tutorialMode filtering in production views
+- [x] **Phase 5: Tutorial Flow Wrappers** - Creator and Employee flow wrappers
+- [x] **Phase 6: Onboarding Integration** - Tutorial integrated into onboarding flow
+  - Tutorial shows for new users after Ready screen
+  - Tutorial shows for returning users who haven't completed it
+  - `hasCompletedAppTutorial` check works correctly
+
+### Testing Results (Phase 6)
+- [x] Tutorial launches correctly from onboarding flow
+- [x] Tutorial launches for returning users without completion
+- [x] FAB tap advances the phase correctly
+- [x] Custom sheet overlay animates within container
+- [x] Pulsing border animation removed (was distracting)
+- [⚠️] **ISSUE:** Scaled container makes UI unusable (small touch targets, illegible text)
+
+### Completed (Phase 7)
+- [x] **Full-Screen UI Redesign** - COMPLETE
+  - Refactored `TutorialCreatorFlowWrapper.swift` - Full-screen content with floating overlays
+  - Refactored `TutorialEmployeeFlowWrapper.swift` - Same full-screen pattern
+  - Deleted `TutorialContainerView.swift` - No longer needed
+  - Deleted `TutorialSheetOverlay.swift` - Using native sheets
+  - Modified `FloatingActionMenu.swift` - Posts notification in tutorial mode
   - Build verified successful
 
-### In Progress
-- [ ] Nothing currently in progress
+### Completed (Phase 8)
+- [x] **Phase Advancement Triggers** - COMPLETE
+  - Created `TutorialInlineSheet.swift` - Custom sheet that stays in view hierarchy
+  - Created `TutorialCollapsibleTooltip.swift` - Top-positioned, expandable tooltip
+  - Updated both flow wrappers with new tooltip and sheet components
+  - Added NotificationCenter observers for all phase transitions
+  - Modified `ProjectFormSheet.swift` - Client, name, add task, complete notifications
+  - Modified `TaskFormSheet.swift` - Crew, type, date, done notifications
+  - Modified `ScheduleView.swift` - Calendar week/month view notifications
+  - Modified `TeamMemberPickerSheet` - Added tutorialMode environment
+  - Build verified successful
 
-### Next Steps (Phase 6 - Onboarding Integration)
-1. Modify `OnboardingManager.swift` - Add `.tutorial` screen case
-2. Modify `OnboardingContainer.swift` - Route to TutorialLauncherView
-3. Test full onboarding flow with tutorial integration
+### What Works (All Components)
+1. **TutorialStateManager** - Phase progression, timing, haptics all work
+2. **TutorialPhase enum** - All 28 phases defined with tooltips
+3. **TutorialSpotlight** - Dark overlay with cutout works correctly
+4. **TutorialCollapsibleTooltip** - Top-positioned, expandable with typewriter animation
+5. **TutorialInlineSheet** - Custom sheet overlay that stays in view hierarchy
+6. **TutorialSwipeIndicator** - Directional hints work
+7. **TutorialCompletionView** - End screen works
+8. **TutorialDemoDataManager** - Data seeding/cleanup works
+9. **Demo data definitions** - All Top Gun content defined
+10. **tutorialMode environment** - Filtering in production views works
+11. **Onboarding integration** - Tutorial triggers correctly
+12. **Phase advancement triggers** - NotificationCenter-based phase progression
 
-**Frame Capture Wiring (Phase 6 Follow-up):**
-The flow wrappers have frame state variables declared, but only `fabFrame` in the Creator wrapper is actively captured. Additional frame captures need to be wired:
-- Add `.tutorialTarget(for: .phase)` modifiers to target UI elements
-- Wire up `onTutorialFrameChange(for:)` handlers in the wrappers
-- Use the existing `PreferenceKeys.swift` utilities (do NOT create duplicate preference keys)
+### Next Steps (Phase 9 - Testing & Polish)
+1. Test full Company Creator flow end-to-end
+2. Test full Employee flow end-to-end
+3. Verify demo data filtering works in all views
+4. Add any missing spotlight frame captures for visual highlighting
+5. Test completion flow and hasCompletedAppTutorial persistence
 
-See `06_IMPLEMENTATION_SEQUENCE.md` for complete build order.
+---
+
+## CURRENT ARCHITECTURE
+
+```
+TutorialLauncherView
+├── Seeds demo data
+├── Detects flow type (creator vs employee)
+└── Launches appropriate wrapper
+
+TutorialCreatorFlowWrapper (FULL-SCREEN)
+├── ZStack with 6 layers:
+│   ├── Layer 1: Full-screen content (JobBoardView, ScheduleView, etc.)
+│   ├── Layer 2: FAB overlay (GeometryReader for frame capture)
+│   ├── Layer 3: TutorialSpotlight overlay (dark + cutout)
+│   ├── Layer 4: TutorialSwipeIndicator (directional hints)
+│   ├── Layer 5: TutorialInlineSheet (custom sheet that stays in hierarchy)
+│   └── Layer 6: TutorialCollapsibleTooltip (top-positioned, expandable)
+├── NotificationCenter observers for all phase transitions
+└── stateManager controls phase progression
+
+TutorialEmployeeFlowWrapper (FULL-SCREEN)
+├── Same 6-layer ZStack pattern
+├── HomeView and JobBoardView content
+└── NotificationCenter observers for employee flow phases
+```
+
+## NOTIFICATION-BASED PHASE ADVANCEMENT
+
+All phase transitions are handled via NotificationCenter:
+
+| Notification Name | Source View | Phase Triggered |
+|-------------------|-------------|-----------------|
+| `TutorialCreateProjectTapped` | FloatingActionMenu | .fabTap → .createProjectAction |
+| `TutorialClientSelected` | ProjectFormSheet | .projectFormClient → .projectFormName |
+| `TutorialProjectNameEntered` | ProjectFormSheet | .projectFormName → .projectFormAddTask |
+| `TutorialAddTaskTapped` | ProjectFormSheet | .projectFormAddTask → .taskFormCrew |
+| `TutorialCrewAssigned` | TeamMemberPickerSheet | .taskFormCrew → .taskFormType |
+| `TutorialTaskTypeSelected` | TaskFormSheet | .taskFormType → .taskFormDate |
+| `TutorialDateSet` | TaskFormSheet | .taskFormDate → .taskFormDone |
+| `TutorialTaskFormDone` | TaskFormSheet | .taskFormDone → .projectFormComplete |
+| `TutorialProjectFormComplete` | ProjectFormSheet | .projectFormComplete → .dragToAccepted |
+| `TutorialCalendarWeekViewed` | ScheduleView | .calendarWeek → .calendarMonthPrompt |
+| `TutorialCalendarMonthTapped` | ScheduleView | .calendarMonthPrompt → .calendarMonth |
+| `TutorialCalendarMonthExplored` | ScheduleView | .calendarMonth → .completed |
 
 ---
 
@@ -119,18 +187,7 @@ The codebase uses DIFFERENT status enums than the spec:
 **Task Status (actual):** `TaskStatus` enum in `DataModels/ProjectTask.swift`
 - `.booked`, `.inProgress`, `.completed`, `.cancelled`
 
-**Mapping (SCHEDULED removed):**
-- Spec "ACCEPTED" = Code `.accepted`
-- Spec "SCHEDULED" = **USE `.accepted`** (not a real status - just means all tasks are future-dated)
-- Spec "IN_PROGRESS" = Code `.inProgress`
-- Spec "COMPLETED" = Code `.completed`
-
 **Important:** There is NO `.scheduled` status. Projects with all future tasks simply have `.accepted` status.
-
-### TeamMember vs User
-- `TeamMember` model is a lightweight display model
-- `User` model is the full SwiftData entity used in relationships
-- Demo data should create `User` entities, which will be referenced in project/task teamMembers
 
 ### Key File Locations
 ```
@@ -141,95 +198,19 @@ OPS/Views/Home/HomeView.swift                 - Employee home view
 OPS/Views/Components/FloatingActionMenu.swift - FAB with create options
 OPS/Views/Calendar Tab/                       - Calendar views
 OPS/DataModels/                               - SwiftData models
-OPS/Onboarding/Components/TypewriterText.swift - Existing animation component
 ```
 
-### Existing Gestures
-- **Long-press + Drag:** `JobBoardDashboard.swift` lines 298-343 (DirectionalDragCard)
-- **Swipe Status:** `UniversalJobBoardCard.swift` has swipeOffset handling
-- **Long-press Haptic:** Both files use `UIImpactFeedbackGenerator`
+### tutorialMode Environment
+All production views that need demo data filtering already have:
+```swift
+@Environment(\.tutorialMode) private var tutorialMode
+```
 
-### Naming Conflicts - RESOLVED
-- **SwipeDirection:** The codebase has an existing `SwipeDirection` enum in `UniversalJobBoardCard.swift`
-- Tutorial uses `TutorialSwipeDirection` to avoid ambiguity
-- Located in `OPS/Tutorial/State/TutorialPhase.swift`
+This filters to show only DEMO_ prefixed data during tutorial.
 
-### SwiftData Predicate Syntax - IMPORTANT
-- SwiftData `#Predicate` does NOT support `hasPrefix()` - use `starts(with:)` instead
-- Enum values CANNOT be used directly in predicates - capture in local variable first
-- Example:
-  ```swift
-  let demoPrefix = "DEMO_"
-  let inProgressStatus = TaskStatus.inProgress
-  let descriptor = FetchDescriptor<ProjectTask>(
-      predicate: #Predicate { $0.id.starts(with: demoPrefix) && $0.status == inProgressStatus }
-  )
-  ```
-
-### Avatar Loading for Demo Users
-- Demo user avatars are loaded from asset catalog and stored as `profileImageData`
-- Asset names: `pete`, `nick`, `tom`, `mike`, `rick` (in `Assets.xcassets/Images/Demo/`)
-- Do NOT use `profileImageURL` for asset names - `UserAvatar` expects valid URLs
-- The `seedUsers()` method converts UIImage assets to JPEG Data
-
-### Employee Task Assignment
-- `assignCurrentUserToTasks()` intentionally limits to 3 tasks per tutorial spec
-- Employee flow only demonstrates 2-3 task interactions
-- This is NOT a bug - it's the designed tutorial experience
-
----
-
-## BLOCKERS / DECISIONS NEEDED
-
-### Resolved
-1. **Image Assets:** Available in `Assets.xcassets/Images/Demo/`
-   - Project images: `flight_deck_before`, `flight_deck_progress`, `hangar_exterior`, etc.
-   - Use asset name directly (e.g., `Image("flight_deck_before")`)
-
-2. **Camera/Photo:** Use production photo picker - NOT mocked
-   - User should be able to add photos as they normally would
-   - Full camera/library access in tutorial
-
-3. **Team Member Avatars:** Available in `Assets.xcassets/Images/Demo/`
-   - Named by first name: `pete`, `nick`, `tom`, `mike`, `rick`
-   - Use asset name directly (e.g., `Image("pete")`)
-
-4. **"SCHEDULED" Status:** REMOVED from spec
-   - Not a real status in the codebase
-   - Projects with future tasks use `.accepted` status
-   - Status is computed from task dates, not stored
-
-5. **Tutorial Completion Tracking:** New Bubble field `hasCompletedAppTutorial` on User
-   - Field will be added to Bubble User table
-   - Must add to local `User` SwiftData model
-   - Must add to `BubbleFields.User` constants
-   - Must add to `UserDTO` for API sync
-   - Check this field to determine if tutorial should show
-   - Set to `true` on tutorial completion and sync to Bubble
-
-### Technical Notes
-- **Calendar View:** Composed of `MonthGridView.swift` + components in `Calendar Tab/Components/`
-- **Status Mapping:** ACCEPTED, IN_PROGRESS, COMPLETED only (no SCHEDULED)
-
-### Unresolved
-(None - ready to proceed with implementation)
-
----
-
-## AGENT INSTRUCTIONS
-
-When you start work:
-1. Read this document first
-2. Check "Current Status" for what's done
-3. Check "Next Steps" for what to do
-4. Reference other docs in this folder for details
-5. Update this document when you complete work
-
-When you finish work:
-1. Update "Current Status" - move items from "In Progress" to "Completed"
-2. Update "Next Steps" - remove completed items, add any new ones discovered
-3. Add any new blockers or decisions to "Blockers / Decisions Needed"
-4. Note any important discoveries in "Critical Notes for Agents"
+### SwiftData Predicate Syntax
+- Use `starts(with:)` not `hasPrefix()`
+- Capture enum values in local variables before using in predicates
 
 ---
 
@@ -248,24 +229,88 @@ When you finish work:
 | `Tutorial_Implementation_Spec.md` | Original UX specification |
 | `TopGun_Demo_Database.md` | Demo data content |
 
-### Tutorial System Files (Created)
-| File | Purpose |
+### Tutorial System Files
+| File | Status | Purpose |
+|------|--------|---------|
+| `TutorialEnvironment.swift` | ✅ Active | Environment keys for tutorialMode |
+| `TutorialPhase.swift` | ✅ Active | Phase enum with tooltips, flow navigation |
+| `TutorialStateManager.swift` | ✅ Active | State management, timing, haptics |
+| `DemoIDs.swift` | ✅ Active | All DEMO_ prefix ID constants |
+| `DemoTeamMembers.swift` | ✅ Active | 5 team members with specializations |
+| `DemoClients.swift` | ✅ Active | 5 clients with addresses |
+| `DemoTaskTypes.swift` | ✅ Active | 12 task types with colors/icons |
+| `DemoProjects.swift` | ✅ Active | 15 projects with 36 tasks |
+| `TutorialDemoDataManager.swift` | ✅ Active | SwiftData seeding/cleanup manager |
+| `TutorialOverlayView.swift` | ✅ Active | Dark overlay with cutout + highlight |
+| `TutorialTooltipView.swift` | ✅ Active | Tooltip with typewriter animation |
+| `TutorialCollapsibleTooltip.swift` | ✅ Active | Top-positioned, expandable tooltip |
+| `TutorialInlineSheet.swift` | ✅ Active | Custom sheet that stays in view hierarchy |
+| `TutorialSwipeIndicator.swift` | ✅ Active | Shimmer animation for swipe hints |
+| `TutorialCompletionView.swift` | ✅ Active | Completion screen with time display |
+| `PreferenceKeys.swift` | ✅ Active | Frame capture utilities |
+| `TutorialCreatorFlowWrapper.swift` | ✅ Active | Full-screen wrapper with 6-layer ZStack |
+| `TutorialEmployeeFlowWrapper.swift` | ✅ Active | Full-screen wrapper for employee flow |
+| `TutorialLauncherView.swift` | ✅ Active | Entry point for tutorial |
+| `TutorialContainerView.swift` | ❌ Deleted | Was scaled container - no longer needed |
+| `TutorialSheetOverlay.swift` | ❌ Deleted | Was custom sheet - using native sheets |
+
+### Files Modified for Onboarding Integration
+| File | Changes |
 |------|---------|
-| `OPS/Tutorial/Environment/TutorialEnvironment.swift` | Environment keys for tutorialMode |
-| `OPS/Tutorial/State/TutorialPhase.swift` | Phase enum with tooltips, flow navigation |
-| `OPS/Tutorial/State/TutorialStateManager.swift` | State management, timing, haptics (includes TutorialHaptics) |
-| `OPS/Tutorial/Data/DemoIDs.swift` | All DEMO_ prefix ID constants |
-| `OPS/Tutorial/Data/DemoTeamMembers.swift` | 5 team members with specializations |
-| `OPS/Tutorial/Data/DemoClients.swift` | 5 clients with addresses |
-| `OPS/Tutorial/Data/DemoTaskTypes.swift` | 12 task types with colors/icons |
-| `OPS/Tutorial/Data/DemoProjects.swift` | 15 projects with 36 tasks |
-| `OPS/Tutorial/Data/TutorialDemoDataManager.swift` | SwiftData seeding/cleanup manager |
-| `OPS/Tutorial/Views/TutorialContainerView.swift` | 80% scaled container for tutorial content |
-| `OPS/Tutorial/Views/TutorialOverlayView.swift` | Dark overlay with cutout + highlight border |
-| `OPS/Tutorial/Views/TutorialTooltipView.swift` | Tooltip using TypewriterText animation |
-| `OPS/Tutorial/Views/TutorialSwipeIndicator.swift` | Shimmer animation for swipe hints |
-| `OPS/Tutorial/Views/TutorialCompletionView.swift` | Completion screen with time display |
-| `OPS/Tutorial/Utilities/PreferenceKeys.swift` | Frame capture utilities for cutout positioning |
-| `OPS/Tutorial/Wrappers/TutorialCreatorFlowWrapper.swift` | Flow wrapper for company creator tutorial |
-| `OPS/Tutorial/Wrappers/TutorialEmployeeFlowWrapper.swift` | Flow wrapper for employee tutorial |
-| `OPS/Tutorial/Flows/TutorialLauncherView.swift` | Entry point that seeds data and launches flows |
+| `OnboardingState.swift` | Added `.tutorial` case |
+| `OnboardingManager.swift` | Tutorial navigation logic |
+| `OnboardingContainer.swift` | Routes to TutorialLauncherView |
+| `LoginView.swift` | AppState environment object |
+| `OnboardingPreviewView.swift` | AppState environment object |
+| `ContentView.swift` | Tutorial check for returning users |
+| `FloatingActionMenu.swift` | Posts notification in tutorial mode for project creation |
+
+### Files Modified for Phase Advancement (Phase 8)
+| File | Changes |
+|------|---------|
+| `ProjectFormSheet.swift` | Tutorial notifications for client, name, add task, complete |
+| `TaskFormSheet.swift` | Tutorial notifications for crew, type, date, done |
+| `TeamMemberPickerSheet` | Added tutorialMode environment for crew assignment |
+| `ScheduleView.swift` | Tutorial notifications for calendar week/month views |
+
+---
+
+## AGENT INSTRUCTIONS
+
+**Current State:** Phase 8 complete - Phase advancement triggers implemented
+
+**What's Working:**
+- Full-screen tutorial UI with 6-layer ZStack architecture
+- Collapsible tooltip at top of screen with typewriter animation
+- Custom inline sheet that allows tooltip to stay visible
+- NotificationCenter-based phase advancement for all form interactions
+- Calendar view notifications for week/month phases
+- Auto-advancing phases for intro screens
+
+**Next Steps (Phase 9 - Testing & Polish):**
+
+1. **Test full Company Creator flow**
+   - New user: Onboarding → Tutorial → Main App
+   - Verify each phase advances correctly
+   - Check tooltip text matches current phase
+
+2. **Test full Employee flow**
+   - Same onboarding path with employee user
+   - Verify home view and project interaction phases
+
+3. **Wire up remaining spotlight frames**
+   - FAB frame is captured ✅
+   - Project card frames need wiring for drag-to-accepted
+   - Form field frames for visual highlighting
+
+4. **Verify demo data**
+   - Seeding works correctly
+   - Cleanup removes all DEMO_ data
+   - Demo projects appear in Job Board with tutorialMode filter
+
+5. **Test completion flow**
+   - hasCompletedAppTutorial flag is set
+   - Tutorial doesn't show again after completion
+   - Completion screen displays correctly
+
+**Key Principle:** The tutorial should feel exactly like using the real app, just with guidance overlays.

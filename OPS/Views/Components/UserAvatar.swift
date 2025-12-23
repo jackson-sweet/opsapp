@@ -177,26 +177,35 @@ struct UserAvatar: View {
               !urlString.isEmpty else {
             return
         }
-        
+
+        // Check if this is a local asset name (no URL scheme, no slashes)
+        // Demo team members use asset names like "pete", "nick", etc.
+        if !urlString.contains("/") && !urlString.contains(":") {
+            if let assetImage = UIImage(named: urlString) {
+                self.loadedImage = assetImage
+                return
+            }
+        }
+
         // Fix URLs that start with // by adding https:
         var fixedURLString = urlString
         if urlString.hasPrefix("//") {
             fixedURLString = "https:" + urlString
         }
-        
+
         guard let url = URL(string: fixedURLString) else {
             return
         }
-        
+
         // Check cache first (use original URL string as key)
         if let cachedImage = ImageCache.shared.get(forKey: urlString) {
             self.loadedImage = cachedImage
             return
         }
-        
+
         // Download image
         isLoading = true
-        
+
         Task {
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)

@@ -428,7 +428,10 @@ struct ProjectDetailsView: View {
             }
         }
 
-        locationManager.requestPermissionIfNeeded()
+        // Skip location permission request in tutorial mode to avoid LocationManager crash
+        if !tutorialMode {
+            locationManager.requestPermissionIfNeeded()
+        }
 
         if let clientId = project.clientId, !clientId.isEmpty {
             refreshClientData(clientId: clientId, forceRefresh: true)
@@ -1573,6 +1576,14 @@ struct ProjectDetailsView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
         impactFeedback.impactOccurred()
 
+        // Tutorial mode: notify project completed
+        if tutorialMode {
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialProjectCompleted"),
+                object: nil
+            )
+        }
+
         Task {
             // Auto-complete all incomplete tasks when marking project complete
             let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
@@ -1723,6 +1734,14 @@ struct ProjectDetailsView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
 
+        // Tutorial mode: notify note added
+        if tutorialMode {
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialNoteAdded"),
+                object: nil
+            )
+        }
+
         // Use centralized function for immediate sync
         Task {
             do {
@@ -1767,11 +1786,19 @@ struct ProjectDetailsView: View {
     
     // Function to add multiple photos to the project
     private func addPhotosToProject() {
+        // Tutorial mode: notify photo added
+        if tutorialMode {
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialPhotoAdded"),
+                object: nil
+            )
+        }
+
         // Start loading indicator
         processingImages = true
-        
+
         // Debug log
-        
+
         Task {
             do {
                 // Use the ImageSyncManager if available
@@ -2381,87 +2408,82 @@ struct ZoomablePhotoView: View {
     
     private func loadImage() {
         guard image == nil else { return }
-        
+
         isLoading = true
-        
+
+        // Normalize URL at the start for consistent caching
+        let cacheKey = url.hasPrefix("//") ? "https:" + url : url
+
         // First check in-memory cache for quick loading
-        if let cachedImage = ImageCache.shared.get(forKey: url) {
+        if let cachedImage = ImageCache.shared.get(forKey: cacheKey) {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = cachedImage
             }
             return
         }
-        
+
         // Then try to load from file system using ImageFileManager
         if let loadedImage = ImageFileManager.shared.loadImage(localID: url) {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = loadedImage
-                
+
                 // Cache in memory for faster access next time
-                ImageCache.shared.set(loadedImage, forKey: url)
+                ImageCache.shared.set(loadedImage, forKey: cacheKey)
             }
             return
         }
-        
+
         // For legacy support: try UserDefaults if not found in file system
         if url.hasPrefix("local://") || (url.contains("opsapp.co/") && url.contains("/img/")) {
             if let base64String = UserDefaults.standard.string(forKey: url),
                let imageData = Data(base64Encoded: base64String),
                let loadedImage = UIImage(data: imageData) {
-                
+
                 // Migrate to file system for future use
                 _ = ImageFileManager.shared.saveImage(data: imageData, localID: url)
-                
+
                 DispatchQueue.main.async {
                     self.isLoading = false
                     self.image = loadedImage
-                    
+
                     // Cache in memory
-                    ImageCache.shared.set(loadedImage, forKey: url)
+                    ImageCache.shared.set(loadedImage, forKey: cacheKey)
                 }
                 return
             }
         }
-        
-        // Handle remote URLs
-        var normalizedURL = url
-        
-        // Handle // prefix by adding https:
-        if url.hasPrefix("//") {
-            normalizedURL = "https:" + url
-        }
-        
+
         // If not found locally, try to load from network
-        guard let imageURL = URL(string: normalizedURL) else {
+        guard let imageURL = URL(string: cacheKey) else {
             isLoading = false
             return
         }
-        
-        
+
         URLSession.shared.dataTask(with: imageURL) { data, response, error in
             DispatchQueue.main.async {
                 self.isLoading = false
-                
+
                 if let error = error {
+                    print("Image load error: \(error.localizedDescription)")
                     return
                 }
-                
-                if let httpResponse = response as? HTTPURLResponse, 
+
+                if let httpResponse = response as? HTTPURLResponse,
                    !(200...299).contains(httpResponse.statusCode) {
+                    print("Image load failed with status: \(httpResponse.statusCode)")
                     return
                 }
-                
+
                 if let data = data, let loadedImage = UIImage(data: data) {
                     self.image = loadedImage
-                    
+
                     // Cache the remote image in file system
-                    _ = ImageFileManager.shared.saveImage(data: data, localID: normalizedURL)
-                    
+                    _ = ImageFileManager.shared.saveImage(data: data, localID: cacheKey)
+
                     // Also cache in memory
-                    ImageCache.shared.set(loadedImage, forKey: normalizedURL)
-                } else {
+                    ImageCache.shared.set(loadedImage, forKey: cacheKey)
                 }
             }
         }.resume()

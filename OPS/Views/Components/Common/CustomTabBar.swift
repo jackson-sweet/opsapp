@@ -16,6 +16,15 @@ struct CustomTabBar: View {
     @State private var iconWidth: CGFloat = 28 // SF Symbols 28pt size
     @State private var tabCount: Int = 0
 
+    // Tutorial mode support
+    @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
+
+    /// Whether tab bar should be disabled during tutorial drag step
+    private var isDisabledForTutorial: Bool {
+        tutorialMode && tutorialPhase == .dragToAccepted
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             // Tab bar background with dark blur and overlay
@@ -77,7 +86,15 @@ struct CustomTabBar: View {
                 .padding(.bottom, 16)
             }
             .padding(.top, 16)
+
+            // Black overlay during tutorial drag step
+            if isDisabledForTutorial {
+                Color.black.opacity(0.85)
+                    .frame(height: 100)
+                    .allowsHitTesting(true) // Blocks taps
+            }
         }
+        .allowsHitTesting(!isDisabledForTutorial)
 
 
         .onAppear {

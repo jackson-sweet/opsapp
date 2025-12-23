@@ -9,6 +9,7 @@
 import SwiftUI
 
 /// Animated swipe indicator with shimmer effect for tutorial hints
+/// iOS lock screen "slide to unlock" style animation
 struct TutorialSwipeIndicator: View {
     /// Direction of the swipe hint
     let direction: TutorialSwipeDirection
@@ -16,17 +17,28 @@ struct TutorialSwipeIndicator: View {
     /// The target frame where the indicator should appear
     let targetFrame: CGRect
 
-    /// Animation state
+    /// Animation states
     @State private var shimmerOffset: CGFloat = -100
+    @State private var arrowPulse: Bool = false
+    @State private var glowOpacity: Double = 0.3
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Arrow indicators
-                arrowStack
-                    .position(x: targetFrame.midX, y: targetFrame.midY)
+                // Glow effect behind the target
+                if targetFrame != .zero {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(glowOpacity * 0.15))
+                        .frame(width: targetFrame.width + 16, height: targetFrame.height + 16)
+                        .position(x: targetFrame.midX, y: targetFrame.midY)
+                        .blur(radius: 8)
+                }
 
-                // Shimmer gradient overlay
+                // Arrow indicators with slide text
+                arrowStack
+                    .position(x: indicatorPosition.x, y: indicatorPosition.y)
+
+                // Shimmer gradient overlay (slide-to-unlock style)
                 shimmerGradient
                     .mask(
                         RoundedRectangle(cornerRadius: 8)
@@ -38,6 +50,26 @@ struct TutorialSwipeIndicator: View {
         .allowsHitTesting(false)
         .onAppear {
             startShimmerAnimation()
+            startGlowAnimation()
+        }
+    }
+
+    /// Position for the arrow indicator based on direction and target frame
+    private var indicatorPosition: CGPoint {
+        guard targetFrame != .zero else {
+            return CGPoint(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2)
+        }
+
+        switch direction {
+        case .right:
+            // Position to the left of the target, sliding right
+            return CGPoint(x: targetFrame.maxX + 40, y: targetFrame.midY)
+        case .left:
+            return CGPoint(x: targetFrame.minX - 40, y: targetFrame.midY)
+        case .up:
+            return CGPoint(x: targetFrame.midX, y: targetFrame.minY - 40)
+        case .down:
+            return CGPoint(x: targetFrame.midX, y: targetFrame.maxY + 40)
         }
     }
 
@@ -150,6 +182,15 @@ struct TutorialSwipeIndicator: View {
             .repeatForever(autoreverses: false)
         ) {
             shimmerOffset = 150
+        }
+    }
+
+    private func startGlowAnimation() {
+        withAnimation(
+            .easeInOut(duration: 1.0)
+            .repeatForever(autoreverses: true)
+        ) {
+            glowOpacity = 0.8
         }
     }
 }

@@ -55,35 +55,50 @@ struct TutorialCompletionView: View {
 
     @ViewBuilder
     private var completionMessage: some View {
-        if manager.showTimeInCompletion {
-            // Show time if completed quickly (< 3 min)
+        VStack(alignment: .leading, spacing: 16) {
+            if manager.showTimeInCompletion {
+                // Show time if completed quickly (< 2 min)
+                TypewriterText(
+                    "DONE IN \(manager.formattedTime). NOT BAD.",
+                    font: OPSStyle.Typography.title,
+                    color: OPSStyle.Colors.primaryText,
+                    typingSpeed: 25
+                ) {
+                    // Show subtext after headline completes
+                }
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                // Generic completion message for longer times
+                TypewriterText(
+                    "YOU'RE READY.",
+                    font: OPSStyle.Typography.title,
+                    color: OPSStyle.Colors.primaryText,
+                    typingSpeed: 25
+                ) {
+                    // Show subtext after headline completes
+                }
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            // Subtext with typewriter animation
             TypewriterText(
-                "DONE IN \(manager.formattedTime). NOW WE'RE TALKING.",
-                font: OPSStyle.Typography.title,
-                color: OPSStyle.Colors.primaryText,
-                typingSpeed: 25
+                "Now build your first real project and run your crew right.",
+                font: OPSStyle.Typography.body,
+                color: OPSStyle.Colors.secondaryText,
+                typingSpeed: 20,
+                startDelay: 1.2
             ) {
-                // Show button after message completes
+                // Show button after subtext completes
                 withAnimation(.easeOut(duration: 0.3)) {
                     showButton = true
                 }
             }
-            .multilineTextAlignment(.center)
-        } else {
-            // Generic completion message for longer times
-            TypewriterText(
-                "DONE. LET'S GET TO WORK.",
-                font: OPSStyle.Typography.title,
-                color: OPSStyle.Colors.primaryText,
-                typingSpeed: 25
-            ) {
-                // Show button after message completes
-                withAnimation(.easeOut(duration: 0.3)) {
-                    showButton = true
-                }
-            }
-            .multilineTextAlignment(.center)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var ctaButton: some View {
@@ -132,10 +147,10 @@ struct StandaloneCompletionView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
-    /// Whether to show completion time (only for < 3 min)
+    /// Whether to show completion time (only for < 2 min)
     private var showTimeInCompletion: Bool {
         guard let time = completionTime else { return false }
-        return time < 180
+        return time < 120
     }
 
     var body: some View {
@@ -147,31 +162,47 @@ struct StandaloneCompletionView: View {
                 Spacer()
 
                 if showMessage {
-                    if showTimeInCompletion {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if showTimeInCompletion {
+                            TypewriterText(
+                                "DONE IN \(formattedTime). NOT BAD.",
+                                font: OPSStyle.Typography.title,
+                                color: OPSStyle.Colors.primaryText,
+                                typingSpeed: 25
+                            ) {
+                                // Subtext starts after headline
+                            }
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            TypewriterText(
+                                "YOU'RE READY.",
+                                font: OPSStyle.Typography.title,
+                                color: OPSStyle.Colors.primaryText,
+                                typingSpeed: 25
+                            ) {
+                                // Subtext starts after headline
+                            }
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        // Subtext with typewriter animation
                         TypewriterText(
-                            "DONE IN \(formattedTime). NOW WE'RE TALKING.",
-                            font: OPSStyle.Typography.title,
-                            color: OPSStyle.Colors.primaryText,
-                            typingSpeed: 25
+                            "Now build your first real project and run your crew right.",
+                            font: OPSStyle.Typography.body,
+                            color: OPSStyle.Colors.secondaryText,
+                            typingSpeed: 20,
+                            startDelay: 1.2
                         ) {
                             withAnimation(.easeOut(duration: 0.3)) {
                                 showButton = true
                             }
                         }
-                        .multilineTextAlignment(.center)
-                    } else {
-                        TypewriterText(
-                            "DONE. LET'S GET TO WORK.",
-                            font: OPSStyle.Typography.title,
-                            color: OPSStyle.Colors.primaryText,
-                            typingSpeed: 25
-                        ) {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                showButton = true
-                            }
-                        }
-                        .multilineTextAlignment(.center)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 Spacer()

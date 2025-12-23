@@ -15,17 +15,20 @@ struct DemoTaskData {
     let taskTypeId: String
     let crewIds: [String]
     let daysFromCurrent: Int  // Negative = past, 0 = today, positive = future
+    let durationDays: Int  // Number of days the task spans (1 = single day, 3 = three-day span)
     let notes: String?
 
     init(
         taskTypeId: String,
         crewIds: [String],
         daysFromCurrent: Int,
+        durationDays: Int = 1,  // Default to single-day tasks
         notes: String? = nil
     ) {
         self.taskTypeId = taskTypeId
         self.crewIds = crewIds
         self.daysFromCurrent = daysFromCurrent
+        self.durationDays = durationDays
         self.notes = notes
     }
 }
@@ -202,18 +205,21 @@ extension DemoProjectData {
                 taskTypeId: DemoIDs.removal,
                 crewIds: [DemoIDs.nickBradshaw],
                 daysFromCurrent: -3,
+                durationDays: 2,  // 2-day removal job
                 notes: "Old coating came up easier than expected"
             ),
             DemoTaskData(
                 taskTypeId: DemoIDs.coating,
                 crewIds: [DemoIDs.peteMitchell],
                 daysFromCurrent: 0,
+                durationDays: 3,  // 3-day coating process
                 notes: "Using MIL-PRF-24667 gray, 2 coats"
             ),
             DemoTaskData(
                 taskTypeId: DemoIDs.sealing,
                 crewIds: [DemoIDs.peteMitchell],
-                daysFromCurrent: 2,
+                daysFromCurrent: 3,
+                durationDays: 2,  // 2-day sealing
                 notes: "Anti-slip aggregate in final coat"
             )
         ]

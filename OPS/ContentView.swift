@@ -23,7 +23,8 @@ struct ContentView: View {
     // Add a state to track initial loading
     @State private var isCheckingAuth = true
     @State private var showLocationPermissionView = false
-    
+    @State private var showTutorialForReturningUser = false
+
     var body: some View {
         Group {
             if isCheckingAuth {
@@ -33,6 +34,19 @@ struct ContentView: View {
                 // Show login view with onboarding
                 // The LoginView will handle onboarding presentation
                 LoginView()
+                    .environmentObject(appState)
+                    .environmentObject(locationManager)
+            } else if showTutorialForReturningUser {
+                // Show tutorial for returning users who haven't completed it
+                TutorialLauncherView(
+                    flowType: TutorialLauncherView.detectFlowType(for: dataController.currentUser),
+                    onComplete: {
+                        showTutorialForReturningUser = false
+                    }
+                )
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(locationManager)
             } else {
                 // Check if PIN authentication is required
                 // Access the PIN manager directly as @ObservedObject to ensure proper state updates
@@ -57,22 +71,71 @@ struct ContentView: View {
             
             // Wait longer to ensure auth check completes
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                print("[CONTENT_VIEW] ========== AUTH CHECK ==========")
+                print("[CONTENT_VIEW] isAuthenticated: \(dataController.isAuthenticated)")
+                print("[CONTENT_VIEW] currentUser: \(dataController.currentUser?.id ?? "nil")")
+
                 // Check if we need to show onboarding using new system
                 let (shouldShowOnboarding, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
+                print("[CONTENT_VIEW] shouldShowOnboarding: \(shouldShowOnboarding)")
 
                 if shouldShowOnboarding {
                     // User needs to complete onboarding - show LoginView which handles it
+                    print("[CONTENT_VIEW] -> Showing onboarding (LoginView)")
                     dataController.isAuthenticated = false
+                } else if dataController.isAuthenticated {
+                    // Check if returning user needs to complete tutorial
+                    let user = dataController.currentUser
+                    let hasCompletedTutorial = user?.hasCompletedAppTutorial ?? false
+
+                    print("[CONTENT_VIEW] Checking tutorial for returning user:")
+                    print("[CONTENT_VIEW]   - currentUser exists: \(user != nil)")
+                    if let user = user {
+                        print("[CONTENT_VIEW]   - user.id: \(user.id)")
+                        print("[CONTENT_VIEW]   - user.hasCompletedAppTutorial: \(user.hasCompletedAppTutorial)")
+                    }
+                    print("[CONTENT_VIEW]   - hasCompletedTutorial (with nil fallback): \(hasCompletedTutorial)")
+
+                    if !hasCompletedTutorial {
+                        print("[CONTENT_VIEW]   -> Showing tutorial for returning user")
+                        showTutorialForReturningUser = true
+                    } else {
+                        print("[CONTENT_VIEW]   -> Skipping tutorial, showing main app")
+                    }
                 }
 
                 // Finish the loading phase to show the appropriate screen
                 isCheckingAuth = false
+                print("[CONTENT_VIEW] ========== END AUTH CHECK ==========")
+            }
+        }
+        // Watch for authentication changes to check tutorial status
+        .onChange(of: dataController.isAuthenticated) { _, isAuthenticated in
+            if isAuthenticated && !isCheckingAuth {
+                // User just became authenticated (login completed)
+                // Check if they need to complete the tutorial
+                let hasCompletedTutorial = dataController.currentUser?.hasCompletedAppTutorial ?? false
+                print("[CONTENT_VIEW] Auth changed to true - checking tutorial:")
+                print("[CONTENT_VIEW]   - hasCompletedAppTutorial: \(hasCompletedTutorial)")
+
+                if !hasCompletedTutorial {
+                    print("[CONTENT_VIEW]   -> Showing tutorial after login")
+                    showTutorialForReturningUser = true
+                }
             }
         }
         // Watch for changes to the location denied state
         .onChange(of: locationManager.isLocationDenied) { _, isDenied in
             if isDenied && dataController.isAuthenticated {
                 showLocationPermissionView = true
+            }
+        }
+        // Watch for tutorial restart request from settings
+        .onChange(of: appState.shouldRestartTutorial) { _, shouldRestart in
+            if shouldRestart {
+                print("[CONTENT_VIEW] Tutorial restart requested from settings")
+                appState.shouldRestartTutorial = false
+                showTutorialForReturningUser = true
             }
         }
         // Add the location permission overlay

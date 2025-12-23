@@ -11,6 +11,7 @@ import SwiftUI
 struct FloatingActionMenu: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
     @State private var showCreateMenu = false
     @State private var showingCreateProject = false
     @State private var showingCreateClient = false
@@ -21,6 +22,12 @@ struct FloatingActionMenu: View {
     private var canShowFAB: Bool {
         guard let user = dataController.currentUser else { return false }
         return user.role == .admin || user.role == .officeCrew
+    }
+
+    /// In tutorial mode, FAB is disabled during fabTap phase or when menu is open
+    /// (user needs to tap Create Project instead of closing the menu)
+    private var isFABDisabledInTutorial: Bool {
+        tutorialMode && (tutorialPhase == .fabTap || showCreateMenu)
     }
 
     var body: some View {
@@ -36,6 +43,8 @@ struct FloatingActionMenu: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
                 .animation(.easeInOut(duration: 0.3), value: showCreateMenu)
                 .onTapGesture {
+                    // In tutorial mode, don't allow closing menu by tapping background
+                    guard !tutorialMode else { return }
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         showCreateMenu = false
                     }
@@ -88,7 +97,15 @@ struct FloatingActionMenu: View {
                                     label: "Create Project",
                                     action: {
                                         showCreateMenu = false
-                                        showingCreateProject = true
+                                        if tutorialMode {
+                                            // In tutorial mode, post notification for wrapper to handle
+                                            NotificationCenter.default.post(
+                                                name: Notification.Name("TutorialCreateProjectTapped"),
+                                                object: nil
+                                            )
+                                        } else {
+                                            showingCreateProject = true
+                                        }
                                     }
                                 )
                                 .offset(x: -10) // Center 48pt icon over 64pt main button
@@ -112,24 +129,39 @@ struct FloatingActionMenu: View {
                             }
 
                             // Main plus button
+                            // In tutorial fabTap phase: FAB is disabled and greyed out
                             Button(action: {
+                                // Tutorial mode: notify FAB tapped
+                                if tutorialMode && !showCreateMenu {
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("TutorialFABTapped"),
+                                        object: nil
+                                    )
+                                }
                                 withAnimation(.easeInOut(duration: 0.3)) {
                                     showCreateMenu.toggle()
                                 }
                             }) {
                                 Image(systemName: "plus")
                                     .font(.system(size: 30))
-                                    .foregroundColor(OPSStyle.Colors.buttonText)
+                                    .foregroundColor(isFABDisabledInTutorial ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText)
                                     .rotationEffect(.degrees(showCreateMenu ? 225 : 0))
                                     .frame(width: 64, height: 64)
-                                    .background(.ultraThinMaterial.opacity(0.8))
+                                    .background {
+                                        if isFABDisabledInTutorial {
+                                            Circle().fill(Color.black.opacity(0.8))
+                                        } else {
+                                            Circle().fill(.ultraThinMaterial.opacity(0.8))
+                                        }
+                                    }
                                     .clipShape(Circle())
                                     .shadow(color: OPSStyle.Colors.background.opacity(0.4), radius: 8, x: 0, y: 4)
                                     .overlay {
                                         Circle()
-                                            .stroke(OPSStyle.Colors.buttonText, lineWidth: 2)
+                                            .stroke(isFABDisabledInTutorial ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText, lineWidth: 2)
                                     }
                             }
+                            .allowsHitTesting(!isFABDisabledInTutorial)
                         }
                         .padding(.trailing, 36)
                         .padding(.bottom, 140) // Position above tab bar

@@ -10,6 +10,7 @@ import SwiftUI
 struct OnboardingPreviewView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
 
     @State private var selectedFlow: OnboardingFlow = .companyCreator
     @State private var selectedScreen: OnboardingScreen = .welcome
@@ -130,6 +131,7 @@ struct OnboardingPreviewView: View {
                     showOnboarding = false
                 })
                 .environmentObject(dataController)
+                .environmentObject(appState)
                 .environmentObject(SubscriptionManager.shared)
             }
         }

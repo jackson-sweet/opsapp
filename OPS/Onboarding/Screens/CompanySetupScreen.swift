@@ -178,8 +178,13 @@ struct CompanySetupScreen: View {
                                     ToolbarItemGroup(placement: .keyboard) {
                                         if focusedField == .phone {
                                             Spacer()
-                                            Button("Done") {
+                                            Button {
                                                 focusedField = nil
+                                            } label: {
+                                                HStack(spacing: 4) {
+                                                    Text("Enter")
+                                                    Image(systemName: "return")
+                                                }
                                             }
                                             .font(OPSStyle.Typography.bodyBold)
                                             .foregroundColor(OPSStyle.Colors.primaryText)

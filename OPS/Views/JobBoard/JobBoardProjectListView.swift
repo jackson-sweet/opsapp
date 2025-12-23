@@ -11,6 +11,7 @@ import SwiftData
 struct JobBoardProjectListView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
     @Query private var allProjects: [Project]
     let searchText: String
     @Binding var showingFilters: Bool
@@ -21,6 +22,12 @@ struct JobBoardProjectListView: View {
     @State private var showingCreateProject = false
     @State private var showingClosedSheet = false
     @State private var showingArchivedSheet = false
+
+    // Tutorial animation states
+    @State private var tutorialAnimatedStatus: Status? = nil
+    @State private var hasStartedStatusAnimation = false
+    @State private var isStatusTransitioning = false  // True during status badge fade animation
+    @State private var showClosedSectionOverlay = false  // Dark overlay during closedProjectsScroll phase
 
     private var availableTeamMembers: [User] {
         guard let companyId = dataController.currentUser?.companyId else { return [] }
@@ -129,12 +136,37 @@ struct JobBoardProjectListView: View {
                 )
                 .frame(maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(activeProjects) { project in
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(activeProjects) { project in
+                            let isFocusedProject = !shouldGreyOutProject(project)
+
                             UniversalJobBoardCard(cardType: .project(project))
                                 .environmentObject(dataController)
                                 .id("\(project.id)-\(project.teamMemberIdsString)")
+                                // Tutorial mode: Grey out non-focused projects during status demo/swipe phases
+                                // Also grey out focused card during status transition animation
+                                // Also dim during closedProjectsScroll to highlight the closed section button
+                                .opacity(cardOpacity(for: project, isFocused: isFocusedProject) * (showClosedSectionOverlay ? 0.3 : 1.0))
+                                .animation(.easeInOut(duration: 0.3), value: showClosedSectionOverlay)
+                                .allowsHitTesting(!shouldGreyOutProject(project) && !showClosedSectionOverlay)
+                                // Tutorial: Capture frame of the focused project for swipe indicator
+                                .background(
+                                    GeometryReader { geo in
+                                        Color.clear
+                                            .onAppear {
+                                                if isFocusedProject && tutorialMode && tutorialPhase == .projectListSwipe {
+                                                    postProjectCardFrame(geo.frame(in: .global))
+                                                }
+                                            }
+                                            .onChange(of: tutorialPhase) { _, newPhase in
+                                                if isFocusedProject && tutorialMode && newPhase == .projectListSwipe {
+                                                    postProjectCardFrame(geo.frame(in: .global))
+                                                }
+                                            }
+                                    }
+                                )
                         }
 
                         // Closed and Archived section buttons
@@ -148,6 +180,7 @@ struct JobBoardProjectListView: View {
                                     ) {
                                         showingClosedSheet = true
                                     }
+                                    .tutorialHighlight(for: .closedProjectsScroll, cornerRadius: OPSStyle.Layout.cornerRadius)
                                 }
 
                                 if !archivedProjects.isEmpty {
@@ -161,11 +194,68 @@ struct JobBoardProjectListView: View {
                                 }
                             }
                             .padding(.top, 8)
+                            .id("closedProjectsSection")
                         }
                     }
                     .padding(.top, 12)
                     .padding(.bottom, 120)
-                }
+                    // Tutorial: Scroll to closed section and auto-advance
+                    .onChange(of: tutorialPhase) { _, newPhase in
+                        if tutorialMode && newPhase == .closedProjectsScroll {
+                            // Delay to allow SwiftUI to re-render after project moved to closed status
+                            // Without this delay, the "closedProjectsSection" ID may not exist yet
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                // Animate scroll to the closed projects section
+                                withAnimation(.easeInOut(duration: 0.8)) {
+                                    scrollProxy.scrollTo("closedProjectsSection", anchor: .center)
+                                }
+                            }
+
+                            // Show dark overlay after scroll completes (0.3s delay + 0.8s scroll)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    showClosedSectionOverlay = true
+                                }
+                            }
+
+                            // Auto-advance 3 seconds after overlay appears (1.2s + 3.0s = 4.2s)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 4.2) {
+                                if tutorialPhase == .closedProjectsScroll {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showClosedSectionOverlay = false
+                                    }
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("TutorialClosedProjectsViewed"),
+                                        object: nil
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } // End ScrollView
+                } // End ScrollViewReader
+            }
+        }
+        // Tutorial: Start status animation when entering projectListStatusDemo phase
+        .onChange(of: tutorialPhase) { oldPhase, newPhase in
+            if newPhase == .projectListStatusDemo && !hasStartedStatusAnimation {
+                startTutorialStatusAnimation()
+            }
+        }
+        .onAppear {
+            // Also check on appear in case we're already in the phase
+            if tutorialPhase == .projectListStatusDemo && !hasStartedStatusAnimation {
+                startTutorialStatusAnimation()
+            }
+        }
+        // Listen for swipe status change notifications from UniversalJobBoardCard
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ProjectStatusChanged"))) { notification in
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                // User swiped to change status - notify tutorial system
+                NotificationCenter.default.post(
+                    name: Notification.Name("TutorialProjectListSwipe"),
+                    object: nil
+                )
             }
         } 
         .sheet(isPresented: $showingFilterSheet) {
@@ -241,6 +331,115 @@ struct JobBoardProjectListView: View {
             showingFilters = true
         } else {
             showingFilters = false
+        }
+    }
+
+    // MARK: - Tutorial Helpers
+
+    /// Determines if a project should be greyed out during tutorial
+    /// Only the user-created demo project should be highlighted during status demo/swipe phases
+    private func shouldGreyOutProject(_ project: Project) -> Bool {
+        guard tutorialMode else { return false }
+
+        // Only grey out during specific phases
+        switch tutorialPhase {
+        case .projectListStatusDemo, .projectListSwipe:
+            // The user-created project has a longer ID (UUID format vs short pre-seeded IDs)
+            let isUserCreatedProject = project.id.hasPrefix("DEMO_PROJECT_") && project.id.count > 25
+            return !isUserCreatedProject
+        default:
+            return false
+        }
+    }
+
+    /// Calculates the opacity for a project card during tutorial
+    /// Grey out non-focused projects, and also grey out focused card during status transition
+    private func cardOpacity(for project: Project, isFocused: Bool) -> Double {
+        if shouldGreyOutProject(project) {
+            return 0.3
+        }
+        // During status transition, grey out the focused card (except the status badge)
+        if isFocused && isStatusTransitioning {
+            return 0.5
+        }
+        return 1.0
+    }
+
+    /// Posts the project card frame for the swipe indicator
+    private func postProjectCardFrame(_ frame: CGRect) {
+        NotificationCenter.default.post(
+            name: Notification.Name("TutorialProjectCardFrame"),
+            object: nil,
+            userInfo: ["frame": frame]
+        )
+    }
+
+    // MARK: - Tutorial Status Animation
+
+    /// Animates the demo project through status transitions during tutorial
+    /// Each transition greys out the card and fades in the new status badge
+    private func startTutorialStatusAnimation() {
+        guard tutorialMode else { return }
+        hasStartedStatusAnimation = true
+
+        // Find the user-created demo project (has UUID in ID, unlike pre-seeded ones)
+        // Pre-seeded projects have short IDs like "DEMO_PROJECT_MIG"
+        // User-created project has ID like "DEMO_PROJECT_ABC123-DEF456-..."
+        guard let demoProject = allProjects.first(where: {
+            $0.id.hasPrefix("DEMO_PROJECT_") && $0.id.count > 25
+        }) else {
+            print("[TUTORIAL] No user-created demo project found for status animation")
+            return
+        }
+
+        print("[TUTORIAL] Starting status animation for project: \(demoProject.title)")
+
+        // Animation sequence: accepted → in progress → completed
+        // Each transition greys out the card briefly and animates the status badge
+
+        // Step 1: Change to accepted
+        animateStatusChange(demoProject, to: .accepted, taskStatus: .booked) {
+            // Step 2: After a delay, change to in progress
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                self.animateStatusChange(demoProject, to: .inProgress, taskStatus: .inProgress) {
+                    // Step 3: After another delay, change to completed
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        self.animateStatusChange(demoProject, to: .completed, taskStatus: .completed) {
+                            // Animation complete
+                            print("[TUTORIAL] Status animation complete")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Animates a status change with card grey-out effect
+    private func animateStatusChange(_ project: Project, to status: Status, taskStatus: TaskStatus, completion: @escaping () -> Void) {
+        // Grey out the card during transition
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isStatusTransitioning = true
+        }
+
+        // After brief grey-out, change the status with animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            TutorialHaptics.lightTap()
+
+            // Change the status - the badge will animate
+            withAnimation(.easeInOut(duration: 0.3)) {
+                project.status = status
+                for task in project.tasks {
+                    task.status = taskStatus
+                }
+            }
+
+            // Restore card opacity
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    self.isStatusTransitioning = false
+                }
+                completion()
+            }
         }
     }
 }

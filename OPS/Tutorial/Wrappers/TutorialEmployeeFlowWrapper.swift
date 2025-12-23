@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Tutorial flow wrapper for employee flow.
-//  Wraps the Home tab with tutorial overlay, tooltip, and swipe indicators.
+//  Displays the full app UI at native size with tutorial overlays.
 //  Injects tutorialMode=true into the environment for demo data filtering.
 //
 
@@ -11,7 +11,7 @@ import SwiftUI
 import SwiftData
 
 /// Wrapper view for the Employee tutorial flow
-/// Manages the home view with tutorial overlays and phase progression
+/// Shows full-screen app content with spotlight overlay and floating tooltip
 struct TutorialEmployeeFlowWrapper: View {
     @ObservedObject var stateManager: TutorialStateManager
     @EnvironmentObject private var dataController: DataController
@@ -21,51 +21,73 @@ struct TutorialEmployeeFlowWrapper: View {
     /// Callback when tutorial completes
     let onComplete: () -> Void
 
-    /// Frame tracking for cutout positions
-    /// Note: Frame captures will be wired when Phase 6 adds .tutorialTarget() modifiers
-    /// to the actual UI elements (project cards, action buttons in ProjectDetailsView)
+    /// Frame tracking for spotlight cutouts
     @State private var projectCardFrame: CGRect = .zero
     @State private var noteButtonFrame: CGRect = .zero
     @State private var photoButtonFrame: CGRect = .zero
     @State private var completeButtonFrame: CGRect = .zero
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Main content area (scaled)
-                TutorialContainerView {
-                    contentForCurrentPhase
-                        .environment(\.tutorialMode, true)
-                        .environment(\.tutorialPhase, stateManager.currentPhase)
-                        .environment(\.tutorialStateManager, stateManager)
-                }
+        ZStack {
+            // Layer 1: Full-screen app content
+            contentForCurrentPhase
+                .environment(\.tutorialMode, true)
+                .environment(\.tutorialPhase, stateManager.currentPhase)
+                .environment(\.tutorialStateManager, stateManager)
 
-                // Tutorial overlay with cutout
-                if stateManager.currentPhase.requiresUserAction {
-                    TutorialSpotlight(
-                        cutoutFrame: currentCutoutFrame,
-                        showHighlight: true
-                    )
-                }
+            // Layer 2: Tutorial spotlight overlay (dark with cutout)
+            if stateManager.currentPhase.requiresUserAction && currentCutoutFrame != .zero {
+                TutorialSpotlight(
+                    cutoutFrame: currentCutoutFrame,
+                    showHighlight: true
+                )
+                .allowsHitTesting(false)
+            }
 
-                // Swipe indicator (when applicable)
-                if stateManager.showSwipeHint {
-                    swipeIndicatorOverlay
-                }
+            // Layer 3: Swipe indicator (when applicable)
+            if stateManager.showSwipeHint {
+                TutorialSwipeIndicator(
+                    direction: stateManager.swipeDirection,
+                    targetFrame: currentCutoutFrame
+                )
+            }
 
-                // Tooltip at bottom
-                VStack {
-                    Spacer()
+            // Layer 4 (TOPMOST): Collapsible tooltip at top of screen
+            VStack {
+                TutorialCollapsibleTooltip(
+                    text: stateManager.tooltipText,
+                    description: stateManager.tooltipDescription,
+                    animated: true
+                )
 
-                    TutorialTooltipCard(
-                        text: stateManager.tooltipText,
-                        animated: true
-                    )
-                    .padding(.bottom, 40)
-                }
+                Spacer()
             }
         }
-        .background(OPSStyle.Colors.background)
+        .ignoresSafeArea(.keyboard)
+        // Listen for project tap in tutorial mode
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialProjectTapped"))) { _ in
+            if stateManager.currentPhase == .tapProject {
+                stateManager.advancePhase()
+            }
+        }
+        // Listen for note added
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialNoteAdded"))) { _ in
+            if stateManager.currentPhase == .addNote {
+                stateManager.advancePhase()
+            }
+        }
+        // Listen for photo added
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialPhotoAdded"))) { _ in
+            if stateManager.currentPhase == .addPhoto {
+                stateManager.advancePhase()
+            }
+        }
+        // Listen for project completed
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialProjectCompleted"))) { _ in
+            if stateManager.currentPhase == .completeProject {
+                stateManager.advancePhase()
+            }
+        }
     }
 
     // MARK: - Content Routing
@@ -76,19 +98,19 @@ struct TutorialEmployeeFlowWrapper: View {
         switch stateManager.currentPhase {
         case .homeOverview, .tapProject, .projectStarted:
             // Home view phases
-            homeContent
+            EmployeeTutorialTabView(selectedTab: 0) // Home tab
 
         case .longPressDetails, .addNote, .addPhoto, .completeProject:
-            // Project details phases - shown as sheet over home
-            homeContent
+            // Project details phases
+            EmployeeTutorialTabView(selectedTab: 0)
 
         case .jobBoardBrowse:
             // Job board browsing
-            jobBoardContent
+            EmployeeTutorialTabView(selectedTab: 1) // Job Board tab
 
         case .calendarWeek, .calendarMonthPrompt, .calendarMonth:
-            // Calendar phases (shared with creator flow)
-            calendarContent
+            // Calendar phases
+            EmployeeTutorialTabView(selectedTab: 2) // Schedule tab
 
         case .completed:
             // Show completion view
@@ -99,32 +121,11 @@ struct TutorialEmployeeFlowWrapper: View {
 
         default:
             // Fallback to home
-            homeContent
+            EmployeeTutorialTabView(selectedTab: 0)
         }
     }
 
-    // MARK: - Phase-Specific Views
-
-    /// Home view with today's projects
-    @ViewBuilder
-    private var homeContent: some View {
-        HomeView()
-    }
-
-    /// Job board view for browsing all jobs
-    @ViewBuilder
-    private var jobBoardContent: some View {
-        JobBoardDashboard()
-    }
-
-    /// Calendar view
-    @ViewBuilder
-    private var calendarContent: some View {
-        // Schedule view (calendar tab)
-        ScheduleView()
-    }
-
-    // MARK: - Overlay Components
+    // MARK: - Helpers
 
     /// Current cutout frame based on phase
     private var currentCutoutFrame: CGRect {
@@ -142,16 +143,74 @@ struct TutorialEmployeeFlowWrapper: View {
         case .jobBoardBrowse:
             return projectCardFrame
         default:
-            return .zero // No cutout (full access)
+            return .zero
         }
     }
+}
 
-    /// Swipe indicator overlay positioned near the target
-    @ViewBuilder
-    private var swipeIndicatorOverlay: some View {
-        TutorialSwipeIndicator(
-            direction: stateManager.swipeDirection,
-            targetFrame: currentCutoutFrame
+// MARK: - Employee Tutorial Tab View
+
+/// Simplified tab view for employee tutorial
+private struct EmployeeTutorialTabView: View {
+    let selectedTab: Int
+    @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        ZStack {
+            // Tab content
+            switch selectedTab {
+            case 0:
+                HomeView()
+            case 1:
+                JobBoardView()
+            case 2:
+                ScheduleView()
+            case 3:
+                SettingsView()
+            default:
+                HomeView()
+            }
+
+            // Tab bar at bottom
+            VStack {
+                Spacer()
+                EmployeeTutorialTabBar(selectedTab: selectedTab)
+            }
+        }
+        .ignoresSafeArea(.all, edges: .bottom)
+    }
+}
+
+// MARK: - Employee Tutorial Tab Bar
+
+/// Visual-only tab bar for employee tutorial
+private struct EmployeeTutorialTabBar: View {
+    let selectedTab: Int
+
+    private let tabs = [
+        ("house.fill", "Home"),
+        ("briefcase.fill", "Jobs"),
+        ("calendar", "Schedule"),
+        ("gearshape.fill", "Settings")
+    ]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<tabs.count, id: \.self) { index in
+                VStack(spacing: 4) {
+                    Image(systemName: tabs[index].0)
+                        .font(.system(size: 22))
+                        .foregroundColor(index == selectedTab ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+        }
+        .padding(.bottom, 24) // Safe area
+        .background(
+            OPSStyle.Colors.cardBackgroundDark
+                .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: -2)
         )
     }
 }
@@ -167,6 +226,8 @@ struct TutorialEmployeeFlowWrapper_Previews: PreviewProvider {
             stateManager: stateManager,
             onComplete: {}
         )
+        .environmentObject(DataController())
+        .environmentObject(AppState())
         .onAppear {
             stateManager.start()
         }

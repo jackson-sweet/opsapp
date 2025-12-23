@@ -25,6 +25,7 @@ enum OnboardingScreen: String, Codable, CaseIterable {
     case profileCompany    // Legacy: Profile + create company (deprecated)
     case profileJoin       // Legacy: Profile + join company with code (deprecated)
     case ready             // Welcome guide / billing
+    case tutorial          // Interactive tutorial for new users
 
     /// Display title for debugging
     var title: String {
@@ -42,6 +43,7 @@ enum OnboardingScreen: String, Codable, CaseIterable {
         case .profileCompany: return "Profile & Company"
         case .profileJoin: return "Profile & Join"
         case .ready: return "Ready"
+        case .tutorial: return "Tutorial"
         }
     }
 }

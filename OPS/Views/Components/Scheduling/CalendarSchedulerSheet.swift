@@ -20,6 +20,7 @@ struct CalendarSchedulerSheet: View {
     let preselectedTeamMemberIds: Set<String>?  // Optional pre-selected team members for filtering
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.tutorialMode) private var tutorialMode
     @EnvironmentObject private var dataController: DataController
 
     // Calendar state
@@ -127,10 +128,13 @@ struct CalendarSchedulerSheet: View {
             VStack(spacing: 0) {
                 HStack {
                     Button("Cancel") {
+                        guard !tutorialMode else { return } // Disabled in tutorial mode
                         isPresented = false
                     }
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(tutorialMode ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                     .font(OPSStyle.Typography.body)
+                    .allowsHitTesting(!tutorialMode)
+                    .opacity(tutorialMode ? 0.5 : 1.0)
 
                     Spacer()
 

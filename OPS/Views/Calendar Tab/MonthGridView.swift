@@ -167,6 +167,9 @@ struct MonthGridView: View {
     @State private var hasScrolledToCurrentMonth = false
     @State private var isProgrammaticScroll = false
     @State private var updateWorkItem: DispatchWorkItem?
+    @State private var initialScrollOffset: CGFloat?
+    @State private var hasNotifiedTutorialScroll = false
+    @State private var hasNotifiedTutorialPinch = false
     @EnvironmentObject private var dataController: DataController
     @Environment(\.tutorialMode) private var tutorialMode
 
@@ -484,6 +487,22 @@ struct MonthGridView: View {
                 }
                 .coordinateSpace(name: "scroll")
                 .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                    // Track initial scroll offset for tutorial
+                    if tutorialMode && initialScrollOffset == nil {
+                        initialScrollOffset = value
+                    }
+
+                    // Detect user scroll for tutorial (significant movement from initial)
+                    if tutorialMode && !hasNotifiedTutorialScroll && !isProgrammaticScroll {
+                        if let initial = initialScrollOffset, abs(value - initial) > 30 {
+                            hasNotifiedTutorialScroll = true
+                            NotificationCenter.default.post(
+                                name: Notification.Name("CalendarMonthViewScrolled"),
+                                object: nil
+                            )
+                        }
+                    }
+
                     scrollOffset = value
                 }
                 .simultaneousGesture(
@@ -491,6 +510,15 @@ struct MonthGridView: View {
                         .onChanged { value in
                             let newHeight = gestureStartHeight * value
                             cellHeight = min(max(newHeight, minHeight), maxHeight)
+
+                            // Detect pinch for tutorial
+                            if tutorialMode && !hasNotifiedTutorialPinch && abs(value - 1.0) > 0.1 {
+                                hasNotifiedTutorialPinch = true
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("CalendarMonthViewPinched"),
+                                    object: nil
+                                )
+                            }
                         }
                         .onEnded { _ in
                             gestureStartHeight = cellHeight

@@ -15,6 +15,7 @@ import SwiftData
 struct TutorialLauncherView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var locationManager: LocationManager
     @Environment(\.modelContext) private var modelContext
 
     /// Callback when tutorial completes or is dismissed
@@ -26,8 +27,11 @@ struct TutorialLauncherView: View {
     /// State manager for the tutorial
     @StateObject private var stateManager: TutorialStateManager
 
+    /// Cover screen state (shown before tutorial begins)
+    @State private var showingCover = true
+
     /// Loading state for demo data seeding
-    @State private var isSeeding = true
+    @State private var isSeeding = false
 
     /// Error state
     @State private var seedingError: String?
@@ -37,6 +41,11 @@ struct TutorialLauncherView: View {
 
     /// Completion state
     @State private var showingCompletion = false
+
+    /// Typewriter animation state
+    @State private var displayedTitle = ""
+    @State private var typewriterTimer: Timer?
+    private let fullTitle = "HERE'S HOW OPS WORKS"
 
     /// Creates the tutorial launcher
     /// - Parameters:
@@ -58,7 +67,9 @@ struct TutorialLauncherView: View {
             OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            if isSeeding {
+            if showingCover {
+                coverView
+            } else if isSeeding {
                 loadingView
             } else if let error = seedingError {
                 errorView(error: error)
@@ -71,16 +82,117 @@ struct TutorialLauncherView: View {
                 tutorialFlowContent
             }
         }
-        .onAppear {
-            setupAndSeedDemoData()
-        }
         .onDisappear {
             // Cleanup if view disappears unexpectedly
             cleanupDemoDataIfNeeded()
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialProjectFormComplete"))) { notification in
+            // Register user-created project for cleanup
+            if let projectId = notification.userInfo?["projectId"] as? String {
+                demoDataManager?.registerUserCreatedProject(id: projectId)
+            }
+        }
     }
 
     // MARK: - Views
+
+    /// Cover screen shown before tutorial begins
+    private var coverView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer()
+
+            // Title with typewriter animation
+            VStack(alignment: .leading, spacing: 16) {
+                Text(displayedTitle)
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Description of what tutorial achieves
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("You'll create a sample project and move it through your workflow—just like a real job. You'll learn to:")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        tutorialBulletPoint("Create projects with tasks")
+                        tutorialBulletPoint("Assign work to your crew")
+                        tutorialBulletPoint("Track progress from start to finish")
+                        tutorialBulletPoint("View your schedule")
+                    }
+                }
+            }
+            .padding(.bottom, 60)
+
+            Spacer()
+
+            // Begin button
+            Button {
+                typewriterTimer?.invalidate()
+                withAnimation(.easeOut(duration: 0.3)) {
+                    showingCover = false
+                    isSeeding = true
+                }
+                setupAndSeedDemoData()
+            } label: {
+                Text("START TUTORIAL")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(Color.white)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+
+            // Skip button
+            Button {
+                typewriterTimer?.invalidate()
+                handleTutorialComplete()
+            } label: {
+                Text("SKIP FOR NOW")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+            }
+            .padding(.bottom, 20)
+        }
+        .padding(.horizontal, 32)
+        .onAppear {
+            startTypewriterAnimation()
+        }
+        .onDisappear {
+            typewriterTimer?.invalidate()
+        }
+    }
+
+    /// Helper view for bullet points
+    private func tutorialBulletPoint(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 16))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+            Text(text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+    }
+
+    /// Starts the typewriter animation for the title
+    private func startTypewriterAnimation() {
+        displayedTitle = ""
+        var characterIndex = 0
+
+        typewriterTimer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { timer in
+            if characterIndex < fullTitle.count {
+                let index = fullTitle.index(fullTitle.startIndex, offsetBy: characterIndex)
+                displayedTitle += String(fullTitle[index])
+                characterIndex += 1
+            } else {
+                timer.invalidate()
+            }
+        }
+    }
 
     /// Loading view while seeding demo data
     private var loadingView: some View {
@@ -89,7 +201,7 @@ struct TutorialLauncherView: View {
                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                 .scaleEffect(1.5)
 
-            Text("SETTING UP YOUR TRAINING...")
+            Text("Setting up sample data...")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
@@ -102,7 +214,7 @@ struct TutorialLauncherView: View {
                 .font(.system(size: 48))
                 .foregroundColor(OPSStyle.Colors.errorStatus)
 
-            Text("SETUP FAILED")
+            Text("COULDN'T LOAD TUTORIAL")
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -112,7 +224,7 @@ struct TutorialLauncherView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
 
-            Button("Skip Tutorial") {
+            Button("SKIP FOR NOW") {
                 handleTutorialComplete()
             }
             .buttonStyle(OPSButtonStyle.Secondary())
@@ -131,6 +243,7 @@ struct TutorialLauncherView: View {
             )
             .environmentObject(dataController)
             .environmentObject(appState)
+            .environmentObject(locationManager)
 
         case .employee:
             TutorialEmployeeFlowWrapper(
@@ -139,6 +252,7 @@ struct TutorialLauncherView: View {
             )
             .environmentObject(dataController)
             .environmentObject(appState)
+            .environmentObject(locationManager)
         }
     }
 
@@ -150,8 +264,14 @@ struct TutorialLauncherView: View {
             do {
                 print("[TUTORIAL_LAUNCHER] Starting demo data seeding...")
 
-                // Create demo data manager
-                let manager = TutorialDemoDataManager(context: modelContext)
+                // Create demo data manager with current user's company ID
+                guard let userCompanyId = dataController.currentUser?.companyId else {
+                    print("[TUTORIAL_LAUNCHER] Error: No current user or company ID")
+                    seedingError = "Unable to determine company. Please log in again."
+                    isSeeding = false
+                    return
+                }
+                let manager = TutorialDemoDataManager(context: modelContext, companyId: userCompanyId)
                 demoDataManager = manager
 
                 // Check if demo data already exists
@@ -229,10 +349,39 @@ struct TutorialLauncherView: View {
                 } catch {
                     print("[TUTORIAL_LAUNCHER] Error saving tutorial completion: \(error)")
                 }
+
+                // Sync user to Bubble so backend knows tutorial is complete
+                do {
+                    try await dataController.apiService.updateUser(userId: user.id, fields: [
+                        "has_completed_app_tutorial": true
+                    ])
+                    user.needsSync = false
+                    try modelContext.save()
+                    print("[TUTORIAL_LAUNCHER] Tutorial completion synced to Bubble")
+                } catch {
+                    print("[TUTORIAL_LAUNCHER] Warning: Failed to sync tutorial completion to Bubble: \(error)")
+                    // Non-fatal - will sync later
+                }
             }
 
-            // Cleanup demo data
+            // Cleanup demo data first
             await cleanupDemoData()
+
+            // Perform full sync to get fresh data from backend
+            // This ensures company subscription is up to date and prevents lockout
+            print("[TUTORIAL_LAUNCHER] Starting full sync after tutorial completion...")
+            await dataController.refreshProjectsFromBackend()
+            print("[TUTORIAL_LAUNCHER] Full sync completed")
+
+            // Also refresh company data to get latest subscription info
+            if let user = dataController.currentUser, let companyId = user.companyId {
+                do {
+                    try await dataController.forceRefreshCompany(id: companyId)
+                    print("[TUTORIAL_LAUNCHER] Company subscription data refreshed")
+                } catch {
+                    print("[TUTORIAL_LAUNCHER] Warning: Failed to refresh company data: \(error)")
+                }
+            }
 
             // Call completion handler
             onComplete()

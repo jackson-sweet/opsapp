@@ -35,6 +35,7 @@ struct ExpandableSection<Content: View>: View {
     let icon: String
     @Binding var isExpanded: Bool
     let onDelete: (() -> Void)?
+    let collapsible: Bool
     @ViewBuilder let content: () -> Content
 
     /// Create an expandable section
@@ -44,18 +45,21 @@ struct ExpandableSection<Content: View>: View {
     ///   - icon: SF Symbol icon name (default: "square.grid.2x2")
     ///   - isExpanded: Binding to control expanded/collapsed state
     ///   - onDelete: Optional delete handler (shows delete button when provided)
+    ///   - collapsible: Whether the section can be collapsed (default: true)
     ///   - content: Section content (shown when expanded)
     init(
         title: String,
         icon: String = "square.grid.2x2",
         isExpanded: Binding<Bool>,
         onDelete: (() -> Void)? = nil,
+        collapsible: Bool = true,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.icon = icon
         self._isExpanded = isExpanded
         self.onDelete = onDelete
+        self.collapsible = collapsible
         self.content = content
     }
 
@@ -82,15 +86,18 @@ struct ExpandableSection<Content: View>: View {
                     }
                 }
 
-                // Chevron indicator (rotates based on state)
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 12))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                // Chevron indicator (rotates based on state) - hidden when not collapsible
+                if collapsible {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
             .contentShape(Rectangle())  // Make entire header tappable
             .onTapGesture {
+                guard collapsible else { return }
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     isExpanded.toggle()
                 }

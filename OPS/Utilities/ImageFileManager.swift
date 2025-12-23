@@ -39,21 +39,33 @@ class ImageFileManager {
         }
     }
     
+    /// Normalize a URL to ensure consistent caching regardless of protocol prefix
+    private func normalizeURL(_ url: String) -> String {
+        // Handle // prefix by adding https:
+        if url.hasPrefix("//") {
+            return "https:" + url
+        }
+        return url
+    }
+
     /// Encode a remote URL to make it safe for use as a file name
     private func encodeRemoteURL(_ url: String) -> String {
+        // Normalize URL first for consistent hashing
+        let normalizedURL = normalizeURL(url)
+
         // Use SHA256 hash to create a unique, fixed-length identifier
-        let data = url.data(using: .utf8)!
+        let data = normalizedURL.data(using: .utf8)!
         let hash = SHA256.hash(data: data)
         let hashString = hash.compactMap { String(format: "%02x", $0) }.joined()
-        
+
         // Extract the filename from the URL if possible to make debugging easier
         var filenameSuffix = ""
-        if let urlComponents = URL(string: url),
+        if let urlComponents = URL(string: normalizedURL),
            let filename = urlComponents.lastPathComponent.split(separator: ".").first {
             // Take last 20 characters of the filename
             filenameSuffix = "_" + String(filename.suffix(20))
         }
-        
+
         // Return a combination of hash prefix and filename for uniqueness and debuggability
         return "remote_\(hashString.prefix(32))\(filenameSuffix)"
     }
@@ -65,17 +77,22 @@ class ImageFileManager {
             let encodedID = encodeRemoteURL(localID)
             return imagesDirectory.appendingPathComponent(encodedID)
         }
-        
+
+        // Handle already-encoded remote URLs (e.g., "remote_xxxxx")
+        if localID.hasPrefix("remote_") {
+            return imagesDirectory.appendingPathComponent(localID)
+        }
+
         // Extract filename from localID (format: "local://project_images/filename.jpg")
         guard localID.hasPrefix("local://project_images/") else {
             return nil
         }
-        
+
         let components = localID.components(separatedBy: "/")
         guard let filename = components.last else {
             return nil
         }
-        
+
         return imagesDirectory.appendingPathComponent(filename)
     }
     

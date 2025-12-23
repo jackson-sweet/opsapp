@@ -15,22 +15,34 @@ import UIKit
 class TutorialDemoDataManager {
     private let context: ModelContext
     private let dateCalculator: DemoDateCalculator
+    private let companyId: String
 
-    init(context: ModelContext) {
+    /// IDs of projects created by the user during the tutorial (not pre-seeded)
+    private var userCreatedProjectIds: [String] = []
+
+    init(context: ModelContext, companyId: String) {
         self.context = context
+        self.companyId = companyId
         self.dateCalculator = DemoDateCalculator()
+    }
+
+    /// Register a user-created project ID for cleanup
+    func registerUserCreatedProject(id: String) {
+        userCreatedProjectIds.append(id)
+        print("[TUTORIAL_CLEANUP] Registered user-created project for cleanup: \(id)")
     }
 
     // MARK: - Public API
 
     /// Seeds all demo data to SwiftData
-    /// Order matters due to relationships: TaskTypes -> Users -> Clients -> Projects (with Tasks and CalendarEvents)
+    /// Order matters due to relationships: TaskTypes -> Users -> TeamMembers -> Clients -> Projects (with Tasks and CalendarEvents)
     func seedAllDemoData() async throws {
         print("[TUTORIAL_SEED] Starting demo data seeding...")
 
         // Seed in order of dependencies
         try await seedTaskTypes()
         try await seedUsers()
+        try await seedTeamMembers()
         try await seedClients()
         try await seedProjects()
 
@@ -42,19 +54,26 @@ class TutorialDemoDataManager {
 
     /// Cleans up all demo data from SwiftData
     /// Deletes in reverse order of creation to respect relationships
+    /// Each deletion method saves immediately to ensure data is removed
     func cleanupAllDemoData() async throws {
         print("[TUTORIAL_CLEANUP] Starting demo data cleanup...")
+        print("[TUTORIAL_CLEANUP] User-created project IDs to delete: \(userCreatedProjectIds)")
 
-        // Delete in reverse order of creation
+        // Delete in reverse order of creation (each method saves after deletion)
         try await deleteCalendarEvents()
         try await deleteTasks()
         try await deleteProjects()
         try await deleteClients()
+        try await deleteTeamMembers()
         try await deleteTaskTypes()
         try await deleteUsers()
 
-        // Save all changes
+        // Final save to ensure everything is committed
         try context.save()
+
+        // Verify cleanup
+        let remainingCounts = getDemoDataCounts()
+        print("[TUTORIAL_CLEANUP] Remaining after cleanup - Projects: \(remainingCounts.projects), Tasks: \(remainingCounts.tasks), Events: \(remainingCounts.events)")
 
         print("[TUTORIAL_CLEANUP] Demo data cleanup complete!")
     }
@@ -114,7 +133,7 @@ class TutorialDemoDataManager {
                 id: data.id,
                 display: data.display,
                 color: data.color,
-                companyId: DemoIDs.demoCompany,
+                companyId: companyId,
                 isDefault: false,
                 icon: data.icon
             )
@@ -133,7 +152,7 @@ class TutorialDemoDataManager {
                 firstName: data.firstName,
                 lastName: data.lastName,
                 role: .fieldCrew,
-                companyId: DemoIDs.demoCompany
+                companyId: companyId
             )
 
             // Load avatar image from asset catalog and store as Data
@@ -152,6 +171,23 @@ class TutorialDemoDataManager {
         print("[TUTORIAL_SEED] Seeded \(DemoTeamMemberData.all.count) users")
     }
 
+    private func seedTeamMembers() async throws {
+        print("[TUTORIAL_SEED] Seeding team members...")
+
+        for data in DemoTeamMemberData.all {
+            let teamMember = TeamMember(
+                id: data.id,
+                firstName: data.firstName,
+                lastName: data.lastName,
+                role: "Field Crew",
+                avatarURL: data.avatarAssetName  // Use asset name for local lookup
+            )
+            context.insert(teamMember)
+        }
+
+        print("[TUTORIAL_SEED] Seeded \(DemoTeamMemberData.all.count) team members")
+    }
+
     private func seedClients() async throws {
         print("[TUTORIAL_SEED] Seeding clients...")
 
@@ -160,7 +196,7 @@ class TutorialDemoDataManager {
                 id: data.id,
                 name: data.name,
                 address: data.address,
-                companyId: DemoIDs.demoCompany
+                companyId: companyId
             )
             client.latitude = data.latitude
             client.longitude = data.longitude
@@ -182,7 +218,7 @@ class TutorialDemoDataManager {
             )
             project.projectDescription = projectData.description
             project.notes = projectData.notes
-            project.companyId = DemoIDs.demoCompany
+            project.companyId = companyId
 
             // Set project images if available
             if !projectData.imageAssets.isEmpty {
@@ -214,7 +250,7 @@ class TutorialDemoDataManager {
                     id: taskId,
                     projectId: project.id,
                     taskTypeId: taskData.taskTypeId,
-                    companyId: DemoIDs.demoCompany,
+                    companyId: companyId,
                     status: taskStatus,
                     taskColor: taskColor
                 )
@@ -236,13 +272,21 @@ class TutorialDemoDataManager {
                 let calendarEventId = DemoIDs.calendarEventId(taskId: taskId)
                 let eventTitle = "\(project.effectiveClientName) - \(project.title)"
 
+                // Calculate end date based on duration (default 1 day = same day)
+                let endDate: Date
+                if taskData.durationDays > 1 {
+                    endDate = Calendar.current.date(byAdding: .day, value: taskData.durationDays - 1, to: scheduledDate) ?? scheduledDate
+                } else {
+                    endDate = scheduledDate
+                }
+
                 let calendarEvent = CalendarEvent(
                     id: calendarEventId,
                     projectId: project.id,
-                    companyId: DemoIDs.demoCompany,
+                    companyId: companyId,
                     title: eventTitle,
                     startDate: scheduledDate,
-                    endDate: scheduledDate,  // Single-day events for demo
+                    endDate: endDate,
                     color: taskColor
                 )
                 calendarEvent.taskId = taskId
@@ -281,63 +325,181 @@ class TutorialDemoDataManager {
     // MARK: - Cleanup Methods
 
     private func deleteCalendarEvents() async throws {
-        let demoPrefix = "DEMO_"
+        // Delete events with DEMO_ prefix (all types: DEMO_EVENT_, etc.)
         let descriptor = FetchDescriptor<CalendarEvent>(
-            predicate: #Predicate { $0.id.starts(with: demoPrefix) }
+            predicate: #Predicate<CalendarEvent> { event in
+                event.id.starts(with: "DEMO_")
+            }
         )
         let events = try context.fetch(descriptor)
-        print("[TUTORIAL_CLEANUP] Deleting \(events.count) calendar events")
-        events.forEach { context.delete($0) }
+        print("[TUTORIAL_CLEANUP] Deleting \(events.count) calendar events by prefix")
+        for event in events {
+            context.delete(event)
+        }
+
+        // Also delete events linked to demo projects (fallback for any missed)
+        let projectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id.starts(with: "DEMO_") }
+        )
+        let demoProjects = try context.fetch(projectDescriptor)
+        for project in demoProjects {
+            let projectId = project.id
+            let eventsByProject = FetchDescriptor<CalendarEvent>(
+                predicate: #Predicate<CalendarEvent> { $0.projectId == projectId }
+            )
+            let linkedEvents = try context.fetch(eventsByProject)
+            print("[TUTORIAL_CLEANUP] Deleting \(linkedEvents.count) calendar events for project \(projectId)")
+            for event in linkedEvents {
+                context.delete(event)
+            }
+        }
+
+        // Also delete events for user-created projects
+        for projectId in userCreatedProjectIds {
+            let eventsByProject = FetchDescriptor<CalendarEvent>(
+                predicate: #Predicate<CalendarEvent> { $0.projectId == projectId }
+            )
+            let linkedEvents = try context.fetch(eventsByProject)
+            print("[TUTORIAL_CLEANUP] Deleting \(linkedEvents.count) calendar events for user project \(projectId)")
+            for event in linkedEvents {
+                context.delete(event)
+            }
+        }
+
+        try context.save()
     }
 
     private func deleteTasks() async throws {
-        let demoPrefix = "DEMO_"
+        // Delete tasks with DEMO_ prefix
         let descriptor = FetchDescriptor<ProjectTask>(
-            predicate: #Predicate { $0.id.starts(with: demoPrefix) }
+            predicate: #Predicate<ProjectTask> { task in
+                task.id.starts(with: "DEMO_")
+            }
         )
         let tasks = try context.fetch(descriptor)
-        print("[TUTORIAL_CLEANUP] Deleting \(tasks.count) tasks")
-        tasks.forEach { context.delete($0) }
+        print("[TUTORIAL_CLEANUP] Deleting \(tasks.count) tasks by prefix")
+        for task in tasks {
+            context.delete(task)
+        }
+
+        // Also delete tasks linked to demo projects (fallback)
+        let projectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id.starts(with: "DEMO_") }
+        )
+        let demoProjects = try context.fetch(projectDescriptor)
+        for project in demoProjects {
+            let projectId = project.id
+            let tasksByProject = FetchDescriptor<ProjectTask>(
+                predicate: #Predicate<ProjectTask> { $0.projectId == projectId }
+            )
+            let linkedTasks = try context.fetch(tasksByProject)
+            print("[TUTORIAL_CLEANUP] Deleting \(linkedTasks.count) tasks for project \(projectId)")
+            for task in linkedTasks {
+                context.delete(task)
+            }
+        }
+
+        // Also delete tasks for user-created projects
+        for projectId in userCreatedProjectIds {
+            let tasksByProject = FetchDescriptor<ProjectTask>(
+                predicate: #Predicate<ProjectTask> { $0.projectId == projectId }
+            )
+            let linkedTasks = try context.fetch(tasksByProject)
+            print("[TUTORIAL_CLEANUP] Deleting \(linkedTasks.count) tasks for user project \(projectId)")
+            for task in linkedTasks {
+                context.delete(task)
+            }
+        }
+
+        try context.save()
     }
 
     private func deleteProjects() async throws {
-        let demoPrefix = "DEMO_"
+        // Delete demo-prefixed projects
         let descriptor = FetchDescriptor<Project>(
-            predicate: #Predicate { $0.id.starts(with: demoPrefix) }
+            predicate: #Predicate<Project> { project in
+                project.id.starts(with: "DEMO_")
+            }
         )
-        let projects = try context.fetch(descriptor)
-        print("[TUTORIAL_CLEANUP] Deleting \(projects.count) projects")
-        projects.forEach { context.delete($0) }
+        let demoProjects = try context.fetch(descriptor)
+        print("[TUTORIAL_CLEANUP] Deleting \(demoProjects.count) demo projects")
+        for project in demoProjects {
+            context.delete(project)
+        }
+
+        // Also delete user-created projects from this tutorial session
+        for projectId in userCreatedProjectIds {
+            let userProjectDescriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.id == projectId }
+            )
+            let userProjects = try context.fetch(userProjectDescriptor)
+            print("[TUTORIAL_CLEANUP] Deleting \(userProjects.count) user-created project(s) with ID: \(projectId)")
+            for project in userProjects {
+                context.delete(project)
+            }
+        }
+
+        try context.save()
     }
 
     private func deleteClients() async throws {
-        let demoPrefix = "DEMO_"
         let descriptor = FetchDescriptor<Client>(
-            predicate: #Predicate { $0.id.starts(with: demoPrefix) }
+            predicate: #Predicate<Client> { client in
+                client.id.starts(with: "DEMO_")
+            }
         )
         let clients = try context.fetch(descriptor)
         print("[TUTORIAL_CLEANUP] Deleting \(clients.count) clients")
-        clients.forEach { context.delete($0) }
+        for client in clients {
+            context.delete(client)
+        }
+
+        try context.save()
+    }
+
+    private func deleteTeamMembers() async throws {
+        let descriptor = FetchDescriptor<TeamMember>(
+            predicate: #Predicate<TeamMember> { member in
+                member.id.starts(with: "DEMO_")
+            }
+        )
+        let teamMembers = try context.fetch(descriptor)
+        print("[TUTORIAL_CLEANUP] Deleting \(teamMembers.count) team members")
+        for member in teamMembers {
+            context.delete(member)
+        }
+
+        try context.save()
     }
 
     private func deleteTaskTypes() async throws {
-        let demoPrefix = "DEMO_"
         let descriptor = FetchDescriptor<TaskType>(
-            predicate: #Predicate { $0.id.starts(with: demoPrefix) }
+            predicate: #Predicate<TaskType> { taskType in
+                taskType.id.starts(with: "DEMO_")
+            }
         )
         let taskTypes = try context.fetch(descriptor)
         print("[TUTORIAL_CLEANUP] Deleting \(taskTypes.count) task types")
-        taskTypes.forEach { context.delete($0) }
+        for taskType in taskTypes {
+            context.delete(taskType)
+        }
+
+        try context.save()
     }
 
     private func deleteUsers() async throws {
-        let demoPrefix = "DEMO_"
         let descriptor = FetchDescriptor<User>(
-            predicate: #Predicate { $0.id.starts(with: demoPrefix) }
+            predicate: #Predicate<User> { user in
+                user.id.starts(with: "DEMO_")
+            }
         )
         let users = try context.fetch(descriptor)
         print("[TUTORIAL_CLEANUP] Deleting \(users.count) users")
-        users.forEach { context.delete($0) }
+        for user in users {
+            context.delete(user)
+        }
+
+        try context.save()
     }
 
     // MARK: - Helper Methods
@@ -410,15 +572,16 @@ class TutorialDemoDataManager {
     }
 
     /// Gets a count of all demo entities for debugging
-    func getDemoDataCounts() -> (projects: Int, tasks: Int, clients: Int, taskTypes: Int, users: Int, events: Int) {
+    func getDemoDataCounts() -> (projects: Int, tasks: Int, clients: Int, taskTypes: Int, users: Int, teamMembers: Int, events: Int) {
         let demoPrefix = "DEMO_"
         let projectCount = (try? context.fetchCount(FetchDescriptor<Project>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
         let taskCount = (try? context.fetchCount(FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
         let clientCount = (try? context.fetchCount(FetchDescriptor<Client>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
         let taskTypeCount = (try? context.fetchCount(FetchDescriptor<TaskType>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
         let userCount = (try? context.fetchCount(FetchDescriptor<User>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
+        let teamMemberCount = (try? context.fetchCount(FetchDescriptor<TeamMember>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
         let eventCount = (try? context.fetchCount(FetchDescriptor<CalendarEvent>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
 
-        return (projectCount, taskCount, clientCount, taskTypeCount, userCount, eventCount)
+        return (projectCount, taskCount, clientCount, taskTypeCount, userCount, teamMemberCount, eventCount)
     }
 }

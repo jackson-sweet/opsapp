@@ -10,6 +10,7 @@ import SwiftUI
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
     @State private var showMapSettings = false
     @State private var showDataSettings = false
     @State private var showSecuritySettings = false
@@ -17,6 +18,7 @@ struct AppSettingsView: View {
     @State private var showDeveloperDashboard = false
     @State private var developerModeEnabled: Bool = false
     @State private var developerModeExplicitlyDisabled: Bool = false
+    @State private var isRestartingTutorial = false
     
     private var shouldShowDeveloperOptions: Bool {
         // If explicitly disabled, hide even in DEBUG builds
@@ -94,6 +96,23 @@ struct AppSettingsView: View {
                         }
                     }
 
+                    // Restart Tutorial
+                    Divider()
+                        .background(OPSStyle.Colors.tertiaryText)
+                        .padding(.vertical, 8)
+
+                    Button {
+                        restartTutorial()
+                    } label: {
+                        SettingsRowCard(
+                            title: "Restart Tutorial",
+                            description: "Learn how to use OPS again",
+                            iconName: "graduationcap"
+                        )
+                    }
+                    .disabled(isRestartingTutorial)
+                    .opacity(isRestartingTutorial ? 0.5 : 1.0)
+
                     // Developer Tools section - visible in debug builds or when developer mode is enabled
                     if shouldShowDeveloperOptions {
                         Divider()
@@ -166,6 +185,54 @@ struct AppSettingsView: View {
             NavigationStack {
                 DeveloperDashboard()
                     .environmentObject(dataController)
+            }
+        }
+    }
+
+    // MARK: - Tutorial Restart
+
+    private func restartTutorial() {
+        guard let user = dataController.currentUser else {
+            print("[SETTINGS] No current user found")
+            return
+        }
+
+        isRestartingTutorial = true
+
+        Task {
+            do {
+                // 1. Update Bubble API
+                print("[SETTINGS] Updating hasCompletedAppTutorial to false in Bubble...")
+                try await dataController.apiService.updateUser(
+                    userId: user.id,
+                    fields: [BubbleFields.User.hasCompletedAppTutorial: false]
+                )
+                print("[SETTINGS] ✅ Bubble API updated")
+
+                // 2. Update local user model
+                await MainActor.run {
+                    user.hasCompletedAppTutorial = false
+                    user.needsSync = false // Already synced to Bubble
+                    print("[SETTINGS] ✅ Local user model updated")
+                }
+
+                // 3. Trigger tutorial restart and dismiss settings
+                await MainActor.run {
+                    isRestartingTutorial = false
+                    appState.shouldRestartTutorial = true
+                    dismiss()
+                }
+
+            } catch {
+                print("[SETTINGS] ❌ Failed to restart tutorial: \(error)")
+                await MainActor.run {
+                    isRestartingTutorial = false
+                    // Still try to restart tutorial locally even if API fails
+                    user.hasCompletedAppTutorial = false
+                    user.needsSync = true
+                    appState.shouldRestartTutorial = true
+                    dismiss()
+                }
             }
         }
     }
@@ -246,4 +313,5 @@ struct AppInfoCard: View {
     AppSettingsView()
         .preferredColorScheme(.dark)
         .environmentObject(DataController())
+        .environmentObject(AppState())
 }

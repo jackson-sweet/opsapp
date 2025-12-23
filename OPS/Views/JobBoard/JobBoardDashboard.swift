@@ -15,6 +15,7 @@ struct JobBoardDashboard: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
     @Query private var allProjects: [Project]
     @State private var draggedProject: Project? = nil
     @State private var isDragging = false
@@ -22,11 +23,21 @@ struct JobBoardDashboard: View {
     @State private var dragLocation: CGPoint = .zero
     @State private var dropZone: DragZone = .center
     @State private var currentPageIndex: Int = 0
+    @State private var tutorialArrowOffset: CGFloat = 0
+    @State private var tutorialHapticTimer: Timer?
+    @State private var illuminatedArrowCount: Int = 0
+    @State private var lastHapticArrowCount: Int = 0
+    @State private var showingWrongDirectionHint = false
     @Namespace private var cardNamespace
 
     private let statuses: [Status] = [.rfq, .estimated, .accepted, .inProgress, .completed]
     private let columnWidth: CGFloat = 280
     private let edgeZoneWidth: CGFloat = 60
+
+    /// Whether to block page swiping (during dragToAccepted tutorial phase when not dragging)
+    private var shouldBlockPageSwiping: Bool {
+        tutorialMode && tutorialPhase == .dragToAccepted && !isLongPressing
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -56,6 +67,15 @@ struct JobBoardDashboard: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .allowsHitTesting(!isLongPressing)
+                // Block page swiping during dragToAccepted tutorial phase
+                .gesture(
+                    shouldBlockPageSwiping ?
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { _ in }
+                        .onEnded { _ in }
+                    : nil,
+                    including: shouldBlockPageSwiping ? .all : .subviews
+                )
 
                 if isLongPressing {
                     edgeZones(geometry: geometry)
@@ -88,9 +108,61 @@ struct JobBoardDashboard: View {
                         .allowsHitTesting(false)
                         .transition(.opacity)
                 }
+
+                // Tutorial mode: Center directional arrows overlay
+                if tutorialMode && tutorialPhase == .dragToAccepted {
+                    VStack {
+                        Spacer()
+                        tutorialCenterArrows
+                        Spacer()
+                            .frame(height: 200) // Position arrows above page indicator
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+
+                // Tutorial mode: Wrong direction hint
+                if showingWrongDirectionHint {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.right.circle.fill")
+                                .font(.system(size: 20, weight: .bold))
+                            Text("OPE! DRAG RIGHT TOWARDS ACCEPTED")
+                                .font(OPSStyle.Typography.captionBold)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(OPSStyle.Colors.primaryAccent)
+                                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, 180)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showingWrongDirectionHint)
+                    .zIndex(999) // Ensure hint appears above other content
+                }
             }
         }
         // Note: Completion checklist sheet is now handled globally via AppState in ContentView
+        // Tutorial mode: Animate to 'estimated' column when entering dragToAccepted phase
+        .onChange(of: tutorialPhase) { _, newPhase in
+            if tutorialMode && newPhase == .dragToAccepted {
+                // Animate to the 'estimated' column (index 1)
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    currentPageIndex = statuses.firstIndex(of: .estimated) ?? 1
+                }
+            }
+        }
+        .onAppear {
+            // Tutorial mode: Start on estimated column if in dragToAccepted phase
+            if tutorialMode && tutorialPhase == .dragToAccepted {
+                currentPageIndex = statuses.firstIndex(of: .estimated) ?? 1
+            }
+        }
     }
 
     struct ScrollOffsetPreferenceKey: PreferenceKey {
@@ -120,7 +192,7 @@ struct JobBoardDashboard: View {
         let isActive = targetZoneForLocation(dragLocation, geometry: geometry) == .left
         let previousStatus = getPreviousStatus()
         let color = Color((previousStatus == .closed ? OPSStyle.Colors.secondaryText : previousStatus?.color) ?? .white)
-        
+
         HStack(spacing: 0) {
             Rectangle()
                 .fill(color.opacity(isActive ? 1.0 : 0.6))
@@ -159,7 +231,7 @@ struct JobBoardDashboard: View {
                 Spacer()
             }
         )
-        
+
         .frame(maxHeight: .infinity)
         .transition(.opacity)
     }
@@ -169,7 +241,6 @@ struct JobBoardDashboard: View {
         let isActive = targetZoneForLocation(dragLocation, geometry: geometry) == .right
         let nextStatus = getNextStatus()
         let color = Color((nextStatus == .closed ? OPSStyle.Colors.secondaryText : nextStatus?.color) ?? .white)
-        
 
         HStack(spacing: 0) {
             Spacer()
@@ -194,7 +265,7 @@ struct JobBoardDashboard: View {
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(color.opacity(isActive ? 1.0 : 0.6))
                         .padding(12)
-                    
+
                     if let nextStatus = nextStatus {
                         Text(nextStatus.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
@@ -209,9 +280,87 @@ struct JobBoardDashboard: View {
                 .padding(.trailing, 4)
             }
         )
-        
         .frame(maxHeight: .infinity)
         .transition(.opacity)
+    }
+
+    /// Start animated arrow offset for tutorial hint
+    private func startTutorialArrowAnimation() {
+        withAnimation(
+            .easeInOut(duration: 0.6)
+            .repeatForever(autoreverses: true)
+        ) {
+            tutorialArrowOffset = 8
+        }
+    }
+
+    /// Start haptic nudges for tutorial hint
+    private func startTutorialHaptics() {
+        // Cancel any existing timer
+        tutorialHapticTimer?.invalidate()
+
+        // Create haptic timer for periodic nudges
+        tutorialHapticTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
+            if tutorialMode && tutorialPhase == .dragToAccepted && !isLongPressing {
+                TutorialHaptics.lightTap()
+            }
+        }
+        // Fire once immediately
+        TutorialHaptics.lightTap()
+    }
+
+    /// Stop haptic nudges
+    private func stopTutorialHaptics() {
+        tutorialHapticTimer?.invalidate()
+        tutorialHapticTimer = nil
+    }
+
+    /// Center tutorial arrows with sequential glow effect
+    /// Shows "PRESS AND HOLD" before drag, "DRAG TO ACCEPTED" during drag
+    private var tutorialCenterArrows: some View {
+        VStack(spacing: 12) {
+            if isLongPressing {
+                // During drag: show arrows pointing right
+                HStack(spacing: 8) {
+                    ForEach(0..<3, id: \.self) { index in
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .opacity(index < illuminatedArrowCount ? 1.0 : 0.2)
+                            .scaleEffect(index < illuminatedArrowCount ? 1.2 : 1.0)
+                            .animation(.easeOut(duration: 0.15), value: illuminatedArrowCount)
+                    }
+                }
+
+                Text("DRAG TO ACCEPTED LIST")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+            } else {
+                // Before drag: show press and hold instruction
+                Image(systemName: "hand.tap.fill")
+                    .font(.system(size: 32, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .offset(x: tutorialArrowOffset)
+
+                Text("PRESS AND HOLD THE PROJECT CARD")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.black.opacity(0.85))
+        )
+        .allowsHitTesting(false)
+        .onAppear {
+            startTutorialArrowAnimation()
+            startTutorialHaptics()
+        }
+        .onDisappear {
+            stopTutorialHaptics()
+        }
     }
 
     @ViewBuilder
@@ -316,24 +465,84 @@ struct JobBoardDashboard: View {
             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
             impactFeedback.impactOccurred()
         }
+
+        // Tutorial mode: Calculate illuminated arrows based on drag progress toward right
+        if tutorialMode && tutorialPhase == .dragToAccepted && isLongPressing {
+            let screenWidth = geometry.size.width
+            let centerX = screenWidth / 2
+            let rightEdge = screenWidth - edgeZoneWidth
+
+            // Calculate progress from center to right edge (0.0 to 1.0)
+            let dragX = location.x
+            let progress = max(0, min(1, (dragX - centerX) / (rightEdge - centerX)))
+
+            // Map progress to arrow count (0, 1, 2, or 3)
+            let newArrowCount: Int
+            if progress < 0.25 {
+                newArrowCount = 0
+            } else if progress < 0.5 {
+                newArrowCount = 1
+            } else if progress < 0.75 {
+                newArrowCount = 2
+            } else {
+                newArrowCount = 3
+            }
+
+            // Trigger haptic when crossing threshold (increasing only)
+            if newArrowCount > lastHapticArrowCount {
+                let impactFeedback = UIImpactFeedbackGenerator(style: newArrowCount == 3 ? .medium : .light)
+                impactFeedback.impactOccurred()
+                lastHapticArrowCount = newArrowCount
+            } else if newArrowCount < lastHapticArrowCount {
+                // Reset haptic threshold when moving back
+                lastHapticArrowCount = newArrowCount
+            }
+
+            illuminatedArrowCount = newArrowCount
+        }
     }
 
     private func handleDragEnded(project: Project, geometry: GeometryProxy) {
         let zone = targetZoneForLocation(dragLocation, geometry: geometry)
 
-        switch zone {
-        case .left:
-            if let previousStatus = getPreviousStatus() {
-                changeProjectStatus(project, to: previousStatus)
+        print("[DRAG_DEBUG] handleDragEnded called")
+        print("[DRAG_DEBUG] tutorialMode=\(tutorialMode), tutorialPhase=\(String(describing: tutorialPhase))")
+        print("[DRAG_DEBUG] zone=\(zone), project=\(project.title), status=\(project.status.rawValue)")
+
+        // Tutorial mode: Only allow right drag (towards accepted)
+        if tutorialMode && tutorialPhase == .dragToAccepted {
+            print("[DRAG_DEBUG] ✅ In tutorial dragToAccepted branch")
+            switch zone {
+            case .left, .archive:
+                // Wrong direction - show hint and don't change status
+                print("[DRAG_DEBUG] ⛔ Wrong direction detected (zone=\(zone)), showing hint only")
+                showWrongDirectionHint()
+            case .right:
+                print("[DRAG_DEBUG] ➡️ Right zone - will change status")
+                if let nextStatus = getNextStatus() {
+                    changeProjectStatus(project, to: nextStatus)
+                }
+            case .center:
+                print("[DRAG_DEBUG] 🎯 Center zone - cancelling")
+                cancelDrag()
             }
-        case .right:
-            if let nextStatus = getNextStatus() {
-                changeProjectStatus(project, to: nextStatus)
+        } else {
+            print("[DRAG_DEBUG] ❌ NOT in tutorial dragToAccepted branch - using normal mode")
+            // Normal mode - allow any direction
+            switch zone {
+            case .left:
+                if let previousStatus = getPreviousStatus() {
+                    changeProjectStatus(project, to: previousStatus)
+                }
+            case .right:
+                if let nextStatus = getNextStatus() {
+                    changeProjectStatus(project, to: nextStatus)
+                }
+            case .archive:
+                changeProjectStatus(project, to: .archived)
+            case .center:
+                cancelDrag()
             }
-        case .archive:
-            changeProjectStatus(project, to: .archived)
-        case .center:
-            cancelDrag()
         }
 
         draggedProject = nil
@@ -342,10 +551,44 @@ struct JobBoardDashboard: View {
             isLongPressing = false
         }
         dragLocation = .zero
+        // Reset tutorial arrow state
+        illuminatedArrowCount = 0
+        lastHapticArrowCount = 0
+    }
+
+    /// Shows wrong direction hint during tutorial
+    private func showWrongDirectionHint() {
+        guard !showingWrongDirectionHint else { return }
+
+        TutorialHaptics.error()
+        // Notify tooltip to enter error state
+        NotificationCenter.default.post(name: Notification.Name("TutorialWrongAction"), object: nil)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            showingWrongDirectionHint = true
+        }
+
+        // Auto-hide after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showingWrongDirectionHint = false
+            }
+        }
     }
 
     private func changeProjectStatus(_ project: Project, to newStatus: Status) {
         print("[ARCHIVE_DEBUG] 📦 Changing project '\(project.title)' status from \(project.status.rawValue) to \(newStatus.rawValue)")
+        print("[TUTORIAL_DEBUG] tutorialMode=\(tutorialMode), tutorialPhase=\(String(describing: tutorialPhase)), currentStatus=\(project.status.rawValue), newStatus=\(newStatus.rawValue)")
+
+        // Tutorial mode: During dragToAccepted phase, ONLY allow moving FROM estimated TO accepted
+        // The user should be dragging their newly created project (at estimated) to accepted
+        if tutorialMode && tutorialPhase == .dragToAccepted {
+            // Must be dragging an estimated project to accepted
+            guard project.status == .estimated && newStatus == .accepted else {
+                print("[TUTORIAL] ⛔ Blocked: Can only move estimated→accepted during dragToAccepted. Got \(project.status.rawValue)→\(newStatus.rawValue)")
+                showWrongDirectionHint()
+                return
+            }
+        }
 
         // CENTRALIZED COMPLETION CHECK: If completing project, check for incomplete tasks first
         if newStatus == .completed {
@@ -357,6 +600,14 @@ struct JobBoardDashboard: View {
 
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
+
+        // Tutorial mode: notify drag to accepted
+        if tutorialMode && newStatus == .accepted {
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialDragToAccepted"),
+                object: nil
+            )
+        }
 
         // Update local status immediately
         project.status = newStatus
@@ -573,6 +824,9 @@ struct DirectionalDragCard: View {
     let onDragChanged: (Project, CGPoint) -> Void
     let onDragEnded: (Project) -> Void
 
+    @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
+    @State private var tutorialHighlightPulse = false
     @State private var showingDetails = false
     @State private var isLongPressing = false
     @State private var touchDownTime: Date?
@@ -634,6 +888,11 @@ struct DirectionalDragCard: View {
             }
     }
 
+    /// Whether to show tutorial highlight (dragToAccepted phase)
+    private var shouldShowTutorialHighlight: Bool {
+        tutorialMode && tutorialPhase == .dragToAccepted
+    }
+
     private var cardContent: some View {
         HStack(spacing: 0) {
             Rectangle()
@@ -650,6 +909,28 @@ struct DirectionalDragCard: View {
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(OPSStyle.Colors.cardBorderSubtle, lineWidth: 1)
         )
+        .overlay(
+            Group {
+                if shouldShowTutorialHighlight {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(TutorialHighlightStyle.color, lineWidth: 2)
+                        .opacity(tutorialHighlightPulse ? TutorialHighlightStyle.pulseOpacity.max : TutorialHighlightStyle.pulseOpacity.min)
+                        .animation(
+                            .easeInOut(duration: TutorialHighlightStyle.pulseDuration)
+                            .repeatForever(autoreverses: true),
+                            value: tutorialHighlightPulse
+                        )
+                }
+            }
+        )
+        .onAppear {
+            if shouldShowTutorialHighlight {
+                tutorialHighlightPulse = true
+            }
+        }
+        .onChange(of: tutorialPhase) { _, newPhase in
+            tutorialHighlightPulse = tutorialMode && newPhase == .dragToAccepted
+        }
     }
 
     private var cardDetails: some View {

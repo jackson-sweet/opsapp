@@ -11,8 +11,26 @@ import SwiftUI
 
 struct CalendarToggleView: View {
     @ObservedObject var viewModel: CalendarViewModel
+    @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
     @State private var showDatePicker = false
-    
+    @State private var tutorialHighlightPulse = false
+
+    /// Whether to show tutorial highlight on the Month button
+    private var shouldHighlightMonth: Bool {
+        tutorialMode && tutorialPhase == .calendarMonthPrompt
+    }
+
+    /// Whether to disable the segmented control during calendarWeek phase only
+    private var isSegmentedControlDisabled: Bool {
+        tutorialMode && tutorialPhase == .calendarWeek
+    }
+
+    /// Whether to disable the week picker button during both calendarWeek AND calendarMonthPrompt phases
+    private var isWeekPickerDisabled: Bool {
+        tutorialMode && (tutorialPhase == .calendarWeek || tutorialPhase == .calendarMonthPrompt)
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             // Week/Month toggle with segmented control style
@@ -20,9 +38,18 @@ struct CalendarToggleView: View {
                 selection: Binding(
                     get: { viewModel.viewMode },
                     set: { newMode in
+                        // Block interaction during calendarWeek phase only
+                        guard !isSegmentedControlDisabled else { return }
                         withAnimation {
                             if newMode != viewModel.viewMode {
                                 viewModel.toggleViewMode()
+                                // Notify tutorial system when month is tapped
+                                if tutorialMode && tutorialPhase == .calendarMonthPrompt && newMode == .month {
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("TutorialCalendarMonthTapped"),
+                                        object: nil
+                                    )
+                                }
                             }
                         }
                     }
@@ -32,6 +59,60 @@ struct CalendarToggleView: View {
                     (CalendarViewModel.CalendarViewMode.month, "Month")
                 ]
             )
+            .overlay(
+                // Tutorial: Dark overlay when disabled during calendarWeek phase only
+                Group {
+                    if isSegmentedControlDisabled {
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .fill(Color.black.opacity(0.7))
+                            .allowsHitTesting(true)
+                    }
+                }
+            )
+            .overlay(
+                // Tutorial: Grey out the Week side and highlight the Month side
+                GeometryReader { geo in
+                    if shouldHighlightMonth {
+                        HStack(spacing: 0) {
+                            // Grey overlay on Week side (left half) - blocks interaction
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .fill(Color.black.opacity(0.5))
+                                .frame(width: geo.size.width / 2)
+
+                            // Month side highlight (right half) - allows interaction
+                            ZStack {
+                                // Glow effect behind the border
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .fill(TutorialHighlightStyle.color.opacity(0.15))
+                                    .frame(width: geo.size.width / 2)
+                                    .allowsHitTesting(false)
+
+                                // Pulsing border
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .strokeBorder(TutorialHighlightStyle.color, lineWidth: 3)
+                                    .frame(width: geo.size.width / 2)
+                                    .opacity(tutorialHighlightPulse ? TutorialHighlightStyle.pulseOpacity.max : TutorialHighlightStyle.pulseOpacity.min)
+                                    .animation(
+                                        .easeInOut(duration: TutorialHighlightStyle.pulseDuration)
+                                        .repeatForever(autoreverses: true),
+                                        value: tutorialHighlightPulse
+                                    )
+                                    .allowsHitTesting(false)
+                            }
+                            .shadow(color: TutorialHighlightStyle.color.opacity(0.5), radius: 6, x: 0, y: 0)
+                            .allowsHitTesting(false)
+                        }
+                    }
+                }
+            )
+            .onAppear {
+                if shouldHighlightMonth {
+                    tutorialHighlightPulse = true
+                }
+            }
+            .onChange(of: tutorialPhase) { _, newPhase in
+                tutorialHighlightPulse = tutorialMode && newPhase == .calendarMonthPrompt
+            }
             //.frame(width: 200)
             // Remove explicit height to let SegmentedControl use its natural height
             
@@ -39,6 +120,7 @@ struct CalendarToggleView: View {
             
             // Period display with picker - fixed width and matching segmented control
             Button(action: {
+                guard !isWeekPickerDisabled else { return }
                 showDatePicker = true
             }) {
                 Text(periodString)
@@ -49,6 +131,16 @@ struct CalendarToggleView: View {
                     .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
+            .overlay(
+                // Tutorial: Dark overlay when disabled during calendarWeek AND calendarMonthPrompt phases
+                Group {
+                    if isWeekPickerDisabled {
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .fill(Color.black.opacity(0.7))
+                            .allowsHitTesting(true)
+                    }
+                }
+            )
             .popover(isPresented: $showDatePicker) {
                 DatePickerPopover(
                     mode: viewModel.viewMode == .week ? .week : .month,

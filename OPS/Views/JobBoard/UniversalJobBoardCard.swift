@@ -21,7 +21,9 @@ struct UniversalJobBoardCard: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
     @Query private var allClients: [Client]
+    @State private var tutorialShimmerOffset: CGFloat = -200
     @State private var showingMoreActions = false
     @State private var showingDetails = false
     @State private var showingTaskForm = false
@@ -43,6 +45,7 @@ struct UniversalJobBoardCard: View {
     @State private var showingClientDeletionSheet = false
     @State private var showingNoTasksAlert = false
     @State private var customAlert: CustomAlertConfig?
+    @State private var showingWrongSwipeHint = false
 
     private var isFieldCrew: Bool {
         dataController.currentUser?.role == .fieldCrew
@@ -337,9 +340,36 @@ struct UniversalJobBoardCard: View {
                     RevealedStatusCard(status: confirmingStatus, direction: direction)
                         .opacity(isChangingStatus ? 1 : 0)
                 }
+
+                // Tutorial mode: Wrong swipe direction hint
+                if showingWrongSwipeHint {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 16, weight: .bold))
+                        Text("SWIPE RIGHT")
+                            .font(OPSStyle.Typography.captionBold)
+                    }
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.black.opacity(0.85))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(OPSStyle.Colors.errorStatus, lineWidth: 2)
+                            )
+                    )
+                    .transition(.scale.combined(with: .opacity))
+                }
             }
         }
         .frame(height: 80)
+    }
+
+    /// Whether to show tutorial shimmer for swipe hint
+    private var shouldShowTutorialSwipeShimmer: Bool {
+        tutorialMode && tutorialPhase == .projectListSwipe
     }
 
     @ViewBuilder
@@ -357,11 +387,42 @@ struct UniversalJobBoardCard: View {
             .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(14)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(
+            ZStack {
+                OPSStyle.Colors.cardBackgroundDark
+
+                // Tutorial shimmer effect in card background (blue/primaryAccent)
+                if shouldShowTutorialSwipeShimmer {
+                    GeometryReader { geo in
+                        LinearGradient(
+                            colors: [
+                                Color.clear,
+                                OPSStyle.Colors.primaryAccent.opacity(0.15),
+                                OPSStyle.Colors.primaryAccent.opacity(0.25),
+                                OPSStyle.Colors.primaryAccent.opacity(0.15),
+                                Color.clear
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: 80)
+                        .offset(x: tutorialShimmerOffset)
+                        .onAppear {
+                            startTutorialShimmer(cardWidth: geo.size.width)
+                        }
+                        .onChange(of: tutorialPhase) { _, newPhase in
+                            if newPhase == .projectListSwipe {
+                                startTutorialShimmer(cardWidth: geo.size.width)
+                            }
+                        }
+                    }
+                }
+            }
+        )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .strokeBorder(shouldShowTutorialSwipeShimmer ? TutorialHighlightStyle.color : OPSStyle.Colors.cardBorder, lineWidth: shouldShowTutorialSwipeShimmer ? 2 : 1)
         )
         .overlay(
             Group {
@@ -1414,6 +1475,15 @@ struct UniversalJobBoardCard: View {
                 Task {
                     do {
                         try await dataController.updateProjectStatus(project: project, to: status)
+
+                        // Post notification for tutorial system to detect swipe status changes
+                        await MainActor.run {
+                            NotificationCenter.default.post(
+                                name: Notification.Name("ProjectStatusChanged"),
+                                object: nil,
+                                userInfo: ["projectId": project.id, "newStatus": status]
+                            )
+                        }
                     } catch {
                         print("[UNIVERSAL_CARD] ❌ Failed to update project status: \(error)")
                     }
@@ -1445,6 +1515,26 @@ struct UniversalJobBoardCard: View {
 
         let direction: SwipeDirection = value.translation.width > 0 ? .right : .left
 
+        // Tutorial mode: During projectListSwipe, ONLY allow right swipe (to complete project)
+        if tutorialMode && tutorialPhase == .projectListSwipe {
+            if direction == .left {
+                // Block left swipe entirely during tutorial - show hint
+                if !showingWrongSwipeHint {
+                    showingWrongSwipeHint = true
+                    TutorialHaptics.error()
+                    // Notify tooltip to enter error state
+                    NotificationCenter.default.post(name: Notification.Name("TutorialWrongAction"), object: nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        withAnimation {
+                            self.showingWrongSwipeHint = false
+                        }
+                    }
+                }
+                return
+            }
+            // Right swipe allowed during tutorial - continue
+        }
+
         guard canSwipe(direction: direction) else { return }
 
         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
@@ -1465,18 +1555,40 @@ struct UniversalJobBoardCard: View {
         let swipePercentage = abs(value.translation.width) / cardWidth
         let direction: SwipeDirection = value.translation.width > 0 ? .right : .left
 
+        // Tutorial mode: Block left swipe during projectListSwipe
+        if tutorialMode && tutorialPhase == .projectListSwipe && direction == .left {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                swipeOffset = 0
+            }
+            hasTriggeredHaptic = false
+            return
+        }
+
         if swipePercentage >= 0.4, canSwipe(direction: direction), let targetStatus = getTargetStatus(direction: direction) {
             confirmingStatus = targetStatus
             confirmingDirection = direction
             isChangingStatus = true
+
+            // Tutorial mode: Post notification immediately for fast tutorial advance
+            if tutorialMode {
+                if case .project(let project) = cardType {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ProjectStatusChanged"),
+                        object: nil,
+                        userInfo: ["projectId": project.id, "newStatus": targetStatus]
+                    )
+                }
+            }
 
             // Snap card back to center with smooth animation
             withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
                 swipeOffset = 0
             }
 
-            // Brief flash of status confirmation (0.15s), then perform change
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            // Brief flash of status confirmation, then perform change
+            // In tutorial mode, use shorter delay for smoother flow
+            let flashDelay: Double = tutorialMode ? 0.05 : 0.15
+            DispatchQueue.main.asyncAfter(deadline: .now() + flashDelay) {
                 performStatusChange(to: targetStatus)
 
                 // Immediately hide confirmation after status change
@@ -1575,6 +1687,22 @@ struct UniversalJobBoardCard: View {
             task.calendarEvent?.startDate == nil
         }
         return !unscheduledTasks.isEmpty
+    }
+
+    // MARK: - Tutorial Shimmer Animation
+
+    /// Starts the tutorial shimmer animation for swipe hint
+    private func startTutorialShimmer(cardWidth: CGFloat) {
+        // Reset to start position
+        tutorialShimmerOffset = -100
+
+        // Animate across the card width
+        withAnimation(
+            .linear(duration: 1.5)
+            .repeatForever(autoreverses: false)
+        ) {
+            tutorialShimmerOffset = cardWidth + 100
+        }
     }
 }
 

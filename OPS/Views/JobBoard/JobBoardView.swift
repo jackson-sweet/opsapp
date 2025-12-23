@@ -11,6 +11,8 @@ import SwiftData
 struct JobBoardView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
     @State private var selectedSection: JobBoardSection = .dashboard
     @State private var previousSection: JobBoardSection = .dashboard
     @State private var searchText = ""
@@ -21,6 +23,17 @@ struct JobBoardView: View {
     // Preloading state
     @State private var isPreloadingClients = false
     @State private var hasPreloadedClients = false
+
+    // Tutorial phases that require projects section
+    private var shouldShowProjectsList: Bool {
+        guard tutorialMode else { return false }
+        switch tutorialPhase {
+        case .projectListStatusDemo, .projectListSwipe, .closedProjectsScroll:
+            return true
+        default:
+            return false
+        }
+    }
 
     // Permission checks
     private var isFieldCrew: Bool {
@@ -66,7 +79,18 @@ struct JobBoardView: View {
                             .onChange(of: selectedSection) { oldValue, newValue in
                                 previousSection = oldValue
                             }
+                            .onChange(of: tutorialPhase) { oldPhase, newPhase in
+                                // Animate tab switch when entering step 12 (projectListStatusDemo)
+                                if tutorialMode && newPhase == .projectListStatusDemo {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                        selectedSection = .projects
+                                    }
+                                }
+                            }
                             .padding(.horizontal, 16)
+                            // Grey out during drag step to prevent navigation away
+                            .opacity(tutorialMode && tutorialPhase == .dragToAccepted ? 0.4 : 1.0)
+                            .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
                     } else {
                         // Add spacing for field crew to account for header
                         Spacer()
@@ -98,27 +122,38 @@ struct JobBoardView: View {
                     }
 
                     // Main content with slide transitions
+                    // Tutorial mode overrides section when in project list phases
                     Group {
-                        switch selectedSection {
-                        case .dashboard:
-                            JobBoardDashboard()
-                        case .clients:
-                            ClientListView(searchText: searchText)
-                                .padding(.horizontal, 16)
-                        case .projects:
+                        if shouldShowProjectsList {
+                            // Force show projects list during tutorial
                             JobBoardProjectListView(
                                 searchText: searchText,
                                 showingFilters: $showingFilters,
                                 showingFilterSheet: $showingProjectFilterSheet
                             )
                             .padding(.horizontal, 16)
-                        case .tasks:
-                            JobBoardTasksView(
-                                searchText: searchText,
-                                showingFilters: $showingFilters,
-                                showingFilterSheet: $showingTaskFilterSheet
-                            )
-                            .padding(.horizontal, 16)
+                        } else {
+                            switch selectedSection {
+                            case .dashboard:
+                                JobBoardDashboard()
+                            case .clients:
+                                ClientListView(searchText: searchText)
+                                    .padding(.horizontal, 16)
+                            case .projects:
+                                JobBoardProjectListView(
+                                    searchText: searchText,
+                                    showingFilters: $showingFilters,
+                                    showingFilterSheet: $showingProjectFilterSheet
+                                )
+                                .padding(.horizontal, 16)
+                            case .tasks:
+                                JobBoardTasksView(
+                                    searchText: searchText,
+                                    showingFilters: $showingFilters,
+                                    showingFilterSheet: $showingTaskFilterSheet
+                                )
+                                .padding(.horizontal, 16)
+                            }
                         }
                     }
                     .id(selectedSection)
@@ -234,11 +269,14 @@ enum JobBoardSection: String, CaseIterable {
 // MARK: - Section Selector
 struct JobBoardSectionSelector: View {
     @Binding var selectedSection: JobBoardSection
-    
+    @Environment(\.tutorialMode) private var tutorialMode
+
     var body: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             ForEach(JobBoardSection.allCases, id: \.self) { section in
                 Button(action: {
+                    // Disable tab switching in tutorial mode
+                    guard !tutorialMode else { return }
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         selectedSection = section
                     }
@@ -247,7 +285,7 @@ struct JobBoardSectionSelector: View {
                         //Image(systemName: section.icon)
                          //   .font(.system(size: 20, weight: .medium))
                          //   .foregroundColor(selectedSection == section ? OPSStyle.Colors.cardBackground : OPSStyle.Colors.primaryText)
-                        
+
                         Text(section.rawValue.uppercased())
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(selectedSection == section ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)

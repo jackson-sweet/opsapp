@@ -13,7 +13,9 @@ struct ProjectListView: View {
     @ObservedObject var viewModel: CalendarViewModel
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var dataController: DataController
+    @Environment(\.tutorialMode) private var tutorialMode
     @State private var isAnimating = false
+    @State private var hasNotifiedTutorialScroll = false
 
     // Separate new and ongoing events
     private var newEvents: [CalendarEvent] {
@@ -43,6 +45,21 @@ struct ProjectListView: View {
                     projectListView
                         .opacity(isAnimating ? 1 : 0)
                         .offset(y: isAnimating ? 0 : 20)
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear
+                                    .onChange(of: geo.frame(in: .global).minY) { oldY, newY in
+                                        // Detect if user has scrolled (significant movement)
+                                        if tutorialMode && !hasNotifiedTutorialScroll && abs(oldY - newY) > 10 {
+                                            hasNotifiedTutorialScroll = true
+                                            NotificationCenter.default.post(
+                                                name: Notification.Name("CalendarWeekViewScrolled"),
+                                                object: nil
+                                            )
+                                        }
+                                    }
+                            }
+                        )
                 }
             }
             

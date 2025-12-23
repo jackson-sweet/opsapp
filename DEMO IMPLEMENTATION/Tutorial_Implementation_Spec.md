@@ -173,63 +173,64 @@ struct TutorialSwipeIndicator: View {
 **Action:** User taps Complete
 **Haptic:** Success notification
 
-### Step 5: RFQ to Accepted
-**View:** JobBoardDashboardView with new project in RFQ container
-**Overlay Target:** The new project card
-**Swipe Indicator:** Rightward shimmer toward Accepted column
-**Tooltip:** "DRAG YOUR PROJECT TO ACCEPTED"
-**Action:** User long-press drags to Accepted
-**Haptic:** Medium impact on drop
+### Step 5: Project List Status Demo
+**View:** JobBoardProjectListView (forced switch from dashboard)
+**Tooltip:** "WATCH: YOUR PROJECT MOVES THROUGH STATUSES"
+**Animation Sequence:**
+1. Project status set to ACCEPTED (immediate)
+2. Wait 1.5 seconds
+3. Status animates to IN_PROGRESS (with haptic)
+4. Wait 1.5 seconds
+5. Status animates to COMPLETED (with haptic)
+**Advance:** Auto-advances after animation (4 second delay)
 
-### Step 6: Status Progression Demo
-**Backend Simulation:**
-1. Brief pause (1 sec)
-2. Status auto-changes to IN_PROGRESS
-3. Tooltip: "YOUR CREW STARTED. STATUS UPDATES AUTOMATICALLY."
-4. Brief pause (1.5 sec)
-5. Status auto-changes to COMPLETED
-6. Tooltip: "JOB DONE. NOW CLOSE IT OUT."
-
-**View:** Project now in Completed container
-**Tooltip:** "DRAG TO CLOSED, OR..."
-
-### Step 7: Project List Swipe Alternative
-**View:** Switches to ProjectListView
-**Overlay Target:** The project row
+### Step 6: Project List Swipe
+**View:** JobBoardProjectListView
 **Swipe Indicator:** Leftward shimmer
-**Tooltip:** "SWIPE TO ADVANCE STATUS"
-**Action:** User swipes to close project
+**Tooltip:** "SWIPE LEFT TO CLOSE OUT THE PROJECT"
+**Action:** User swipes project card to change status to CLOSED
 **Haptic:** Success notification
-**Transition:** Move to Calendar flow
+**Advance:** User action required (swipe to close)
+
+### Step 7: Closed Projects Scroll
+**View:** JobBoardProjectListView (stays on same view)
+**Tooltip:** "EXCELLENT! CLOSED PROJECTS APPEAR AT THE BOTTOM. SCROLL DOWN TO SEE THEM."
+**Highlight:** CLOSED section button highlighted with pulsing accent border
+**Advance:** Auto-advances after 3 seconds
+**Transition:** Switches to Calendar tab
 
 ### Step 8: Calendar Week View
 **View:** CalendarView (week mode) with Top Gun demo data
 **Disabled:** Filter, search, refresh buttons (greyed out)
-**Enabled:** All other calendar interactions
-**Tooltip:** "YOUR WEEK AT A GLANCE. SCROLL, TAP, RESCHEDULE."
-**User Can:**
-- Scroll through weeks
-- Scroll day list
-- Long-press to reschedule tasks
-- Tap tasks for detail
+**Enabled:** Scrolling through week/day list
+**Tooltip:** "YOUR WEEK AT A GLANCE. SCROLL TO EXPLORE."
+**Advance Trigger:** User scrolls in the week view (detects scroll offset change > 10px)
+**Next:** Shows month prompt
 
-**Advance Trigger:** 
-**Overlay Target:** Segmented picker (Week/Month)
+### Step 9: Calendar Month Prompt
+**View:** CalendarView (week mode)
+**Overlay Target:** Segmented picker (Week/Month toggle)
 **Tooltip:** "TAP MONTH TO SEE THE BIG PICTURE"
 **Action:** User taps Month segment
+**Advance:** User action required (tap month toggle)
 
-### Step 9: Calendar Month View
+### Step 10: Calendar Month View
 **View:** CalendarView (month mode)
-**Tooltip:** "PINCH TO EXPAND. TAP A DAY TO SEE DETAILS."
-**User Can:**
-- Scroll through months
-- Pinch to expand/collapse rows
-- Tap day to see day list
-- Full month view functionality
+**Tooltip:** "PINCH TO EXPAND. SCROLL TO EXPLORE."
+**User Must:**
+- Scroll through months (detects scroll offset change > 30px)
+- AND pinch to expand/collapse rows (detects magnification change > 0.1)
+**Advance Trigger:** Both scroll AND pinch detected
+**Next:** Shows tutorial summary
 
-**After ~5-10 seconds of interaction or user taps Complete:**
-**Show:** Complete button appears at bottom
-**Tooltip:** "YOU'RE READY."
+### Step 11: Tutorial Summary
+**View:** CalendarView (month mode) with floating DONE button
+**Tooltip:** "THAT'S ALL IT TAKES. LET'S GO."
+**Button:** White "DONE" button at bottom of screen
+**Action:** User taps DONE button
+**Advance:** User action required (tap DONE)
+**Haptic:** Success notification
+**Transition:** Tutorial completion screen
 
 ---
 
@@ -406,19 +407,36 @@ All dates from `TopGun_Demo_Database.md` are relative:
 
 ### Tutorial Phases (Company)
 ```swift
-enum CompanyTutorialPhase: Int, CaseIterable {
-    case notStarted = 0
-    case jobBoardIntro
-    case fabTap
-    case createProjectAction
-    case projectForm
-    case taskForm
-    case projectCreated
-    case dragToAccepted
-    case statusProgression
-    case projectListSwipe
-    case calendarWeek
-    case calendarMonth
+enum TutorialPhase: String, CaseIterable {
+    case notStarted
+
+    // Job Board FAB Flow
+    case jobBoardIntro              // Step 1: Highlight FAB
+    case fabTap                     // Step 2: FAB menu open, highlight Create Project
+
+    // Project Form Flow
+    case projectFormClient          // Step 3a: Select client
+    case projectFormName            // Step 3b: Enter project name
+    case projectFormAddTask         // Step 3c: Tap Add Task
+
+    // Task Form Flow
+    case taskFormType               // Step 4a: Select task type
+    case taskFormCrew               // Step 4b: Select crew
+    case taskFormDate               // Step 4c: Set dates
+    case taskFormDone               // Step 4d: Tap Done
+    case projectFormComplete        // Step 4e: Tap Create
+
+    // Project List Flow
+    case projectListStatusDemo      // Step 5: Watch status animate
+    case projectListSwipe           // Step 6: Swipe to close
+    case closedProjectsScroll       // Step 7: See closed projects section
+
+    // Calendar Flow
+    case calendarWeek               // Step 8: Scroll week view
+    case calendarMonthPrompt        // Step 9: Tap month toggle
+    case calendarMonth              // Step 10: Scroll AND pinch month view
+    case tutorialSummary            // Step 11: Final summary with DONE button
+
     case completed
 }
 ```
@@ -497,6 +515,62 @@ notificationSuccess.notificationOccurred(.success)
 6. **EmployeeHomeView**
    - Accept tutorial mode
    - When true: show user-assigned demo tasks
+
+---
+
+## TUTORIAL HIGHLIGHT SYSTEM
+
+### Centralized Style Configuration
+All highlight styles are defined in `TutorialHighlightStyle` (TutorialEnvironment.swift):
+```swift
+struct TutorialHighlightStyle {
+    static let color: Color = OPSStyle.Colors.primaryAccent
+    static let lineWidth: CGFloat = 3
+    static let pulseOpacity: (min: Double, max: Double) = (0.5, 1.0)
+    static let pulseDuration: TimeInterval = 0.6
+    static let pulseScale: (min: CGFloat, max: CGFloat) = (1.0, 1.05)
+    static let padding: CGFloat = 4
+}
+```
+
+### View Modifiers
+```swift
+// Rectangular highlight (for cards, buttons, fields)
+.tutorialHighlight(for: .projectFormClient, cornerRadius: 12)
+
+// Circular highlight (for FAB button)
+.tutorialHighlightCircle(for: .jobBoardIntro)
+```
+
+### Environment Values Required
+Views must receive both environment values to show highlights:
+```swift
+.environment(\.tutorialMode, true)
+.environment(\.tutorialPhase, stateManager.currentPhase)
+```
+
+---
+
+## NOTIFICATION FLOW
+
+### User Action → Phase Advance Notifications
+| Notification Name | Posted By | Advances Phase |
+|-------------------|-----------|----------------|
+| `TutorialFABTapped` | FloatingActionMenu | `.jobBoardIntro` → `.fabTap` |
+| `TutorialCreateProjectTapped` | FloatingActionMenu | `.fabTap` → `.projectFormClient` |
+| `TutorialProjectFormComplete` | ProjectFormSheet | `.projectFormComplete` → `.projectListStatusDemo` |
+| `TutorialProjectListSwipe` | JobBoardProjectListView | `.projectListSwipe` → `.closedProjectsScroll` |
+| `TutorialCalendarWeekScrolled` | ScheduleView | `.calendarWeek` → `.calendarMonthPrompt` |
+| `TutorialCalendarMonthTapped` | ScheduleView | `.calendarMonthPrompt` → `.calendarMonth` |
+| `TutorialCalendarMonthExplored` | ScheduleView | `.calendarMonth` → `.tutorialSummary` |
+
+### Internal Detection Notifications
+| Notification Name | Posted By | Purpose |
+|-------------------|-----------|---------|
+| `CalendarWeekViewScrolled` | ProjectListView | Detected scroll in week view |
+| `CalendarMonthViewScrolled` | MonthGridView | Detected scroll in month view |
+| `CalendarMonthViewPinched` | MonthGridView | Detected pinch gesture |
+| `ProjectStatusChanged` | UniversalJobBoardCard | Detected swipe status change |
 
 ---
 

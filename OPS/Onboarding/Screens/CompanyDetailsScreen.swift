@@ -14,19 +14,46 @@ struct CompanyDetailsScreen: View {
     @EnvironmentObject var dataController: DataController
 
     @State private var selectedIndustry: Industry?
+    @State private var customIndustry: String = ""
     @State private var selectedSize: CompanySize?
     @State private var selectedAge: CompanyAge?
     @State private var showIndustryPicker = false
     @State private var isCreating = false
     @State private var errorMessage: String?
+    @FocusState private var isCustomIndustryFocused: Bool
 
     // Animation coordinator
     @StateObject private var animationCoordinator = OnboardingAnimationCoordinator()
 
+    /// The industry value to send to Bubble (either selected industry or custom text)
+    private var industryValue: String {
+        if selectedIndustry == .other {
+            return customIndustry.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return selectedIndustry?.rawValue ?? ""
+    }
+
+    /// Display text for the industry picker button
+    private var industryDisplayText: String {
+        if let industry = selectedIndustry {
+            if industry == .other && !customIndustry.isEmpty {
+                return customIndustry
+            }
+            return industry.displayName
+        }
+        return "Select your trade"
+    }
+
     private var isFormValid: Bool {
-        selectedIndustry != nil &&
-        selectedSize != nil &&
-        selectedAge != nil
+        guard selectedIndustry != nil,
+              selectedSize != nil,
+              selectedAge != nil else { return false }
+
+        // If "Other" is selected, require custom text
+        if selectedIndustry == .other {
+            return !customIndustry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return true
     }
 
     var body: some View {
@@ -64,7 +91,7 @@ struct CompanyDetailsScreen: View {
                             showIndustryPicker = true
                         } label: {
                             HStack {
-                                Text(selectedIndustry?.displayName ?? "Select your trade")
+                                Text(industryDisplayText)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(selectedIndustry != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
 
@@ -82,6 +109,28 @@ struct CompanyDetailsScreen: View {
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
                             )
+                        }
+
+                        // Custom industry text field (shown when "Other" is selected)
+                        if selectedIndustry == .other {
+                            TextField("Enter your trade", text: $customIndustry)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .focused($isCustomIndustryFocused)
+                                .padding(.vertical, 14)
+                                .padding(.horizontal, 16)
+                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
+                                .onAppear {
+                                    // Auto-focus the text field when "Other" is selected
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        isCustomIndustryFocused = true
+                                    }
+                                }
                         }
                     }
                     .padding(.horizontal, 40)
@@ -188,8 +237,8 @@ struct CompanyDetailsScreen: View {
     private func createCompany() {
         guard isFormValid else { return }
 
-        // Save to state
-        manager.state.companyData.industry = selectedIndustry?.rawValue ?? ""
+        // Save to state (use industryValue for custom industries)
+        manager.state.companyData.industry = industryValue
         manager.state.companyData.size = selectedSize?.rawValue ?? ""
         manager.state.companyData.age = selectedAge?.rawValue ?? ""
 
@@ -220,13 +269,20 @@ struct IndustryPickerSheet: View {
     @Binding var isPresented: Bool
     @State private var searchText = ""
 
+    /// Standard industries (excluding "Other"), filtered by search
     private var filteredIndustries: [Industry] {
+        let standardCases = Industry.standardCases
         if searchText.isEmpty {
-            return Industry.allCases.sorted { $0.displayName < $1.displayName }
+            return standardCases.sorted { $0.displayName < $1.displayName }
         }
-        return Industry.allCases
+        return standardCases
             .filter { $0.displayName.localizedCaseInsensitiveContains(searchText) }
             .sorted { $0.displayName < $1.displayName }
+    }
+
+    /// Whether to show the "Other" option (always show unless search has no match and doesn't contain "other")
+    private var showOtherOption: Bool {
+        searchText.isEmpty || "other".localizedCaseInsensitiveContains(searchText)
     }
 
     var body: some View {
@@ -247,29 +303,34 @@ struct IndustryPickerSheet: View {
                 // Industry list
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        // Standard industries
                         ForEach(filteredIndustries) { industry in
-                            Button {
+                            IndustryRow(
+                                industry: industry,
+                                isSelected: selection == industry
+                            ) {
                                 selection = industry
                                 isPresented = false
-                            } label: {
-                                HStack {
-                                    Text(industry.displayName)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                            }
+                        }
 
-                                    Spacer()
-
-                                    if selection == industry {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                    }
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 14)
+                        // "Other" option at the bottom
+                        if showOtherOption {
+                            // Separator before "Other"
+                            if !filteredIndustries.isEmpty {
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.05))
+                                    .frame(height: 8)
                             }
 
-                            Divider()
-                                .background(Color.white.opacity(0.1))
+                            IndustryRow(
+                                industry: .other,
+                                isSelected: selection == .other,
+                                subtitle: "Enter your own trade"
+                            ) {
+                                selection = .other
+                                isPresented = false
+                            }
                         }
                     }
                 }
@@ -286,6 +347,44 @@ struct IndustryPickerSheet: View {
                 }
             }
         }
+    }
+}
+
+/// Row item for industry picker
+private struct IndustryRow: View {
+    let industry: Industry
+    let isSelected: Bool
+    var subtitle: String? = nil
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(industry.displayName)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    if let subtitle = subtitle {
+                        Text(subtitle)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+        }
+
+        Divider()
+            .background(Color.white.opacity(0.1))
     }
 }
 

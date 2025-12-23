@@ -22,6 +22,9 @@ class AppState: ObservableObject {
     // Track when home view is loading projects
     @Published var isLoadingProjects: Bool = false
 
+    // Tutorial restart flag - when true, ContentView should show the tutorial
+    @Published var shouldRestartTutorial: Bool = false
+
     // MARK: - Centralized Project Completion Cascade
     // These properties allow any view to trigger the completion checklist sheet
     @Published var projectPendingCompletion: Project?

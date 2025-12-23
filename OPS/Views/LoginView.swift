@@ -12,6 +12,8 @@ import AuthenticationServices
 
 struct LoginView: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var locationManager: LocationManager
 
     // Login states
     @State private var username = ""
@@ -336,6 +338,8 @@ struct LoginView: View {
                     }
                 }
                 .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(locationManager)
                 .transition(.opacity)
                 .zIndex(3)
             }

@@ -316,11 +316,18 @@ enum Industry: String, CaseIterable, Identifiable, Hashable {
     case waterproofing = "Waterproofing"
     case welding = "Welding"
     case windows = "Windows"
-    
+    case other = "Other"
+
     var id: String { self.rawValue }
-    
+
     var displayName: String {
         return self.rawValue
+    }
+
+    /// Returns all cases except "Other" for the main picker list
+    /// "Other" is shown separately at the bottom
+    static var standardCases: [Industry] {
+        allCases.filter { $0 != .other }
     }
 }
 

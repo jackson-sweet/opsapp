@@ -41,7 +41,7 @@ struct CredentialsScreen: View {
 
     private var subtitle: String {
         manager.state.flow == .companyCreator
-            ? "Takes 30 seconds. No credit card required."
+            ? "Let's get you set up. No credit card required."
             : "Join your crew on OPS."
     }
 

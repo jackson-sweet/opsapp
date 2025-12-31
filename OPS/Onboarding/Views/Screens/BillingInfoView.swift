@@ -13,10 +13,17 @@ struct BillingInfoView: View {
     @EnvironmentObject var dataController: DataController
     @EnvironmentObject var subscriptionManager: SubscriptionManager
 
-    @State private var selectedPlan: SubscriptionPlan = .starter
     @State private var showPlanSelection = false
     @State private var isRefreshing = false
     @State private var refreshTrigger = false // Toggle to force view refresh
+
+    // Animation states
+    @State private var showTitle = false
+    @State private var showContent = false
+    @State private var animationKey = UUID()
+
+    // Whether this page is currently active (for triggering animations)
+    var isActive: Bool = true
 
     // Optional closure to call when continue is tapped (for use in WelcomeGuideView)
     var onContinue: (() -> Void)? = nil
@@ -55,73 +62,15 @@ struct BillingInfoView: View {
     }
 
     var body: some View {
-        ZStack {
-            OPSStyle.Colors.background.ignoresSafeArea()
-
-            VStack(spacing: 32) {
-                // Content
-                if isCompanyCreator {
-                    companyCreatorView
-                } else {
-                    employeeView
-                }
-
-                Spacer()
-
-                // Bottom buttons
-                if isCompanyCreator {
-                    // Company: Upgrade (1/3) and Continue Trial (2/3)
-                    HStack(spacing: 12) {
-                        // Upgrade button (1/3 width)
-                        Button(action: {
-                            showPlanSelection = true
-                        }) {
-                            Text("SEE PLANS")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 56)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                )
-                        }
-                        .frame(width: UIScreen.main.bounds.width * 0.25)
-
-                        // Start Trial button (2/3 width)
-                        Button(action: {
-                            onContinue?()
-                        }) {
-                            Text("START TRIAL")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.black)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 56)
-                                .background(Color.white)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                    }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                } else {
-                    // Employee - Continue button (matches NEXT button styling)
-                    Button(action: {
-                        onContinue?()
-                    }) {
-                        Text("NEXT")
-                            .font(OPSStyle.Typography.button)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
-                            )
-                    }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                }
+        VStack(spacing: 0) {
+            // Content - fills available space, button handled by ReadyScreen
+            if isCompanyCreator {
+                companyCreatorView
+            } else {
+                employeeView
             }
-            .padding(.top, 40)
-            .padding(.bottom, 34)
+
+            Spacer()
         }
         .sheet(isPresented: $showPlanSelection) {
             PlanSelectionView()
@@ -135,11 +84,33 @@ struct BillingInfoView: View {
                     }
                 }
         }
+        .onChange(of: isActive) { _, nowActive in
+            if nowActive {
+                startAnimations()
+            }
+        }
         .onAppear {
+            // Start animations if already active
+            if isActive {
+                startAnimations()
+            }
+
             // For employees, refresh company data to get latest seat assignment
             if !isCompanyCreator {
                 refreshCompanyData()
             }
+        }
+    }
+
+    private func startAnimations() {
+        // Reset state
+        showTitle = false
+        showContent = false
+        animationKey = UUID()
+
+        // Start title typing after brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            showTitle = true
         }
     }
 
@@ -214,239 +185,217 @@ struct BillingInfoView: View {
     // MARK: - Company Creator View
 
     private var companyCreatorView: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Header
-            VStack(alignment: .leading, spacing: 6) {
-                Text("30 DAYS FREE.")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer()
+                .frame(height: 60)
 
-                Text("Full access. No card needed.")
-                    .font(OPSStyle.Typography.caption)
+            // Header with typewriter animation
+            HStack(spacing: 0) {
+                if showTitle {
+                    TypewriterText(
+                        "30 DAYS FREE",
+                        font: OPSStyle.Typography.title,
+                        color: OPSStyle.Colors.primaryText,
+                        typingSpeed: 28
+                    ) {
+                        // Show content after title completes
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            withAnimation(.easeOut(duration: 0.4)) {
+                                showContent = true
+                            }
+                        }
+                    }
+                    .id(animationKey)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 40)
+            .padding(.top, 16)
+
+            Spacer()
+                .frame(height: 48)
+
+            // Content with fade-in animation
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Full access. No card required.")
+                    .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Spacer()
+                    .frame(height: 8)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    trialBenefitRow(text: "Every feature unlocked")
+                    trialBenefitRow(text: "Up to 10 team members")
+                    trialBenefitRow(text: "Unlimited projects")
+                }
+
+                Spacer()
+                    .frame(height: 24)
+
+                Button {
+                    showPlanSelection = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("SEE PLANS")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.horizontal, 40)
+            .padding(.top, 32)
+            .opacity(showContent ? 1 : 0)
+            .offset(y: showContent ? 0 : 20)
+        }
+    }
 
-            // Trial benefits
-            VStack(alignment: .leading, spacing: 8) {
-                FeatureBullet(text: "Everything works")
-                FeatureBullet(text: "Add up to 10 crew")
-                FeatureBullet(text: "Cancel anytime")
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
+    private func trialBenefitRow(text: String) -> some View {
+        HStack(spacing: 12) {
+            Rectangle()
+                .fill(OPSStyle.Colors.primaryAccent)
+                .frame(width: 2, height: 16)
 
-            Divider()
-                .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-
-            // Pricing tiers header
-            VStack(alignment: .leading, spacing: 4) {
-                Text("PLANS")
-                    .font(OPSStyle.Typography.cardSubtitle)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                Text("You can upgrade whenever you're ready.")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-
-            // Plan cards
-            VStack(spacing: 8) {
-                PlanSummaryCard(
-                    plan: .starter,
-                    isSelected: selectedPlan == .starter,
-                    onTap: { selectedPlan = .starter }
-                )
-
-                PlanSummaryCard(
-                    plan: .team,
-                    isSelected: selectedPlan == .team,
-                    onTap: { selectedPlan = .team }
-                )
-
-                PlanSummaryCard(
-                    plan: .business,
-                    isSelected: selectedPlan == .business,
-                    onTap: { selectedPlan = .business }
-                )
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            Text(text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
         }
     }
 
     // MARK: - Employee View
 
     private var employeeView: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Header
-            VStack(alignment: .leading, spacing: 6) {
-                Text("YOU'RE IN.")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 60)
 
-                if let company = dataController.getCurrentUserCompany() {
-                    Text(company.name)
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+            // Header with typewriter animation
+            HStack(spacing: 0) {
+                if showTitle {
+                    TypewriterText(
+                        "YOU'RE IN.",
+                        font: OPSStyle.Typography.title,
+                        color: OPSStyle.Colors.primaryText,
+                        typingSpeed: 28
+                    ) {
+                        // Show content after title completes
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            withAnimation(.easeOut(duration: 0.4)) {
+                                showContent = true
+                            }
+                        }
+                    }
+                    .id(animationKey)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
 
-            // Current plan info
-            if let company = dataController.getCurrentUserCompany(),
-               let planStr = company.subscriptionPlan,
-               let plan = SubscriptionPlan(rawValue: planStr) {
+            Spacer()
+                .frame(height: 48)
+
+            // Content with fade-in animation
+            VStack(alignment: .leading, spacing: 16) {
+                if let company = dataController.getCurrentUserCompany() {
+                    Text(company.name)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    // Plan name
-                    HStack {
-                        Text("Current Plan:")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text("YOUR SEAT")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                        Spacer()
+                    HStack(spacing: 12) {
+                        Image(systemName: isSeated ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(isSeated ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
 
-                        Text(plan.displayName.uppercased())
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(isSeated ? "You have a seat." : "No seat assigned yet.")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+
+                            Text("\(seatsInfo.used) of \(seatsInfo.total) seats used")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
                     }
                     .padding(12)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
 
-                    // Trial expiry (if on trial)
-                    if plan == .trial, let endDate = trialEndDate {
-                        HStack(spacing: 10) {
-                            Image(systemName: "clock")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                    if !isSeated {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Contact your admin to get access.")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Trial expires")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            if let company = dataController.getCurrentUserCompany(),
+                               let adminId = company.getAdminIds().first,
+                               let admin = dataController.getUser(id: adminId) {
 
-                                Text(formatDate(endDate))
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            }
-                        }
-                        .padding(12)
-                        .background(OPSStyle.Colors.warningStatus.opacity(0.1))
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-                }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-            }
-
-            Divider()
-                .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-
-            // Seat information
-            VStack(alignment: .leading, spacing: 12) {
-                Text("YOUR SEAT")
-                    .font(OPSStyle.Typography.cardSubtitle)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                // Seat status
-                HStack(spacing: 12) {
-                    Image(systemName: isSeated ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(isSeated ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(isSeated ? "You have a seat. ✓" : "No seat assigned yet.")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        Text("\(seatsInfo.used) of \(seatsInfo.total) seats used")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                }
-                .padding(12)
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-
-                // Contact admin section (if no seat)
-                if !isSeated {
-                    VStack(spacing: 24) {
-                        // Simple message
-                        Text("Contact your admin to get access.")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 20)
-
-                        // Admin contact info
-                        if let company = dataController.getCurrentUserCompany(),
-                           let adminIds = company.getAdminIds().first,
-                           let admin = dataController.getUser(id: adminIds) {
-
-                            VStack(spacing: 20) {
-                                // Admin info - no background, no avatar
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: 12) {
                                     Text("\(admin.firstName) \(admin.lastName)")
-                                        .font(OPSStyle.Typography.caption)
+                                        .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                    Text("YOUR ADMIN")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                }
-
-                                // Contact buttons
-                                HStack(spacing: 12) {
-                                    if let phone = admin.phone {
-                                        Button(action: {
-                                            if let url = URL(string: "tel://\(phone)") {
-                                                UIApplication.shared.open(url)
+                                    HStack(spacing: 12) {
+                                        if let phone = admin.phone {
+                                            Button {
+                                                if let url = URL(string: "tel://\(phone)") {
+                                                    UIApplication.shared.open(url)
+                                                }
+                                            } label: {
+                                                HStack(spacing: 6) {
+                                                    Image(systemName: "phone.fill")
+                                                        .font(.system(size: 12))
+                                                    Text("CALL")
+                                                        .font(OPSStyle.Typography.captionBold)
+                                                }
+                                                .foregroundColor(.black)
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 12)
+                                                .background(Color.white)
+                                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                                             }
-                                        }) {
-                                            HStack(spacing: 6) {
-                                                Image(systemName: "phone.fill")
-                                                    .font(.system(size: 12))
-                                                Text("CALL")
-                                                    .font(OPSStyle.Typography.captionBold)
-                                            }
-                                            .foregroundColor(.black)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 12)
-                                            .background(Color.white)
-                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         }
-                                    }
 
-                                    if let email = admin.email {
-                                        Button(action: {
-                                            if let url = URL(string: "mailto:\(email)?subject=OPS%20App%20Access%20Request") {
-                                                UIApplication.shared.open(url)
+                                        if let email = admin.email {
+                                            Button {
+                                                if let url = URL(string: "mailto:\(email)?subject=OPS%20App%20Access%20Request") {
+                                                    UIApplication.shared.open(url)
+                                                }
+                                            } label: {
+                                                HStack(spacing: 6) {
+                                                    Image(systemName: "envelope.fill")
+                                                        .font(.system(size: 12))
+                                                    Text("EMAIL")
+                                                        .font(OPSStyle.Typography.captionBold)
+                                                }
+                                                .foregroundColor(.black)
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 12)
+                                                .background(Color.white)
+                                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                                             }
-                                        }) {
-                                            HStack(spacing: 6) {
-                                                Image(systemName: "envelope.fill")
-                                                    .font(.system(size: 12))
-                                                Text("EMAIL")
-                                                    .font(OPSStyle.Typography.captionBold)
-                                            }
-                                            .foregroundColor(.black)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 12)
-                                            .background(Color.white)
-                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         }
                                     }
                                 }
                             }
                         }
+                        .padding(.top, 8)
                     }
-                    .padding(.top, 8)
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .opacity(showContent ? 1 : 0)
+            .offset(y: showContent ? 0 : 20)
         }
     }
 
@@ -455,74 +404,6 @@ struct BillingInfoView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         return formatter.string(from: date)
-    }
-}
-
-// MARK: - Supporting Views
-
-struct PlanSummaryCard: View {
-    let plan: SubscriptionPlan
-    let isSelected: Bool
-    let onTap: () -> Void
-
-    private var monthlyPrice: String {
-        String(format: "$%.0f", Double(plan.monthlyPrice) / 100.0)
-    }
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(plan.displayName.uppercased())
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    Text("\(plan.maxSeats) seats")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(monthlyPrice)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    Text("/MONTH")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-
-                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText.opacity(0.5))
-            }
-            .padding(OPSStyle.Layout.spacing3)
-            .background(isSelected ? OPSStyle.Colors.subtleBackground : OPSStyle.Colors.cardBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: 1)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-struct FeatureBullet: View {
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-            Text(text)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-        }
     }
 }
 

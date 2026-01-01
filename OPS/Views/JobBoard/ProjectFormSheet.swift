@@ -139,9 +139,20 @@ struct ProjectFormSheet: View {
     }
 
     /// Advances focus to the next field, or dismisses keyboard if at the last field
+    /// In tutorial mode during projectFormName phase, dismisses keyboard and advances tutorial
     private func advanceToNextField() {
         guard let current = focusedField else {
             focusedField = nil
+            return
+        }
+
+        // Tutorial mode: special handling for project name field
+        if tutorialMode && current == .title && tutorialPhase == .projectFormName && !title.isEmpty {
+            focusedField = nil // Dismiss keyboard
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialProjectNameEntered"),
+                object: nil
+            )
             return
         }
 
@@ -468,6 +479,12 @@ struct ProjectFormSheet: View {
             Text(errorMessage ?? "An unknown error occurred")
         }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
+        .sheet(isPresented: $showingCopyFromProject) {
+            CopyFromProjectSheet(
+                onCopy: handleCopyFromProject,
+                populatedFields: currentlyPopulatedFields
+            )
+        }
     }
 
     /// Main scrollable content
@@ -1249,6 +1266,18 @@ struct ProjectFormSheet: View {
                 }
             )
         }
+    }
+
+    /// Fields that currently have data (for copy overwrite warning)
+    private var currentlyPopulatedFields: Set<String> {
+        var fields = Set<String>()
+        if !title.isEmpty { fields.insert("name") }
+        if selectedClientId != nil { fields.insert("client") }
+        if !address.isEmpty { fields.insert("address") }
+        if !description.isEmpty { fields.insert("description") }
+        if !notes.isEmpty { fields.insert("notes") }
+        if !localTasks.isEmpty { fields.insert("tasks") }
+        return fields
     }
 
     // MARK: - Preview Card

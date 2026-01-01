@@ -172,6 +172,18 @@ struct TaskFormSheet: View {
         return allProjects.first { $0.id == id }
     }
 
+    // MARK: - Project Selection Control (Non-Tutorial Mode)
+
+    /// Whether fields should be disabled because no project is selected (non-draft mode only)
+    private var needsProjectSelection: Bool {
+        !mode.isDraft && selectedProjectId == nil
+    }
+
+    /// Whether the project field should be highlighted (when no project selected)
+    private var shouldHighlightProjectField: Bool {
+        !tutorialMode && needsProjectSelection
+    }
+
     private var selectedTaskType: TaskType? {
         guard let id = selectedTaskTypeId else { return nil }
         return allTaskTypes.first { $0.id == id }
@@ -454,20 +466,20 @@ struct TaskFormSheet: View {
                                     .opacity(tutorialMode ? 0.5 : 1.0)
                             }
                             taskTypeField
-                                .allowsHitTesting(isTaskTypeFieldEnabled)
-                                .opacity(tutorialMode && !isTaskTypeFieldEnabled ? 0.5 : 1.0)
+                                .allowsHitTesting(isTaskTypeFieldEnabled && !needsProjectSelection)
+                                .opacity((tutorialMode && !isTaskTypeFieldEnabled) || needsProjectSelection ? 0.5 : 1.0)
                             statusField
-                                .allowsHitTesting(!tutorialMode) // Always disabled in tutorial
-                                .opacity(tutorialMode ? 0.5 : 1.0)
+                                .allowsHitTesting(!tutorialMode && !needsProjectSelection)
+                                .opacity(tutorialMode || needsProjectSelection ? 0.5 : 1.0)
                             teamField
-                                .allowsHitTesting(isCrewFieldEnabled)
-                                .opacity(tutorialMode && !isCrewFieldEnabled ? 0.5 : 1.0)
+                                .allowsHitTesting(isCrewFieldEnabled && !needsProjectSelection)
+                                .opacity((tutorialMode && !isCrewFieldEnabled) || needsProjectSelection ? 0.5 : 1.0)
                             datesField
-                                .allowsHitTesting(isDatesFieldEnabled)
-                                .opacity(tutorialMode && !isDatesFieldEnabled ? 0.5 : 1.0)
+                                .allowsHitTesting(isDatesFieldEnabled && !needsProjectSelection)
+                                .opacity((tutorialMode && !isDatesFieldEnabled) || needsProjectSelection ? 0.5 : 1.0)
                             notesField
-                                .allowsHitTesting(!tutorialMode) // Always disabled in tutorial
-                                .opacity(tutorialMode ? 0.5 : 1.0)
+                                .allowsHitTesting(!tutorialMode && !needsProjectSelection)
+                                .opacity(tutorialMode || needsProjectSelection ? 0.5 : 1.0)
                         }
                     }
                 }
@@ -638,7 +650,11 @@ struct TaskFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            .stroke(
+                                shouldHighlightProjectField ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
+                                lineWidth: shouldHighlightProjectField ? 2 : 1
+                            )
+                            .animation(.easeInOut(duration: 0.3), value: shouldHighlightProjectField)
                     )
                     // Only hide text when project is selected AND not actively searching
                     .foregroundColor(selectedProject != nil && !showingProjectSuggestions ? .clear : OPSStyle.Colors.primaryText)
@@ -648,8 +664,8 @@ struct TaskFormSheet: View {
                     .animation(.easeInOut(duration: 0.2), value: selectedProject != nil)
 
                     if showingProjectSuggestions && !filteredProjects.isEmpty {
-                        VStack(spacing: 1) {
-                            ForEach(filteredProjects.prefix(5)) { project in
+                        VStack(spacing: 0) {
+                            ForEach(Array(filteredProjects.prefix(5).enumerated()), id: \.element.id) { index, project in
                                 Button(action: {
                                     withAnimation(.easeInOut(duration: 0.2)) {
                                         selectedProjectId = project.id
@@ -669,14 +685,25 @@ struct TaskFormSheet: View {
                                         }
                                         Spacer()
                                     }
-                                    .padding()
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
                                 }
                                 .buttonStyle(PlainButtonStyle())
+
+                                // Divider between items (not after last)
+                                if index < min(filteredProjects.count, 5) - 1 {
+                                    Divider()
+                                        .background(Color.white.opacity(0.1))
+                                }
                             }
                         }
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        )
                         .shadow(color: OPSStyle.Colors.shadowColor, radius: 8, x: 0, y: 4)
                         .padding(.top, 4)
                     }

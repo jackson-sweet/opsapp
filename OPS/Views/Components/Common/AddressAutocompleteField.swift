@@ -37,7 +37,7 @@ struct AddressAutocompleteField: View {
                 TextField("", text: $searchText)
                     .placeholder(when: searchText.isEmpty) {
                         Text(placeholder)
-                            .foregroundColor(OPSStyle.Colors.placeholderText)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)

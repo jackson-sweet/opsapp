@@ -86,9 +86,19 @@ struct UniversalJobBoardCard: View {
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
         .onTapGesture {
+            // Block tap to open details during projectListSwipe tutorial phase
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
+                return
+            }
             showingDetails = true
         }
         .onLongPressGesture(minimumDuration: 0.3) {
+            // Block long press during projectListSwipe tutorial phase
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
+                return
+            }
             showingMoreActions = true
         } onPressingChanged: { pressing in
             if pressing {
@@ -492,9 +502,19 @@ struct UniversalJobBoardCard: View {
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
         .onTapGesture {
+            // Block tap to open details during projectListSwipe tutorial phase
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
+                return
+            }
             showingDetails = true
         }
         .onLongPressGesture(minimumDuration: 0.3) {
+            // Block long press during projectListSwipe tutorial phase
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
+                return
+            }
             showingMoreActions = true
         } onPressingChanged: { pressing in
             if pressing {
@@ -685,9 +705,19 @@ struct UniversalJobBoardCard: View {
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
         .onTapGesture {
+            // Block tap to open details during projectListSwipe tutorial phase
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
+                return
+            }
             showingDetails = true
         }
         .onLongPressGesture(minimumDuration: 0.3) {
+            // Block long press during projectListSwipe tutorial phase
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
+                return
+            }
             showingMoreActions = true
         } onPressingChanged: { pressing in
             if pressing {

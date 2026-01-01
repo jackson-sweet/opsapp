@@ -28,6 +28,7 @@ struct JobBoardProjectListView: View {
     @State private var hasStartedStatusAnimation = false
     @State private var isStatusTransitioning = false  // True during status badge fade animation
     @State private var showClosedSectionOverlay = false  // Dark overlay during closedProjectsScroll phase
+    @State private var emphasisSwipeInstruction = false  // Emphasis animation for swipe instruction
 
     private var availableTeamMembers: [User] {
         guard let companyId = dataController.currentUser?.companyId else { return [] }
@@ -290,6 +291,62 @@ struct JobBoardProjectListView: View {
         .onChange(of: selectedTeamMemberIds) { _, _ in
             updateFilterVisibility()
         }
+        // Listen for blocked gesture notifications during projectListSwipe
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialSwipeGestureBlocked"))) { _ in
+            triggerSwipeEmphasis()
+        }
+        // Tutorial swipe instruction overlay - zIndex ensures it appears in front of dimmed cards
+        .overlay {
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                VStack {
+                    Spacer()
+                    tutorialSwipeInstruction
+                        .padding(.bottom, 120)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+                .zIndex(100)
+            }
+        }
+    }
+
+    /// Trigger emphasis animation on swipe instruction
+    private func triggerSwipeEmphasis() {
+        // Haptic feedback
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.warning)
+
+        // Trigger emphasis animation
+        withAnimation(.easeInOut(duration: 0.15)) {
+            emphasisSwipeInstruction = true
+        }
+        // Reset after animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                emphasisSwipeInstruction = false
+            }
+        }
+    }
+
+    /// Tutorial instruction for swipe gesture
+    private var tutorialSwipeInstruction: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "hand.draw.fill")
+                .font(.system(size: 32, weight: .medium))
+                .foregroundColor(emphasisSwipeInstruction ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
+                .shadow(color: .black, radius: 4, x: 0, y: 0)
+                .shadow(color: .black, radius: 8, x: 0, y: 0)
+                .scaleEffect(emphasisSwipeInstruction ? 1.3 : 1.0)
+
+            Text("SWIPE THE CARD RIGHT TO CLOSE")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(emphasisSwipeInstruction ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
+                .shadow(color: .black, radius: 4, x: 0, y: 0)
+                .shadow(color: .black, radius: 8, x: 0, y: 0)
+                .scaleEffect(emphasisSwipeInstruction ? 1.1 : 1.0)
+        }
+        .scaleEffect(emphasisSwipeInstruction ? 1.05 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: emphasisSwipeInstruction)
     }
 
 

@@ -35,14 +35,14 @@ enum UserTypeChoice: String, CaseIterable {
     var headline: String {
         switch self {
         case .joinCrew: return "SEE YOUR JOBS. GET TO WORK."
-        case .runCrew: return "YOUR CREW KNOWS WHAT'S NEXT."
+        case .runCrew: return "REGISTER YOUR COMPANY. RUN YOUR JOBS."
         }
     }
 
     var description: String {
         switch self {
         case .joinCrew:
-            return "Your schedule, job details, and directions—all in one place. No more calls asking \"what's next?\""
+            return "Your schedule, job details, and directions—all in one place. No more digging through texts for details."
         case .runCrew:
             return "Create jobs, assign your crew, track progress. No training required—open it and you know what to do."
         }
@@ -52,14 +52,14 @@ enum UserTypeChoice: String, CaseIterable {
         switch self {
         case .joinCrew:
             return [
-                "See today's jobs before you leave",
+                "Stay briefed on all your jobs",
                 "One-tap directions to the site",
-                "All details before you arrive",
-                "Update status when done"
+                "No more missed details",
+                "Mark complete when done"
             ]
         case .runCrew:
             return [
-                "Create jobs in 30 seconds",
+                "Create projects in seconds",
                 "Assign crew with one tap",
                 "See progress from the truck",
                 "Works offline, syncs later"
@@ -82,6 +82,8 @@ struct UserTypeSelectionContent: View {
     @State private var selectedType: UserTypeChoice?
     @State private var contentId = UUID()
     @State private var isTransitioning = false
+    @State private var buttonTextKey = UUID()
+    @State private var showButtonArrow = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -103,14 +105,15 @@ struct UserTypeSelectionContent: View {
             }
 
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text(config.title)
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                Text(config.subtitle)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text(config.subtitle.uppercased())
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .tracking(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
@@ -157,18 +160,18 @@ struct UserTypeSelectionContent: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: choice.icon)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
 
                         Text(choice.rawValue)
-                            .font(OPSStyle.Typography.captionBold)
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     }
-                    .foregroundColor(selectedType == choice ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText)
+                    .foregroundColor(selectedType == choice ? OPSStyle.Colors.background : OPSStyle.Colors.tertiaryText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(
                         Group {
                             if selectedType == choice {
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius - 2)
                                     .fill(OPSStyle.Colors.primaryText)
                             }
                         }
@@ -178,12 +181,12 @@ struct UserTypeSelectionContent: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
+        .padding(2)
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
         )
     }
 
@@ -212,24 +215,25 @@ struct UserTypeSelectionContent: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(choice.features.enumerated()), id: \.offset) { index, feature in
                     HStack(spacing: 12) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        Text("→")
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.4))
 
                         Text(feature)
-                            .font(OPSStyle.Typography.body)
+                            .font(.system(size: 14, weight: .regular, design: .monospaced))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 12)
                     .modifier(SlideInModifier(delay: 0.1 + Double(index) * 0.05))
 
                     if index < choice.features.count - 1 {
-                        Divider()
-                            .background(Color.white.opacity(0.1))
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(height: 1)
                     }
                 }
             }
-            .padding(.top, 24)
+            .padding(.top, 28)
             .padding(.horizontal, 40)
         }
     }
@@ -240,8 +244,8 @@ struct UserTypeSelectionContent: View {
         VStack(spacing: 16) {
             Spacer()
 
-            Text("Select your role above to continue")
-                .font(OPSStyle.Typography.body)
+            Text("[ SELECT YOUR ROLE ]")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Spacer()
@@ -254,22 +258,49 @@ struct UserTypeSelectionContent: View {
         Button {
             performSelection()
         } label: {
-            HStack {
-                Text(selectedType?.buttonText ?? "CONTINUE")
-                    .font(OPSStyle.Typography.bodyBold)
+            ZStack {
+                // Button background
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(Color.white)
+                    .frame(height: 56)
 
-                Spacer()
+                // Content
+                HStack {
+                    // Text with typewriter animation
+                    ZStack(alignment: .leading) {
+                        // Space reservation
+                        Text(selectedType?.buttonText ?? "CONTINUE")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.clear)
 
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 14, weight: .semibold))
+                        // Typewriter text
+                        TypewriterText(
+                            selectedType?.buttonText ?? "CONTINUE",
+                            font: OPSStyle.Typography.bodyBold,
+                            color: .black,
+                            typingSpeed: 30
+                        ) {
+                            // Show arrow after text completes
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showButtonArrow = true
+                            }
+                        }
+                        .id(buttonTextKey)
+                    }
+
+                    Spacer()
+
+                    // Arrow icon
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.black)
+                        .opacity(showButtonArrow ? 1 : 0)
+                        .offset(x: showButtonArrow ? 0 : -10)
+                }
+                .padding(.horizontal, 20)
             }
-            .padding(.horizontal, 20)
+            .frame(height: 56)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 56)
-        .background(Color.white)
-        .foregroundColor(.black)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal, 40)
     }
 
@@ -279,6 +310,10 @@ struct UserTypeSelectionContent: View {
         // Haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
+
+        // Reset button animation state
+        showButtonArrow = false
+        buttonTextKey = UUID()
 
         // If already showing content, fade out first then switch
         if selectedType != nil {

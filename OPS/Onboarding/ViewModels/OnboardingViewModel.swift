@@ -1319,8 +1319,8 @@ class OnboardingViewModel: ObservableObject {
                             companyObject.companyAge = company.companyAge ?? company.age ?? companyAge?.rawValue
 
                             // Set industries
-                            if let industries = company.industry {
-                                companyObject.setIndustries(industries)
+                            if let industryValue = company.industry, !industryValue.isEmpty {
+                                companyObject.setIndustries([industryValue])
                             } else if let industry = companyIndustry {
                                 companyObject.setIndustries([industry.rawValue])
                             }

@@ -55,13 +55,7 @@ struct ReadyScreen: View {
                     // Billing page (first page for all users)
                     if showBillingFirst {
                         BillingInfoView(
-                            onContinue: {
-                                let generator = UIImpactFeedbackGenerator(style: .medium)
-                                generator.impactOccurred()
-                                withAnimation {
-                                    currentPage += 1
-                                }
-                            },
+                            isActive: currentPage == 0,
                             userType: manager.state.flow?.userType
                         )
                         .tag(0)
@@ -97,8 +91,14 @@ struct ReadyScreen: View {
                 // Navigation Button
                 VStack(spacing: 24) {
                     if currentPage == 0 {
-                        // Billing page - no navigation button (handled in BillingInfoView)
-                        EmptyView()
+                        // Billing page - Start Trial
+                        OnboardingPrimaryButton("START TRIAL") {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            withAnimation {
+                                currentPage += 1
+                            }
+                        }
                     } else if currentPage < totalPages - 1 {
                         OnboardingPrimaryButton("NEXT") {
                             withAnimation {

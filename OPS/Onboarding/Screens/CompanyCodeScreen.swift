@@ -55,23 +55,24 @@ struct CompanyCodeScreen: View {
                         Button {
                             copyCode()
                         } label: {
-                            HStack(spacing: 12) {
-                                Text("[\(companyCode)]")
+                            VStack(spacing: 8) {
+                                Text(showCopied ? "CODE COPIED" : "[\(companyCode)]")
                                     .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .foregroundColor(showCopied ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryText)
+                                    .frame(maxWidth: .infinity)
+                                    .animation(.easeInOut(duration: 0.2), value: showCopied)
 
-                                Spacer()
-
-                                Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(showCopied ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText)
+                                Text("TAP TO COPY CODE")
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .opacity(showCopied ? 0 : 1)
                             }
                             .padding(16)
                             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    .stroke(showCopied ? OPSStyle.Colors.successStatus.opacity(0.5) : Color.white.opacity(0.1), lineWidth: 1)
                             )
                         }
 

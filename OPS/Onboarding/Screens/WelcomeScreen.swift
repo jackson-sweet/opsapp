@@ -15,7 +15,7 @@ struct WelcomeScreen: View {
     @State private var slideTimer: Timer?
 
     // Slideshow images - add your hero images to Assets
-    private let heroImages = ["hero_1", "hero_2", "hero_3"]
+    private let heroImages = ["hero_1", "hero_2", "hero_3", "hero_4", "hero_5", "hero_6"]
     private let slideDuration: Double = 4.0
 
     var body: some View {

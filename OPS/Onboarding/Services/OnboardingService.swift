@@ -563,7 +563,7 @@ struct CompanyResponseData: Codable {
     let officeEmail: String?
     let email: String? // Keep for backward compatibility
     let phone: String?
-    let industry: [String]?
+    let industry: String?
     let companySize: String?
     let size: String? // Keep for backward compatibility
     let companyAge: String?
@@ -617,7 +617,7 @@ struct CompanyResponseData: Codable {
         self.officeEmail = email
         self.email = email
         self.phone = phone
-        self.industry = industry != nil ? [industry!] : nil
+        self.industry = industry
         self.companySize = size
         self.size = size
         self.companyAge = age

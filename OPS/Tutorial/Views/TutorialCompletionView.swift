@@ -82,9 +82,9 @@ struct TutorialCompletionView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // Subtext with typewriter animation
+            // Subtext with typewriter animation - flow-specific copy
             TypewriterText(
-                "Now build your first real project and run your crew right.",
+                completionSubtext,
                 font: OPSStyle.Typography.body,
                 color: OPSStyle.Colors.secondaryText,
                 typingSpeed: 20,
@@ -99,6 +99,16 @@ struct TutorialCompletionView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Flow-specific subtext for completion screen
+    private var completionSubtext: String {
+        switch manager.flowType {
+        case .companyCreator:
+            return "Now build your first real project and run your crew right."
+        case .employee:
+            return "Now get out there and get the job done."
+        }
     }
 
     private var ctaButton: some View {

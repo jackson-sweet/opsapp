@@ -96,12 +96,15 @@ struct TutorialCollapsibleTooltip: View {
                 .background(
                     RoundedRectangle(cornerRadius: 12)
                         .fill(OPSStyle.Colors.cardBackgroundDark)
-                        .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(accentColor.opacity(0.3), lineWidth: 1)
                 )
+                // Dark glow effect - multiple shadows for stronger presence
+                .shadow(color: Color.black.opacity(0.8), radius: 20, x: 0, y: 0)
+                .shadow(color: Color.black.opacity(0.6), radius: 40, x: 0, y: 8)
+                .shadow(color: Color.black.opacity(0.4), radius: 60, x: 0, y: 12)
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 16)

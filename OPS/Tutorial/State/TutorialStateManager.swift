@@ -41,6 +41,9 @@ class TutorialStateManager: ObservableObject {
     /// Whether the tutorial is paused (e.g., waiting for auto-advance)
     @Published var isPaused: Bool = false
 
+    /// Whether to show the Continue button (after auto-advance timer completes)
+    @Published var showContinueButton: Bool = false
+
     // MARK: - Timing Properties
 
     /// When the tutorial started
@@ -97,9 +100,13 @@ class TutorialStateManager: ObservableObject {
         currentPhase = TutorialPhase.firstPhase(for: flowType)
         updateForCurrentPhase()
 
-        // Handle auto-advancing phases (like jobBoardIntro, homeOverview)
+        // Handle auto-advancing phases (truly auto-advance, no user action)
         if currentPhase.autoAdvances {
             scheduleAutoAdvance()
+        }
+        // Handle phases that show Continue button after a delay
+        else if currentPhase.showsContinueButtonAfterDelay {
+            scheduleContinueButton()
         }
     }
 
@@ -108,6 +115,9 @@ class TutorialStateManager: ObservableObject {
         // Cancel any pending auto-advance
         autoAdvanceTask?.cancel()
         autoAdvanceTask = nil
+
+        // Hide continue button
+        showContinueButton = false
 
         guard let nextPhase = currentPhase.next(for: flowType) else {
             complete()
@@ -123,9 +133,21 @@ class TutorialStateManager: ObservableObject {
         currentPhase = nextPhase
         updateForCurrentPhase()
 
-        // Handle auto-advancing phases
+        // Handle auto-advancing phases (truly auto-advance, no user action)
         if currentPhase.autoAdvances {
             scheduleAutoAdvance()
+        }
+        // Handle phases that show Continue button after a delay
+        else if currentPhase.showsContinueButtonAfterDelay {
+            scheduleContinueButton()
+        }
+        // Handle phases that show Continue button immediately (with brief delay for transition)
+        else if currentPhase.showsContinueButtonImmediately {
+            // Small delay to let the view transition complete before showing button
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
+                self.showContinueButton = true
+            }
         }
     }
 
@@ -139,6 +161,10 @@ class TutorialStateManager: ObservableObject {
 
         if currentPhase.autoAdvances {
             scheduleAutoAdvance()
+        } else if currentPhase.showsContinueButtonAfterDelay {
+            scheduleContinueButton()
+        } else if currentPhase.showsContinueButtonImmediately {
+            showContinueButton = true
         }
     }
 
@@ -169,6 +195,7 @@ class TutorialStateManager: ObservableObject {
         tooltipText = ""
         showTooltip = false
         isPaused = false
+        showContinueButton = false
         startTime = nil
         completionTime = nil
     }
@@ -194,9 +221,9 @@ class TutorialStateManager: ObservableObject {
 
     /// Updates state for the current phase
     private func updateForCurrentPhase() {
-        // Update tooltip
-        tooltipText = currentPhase.tooltipText
-        tooltipDescription = currentPhase.tooltipDescription
+        // Update tooltip (use flow-specific copy where applicable)
+        tooltipText = currentPhase.tooltipText(for: flowType)
+        tooltipDescription = currentPhase.tooltipDescription(for: flowType)
         showTooltip = !tooltipText.isEmpty
 
         // Update swipe hint
@@ -209,9 +236,10 @@ class TutorialStateManager: ObservableObject {
         TutorialHaptics.lightTap()
     }
 
-    /// Schedules auto-advance for phases that don't require user action
+    /// Schedules auto-advancing to the next phase after a delay (no user action needed)
     private func scheduleAutoAdvance() {
         isPaused = true
+        showContinueButton = false
         let delay = currentPhase.autoAdvanceDelay
 
         autoAdvanceTask = Task {
@@ -219,9 +247,33 @@ class TutorialStateManager: ObservableObject {
 
             if !Task.isCancelled {
                 isPaused = false
+                // Actually advance to next phase
                 advancePhase()
             }
         }
+    }
+
+    /// Schedules showing the Continue button after a delay
+    private func scheduleContinueButton() {
+        isPaused = true
+        showContinueButton = false
+        let delay = currentPhase.autoAdvanceDelay
+
+        autoAdvanceTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+
+            if !Task.isCancelled {
+                isPaused = false
+                showContinueButton = true
+            }
+        }
+    }
+
+    /// Called when user taps Continue button
+    func continueFromAutoAdvance() {
+        showContinueButton = false
+        TutorialHaptics.lightTap()
+        advancePhase()
     }
 }
 

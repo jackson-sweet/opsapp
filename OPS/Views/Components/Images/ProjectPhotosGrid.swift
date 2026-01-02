@@ -279,11 +279,33 @@ struct PhotoThumbnail: View {
         .onAppear(perform: loadImage)
         .id("\(url)-\(id)") // Force unique view identity with URL and UUID
     }
-    
+
     private func loadImage() {
         guard image == nil else { return }
 
         isLoading = true
+        print("[PhotoThumbnail] Loading image with URL: \(url)")
+
+        // Check if this is an asset catalog name (no URL prefix)
+        // Asset catalog names don't contain "://" or start with "//"
+        let isAssetName = !url.contains("://") && !url.hasPrefix("//")
+        print("[PhotoThumbnail] Is asset name: \(isAssetName)")
+
+        if isAssetName {
+            // Try to load from asset catalog (demo images)
+            if let assetImage = UIImage(named: url) {
+                print("[PhotoThumbnail] Successfully loaded from asset catalog: \(url)")
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.image = assetImage
+                    // Cache in memory
+                    ImageCache.shared.set(assetImage, forKey: url)
+                }
+                return
+            } else {
+                print("[PhotoThumbnail] Failed to load from asset catalog: \(url)")
+            }
+        }
 
         // Normalize URL at the start for consistent caching
         // Handle // prefix by adding https:
@@ -460,6 +482,23 @@ struct SinglePhotoView: View {
         guard image == nil else { return }
 
         isLoading = true
+
+        // Check if this is an asset catalog name (no URL prefix)
+        // Asset catalog names don't contain "://" or start with "//"
+        let isAssetName = !url.contains("://") && !url.hasPrefix("//")
+
+        if isAssetName {
+            // Try to load from asset catalog (demo images)
+            if let assetImage = UIImage(named: url) {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.image = assetImage
+                    // Cache in memory
+                    ImageCache.shared.set(assetImage, forKey: url)
+                }
+                return
+            }
+        }
 
         // Normalize URL at the start for consistent caching
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url

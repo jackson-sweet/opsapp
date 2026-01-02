@@ -42,10 +42,55 @@ struct TutorialLauncherView: View {
     /// Completion state
     @State private var showingCompletion = false
 
+    /// Finishing state (loading after user taps LET'S GO)
+    @State private var isFinishing = false
+
+    /// Console messages for finishing loading view
+    @State private var finishingMessages: [String] = []
+
     /// Typewriter animation state
     @State private var displayedTitle = ""
     @State private var typewriterTimer: Timer?
-    private let fullTitle = "HERE'S HOW OPS WORKS"
+
+    /// Title varies by flow type
+    private var fullTitle: String {
+        switch flowType {
+        case .companyCreator:
+            return "HERE'S HOW OPS WORKS"
+        case .employee:
+            return "YOUR DAILY WORKFLOW"
+        }
+    }
+
+    /// Cover description varies by flow type
+    private var coverDescription: String {
+        switch flowType {
+        case .companyCreator:
+            return "You'll create a sample project and move it through your workflow—just like a real job. You'll learn to:"
+        case .employee:
+            return "See how to manage your assigned jobs from start to finish. You'll learn to:"
+        }
+    }
+
+    /// Cover bullet points vary by flow type
+    private var coverBulletPoints: [String] {
+        switch flowType {
+        case .companyCreator:
+            return [
+                "Create projects with tasks",
+                "Assign work to your crew",
+                "Track progress from start to finish",
+                "View your schedule"
+            ]
+        case .employee:
+            return [
+                "View your assigned jobs",
+                "Start and complete tasks",
+                "Add notes and photos",
+                "Check your schedule"
+            ]
+        }
+    }
 
     /// Creates the tutorial launcher
     /// - Parameters:
@@ -73,10 +118,12 @@ struct TutorialLauncherView: View {
                 loadingView
             } else if let error = seedingError {
                 errorView(error: error)
+            } else if isFinishing {
+                finishingLoadingView
             } else if showingCompletion {
                 TutorialCompletionView(
                     manager: stateManager,
-                    onDismiss: handleTutorialComplete
+                    onDismiss: startFinishing
                 )
             } else {
                 tutorialFlowContent
@@ -108,17 +155,16 @@ struct TutorialLauncherView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Description of what tutorial achieves
+                // Description varies by flow type
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("You'll create a sample project and move it through your workflow—just like a real job. You'll learn to:")
+                    Text(coverDescription)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        tutorialBulletPoint("Create projects with tasks")
-                        tutorialBulletPoint("Assign work to your crew")
-                        tutorialBulletPoint("Track progress from start to finish")
-                        tutorialBulletPoint("View your schedule")
+                        ForEach(coverBulletPoints, id: \.self) { point in
+                            tutorialBulletPoint(point)
+                        }
                     }
                 }
             }
@@ -207,6 +253,62 @@ struct TutorialLauncherView: View {
         }
     }
 
+    /// Console-style loading view shown after user taps LET'S GO
+    private var finishingLoadingView: some View {
+        ZStack {
+            OPSStyle.Colors.background.ignoresSafeArea()
+
+            VStack(spacing: 32) {
+                Spacer()
+
+                // Logo
+                Image("LogoWhite")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 60, height: 60)
+                    .opacity(0.8)
+
+                // Loading bar
+                TacticalLoadingBarAnimated(
+                    barCount: 12,
+                    barWidth: 3,
+                    barHeight: 8,
+                    spacing: 5,
+                    emptyColor: OPSStyle.Colors.primaryAccent.opacity(0.2),
+                    fillColor: OPSStyle.Colors.primaryAccent
+                )
+
+                // Console output
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(finishingMessages.enumerated()), id: \.offset) { index, line in
+                        HStack(spacing: 8) {
+                            Text(">")
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
+
+                            Text(line)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .opacity(index == finishingMessages.count - 1 ? 1.0 : 0.5)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
+                .frame(height: 100, alignment: .bottom)
+                .padding(.horizontal, 40)
+
+                Spacer()
+
+                // Version info
+                Text("[ VERSION \(AppConfiguration.AppInfo.version.uppercased()) ]")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(.bottom, 48)
+            }
+        }
+        .transition(.opacity)
+    }
+
     /// Error view if seeding fails
     private func errorView(error: String) -> some View {
         VStack(spacing: 24) {
@@ -224,10 +326,18 @@ struct TutorialLauncherView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
 
-            Button("SKIP FOR NOW") {
+            Button {
                 handleTutorialComplete()
+            } label: {
+                Text("SKIP FOR NOW")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(Color.white)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
-            .buttonStyle(OPSButtonStyle.Secondary())
+            .padding(.horizontal, 32)
             .padding(.top, 20)
         }
     }
@@ -335,7 +445,107 @@ struct TutorialLauncherView: View {
         showingCompletion = true
     }
 
-    /// Called when user taps continue on completion view
+    /// Called when user taps LET'S GO on completion view
+    /// Shows loading screen for minimum 5 seconds while cleanup happens in background
+    private func startFinishing() {
+        // Immediately show loading screen
+        withAnimation(.easeOut(duration: 0.3)) {
+            showingCompletion = false
+            isFinishing = true
+            finishingMessages = []
+        }
+
+        // Start showing console messages with delays
+        let messages = [
+            "CLEANING UP DEMO DATA...",
+            "SYNCING USER DATA...",
+            "LOADING YOUR PROJECTS...",
+            "PREPARING WORKSPACE...",
+            "ALMOST READY..."
+        ]
+
+        for (index, message) in messages.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.8) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    finishingMessages.append(message)
+                    if finishingMessages.count > 5 {
+                        finishingMessages.removeFirst()
+                    }
+                }
+            }
+        }
+
+        // Start the actual cleanup in background
+        Task { @MainActor in
+            // Record start time to ensure minimum 5 second display
+            let startTime = Date()
+
+            // Do the actual cleanup and sync
+            await performTutorialCleanup()
+
+            // Calculate remaining time to reach 5 seconds minimum
+            let elapsed = Date().timeIntervalSince(startTime)
+            let remainingTime = max(0, 5.0 - elapsed)
+
+            // Wait for remaining time if needed
+            if remainingTime > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(remainingTime * 1_000_000_000))
+            }
+
+            // Now call the actual completion
+            onComplete()
+        }
+    }
+
+    /// Performs the actual tutorial cleanup (extracted from handleTutorialComplete)
+    private func performTutorialCleanup() async {
+        // Mark tutorial as completed for the user
+        if let user = dataController.currentUser {
+            user.hasCompletedAppTutorial = true
+            user.needsSync = true
+
+            do {
+                try modelContext.save()
+                print("[TUTORIAL_LAUNCHER] Tutorial completion saved to user model")
+            } catch {
+                print("[TUTORIAL_LAUNCHER] Error saving tutorial completion: \(error)")
+            }
+
+            // Sync user to Bubble so backend knows tutorial is complete
+            do {
+                try await dataController.apiService.updateUser(userId: user.id, fields: [
+                    BubbleFields.User.hasCompletedAppTutorial: true
+                ])
+                user.needsSync = false
+                try modelContext.save()
+                print("[TUTORIAL_LAUNCHER] Tutorial completion synced to Bubble")
+            } catch {
+                print("[TUTORIAL_LAUNCHER] Warning: Failed to sync tutorial completion to Bubble: \(error)")
+                // Non-fatal - will sync later
+            }
+        }
+
+        // Cleanup demo data first
+        await cleanupDemoData()
+
+        // Perform full sync to get fresh data from backend
+        // This ensures company subscription is up to date and prevents lockout
+        print("[TUTORIAL_LAUNCHER] Starting full sync after tutorial completion...")
+        await dataController.refreshProjectsFromBackend()
+        print("[TUTORIAL_LAUNCHER] Full sync completed")
+
+        // Also refresh company data to get latest subscription info
+        if let user = dataController.currentUser, let companyId = user.companyId {
+            do {
+                try await dataController.forceRefreshCompany(id: companyId)
+                print("[TUTORIAL_LAUNCHER] Company subscription data refreshed")
+            } catch {
+                print("[TUTORIAL_LAUNCHER] Warning: Failed to refresh company data: \(error)")
+            }
+        }
+    }
+
+    /// Called when user taps continue on completion view (legacy - now uses startFinishing)
     private func handleTutorialComplete() {
         Task { @MainActor in
             // Mark tutorial as completed for the user
@@ -353,7 +563,7 @@ struct TutorialLauncherView: View {
                 // Sync user to Bubble so backend knows tutorial is complete
                 do {
                     try await dataController.apiService.updateUser(userId: user.id, fields: [
-                        "has_completed_app_tutorial": true
+                        BubbleFields.User.hasCompletedAppTutorial: true
                     ])
                     user.needsSync = false
                     try modelContext.save()

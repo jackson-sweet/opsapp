@@ -78,8 +78,9 @@ class TutorialDemoDataManager {
         print("[TUTORIAL_CLEANUP] Demo data cleanup complete!")
     }
 
-    /// Assigns the current user to today's demo tasks for the employee flow
-    /// This allows the employee to see tasks assigned to them
+    /// Assigns the current user to demo tasks for the employee flow
+    /// This allows the employee to see tasks assigned to them on the calendar
+    /// Prioritizes today's tasks so they appear on the Home view
     func assignCurrentUserToTasks(userId: String) async throws {
         print("[TUTORIAL_ASSIGN] Assigning user \(userId) to demo tasks...")
 
@@ -89,16 +90,30 @@ class TutorialDemoDataManager {
             return
         }
 
-        // Find tasks scheduled for today (IN_PROGRESS status from demo data)
-        let todayTasks = try fetchTodayDemoTasks()
+        // Find all demo tasks
+        let allDemoTasks = try fetchAllDemoTasks()
+        print("[TUTORIAL_ASSIGN] Found \(allDemoTasks.count) demo tasks total")
+
+        // First, identify tasks scheduled for today (in_progress status = today's work)
+        let todayTasks = allDemoTasks.filter { $0.status == .inProgress }
         print("[TUTORIAL_ASSIGN] Found \(todayTasks.count) tasks for today")
 
-        // Assign current user to first 3 tasks (intentional limit per tutorial spec)
-        // Employee tutorial flow only needs 2-3 tasks for the demo experience
-        let tasksToAssign = Array(todayTasks.prefix(3))
+        // Assign user to ALL today's tasks so they appear on Home view
+        var tasksToAssign: [ProjectTask] = Array(todayTasks)
+        var assignedProjectIds = Set(todayTasks.compactMap { $0.project?.id })
+
+        // Also assign to one task per OTHER project (for calendar variety)
+        for task in allDemoTasks {
+            if let projectId = task.project?.id, !assignedProjectIds.contains(projectId) {
+                assignedProjectIds.insert(projectId)
+                tasksToAssign.append(task)
+            }
+        }
+
+        print("[TUTORIAL_ASSIGN] Assigning user to \(tasksToAssign.count) tasks (\(todayTasks.count) today + others for calendar)")
 
         for task in tasksToAssign {
-            // Add to team members if not already present
+            // Add to task team members if not already present
             if !task.teamMembers.contains(where: { $0.id == userId }) {
                 task.teamMembers.append(currentUser)
                 var ids = task.getTeamMemberIds()
@@ -106,6 +121,17 @@ class TutorialDemoDataManager {
                 task.setTeamMemberIds(ids)
 
                 print("[TUTORIAL_ASSIGN] Assigned user to task: \(task.displayTitle)")
+            }
+
+            // Also add to project team members (required for job board visibility)
+            if let project = task.project {
+                if !project.teamMembers.contains(where: { $0.id == userId }) {
+                    project.teamMembers.append(currentUser)
+                    var projectIds = project.getTeamMemberIds()
+                    projectIds.append(userId)
+                    project.setTeamMemberIds(projectIds)
+                    print("[TUTORIAL_ASSIGN] Assigned user to project: \(project.title)")
+                }
             }
 
             // Update calendar event team members as well
@@ -549,11 +575,23 @@ class TutorialDemoDataManager {
 
     /// Fetches demo tasks scheduled for today (IN_PROGRESS status)
     private func fetchTodayDemoTasks() throws -> [ProjectTask] {
-        let demoPrefix = "DEMO_"
-        let inProgressStatus = TaskStatus.inProgress
+        // First fetch all demo tasks, then filter in memory
+        // SwiftData predicates have issues with captured variables
         let descriptor = FetchDescriptor<ProjectTask>(
             predicate: #Predicate<ProjectTask> { task in
-                task.id.starts(with: demoPrefix) && task.status == inProgressStatus
+                task.id.starts(with: "DEMO_")
+            }
+        )
+        let allDemoTasks = try context.fetch(descriptor)
+        // Filter to only in-progress tasks (today's work)
+        return allDemoTasks.filter { $0.status == .inProgress }
+    }
+
+    /// Fetches all demo tasks (for calendar assignment across all dates)
+    private func fetchAllDemoTasks() throws -> [ProjectTask] {
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { task in
+                task.id.starts(with: "DEMO_")
             }
         )
         return try context.fetch(descriptor)
@@ -563,9 +601,9 @@ class TutorialDemoDataManager {
 
     /// Checks if demo data exists in the database
     func hasDemoData() -> Bool {
-        let demoPrefix = "DEMO_"
+        // Use string literal directly to avoid captured variable issues in SwiftData predicates
         let descriptor = FetchDescriptor<Project>(
-            predicate: #Predicate { $0.id.starts(with: demoPrefix) }
+            predicate: #Predicate { $0.id.starts(with: "DEMO_") }
         )
         let count = (try? context.fetchCount(descriptor)) ?? 0
         return count > 0
@@ -573,14 +611,14 @@ class TutorialDemoDataManager {
 
     /// Gets a count of all demo entities for debugging
     func getDemoDataCounts() -> (projects: Int, tasks: Int, clients: Int, taskTypes: Int, users: Int, teamMembers: Int, events: Int) {
-        let demoPrefix = "DEMO_"
-        let projectCount = (try? context.fetchCount(FetchDescriptor<Project>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
-        let taskCount = (try? context.fetchCount(FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
-        let clientCount = (try? context.fetchCount(FetchDescriptor<Client>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
-        let taskTypeCount = (try? context.fetchCount(FetchDescriptor<TaskType>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
-        let userCount = (try? context.fetchCount(FetchDescriptor<User>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
-        let teamMemberCount = (try? context.fetchCount(FetchDescriptor<TeamMember>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
-        let eventCount = (try? context.fetchCount(FetchDescriptor<CalendarEvent>(predicate: #Predicate { $0.id.starts(with: demoPrefix) }))) ?? 0
+        // Use string literals directly to avoid captured variable issues in SwiftData predicates
+        let projectCount = (try? context.fetchCount(FetchDescriptor<Project>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
+        let taskCount = (try? context.fetchCount(FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
+        let clientCount = (try? context.fetchCount(FetchDescriptor<Client>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
+        let taskTypeCount = (try? context.fetchCount(FetchDescriptor<TaskType>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
+        let userCount = (try? context.fetchCount(FetchDescriptor<User>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
+        let teamMemberCount = (try? context.fetchCount(FetchDescriptor<TeamMember>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
+        let eventCount = (try? context.fetchCount(FetchDescriptor<CalendarEvent>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
 
         return (projectCount, taskCount, clientCount, taskTypeCount, userCount, teamMemberCount, eventCount)
     }

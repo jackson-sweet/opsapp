@@ -21,14 +21,14 @@ struct CalendarToggleView: View {
         tutorialMode && tutorialPhase == .calendarMonthPrompt
     }
 
-    /// Whether to disable the segmented control during calendarWeek phase only
+    /// Whether to disable the segmented control during calendarWeek and calendarMonth phases
     private var isSegmentedControlDisabled: Bool {
-        tutorialMode && tutorialPhase == .calendarWeek
+        tutorialMode && (tutorialPhase == .calendarWeek || tutorialPhase == .calendarMonth)
     }
 
-    /// Whether to disable the week picker button during both calendarWeek AND calendarMonthPrompt phases
+    /// Whether to disable the week picker button during calendarWeek, calendarMonthPrompt, and calendarMonth phases
     private var isWeekPickerDisabled: Bool {
-        tutorialMode && (tutorialPhase == .calendarWeek || tutorialPhase == .calendarMonthPrompt)
+        tutorialMode && (tutorialPhase == .calendarWeek || tutorialPhase == .calendarMonthPrompt || tutorialPhase == .calendarMonth)
     }
 
     var body: some View {

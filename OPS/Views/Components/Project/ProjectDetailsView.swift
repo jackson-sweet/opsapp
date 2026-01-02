@@ -16,6 +16,9 @@ struct ProjectDetailsView: View {
     var isEditMode: Bool = false
     @Environment(\.dismiss) var dismiss
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
+
+
     @State private var noteText: String
     @State private var originalNoteText: String
     @EnvironmentObject private var dataController: DataController
@@ -54,6 +57,10 @@ struct ProjectDetailsView: View {
     @State private var selectedTeamMember: User? = nil
     @State private var isTeamExpanded = false
     @State private var isDeleting = false  // Flag to prevent accessing deleted project
+    @State private var completeBorderPulse = false  // Tutorial mode: pulsing border for complete button
+    @State private var photosBorderPulse = false  // Tutorial mode: pulsing border for photos section
+    @State private var notesBorderPulse = false  // Tutorial mode: pulsing border for notes section
+    @State private var showCompletedFlash = false  // Tutorial mode: flash "PROJECT COMPLETED" on button
 
     // Initialize with project's existing notes
     init(project: Project, isEditMode: Bool = false) {
@@ -319,41 +326,134 @@ struct ProjectDetailsView: View {
     }
 
     private var scrollableContent: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                locationSection
-                projectInfoSection
-                tasksSection
-                photosSection
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                VStack(spacing: 24) {
+                    locationSection
+                        .modifier(TutorialSectionDimModifier(
+                            shouldDim: shouldDimSection(except: nil),
+                            tutorialMode: tutorialMode
+                        ))
 
-                if project.status != .completed && project.status != .closed {
-                    Spacer()
-                        .frame(height: 40)
+                    // projectInfoSection handles its own internal dimming
+                    projectInfoSection
 
-                    completeButton
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                } else if project.status == .completed {
-                    Spacer()
-                        .frame(height: 40)
+                    tasksSection
+                        .modifier(TutorialSectionDimModifier(
+                            shouldDim: shouldDimSection(except: nil),
+                            tutorialMode: tutorialMode
+                        ))
 
-                    closeJobButton
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    // photosSection - NOT dimmed during addPhoto phase
+                    photosSection
+                        .modifier(TutorialSectionDimModifier(
+                            shouldDim: shouldDimSection(except: .addPhoto),
+                            tutorialMode: tutorialMode
+                        ))
+
+                    if project.status != .completed && project.status != .closed {
+                        Spacer()
+                            .frame(height: 40)
+
+                        completeButton
+                            .modifier(TutorialSectionDimModifier(
+                                shouldDim: shouldDimSection(except: .completeProject),
+                                tutorialMode: tutorialMode
+                            ))
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    } else if project.status == .completed {
+                        Spacer()
+                            .frame(height: 40)
+
+                        closeJobButton
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+
+                    if canEditProjectSettings() {
+                        deleteButton
+                    }
                 }
-
-                if canEditProjectSettings() {
-                    deleteButton
+                .padding(.top, 16)
+                .animation(.easeInOut(duration: 0.3), value: project.status)
+            }
+            .onAppear {
+                // Scroll to appropriate section if already in that phase when view appears
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    if tutorialMode {
+                        if tutorialPhase == .addNote {
+                            withAnimation(.easeInOut(duration: 0.5)) {
+                                scrollProxy.scrollTo("teamNotesField", anchor: .center)
+                            }
+                        } else if tutorialPhase == .addPhoto {
+                            withAnimation(.easeInOut(duration: 0.5)) {
+                                scrollProxy.scrollTo("photosSection", anchor: .center)
+                            }
+                        } else if tutorialPhase == .completeProject {
+                            withAnimation(.easeInOut(duration: 0.5)) {
+                                scrollProxy.scrollTo("completeButton", anchor: .center)
+                            }
+                        }
+                    }
                 }
             }
-            .padding(.top, 16)
-            .animation(.easeInOut(duration: 0.3), value: project.status)
+            .onChange(of: tutorialPhase) { _, newPhase in
+                // Auto-scroll to notes section when entering addNote phase
+                if newPhase == .addNote {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            scrollProxy.scrollTo("teamNotesField", anchor: .center)
+                        }
+                    }
+                }
+                // Auto-scroll to photos section when entering addPhoto phase
+                if newPhase == .addPhoto {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            scrollProxy.scrollTo("photosSection", anchor: .center)
+                        }
+                    }
+                }
+                // Auto-scroll to complete button when entering completeProject phase
+                if newPhase == .completeProject {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            scrollProxy.scrollTo("completeButton", anchor: .center)
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    // MARK: - Tutorial Dim Helper
+
+    /// Determines if a section should be dimmed based on the current tutorial phase
+    /// - Parameter exceptPhase: The phase during which this section should NOT be dimmed
+    /// - Returns: true if the section should be dimmed, false otherwise
+    private func shouldDimSection(except exceptPhase: TutorialPhase?) -> Bool {
+        guard tutorialMode else { return false }
+        guard let phase = tutorialPhase else { return false }
+
+        // Only dim during these specific phases
+        let dimmingPhases: [TutorialPhase] = [.addNote, .addPhoto, .completeProject]
+        guard dimmingPhases.contains(phase) else { return false }
+
+        // If this section's exception phase matches the current phase, don't dim
+        if let exceptPhase = exceptPhase, phase == exceptPhase {
+            return false
+        }
+
+        // Dim this section
+        return true
     }
 
     // MARK: - Sheet Contents
 
     private var photoViewerContent: some View {
-        FullScreenPhotoViewer(
-            photos: project.getProjectImages(),
+        let photos = project.getProjectImages()
+        print("[PhotoViewer] Opening with photos: \(photos), index: \(selectedPhotoIndex)")
+        return FullScreenPhotoViewer(
+            photos: photos,
             initialIndex: selectedPhotoIndex,
             onDismiss: { showingPhotoViewer = false }
         )
@@ -723,20 +823,40 @@ struct ProjectDetailsView: View {
             VStack(spacing: 16) {
                 // Client field
                 clientField
+                    .modifier(TutorialSectionDimModifier(
+                        shouldDim: shouldDimSection(except: nil),
+                        tutorialMode: tutorialMode
+                    ))
 
                 // Schedule field
                 scheduleField
+                    .modifier(TutorialSectionDimModifier(
+                        shouldDim: shouldDimSection(except: nil),
+                        tutorialMode: tutorialMode
+                    ))
 
                 // Description field (only if exists)
                 if let description = project.projectDescription, !description.isEmpty {
                     descriptionField
+                        .modifier(TutorialSectionDimModifier(
+                            shouldDim: shouldDimSection(except: nil),
+                            tutorialMode: tutorialMode
+                        ))
                 }
 
-                // Team Notes field
+                // Team Notes field - NOT dimmed during addNote phase
                 teamNotesField
+                    .modifier(TutorialSectionDimModifier(
+                        shouldDim: shouldDimSection(except: .addNote),
+                        tutorialMode: tutorialMode
+                    ))
 
                 // Assigned Team field
                 assignedTeamField
+                    .modifier(TutorialSectionDimModifier(
+                        shouldDim: shouldDimSection(except: nil),
+                        tutorialMode: tutorialMode
+                    ))
             }
         }
         .padding(.horizontal)
@@ -911,6 +1031,42 @@ struct ProjectDetailsView: View {
             canEdit: true,  // All users including field crew can edit team notes
             onSave: saveNotes
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + TutorialHighlightStyle.padding)
+                .stroke(
+                    shouldHighlightNotesSection ? TutorialHighlightStyle.color : Color.clear,
+                    lineWidth: shouldHighlightNotesSection ? TutorialHighlightStyle.lineWidth : 0
+                )
+                .opacity(shouldHighlightNotesSection ? (notesBorderPulse ? 1.0 : 0.4) : 0)
+                .padding(-TutorialHighlightStyle.padding)
+        )
+        .id("teamNotesField")
+        .onAppear {
+            if shouldHighlightNotesSection {
+                withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
+                    notesBorderPulse = true
+                }
+            }
+        }
+        .onChange(of: tutorialPhase) { _, newPhase in
+            if tutorialMode {
+                if newPhase == .addNote {
+                    withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
+                        notesBorderPulse = true
+                    }
+                } else {
+                    // Stop pulsing when leaving addNote phase
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        notesBorderPulse = false
+                    }
+                }
+            }
+        }
+    }
+
+    /// Whether to highlight the notes section during tutorial
+    private var shouldHighlightNotesSection: Bool {
+        tutorialMode && tutorialPhase == .addNote
     }
 
     private var assignedTeamField: some View {
@@ -1270,7 +1426,43 @@ struct ProjectDetailsView: View {
         ) {
             photoContentView
         }
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + TutorialHighlightStyle.padding)
+                .stroke(
+                    shouldHighlightPhotosSection ? TutorialHighlightStyle.color : Color.clear,
+                    lineWidth: shouldHighlightPhotosSection ? TutorialHighlightStyle.lineWidth : 0
+                )
+                .opacity(shouldHighlightPhotosSection ? (photosBorderPulse ? 1.0 : 0.4) : 0)
+                .padding(-TutorialHighlightStyle.padding)
+        )
         .padding(.horizontal)
+        .id("photosSection")
+        .onAppear {
+            if shouldHighlightPhotosSection {
+                withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
+                    photosBorderPulse = true
+                }
+            }
+        }
+        .onChange(of: tutorialPhase) { _, newPhase in
+            if tutorialMode {
+                if newPhase == .addPhoto {
+                    withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
+                        photosBorderPulse = true
+                    }
+                } else {
+                    // Stop pulsing when leaving addPhoto phase
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        photosBorderPulse = false
+                    }
+                }
+            }
+        }
+    }
+
+    /// Whether to highlight the photos section during tutorial
+    private var shouldHighlightPhotosSection: Bool {
+        tutorialMode && tutorialPhase == .addPhoto
     }
     
     // Photo content view to break up complexity
@@ -1291,6 +1483,7 @@ struct ProjectDetailsView: View {
     // Photo display - either empty state or grid of photos
     private var photoDisplayView: some View {
         let photos = project.getProjectImages()
+        print("[ProjectDetailsView] Project photos: \(photos)")
 
         if photos.isEmpty {
             return AnyView(emptyPhotosView)
@@ -1498,7 +1691,34 @@ struct ProjectDetailsView: View {
     }
 
     private var completeButton: some View {
-        Button(action: {
+        let completedColor = OPSStyle.Colors.statusColor(for: .completed)
+
+        return Button(action: {
+            // Tutorial mode: show flash animation then post notification
+            if tutorialMode && tutorialPhase == .completeProject {
+                // Show flash animation
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    showCompletedFlash = true
+                }
+                // Haptic feedback
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.success)
+
+                // After flash animation, post notification and complete
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    // Clear active project state so Home view resets after tutorial
+                    appState.activeProjectID = nil
+                    appState.activeTaskID = nil
+
+                    NotificationCenter.default.post(
+                        name: Notification.Name("TutorialProjectCompleted"),
+                        object: nil
+                    )
+                    markProjectComplete()
+                }
+                return
+            }
+
             // CENTRALIZED COMPLETION CHECK: Uses AppState for global checklist sheet
             if appState.requestProjectCompletion(project) {
                 // No incomplete tasks - proceed with completion
@@ -1506,19 +1726,48 @@ struct ProjectDetailsView: View {
             }
             // If false, the global checklist sheet will be shown via AppState in ContentView
         }) {
-            Text("MARK PROJECT COMPLETE")
+            Text(showCompletedFlash ? "PROJECT COMPLETED" : "MARK PROJECT COMPLETE")
                 .font(OPSStyle.Typography.bodyBold)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .background(Color.clear)
+                .foregroundColor(showCompletedFlash ? .white : OPSStyle.Colors.primaryAccent)
+                .background(showCompletedFlash ? completedColor : Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        .stroke(
+                            showCompletedFlash ? completedColor : OPSStyle.Colors.primaryAccent,
+                            lineWidth: shouldHighlightCompleteButton ? 2 : 1
+                        )
+                        .opacity(showCompletedFlash ? 1.0 : (shouldHighlightCompleteButton ? (completeBorderPulse ? 1.0 : 0.4) : 1.0))
                 )
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
+        .disabled(showCompletedFlash)
+        .animation(.easeInOut(duration: 0.3), value: showCompletedFlash)
         .padding(.horizontal)
         .padding(.top, 8)
+        .id("completeButton")
+        .onAppear {
+            // Start pulsing animation when in tutorial mode at completeProject phase
+            if shouldHighlightCompleteButton {
+                withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
+                    completeBorderPulse = true
+                }
+            }
+        }
+        .onChange(of: tutorialPhase) { _, newPhase in
+            // Start pulsing when entering completeProject phase
+            if tutorialMode && newPhase == .completeProject {
+                withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
+                    completeBorderPulse = true
+                }
+            }
+        }
+    }
+
+    /// Whether to highlight the complete button during tutorial
+    private var shouldHighlightCompleteButton: Bool {
+        tutorialMode && tutorialPhase == .completeProject
     }
 
     private var closeJobButton: some View {
@@ -1576,13 +1825,8 @@ struct ProjectDetailsView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
         impactFeedback.impactOccurred()
 
-        // Tutorial mode: notify project completed
-        if tutorialMode {
-            NotificationCenter.default.post(
-                name: Notification.Name("TutorialProjectCompleted"),
-                object: nil
-            )
-        }
+        // Note: Tutorial mode notification is posted in completeButton action
+        // to avoid duplicate notifications (which would skip phases)
 
         Task {
             // Auto-complete all incomplete tasks when marking project complete
@@ -2411,6 +2655,29 @@ struct ZoomablePhotoView: View {
 
         isLoading = true
 
+        print("[ZoomablePhotoView] Loading image with URL: \(url)")
+
+        // Check if this is an asset catalog name (no URL prefix)
+        // Asset catalog names don't contain "://" or start with "//"
+        let isAssetName = !url.contains("://") && !url.hasPrefix("//")
+        print("[ZoomablePhotoView] Is asset name: \(isAssetName)")
+
+        if isAssetName {
+            // Try to load from asset catalog (demo images)
+            if let assetImage = UIImage(named: url) {
+                print("[ZoomablePhotoView] Successfully loaded from asset catalog: \(url)")
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.image = assetImage
+                    // Cache in memory
+                    ImageCache.shared.set(assetImage, forKey: url)
+                }
+                return
+            } else {
+                print("[ZoomablePhotoView] Failed to load from asset catalog: \(url)")
+            }
+        }
+
         // Normalize URL at the start for consistent caching
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url
 
@@ -2515,47 +2782,26 @@ struct ZoomableScrollView: UIViewRepresentable {
     let image: UIImage
     let onLongPress: () -> Void
 
-    func makeUIView(context: Context) -> UIScrollView {
-        let scrollView = UIScrollView()
-        scrollView.delegate = context.coordinator
-        scrollView.maximumZoomScale = 5.0
-        scrollView.minimumZoomScale = 1.0
-        scrollView.showsVerticalScrollIndicator = false
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.bouncesZoom = true
-        scrollView.backgroundColor = .black
-
-        let imageView = UIImageView(image: image)
-        imageView.contentMode = .scaleAspectFit
-        imageView.isUserInteractionEnabled = true
-        imageView.tag = 100 // Tag to find it later
-
-        scrollView.addSubview(imageView)
+    func makeUIView(context: Context) -> ZoomableScrollViewContainer {
+        let container = ZoomableScrollViewContainer(image: image, coordinator: context.coordinator)
 
         // Add double-tap gesture for zoom toggle
         let doubleTapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap(_:)))
         doubleTapGesture.numberOfTapsRequired = 2
-        scrollView.addGestureRecognizer(doubleTapGesture)
+        container.scrollView.addGestureRecognizer(doubleTapGesture)
 
         // Add long press gesture for save dialog
         let longPressGesture = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
-        scrollView.addGestureRecognizer(longPressGesture)
+        container.scrollView.addGestureRecognizer(longPressGesture)
 
-        return scrollView
+        return container
     }
 
-    func updateUIView(_ scrollView: UIScrollView, context: Context) {
-        guard let imageView = scrollView.viewWithTag(100) as? UIImageView else { return }
-
+    func updateUIView(_ container: ZoomableScrollViewContainer, context: Context) {
         // Update image if changed
-        if imageView.image !== image {
-            imageView.image = image
-        }
-
-        // Update frame to match scroll view bounds
-        DispatchQueue.main.async {
-            imageView.frame = scrollView.bounds
-            context.coordinator.centerImageView(scrollView: scrollView)
+        if container.imageView.image !== image {
+            container.imageView.image = image
+            container.scrollView.zoomScale = 1.0
         }
     }
 
@@ -2565,51 +2811,30 @@ struct ZoomableScrollView: UIViewRepresentable {
 
     class Coordinator: NSObject, UIScrollViewDelegate {
         let onLongPress: () -> Void
+        weak var container: ZoomableScrollViewContainer?
 
         init(onLongPress: @escaping () -> Void) {
             self.onLongPress = onLongPress
         }
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-            return scrollView.viewWithTag(100)
+            return container?.imageView
         }
 
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            centerImageView(scrollView: scrollView)
-        }
-
-        func centerImageView(scrollView: UIScrollView) {
-            guard let imageView = scrollView.viewWithTag(100) else { return }
-
-            let boundsSize = scrollView.bounds.size
-            var frameToCenter = imageView.frame
-
-            // Center horizontally
-            if frameToCenter.size.width < boundsSize.width {
-                frameToCenter.origin.x = (boundsSize.width - frameToCenter.size.width) / 2
-            } else {
-                frameToCenter.origin.x = 0
-            }
-
-            // Center vertically
-            if frameToCenter.size.height < boundsSize.height {
-                frameToCenter.origin.y = (boundsSize.height - frameToCenter.size.height) / 2
-            } else {
-                frameToCenter.origin.y = 0
-            }
-
-            imageView.frame = frameToCenter
+            container?.centerImage()
         }
 
         @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
-            guard let scrollView = gesture.view as? UIScrollView else { return }
+            guard let container = container else { return }
+            let scrollView = container.scrollView
 
             if scrollView.zoomScale > scrollView.minimumZoomScale {
                 // Zoom out to minimum
                 scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
             } else {
                 // Zoom in to the tapped location
-                let location = gesture.location(in: scrollView.viewWithTag(100))
+                let location = gesture.location(in: container.imageView)
                 let zoomRect = zoomRectForScale(scale: 2.5, center: location, scrollView: scrollView)
                 scrollView.zoom(to: zoomRect, animated: true)
             }
@@ -2629,6 +2854,93 @@ struct ZoomableScrollView: UIViewRepresentable {
             zoomRect.origin.y = center.y - (zoomRect.size.height / 2.0)
             return zoomRect
         }
+    }
+}
+
+// MARK: - Zoomable Scroll View Container
+/// Custom UIView container that properly handles layout for the zoomable scroll view
+class ZoomableScrollViewContainer: UIView {
+    let scrollView: UIScrollView
+    let imageView: UIImageView
+
+    init(image: UIImage, coordinator: ZoomableScrollView.Coordinator) {
+        scrollView = UIScrollView()
+        imageView = UIImageView(image: image)
+
+        super.init(frame: .zero)
+
+        // Configure scroll view
+        scrollView.delegate = coordinator
+        scrollView.maximumZoomScale = 5.0
+        scrollView.minimumZoomScale = 1.0
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.bouncesZoom = true
+        scrollView.backgroundColor = .black
+
+        // Configure image view
+        imageView.contentMode = .scaleAspectFit
+        imageView.isUserInteractionEnabled = true
+
+        // Add views
+        addSubview(scrollView)
+        scrollView.addSubview(imageView)
+
+        // Set coordinator reference
+        coordinator.container = self
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        // Update scroll view frame to match container
+        scrollView.frame = bounds
+
+        // Update image view frame to match scroll view
+        if bounds.width > 0 && bounds.height > 0 {
+            imageView.frame = bounds
+            centerImage()
+        }
+    }
+
+    func centerImage() {
+        let boundsSize = scrollView.bounds.size
+        var frameToCenter = imageView.frame
+
+        // Center horizontally
+        if frameToCenter.size.width < boundsSize.width {
+            frameToCenter.origin.x = (boundsSize.width - frameToCenter.size.width) / 2
+        } else {
+            frameToCenter.origin.x = 0
+        }
+
+        // Center vertically
+        if frameToCenter.size.height < boundsSize.height {
+            frameToCenter.origin.y = (boundsSize.height - frameToCenter.size.height) / 2
+        } else {
+            frameToCenter.origin.y = 0
+        }
+
+        imageView.frame = frameToCenter
+    }
+}
+
+// MARK: - Tutorial Section Dim Modifier
+
+/// Modifier that dims and disables a section during tutorial phases
+/// Uses opacity reduction instead of overlay to avoid visible rectangle shapes
+struct TutorialSectionDimModifier: ViewModifier {
+    let shouldDim: Bool
+    let tutorialMode: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shouldDim && tutorialMode ? 0.5 : 1.0)
+            .allowsHitTesting(!(shouldDim && tutorialMode))
     }
 }
 

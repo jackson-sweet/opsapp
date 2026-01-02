@@ -97,7 +97,7 @@ struct TutorialHighlightStyle {
     static let pulseDuration: TimeInterval = 1.2
 
     /// Padding around the highlighted element
-    static let padding: CGFloat = 2
+    static let padding: CGFloat = 4
 }
 
 // MARK: - Tutorial Highlight Modifier (for overlay-style highlights on buttons)

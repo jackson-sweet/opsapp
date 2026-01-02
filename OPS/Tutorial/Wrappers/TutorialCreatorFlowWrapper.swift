@@ -95,47 +95,70 @@ struct TutorialCreatorFlowWrapper: View {
             }
 
             // Layer 5: Inline sheet for ProjectFormSheet (custom, stays in view hierarchy)
-            if showProjectForm {
-                TutorialInlineSheet(isPresented: $showProjectForm, interactiveDismissDisabled: true) {
-                    ProjectFormSheet(mode: .create) { project in
-                        handleProjectCreated()
-                    }
-                    .environment(\.tutorialMode, true)
-                    .environment(\.tutorialPhase, stateManager.currentPhase)
-                    .environment(\.modelContext, modelContext)
-                    .environmentObject(dataController)
+            // Note: TutorialInlineSheet manages its own visibility - no `if` wrapper needed
+            TutorialInlineSheet(isPresented: $showProjectForm, interactiveDismissDisabled: true) {
+                ProjectFormSheet(mode: .create) { project in
+                    handleProjectCreated()
                 }
+                .environment(\.tutorialMode, true)
+                .environment(\.tutorialPhase, stateManager.currentPhase)
+                .environment(\.modelContext, modelContext)
+                .environmentObject(dataController)
             }
 
             // Layer 6: Inline sheet for TaskFormSheet (custom, stays in view hierarchy)
-            if showTaskForm {
-                TutorialInlineSheet(isPresented: $showTaskForm, interactiveDismissDisabled: true) {
-                    TaskFormSheet(draftMode: .draft(nil)) { localTask in
-                        // Post notification so ProjectFormSheet can add this task
-                        NotificationCenter.default.post(
-                            name: Notification.Name("TutorialTaskSaved"),
-                            object: nil,
-                            userInfo: ["task": localTask]
-                        )
-                        showTaskForm = false
-                    }
-                    .environment(\.tutorialMode, true)
-                    .environment(\.tutorialPhase, stateManager.currentPhase)
-                    .environment(\.modelContext, modelContext)
-                    .environmentObject(dataController)
+            // Note: TutorialInlineSheet manages its own visibility - no `if` wrapper needed
+            TutorialInlineSheet(isPresented: $showTaskForm, interactiveDismissDisabled: true) {
+                TaskFormSheet(draftMode: .draft(nil)) { localTask in
+                    // Post notification so ProjectFormSheet can add this task
+                    NotificationCenter.default.post(
+                        name: Notification.Name("TutorialTaskSaved"),
+                        object: nil,
+                        userInfo: ["task": localTask]
+                    )
+                    showTaskForm = false
                 }
+                .environment(\.tutorialMode, true)
+                .environment(\.tutorialPhase, stateManager.currentPhase)
+                .environment(\.modelContext, modelContext)
+                .environmentObject(dataController)
             }
 
-            // Layer 7: Collapsible tooltip at top of screen
-            VStack {
+            // Layer 7: Collapsible tooltip at top of screen + Continue button
+            VStack(spacing: 0) {
                 TutorialCollapsibleTooltip(
                     text: stateManager.tooltipText,
                     description: stateManager.tooltipDescription,
                     animated: true
                 )
 
+                // Continue button (appears after auto-advance timer)
+                if stateManager.showContinueButton {
+                    Button {
+                        stateManager.continueFromAutoAdvance()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("CONTINUE")
+                                .font(OPSStyle.Typography.bodyBold)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 14, weight: .bold))
+                        }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Color.white)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        // Dark glow effect
+                        .shadow(color: Color.black.opacity(0.8), radius: 20, x: 0, y: 0)
+                        .shadow(color: Color.black.opacity(0.6), radius: 40, x: 0, y: 4)
+                    }
+                    .padding(.top, 16)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
                 Spacer()
             }
+            .animation(.easeOut(duration: 0.3), value: stateManager.showContinueButton)
 
             // Layer 8 (TOPMOST): Floating Done button for tutorial summary
             if shouldShowDoneButton {
@@ -152,6 +175,9 @@ struct TutorialCreatorFlowWrapper: View {
                             .padding(.vertical, 18)
                             .background(Color.white)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            // Dark glow effect
+                            .shadow(color: Color.black.opacity(0.8), radius: 20, x: 0, y: 0)
+                            .shadow(color: Color.black.opacity(0.6), radius: 40, x: 0, y: 4)
                     }
                     .padding(.horizontal, 40)
                     .padding(.bottom, 120)
@@ -243,24 +269,14 @@ struct TutorialCreatorFlowWrapper: View {
                 stateManager.advancePhase()
             }
         }
-        // Listen for calendar week scroll (user scrolls in week view)
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialCalendarWeekScrolled"))) { _ in
-            if stateManager.currentPhase == .calendarWeek {
-                stateManager.advancePhase()
-            }
-        }
-        // Listen for calendar month tap
+        // Listen for calendar month tap (user taps "Month" toggle)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialCalendarMonthTapped"))) { _ in
             if stateManager.currentPhase == .calendarMonthPrompt {
                 stateManager.advancePhase()
             }
         }
-        // Listen for calendar month explored (scroll or pinch triggers 2s timer in ScheduleView)
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialCalendarMonthExplored"))) { _ in
-            if stateManager.currentPhase == .calendarMonth {
-                stateManager.advancePhase()
-            }
-        }
+        // Note: calendarWeek and calendarMonth now use Continue button
+        // instead of scroll/pinch detection to avoid double-advance issues
         // Listen for project card frame updates (for swipe indicator positioning)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialProjectCardFrame"))) { notification in
             if let frame = notification.userInfo?["frame"] as? CGRect {

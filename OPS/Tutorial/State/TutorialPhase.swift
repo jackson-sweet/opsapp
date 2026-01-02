@@ -123,8 +123,8 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
     /// Project is now started
     case projectStarted
 
-    /// Long press for project details
-    case longPressDetails
+    /// Tap Details button on project action bar
+    case tapDetails
 
     /// Add a note
     case addNote
@@ -199,11 +199,11 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         case .homeOverview:
             return "THESE ARE YOUR JOBS FOR TODAY"
         case .tapProject:
-            return "TAP \"START\" TO BEGIN"
+            return "TAP A JOB CARD, THEN TAP START"
         case .projectStarted:
             return "JOB STARTED."
-        case .longPressDetails:
-            return "PRESS AND HOLD FOR DETAILS"
+        case .tapDetails:
+            return "TAP \"DETAILS\" FOR MORE INFO"
         case .addNote:
             return "TAP TO ADD A NOTE"
         case .addPhoto:
@@ -214,7 +214,7 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
             return "SWIPE LEFT OR RIGHT"
 
         case .completed:
-            return "YOU'RE READY."
+            return ""  // No tooltip - completion view handles its own messaging
         }
     }
 
@@ -261,13 +261,13 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
 
         // Employee Phases
         case .homeOverview:
-            return "Each card is a job. Tap one to see options."
+            return "Each card is a job assigned to you for today."
         case .tapProject:
-            return "This tells your crew lead you're working on it."
+            return "Tapping the card reveals the Start button. Tap Start to begin work."
         case .projectStarted:
-            return "Your crew lead can see you've started."
-        case .longPressDetails:
-            return "This opens everything about the job—address, notes, photos, client info."
+            return "This changes the status to In Progress. Your crew lead sees the update."
+        case .tapDetails:
+            return "This shows everything about the job—address, notes, photos, client info."
         case .addNote:
             return "Type anything—like \"Waiting on parts\" or \"Finished early.\" Your crew lead will see it."
         case .addPhoto:
@@ -282,14 +282,45 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         }
     }
 
+    // MARK: - Flow-Specific Tooltip Methods
+
+    /// Get tooltip text for a specific flow type (for phases with flow-specific copy)
+    func tooltipText(for flowType: TutorialFlowType) -> String {
+        switch self {
+        case .tutorialSummary:
+            switch flowType {
+            case .companyCreator:
+                return "THAT'S THE BASICS."
+            case .employee:
+                return "YOU'RE ALL SET."
+            }
+        default:
+            return tooltipText
+        }
+    }
+
+    /// Get tooltip description for a specific flow type (for phases with flow-specific copy)
+    func tooltipDescription(for flowType: TutorialFlowType) -> String? {
+        switch self {
+        case .tutorialSummary:
+            switch flowType {
+            case .companyCreator:
+                return "You now know how to create projects, assign your crew, track progress, and check your schedule."
+            case .employee:
+                return "You now know how to start jobs, add notes and photos, mark work complete, and check your schedule."
+            }
+        default:
+            return tooltipDescription
+        }
+    }
+
     // MARK: - Phase Properties
 
     /// Whether this phase shows a swipe hint indicator overlay
     /// Note: .projectListSwipe now uses in-card shimmer instead of overlay
+    /// Note: .jobBoardBrowse removed - arrows were distracting, just show Continue button
     var showsSwipeHint: Bool {
         switch self {
-        case .jobBoardBrowse:
-            return true
         default:
             return false
         }
@@ -307,15 +338,36 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         }
     }
 
-    /// Whether this phase auto-advances after a delay
+    /// Whether this phase auto-advances after a delay (no user action needed)
     var autoAdvances: Bool {
         switch self {
+        case .projectListStatusDemo,  // Status animation auto-advances
+             .closedProjectsScroll:   // Scroll animation auto-advances
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this phase shows Continue button after a delay
+    var showsContinueButtonAfterDelay: Bool {
+        switch self {
         case .homeOverview,  // Intro phase for employee flow
-             .projectListStatusDemo,  // Status animation auto-advances
-             .closedProjectsScroll,  // Scroll animation auto-advances
              .projectStarted, // After starting project
-             .jobBoardBrowse, // Swipe hints - auto-advance after showing
-             .longPressDetails: // Long press hint - auto-advance
+             .addNote, // Tap to continue (highlights notes section)
+             .addPhoto: // Tap to continue (highlights photos section)
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this phase should show Continue button immediately (no delay)
+    var showsContinueButtonImmediately: Bool {
+        switch self {
+        case .jobBoardBrowse,  // Shows Continue button right away
+             .calendarWeek,    // Continue button instead of scroll detection
+             .calendarMonth:   // Continue button instead of pinch detection
             return true
         default:
             return false
@@ -334,9 +386,9 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         case .closedProjectsScroll:
             return 3.0 // Time to scroll and highlight
         case .jobBoardBrowse:
-            return 2.0 // Show swipe hint, then advance
-        case .longPressDetails:
-            return 2.0 // Show long press hint, then advance
+            return 4.0 // Show swipe hint, give time to explore
+        case .addNote, .addPhoto:
+            return 0.5 // Quick delay, then show Continue button
         default:
             return 0
         }
@@ -348,10 +400,12 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         case .notStarted, .completed,
              .projectListStatusDemo, .closedProjectsScroll,
              .homeOverview, .projectStarted,
-             .jobBoardBrowse, .longPressDetails:
+             .jobBoardBrowse,
+             .calendarWeek, .calendarMonth,  // These show Continue button
+             .addNote, .addPhoto: // These show Continue button
             return false
-        case .projectListSwipe, .calendarWeek, .calendarMonth, .tutorialSummary:
-            // These phases require user interaction (swipe, scroll, pinch, or button tap)
+        case .projectListSwipe, .tutorialSummary:
+            // These phases require user interaction (swipe or button tap)
             return true
         default:
             return true
@@ -426,8 +480,8 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         case .tapProject:
             return .projectStarted
         case .projectStarted:
-            return .longPressDetails
-        case .longPressDetails:
+            return .tapDetails
+        case .tapDetails:
             return .addNote
         case .addNote:
             return .addPhoto
@@ -437,11 +491,14 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
             return .jobBoardBrowse
         case .jobBoardBrowse:
             return .calendarWeek
+        // Calendar phases match company creator flow (steps 15-19)
         case .calendarWeek:
             return .calendarMonthPrompt
         case .calendarMonthPrompt:
             return .calendarMonth
         case .calendarMonth:
+            return .tutorialSummary
+        case .tutorialSummary:
             return .completed
         default:
             return nil

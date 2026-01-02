@@ -126,7 +126,14 @@ struct TaskDetailsView: View {
                 // Main scrollable content
                 ScrollView {
                     VStack(spacing: 24) {
-                        
+
+                        // Task type header
+                        Text("TASK: \(task.taskType?.display.uppercased() ?? "TASK")")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+
                         // Location map - matching ProjectDetailsView style
                         locationSection
                         

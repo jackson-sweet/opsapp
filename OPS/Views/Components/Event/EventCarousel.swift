@@ -102,11 +102,13 @@ struct EventCardView: View {
     let onStart: () -> Void
     let onStop: () -> Void
     let onLongPress: () -> Void
-    
+
     @State private var isLongPressing = false
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var dataController: DataController
-    
+    @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
+
     private var displayTitle: String {
         // ALWAYS show project title
         return project?.title ?? event.title
@@ -253,7 +255,8 @@ struct EventCardView: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(isActiveProject ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: 2)
             )
-            
+            .tutorialHighlight(for: .tapProject, cornerRadius: OPSStyle.Layout.cornerRadius)
+
             // Confirmation overlay
             if showConfirmation && !isActiveProject {
                 confirmationOverlay
@@ -315,7 +318,7 @@ struct EventCardView: View {
                 withAnimation(.easeInOut(duration: 0.1)) {
                     isLongPressing = pressing
                 }
-                
+
                 if pressing {
                     // Immediate light feedback on press start
                     HapticFeedback.impact(.light)
@@ -324,7 +327,7 @@ struct EventCardView: View {
             perform: {
                 // Success feedback and open details
                 HapticFeedback.longPressSuccess()
-                
+
                 // Open task details view (all events are task events now)
                 if let task = event.task, let project = project {
                     appState.viewTaskDetails(task: task, project: project)
@@ -333,6 +336,31 @@ struct EventCardView: View {
                     appState.viewProjectDetails(project)
                 }
             }
+        )
+        // Tutorial mode: report card frame for spotlight overlay
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        if tutorialMode && isSelected {
+                            reportCardFrame(geo.frame(in: .global))
+                        }
+                    }
+                    .onChange(of: isSelected) { _, selected in
+                        if tutorialMode && selected {
+                            reportCardFrame(geo.frame(in: .global))
+                        }
+                    }
+            }
+        )
+    }
+
+    /// Reports the card frame for tutorial spotlight positioning
+    private func reportCardFrame(_ frame: CGRect) {
+        NotificationCenter.default.post(
+            name: Notification.Name("TutorialProjectCardFrame"),
+            object: nil,
+            userInfo: ["frame": frame]
         )
     }
     
@@ -363,6 +391,14 @@ struct EventCardView: View {
     }
     
     private func startTask(_ task: ProjectTask, project: Project) {
+        // Tutorial mode: notify project/task started
+        if tutorialMode {
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialProjectTapped"),
+                object: nil
+            )
+        }
+
         // Update task status to in progress using centralized function
         if task.status != .inProgress {
             Task {
@@ -383,7 +419,7 @@ struct EventCardView: View {
                 "projectId": project.id
             ]
         )
-        
+
         // Enter project mode for the task's project and set active task ID
         appState.activeTaskID = task.id
         appState.enterProjectMode(projectID: project.id)

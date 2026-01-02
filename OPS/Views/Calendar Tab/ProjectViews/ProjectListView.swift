@@ -16,6 +16,7 @@ struct ProjectListView: View {
     @Environment(\.tutorialMode) private var tutorialMode
     @State private var isAnimating = false
     @State private var hasNotifiedTutorialScroll = false
+    @State private var allowScrollDetection = false  // Delay scroll detection to avoid false triggers on layout
 
     // Separate new and ongoing events
     private var newEvents: [CalendarEvent] {
@@ -50,7 +51,8 @@ struct ProjectListView: View {
                                 Color.clear
                                     .onChange(of: geo.frame(in: .global).minY) { oldY, newY in
                                         // Detect if user has scrolled (significant movement)
-                                        if tutorialMode && !hasNotifiedTutorialScroll && abs(oldY - newY) > 10 {
+                                        // Only detect after delay to avoid false triggers from initial layout
+                                        if tutorialMode && allowScrollDetection && !hasNotifiedTutorialScroll && abs(oldY - newY) > 10 {
                                             hasNotifiedTutorialScroll = true
                                             NotificationCenter.default.post(
                                                 name: Notification.Name("CalendarWeekViewScrolled"),
@@ -60,6 +62,14 @@ struct ProjectListView: View {
                                     }
                             }
                         )
+                        .onAppear {
+                            // Delay scroll detection to allow initial layout to settle
+                            if tutorialMode {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                    allowScrollDetection = true
+                                }
+                            }
+                        }
                 }
             }
             

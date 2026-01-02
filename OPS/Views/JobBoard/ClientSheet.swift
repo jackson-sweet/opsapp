@@ -234,7 +234,7 @@ struct ClientSheet: View {
 
                                     AddressAutocompleteField(
                                         address: $address,
-                                        placeholder: "Enter client address",
+                                        placeholder: "Client Address",
                                         onAddressSelected: { fullAddress, _ in
                                             address = fullAddress
                                         }

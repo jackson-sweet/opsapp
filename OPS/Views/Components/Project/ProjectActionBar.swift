@@ -16,7 +16,10 @@ struct ProjectActionBar: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var locationManager: LocationManager
     @ObservedObject private var inProgressManager = InProgressManager.shared
-    
+
+    // Tutorial environment
+    @Environment(\.tutorialMode) private var tutorialMode
+
     // State variables for various sheets and actions
     @State private var showCompleteConfirmation = false
     // @State private var showReceiptScanner = false - Removed as part of shelving expense functionality
@@ -51,13 +54,11 @@ struct ProjectActionBar: View {
                     Button(action: {
                         handleAction(action)
                     }) {
-                    
-                        
                         VStack(spacing: 8) {
                             Image(systemName: action.iconName(isRouting: inProgressManager.isRouting))
                                 .font(.system(size: 24))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            
+
                             Text(action.label(isRouting: inProgressManager.isRouting).uppercased())
                                 .font(OPSStyle.Typography.smallButton)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -65,10 +66,10 @@ struct ProjectActionBar: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 60)
                         .padding(4)
-                   
-                         }
+                    }
                     .buttonStyle(PlainButtonStyle())
-                    
+                    .modifier(ActionButtonHighlightModifier(action: action))
+
                     // Vertical divider between buttons (not after last one)
                     if index < ProjectAction.allCases.count - 1 {
                         Rectangle()
@@ -199,6 +200,17 @@ struct ProjectActionBar: View {
         // case .receipt: - Removed as part of shelving expense functionality
         //    showReceiptScanner = true
         case .details:
+            // Tutorial mode: post notification for wrapper to show inline sheet
+            if tutorialMode {
+                NotificationCenter.default.post(
+                    name: Notification.Name("TutorialDetailsTapped"),
+                    object: nil,
+                    userInfo: ["projectID": project.id]
+                )
+                // Don't show local sheet - wrapper handles it with inline sheet
+                return
+            }
+
             // Check if we have an active task
             if let activeTaskID = appState.activeTaskID,
                let activeTask = project.tasks.first(where: { $0.id == activeTaskID }) {
@@ -207,7 +219,7 @@ struct ProjectActionBar: View {
                     "taskID": activeTask.id,
                     "projectID": project.id
                 ]
-                
+
                 NotificationCenter.default.post(
                     name: Notification.Name("ShowTaskDetailsFromHome"),
                     object: nil,
@@ -391,6 +403,86 @@ enum ProjectAction: CaseIterable {
         case .details: return "Details"
         case .photo: return "Photo"
         }
+    }
+}
+
+// MARK: - Action Button Highlight Modifier
+
+/// Modifier that adds tutorial highlight to specific action buttons based on tutorial phase
+/// Also handles greying out non-highlighted buttons during tutorial
+private struct ActionButtonHighlightModifier: ViewModifier {
+    let action: ProjectAction
+
+    @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shouldGreyOut ? 0.3 : 1.0)
+            .allowsHitTesting(!shouldGreyOut)
+            .overlay(
+                Group {
+                    if shouldHighlight {
+                        PulsingActionHighlight()
+                    }
+                }
+            )
+    }
+
+    private var shouldHighlight: Bool {
+        guard tutorialMode, let phase = tutorialPhase else { return false }
+        switch action {
+        case .details:
+            return phase == .tapDetails
+        case .complete:
+            return phase == .completeProject
+        default:
+            return false
+        }
+    }
+
+    /// Whether this button should be greyed out during the current tutorial phase
+    private var shouldGreyOut: Bool {
+        guard tutorialMode, let phase = tutorialPhase else { return false }
+        switch phase {
+        case .projectStarted:
+            // Grey out all buttons during projectStarted (auto-advance phase)
+            return true
+        case .tapDetails:
+            // Grey out all buttons except Details
+            return action != .details
+        case .completeProject:
+            // Grey out all buttons except Complete
+            return action != .complete
+        default:
+            return false
+        }
+    }
+}
+
+/// Pulsing highlight overlay for action buttons
+private struct PulsingActionHighlight: View {
+    @State private var animatePulse = false
+    @State private var isVisible = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .stroke(
+                TutorialHighlightStyle.color,
+                lineWidth: TutorialHighlightStyle.lineWidth
+            )
+            .opacity(isVisible ? (animatePulse ? TutorialHighlightStyle.pulseOpacity.max : TutorialHighlightStyle.pulseOpacity.min) : 0)
+            .padding(-2)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    isVisible = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
+                        animatePulse = true
+                    }
+                }
+            }
     }
 }
 

@@ -30,7 +30,11 @@ struct HomeContentView: View {
     // Location manager to track authorization status
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var dataController: DataController
-    
+
+    // Tutorial environment
+    @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.tutorialPhase) private var tutorialPhase
+
     // Callbacks
     let startProject: (Project) -> Void
     let stopProject: (Project) -> Void
@@ -47,21 +51,41 @@ struct HomeContentView: View {
         ZStack {
             // 1. Map layer
             mapLayer
-            
+
             // 2. Gradient overlay
             gradientOverlay
-            
-            // 3. UI content overlay
+
+            // 3. UI content overlay (header, action bar - NOT carousel in tutorial mode)
             contentOverlay
-            
-            // 4. Loading overlay
+
+            // 4. Tutorial dark overlay - sits BEHIND carousel but IN FRONT of everything else
+            if tutorialMode && tutorialPhase == .tapProject {
+                Color.black.opacity(0.6)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.3), value: tutorialPhase)
+            }
+
+            // 5. Carousel layer - on TOP of tutorial overlay when in tutorial mode
+            if tutorialMode && tutorialPhase == .tapProject {
+                VStack(spacing: 0) {
+                    Spacer()
+                        .frame(height: 100) // Approximate header height
+                    projectCarouselView
+                        .padding(.top, -8)
+                    Spacer()
+                }
+            }
+
+            // 6. Loading overlay
             if isLoading {
                 loadingOverlay
                     .transition(.opacity)
                     .zIndex(999)
             }
 
-            // 5. Initial sync loading screen - shows on first login
+            // 7. Initial sync loading screen - shows on first login
             if dataController.isPerformingInitialSync {
                 TacticalInitialLoadingView(dataController: dataController)
                     .transition(.opacity)
@@ -177,17 +201,28 @@ struct HomeContentView: View {
         .allowsHitTesting(false)
     }
     
+    /// Whether carousel should be shown in a separate layer (for tutorial overlay effect)
+    private var showCarouselInSeparateLayer: Bool {
+        tutorialMode && tutorialPhase == .tapProject
+    }
+
     private var contentOverlay: some View {
         VStack(spacing: 0) {
             // Header
             headerView
-            
-            // Project carousel or empty state
-            projectCarouselView
-                .padding(.top, -8) // Bring carousel closer to header
-            
+
+            // Project carousel or empty state (hide when shown in separate layer for tutorial)
+            if !showCarouselInSeparateLayer {
+                projectCarouselView
+                    .padding(.top, -8) // Bring carousel closer to header
+            } else {
+                // Placeholder space when carousel is in separate layer
+                Spacer()
+                    .frame(height: 120)
+            }
+
             Spacer()
-            
+
             // Show project action bar when in project mode
             if appState.isInProjectMode, let project = getActiveProject() {
                 ProjectActionBar(project: project)

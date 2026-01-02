@@ -154,10 +154,15 @@ struct MainTabView: View {
             .animation(.easeInOut(duration: 0.25), value: appState.isLoadingProjects)
 
             // Floating action menu - visible across all tabs except Settings and during initial sync/loading
-            if !isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects {
-                FloatingActionMenu()
-                    .environmentObject(dataController)
-            }
+            // IMPORTANT: Always render to preserve @State (sheet presentation) when app goes to background
+            // Use opacity and allowsHitTesting instead of conditional rendering to prevent sheet dismissal
+            FloatingActionMenu()
+                .environmentObject(dataController)
+                .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects ? 1 : 0)
+                .allowsHitTesting(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects)
+                .animation(.easeInOut(duration: 0.2), value: isSettingsTab)
+                .animation(.easeInOut(duration: 0.2), value: dataController.isPerformingInitialSync)
+                .animation(.easeInOut(duration: 0.2), value: appState.isLoadingProjects)
 
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()

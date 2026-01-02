@@ -91,8 +91,9 @@ struct ReadyScreen: View {
                 // Navigation Button
                 VStack(spacing: 24) {
                     if currentPage == 0 {
-                        // Billing page - Start Trial
-                        OnboardingPrimaryButton("START TRIAL") {
+                        // Billing page - Start Trial for company creators, Continue for employees
+                        let buttonText = manager.state.flow == .companyCreator ? "START TRIAL" : "CONTINUE"
+                        OnboardingPrimaryButton(buttonText) {
                             let generator = UIImpactFeedbackGenerator(style: .medium)
                             generator.impactOccurred()
                             withAnimation {

@@ -500,29 +500,38 @@ struct TutorialLauncherView: View {
     /// Performs the actual tutorial cleanup (extracted from handleTutorialComplete)
     private func performTutorialCleanup() async {
         // Mark tutorial as completed for the user
-        if let user = dataController.currentUser {
-            user.hasCompletedAppTutorial = true
-            user.needsSync = true
+        guard let user = dataController.currentUser else {
+            print("[TUTORIAL_LAUNCHER] ❌ ERROR: No current user found - cannot mark tutorial complete!")
+            return
+        }
 
-            do {
-                try modelContext.save()
-                print("[TUTORIAL_LAUNCHER] Tutorial completion saved to user model")
-            } catch {
-                print("[TUTORIAL_LAUNCHER] Error saving tutorial completion: \(error)")
-            }
+        print("[TUTORIAL_LAUNCHER] 📝 Marking tutorial complete for user: \(user.id)")
+        user.hasCompletedAppTutorial = true
+        user.needsSync = true
 
-            // Sync user to Bubble so backend knows tutorial is complete
-            do {
-                try await dataController.apiService.updateUser(userId: user.id, fields: [
-                    BubbleFields.User.hasCompletedAppTutorial: true
-                ])
-                user.needsSync = false
-                try modelContext.save()
-                print("[TUTORIAL_LAUNCHER] Tutorial completion synced to Bubble")
-            } catch {
-                print("[TUTORIAL_LAUNCHER] Warning: Failed to sync tutorial completion to Bubble: \(error)")
-                // Non-fatal - will sync later
-            }
+        do {
+            try modelContext.save()
+            print("[TUTORIAL_LAUNCHER] ✅ Tutorial completion saved to local user model")
+        } catch {
+            print("[TUTORIAL_LAUNCHER] ❌ Error saving tutorial completion locally: \(error)")
+        }
+
+        // Sync user to Bubble so backend knows tutorial is complete
+        let fieldName = BubbleFields.User.hasCompletedAppTutorial
+        print("[TUTORIAL_LAUNCHER] 🔄 Syncing to Bubble - field: '\(fieldName)', value: true, userId: \(user.id)")
+
+        do {
+            try await dataController.apiService.updateUser(userId: user.id, fields: [
+                fieldName: true
+            ])
+            user.needsSync = false
+            try modelContext.save()
+            print("[TUTORIAL_LAUNCHER] ✅ Tutorial completion synced to Bubble successfully!")
+        } catch {
+            print("[TUTORIAL_LAUNCHER] ❌ FAILED to sync tutorial completion to Bubble!")
+            print("[TUTORIAL_LAUNCHER] ❌ Error details: \(error)")
+            print("[TUTORIAL_LAUNCHER] ❌ Error localized: \(error.localizedDescription)")
+            // Keep needsSync = true so it syncs on next opportunity
         }
 
         // Cleanup demo data first
@@ -549,29 +558,35 @@ struct TutorialLauncherView: View {
     private func handleTutorialComplete() {
         Task { @MainActor in
             // Mark tutorial as completed for the user
-            if let user = dataController.currentUser {
-                user.hasCompletedAppTutorial = true
-                user.needsSync = true
+            guard let user = dataController.currentUser else {
+                print("[TUTORIAL_LAUNCHER] ❌ ERROR (legacy): No current user found!")
+                return
+            }
 
-                do {
-                    try modelContext.save()
-                    print("[TUTORIAL_LAUNCHER] Tutorial completion saved to user model")
-                } catch {
-                    print("[TUTORIAL_LAUNCHER] Error saving tutorial completion: \(error)")
-                }
+            print("[TUTORIAL_LAUNCHER] 📝 (legacy) Marking tutorial complete for user: \(user.id)")
+            user.hasCompletedAppTutorial = true
+            user.needsSync = true
 
-                // Sync user to Bubble so backend knows tutorial is complete
-                do {
-                    try await dataController.apiService.updateUser(userId: user.id, fields: [
-                        BubbleFields.User.hasCompletedAppTutorial: true
-                    ])
-                    user.needsSync = false
-                    try modelContext.save()
-                    print("[TUTORIAL_LAUNCHER] Tutorial completion synced to Bubble")
-                } catch {
-                    print("[TUTORIAL_LAUNCHER] Warning: Failed to sync tutorial completion to Bubble: \(error)")
-                    // Non-fatal - will sync later
-                }
+            do {
+                try modelContext.save()
+                print("[TUTORIAL_LAUNCHER] ✅ (legacy) Tutorial completion saved locally")
+            } catch {
+                print("[TUTORIAL_LAUNCHER] ❌ (legacy) Error saving: \(error)")
+            }
+
+            // Sync user to Bubble so backend knows tutorial is complete
+            let fieldName = BubbleFields.User.hasCompletedAppTutorial
+            print("[TUTORIAL_LAUNCHER] 🔄 (legacy) Syncing to Bubble - field: '\(fieldName)', userId: \(user.id)")
+
+            do {
+                try await dataController.apiService.updateUser(userId: user.id, fields: [
+                    fieldName: true
+                ])
+                user.needsSync = false
+                try modelContext.save()
+                print("[TUTORIAL_LAUNCHER] ✅ (legacy) Tutorial completion synced to Bubble!")
+            } catch {
+                print("[TUTORIAL_LAUNCHER] ❌ (legacy) FAILED to sync to Bubble: \(error)")
             }
 
             // Cleanup demo data first

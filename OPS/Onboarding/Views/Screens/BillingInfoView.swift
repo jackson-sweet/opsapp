@@ -293,7 +293,7 @@ struct BillingInfoView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.horizontal, 40)
 
             Spacer()
                 .frame(height: 48)
@@ -332,9 +332,16 @@ struct BillingInfoView: View {
 
                     if !isSeated {
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("Contact your admin to get access.")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            // Show warning if no seats available
+                            if seatsInfo.used >= seatsInfo.total {
+                                Text("You will not be able to use the app until your administrator gives you access.")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                            } else {
+                                Text("Contact your admin to get access.")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
 
                             if let company = dataController.getCurrentUserCompany(),
                                let adminId = company.getAdminIds().first,
@@ -393,7 +400,7 @@ struct BillingInfoView: View {
                     }
                 }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.horizontal, 40)
             .opacity(showContent ? 1 : 0)
             .offset(y: showContent ? 0 : 20)
         }

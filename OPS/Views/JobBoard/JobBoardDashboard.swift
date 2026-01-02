@@ -28,16 +28,24 @@ struct JobBoardDashboard: View {
     @State private var illuminatedArrowCount: Int = 0
     @State private var lastHapticArrowCount: Int = 0
     @State private var showingWrongDirectionHint = false
+    @State private var showingStayHereToast = false
+    @State private var emphasisPressHold = false
     @Namespace private var cardNamespace
 
-    private let statuses: [Status] = [.rfq, .estimated, .accepted, .inProgress, .completed]
+    /// Whether current user is field crew
+    private var isFieldCrew: Bool {
+        dataController.currentUser?.role == .fieldCrew
+    }
+
+    /// Status columns to display - field crew only sees Accepted, In Progress, Completed
+    private var statuses: [Status] {
+        if isFieldCrew {
+            return [.accepted, .inProgress, .completed]
+        }
+        return [.rfq, .estimated, .accepted, .inProgress, .completed]
+    }
     private let columnWidth: CGFloat = 280
     private let edgeZoneWidth: CGFloat = 60
-
-    /// Whether to block page swiping (during dragToAccepted tutorial phase when not dragging)
-    private var shouldBlockPageSwiping: Bool {
-        tutorialMode && tutorialPhase == .dragToAccepted && !isLongPressing
-    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -58,6 +66,9 @@ struct JobBoardDashboard: View {
                             },
                             onProjectDragEnded: { project in
                                 handleDragEnded(project: project, geometry: geometry)
+                            },
+                            onTapBlocked: {
+                                triggerPressHoldEmphasis()
                             }
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -67,15 +78,38 @@ struct JobBoardDashboard: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .allowsHitTesting(!isLongPressing)
-                // Block page swiping during dragToAccepted tutorial phase
-                .gesture(
-                    shouldBlockPageSwiping ?
-                    DragGesture(minimumDistance: 1)
-                        .onChanged { _ in }
-                        .onEnded { _ in }
-                    : nil,
-                    including: shouldBlockPageSwiping ? .all : .subviews
-                )
+                .onChange(of: tutorialPhase) { _, newPhase in
+                    // Navigate to estimated column when entering dragToAccepted phase
+                    if tutorialMode && newPhase == .dragToAccepted {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                            currentPageIndex = statuses.firstIndex(of: .estimated) ?? 1
+                        }
+                    }
+                }
+                .onChange(of: currentPageIndex) { _, newValue in
+                    // During dragToAccepted, auto-return if user swipes away
+                    let estimatedIndex = statuses.firstIndex(of: .estimated) ?? 1
+                    if tutorialMode && tutorialPhase == .dragToAccepted && newValue != estimatedIndex {
+                        // Show toast and return after delay
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showingStayHereToast = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                currentPageIndex = estimatedIndex
+                            }
+                            // Trigger emphasis after returning
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                triggerPressHoldEmphasis()
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                withAnimation(.easeOut(duration: 0.3)) {
+                                    showingStayHereToast = false
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if isLongPressing {
                     edgeZones(geometry: geometry)
@@ -103,7 +137,8 @@ struct JobBoardDashboard: View {
 
                 pageIndicator
 
-                if isLongPressing {
+                // Archive zone - hidden for field crew
+                if isLongPressing && !isFieldCrew {
                     archiveZone(geometry: geometry)
                         .allowsHitTesting(false)
                         .transition(.opacity)
@@ -127,7 +162,32 @@ struct JobBoardDashboard: View {
                         HStack(spacing: 8) {
                             Image(systemName: "arrow.right.circle.fill")
                                 .font(.system(size: 20, weight: .bold))
-                            Text("OPE! DRAG RIGHT TOWARDS ACCEPTED")
+                            Text("WRONG WAY! DRAG RIGHT TOWARDS ACCEPTED")
+                                .font(OPSStyle.Typography.captionBold)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(OPSStyle.Colors.errorStatus)
+                                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, 180)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showingWrongDirectionHint)
+                    .zIndex(999) // Ensure hint appears above other content
+                }
+
+                // Tutorial mode: Stay here toast (when user swipes away during dragToAccepted)
+                if showingStayHereToast {
+                    VStack {
+                        HStack(spacing: 8) {
+                            Image(systemName: "hand.point.up.left.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                            Text("STAY HERE TO COMPLETE THIS STEP")
                                 .font(OPSStyle.Typography.captionBold)
                         }
                         .foregroundColor(.white)
@@ -138,25 +198,16 @@ struct JobBoardDashboard: View {
                                 .fill(OPSStyle.Colors.primaryAccent)
                                 .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                         )
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .padding(.bottom, 180)
+                        .transition(.scale.combined(with: .opacity))
+                        .padding(.top, 100)
+                        Spacer()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showingWrongDirectionHint)
-                    .zIndex(999) // Ensure hint appears above other content
+                    .zIndex(999)
                 }
             }
         }
         // Note: Completion checklist sheet is now handled globally via AppState in ContentView
-        // Tutorial mode: Animate to 'estimated' column when entering dragToAccepted phase
-        .onChange(of: tutorialPhase) { _, newPhase in
-            if tutorialMode && newPhase == .dragToAccepted {
-                // Animate to the 'estimated' column (index 1)
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    currentPageIndex = statuses.firstIndex(of: .estimated) ?? 1
-                }
-            }
-        }
         .onAppear {
             // Tutorial mode: Start on estimated column if in dragToAccepted phase
             if tutorialMode && tutorialPhase == .dragToAccepted {
@@ -315,6 +366,24 @@ struct JobBoardDashboard: View {
         tutorialHapticTimer = nil
     }
 
+    /// Trigger emphasis animation on "PRESS AND HOLD" message
+    private func triggerPressHoldEmphasis() {
+        // Haptic feedback
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.warning)
+
+        // Trigger emphasis animation
+        withAnimation(.easeInOut(duration: 0.15)) {
+            emphasisPressHold = true
+        }
+        // Reset after animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                emphasisPressHold = false
+            }
+        }
+    }
+
     /// Center tutorial arrows with sequential glow effect
     /// Shows "PRESS AND HOLD" before drag, "DRAG TO ACCEPTED" during drag
     private var tutorialCenterArrows: some View {
@@ -339,12 +408,14 @@ struct JobBoardDashboard: View {
                 // Before drag: show press and hold instruction
                 Image(systemName: "hand.tap.fill")
                     .font(.system(size: 32, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(emphasisPressHold ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
                     .offset(x: tutorialArrowOffset)
+                    .scaleEffect(emphasisPressHold ? 1.3 : 1.0)
 
                 Text("PRESS AND HOLD THE PROJECT CARD")
                     .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(emphasisPressHold ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
+                    .scaleEffect(emphasisPressHold ? 1.1 : 1.0)
             }
         }
         .padding(.horizontal, 24)
@@ -352,7 +423,13 @@ struct JobBoardDashboard: View {
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.black.opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(emphasisPressHold ? OPSStyle.Colors.warningStatus : Color.clear, lineWidth: 2)
+                )
         )
+        .scaleEffect(emphasisPressHold ? 1.05 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: emphasisPressHold)
         .allowsHitTesting(false)
         .onAppear {
             startTutorialArrowAnimation()
@@ -539,7 +616,10 @@ struct JobBoardDashboard: View {
                     changeProjectStatus(project, to: nextStatus)
                 }
             case .archive:
-                changeProjectStatus(project, to: .archived)
+                // Field crew cannot archive projects
+                if !isFieldCrew {
+                    changeProjectStatus(project, to: .archived)
+                }
             case .center:
                 cancelDrag()
             }
@@ -701,6 +781,10 @@ struct JobBoardDashboard: View {
         if currentIndex < statuses.count - 1 {
             return statuses[currentIndex + 1]
         } else if draggedProject.status == .completed {
+            // Field crew cannot move projects to Closed
+            if isFieldCrew {
+                return nil
+            }
             return .closed
         }
 
@@ -725,6 +809,7 @@ struct StatusColumn: View {
     let onProjectLongPress: (Project) -> Void
     let onProjectDragChanged: (Project, CGPoint) -> Void
     let onProjectDragEnded: (Project) -> Void
+    var onTapBlocked: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -784,7 +869,8 @@ struct StatusColumn: View {
                         namespace: namespace,
                         onLongPress: onProjectLongPress,
                         onDragChanged: onProjectDragChanged,
-                        onDragEnded: onProjectDragEnded
+                        onDragEnded: onProjectDragEnded,
+                        onTapBlocked: onTapBlocked
                     )
                     .matchedGeometryEffect(id: project.id, in: namespace)
                 }
@@ -823,6 +909,7 @@ struct DirectionalDragCard: View {
     let onLongPress: (Project) -> Void
     let onDragChanged: (Project, CGPoint) -> Void
     let onDragEnded: (Project) -> Void
+    var onTapBlocked: (() -> Void)? = nil
 
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
@@ -877,6 +964,11 @@ struct DirectionalDragCard: View {
             .scaleEffect(isLongPressing ? 0.95 : 1.0)
             .contentShape(Rectangle())
             .onTapGesture {
+                // Block tap during dragToAccepted tutorial phase
+                if tutorialMode && tutorialPhase == .dragToAccepted {
+                    onTapBlocked?()
+                    return
+                }
                 showingDetails = true
             }
             .simultaneousGesture(combinedGesture)

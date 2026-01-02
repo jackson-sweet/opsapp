@@ -97,6 +97,12 @@ struct ScheduleView: View {
                     .padding(.bottom, 8)
                 
                 VStack(spacing: 16) {
+                    // Extra top padding during calendarMonthPrompt to make room for tooltip
+                    if tutorialMode && tutorialPhase == .calendarMonthPrompt {
+                        Spacer()
+                            .frame(height: 48)
+                    }
+
                     // View toggle
                     CalendarToggleView(viewModel: viewModel)
 

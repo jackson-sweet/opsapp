@@ -545,29 +545,8 @@ struct MonthGridView: View {
                     }
                 }
             }
-            .onChange(of: viewModel.visibleMonth) { oldMonth, newMonth in
-                let calendar = Calendar.current
-                print("📅 MonthGridView: visibleMonth changed from \(oldMonth) to \(newMonth)")
-
-                if let oldStart = calendar.dateInterval(of: .month, for: oldMonth)?.start,
-                   let newStart = calendar.dateInterval(of: .month, for: newMonth)?.start {
-
-                    print("📅 Comparing months: old=\(oldStart) new=\(newStart)")
-
-                    if !calendar.isDate(oldStart, equalTo: newStart, toGranularity: .month) {
-                        print("📅 Scrolling to \(newStart)")
-                        isProgrammaticScroll = true
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo(newStart, anchor: .top)
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            isProgrammaticScroll = false
-                        }
-                    } else {
-                        print("📅 Same month, not scrolling")
-                    }
-                }
-            }
+            // Note: Removed programmatic scroll on visibleMonth change to allow free scrolling
+            // The visibleMonth property still updates for header display purposes
             .onChange(of: viewModel.selectedTeamMemberIds) { _, _ in
                 if let dataController = viewModel.dataController {
                     cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
@@ -836,12 +815,13 @@ struct EventBar: View {
         Font.system(size: 10)
     }
 
-    private var lineLimit: Int {
-        1
+    private var lineLimit: Int? {
+        // Allow text to wrap when at level 3 (expanded view)
+        displayLevel == .level3 ? nil : 1
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 0) {
+        HStack(alignment: .top, spacing: 0) {
             if showText && (span.isSingleDay || span.isFirstSegment) {
                 Text(span.title)
                     .font(fontSize)
@@ -849,10 +829,12 @@ struct EventBar: View {
                     .lineLimit(lineLimit)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 2)
+                    .fixedSize(horizontal: false, vertical: displayLevel == .level3)
             }
             Spacer(minLength: 0)
         }
-        .frame(width: dayWidth * CGFloat(span.endDayIndex - span.startDayIndex + 1), height: badgeHeight)
+        .frame(width: dayWidth * CGFloat(span.endDayIndex - span.startDayIndex + 1))
+        .frame(minHeight: badgeHeight)
         .clipped()
         .background(
             (Color(hex: span.color) ?? OPSStyle.Colors.primaryAccent).opacity(badgeOpacity)

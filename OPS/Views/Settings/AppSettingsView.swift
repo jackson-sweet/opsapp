@@ -187,6 +187,17 @@ struct AppSettingsView: View {
                     .environmentObject(dataController)
             }
         }
+        // Re-check developer mode state when dashboard dismisses (in case user tapped "Exit Dev Mode")
+        .onChange(of: showDeveloperDashboard) { _, isShowing in
+            if !isShowing {
+                developerModeEnabled = UserDefaults.standard.bool(forKey: "developerModeEnabled")
+                #if DEBUG
+                if !developerModeEnabled && UserDefaults.standard.object(forKey: "developerModeEnabled") != nil {
+                    developerModeExplicitlyDisabled = true
+                }
+                #endif
+            }
+        }
     }
 
     // MARK: - Tutorial Restart

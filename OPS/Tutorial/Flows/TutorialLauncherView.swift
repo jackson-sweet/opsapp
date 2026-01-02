@@ -190,18 +190,6 @@ struct TutorialLauncherView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
 
-            // Skip button
-            Button {
-                typewriterTimer?.invalidate()
-                handleTutorialComplete()
-            } label: {
-                Text("SKIP FOR NOW")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-            }
-            .padding(.bottom, 20)
         }
         .padding(.horizontal, 32)
         .onAppear {

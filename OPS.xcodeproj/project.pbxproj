@@ -355,6 +355,8 @@
 /* Begin XCBuildConfiguration section */
 		E595DC282DB6CF9000B1413F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E595DC062DB6CF8F00B1413F /* OPS */;
+			baseConfigurationReferenceRelativePath = Utilities/Secrets.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -418,6 +420,8 @@
 		};
 		E595DC292DB6CF9000B1413F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E595DC062DB6CF8F00B1413F /* OPS */;
+			baseConfigurationReferenceRelativePath = Utilities/Secrets.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -474,6 +478,8 @@
 		};
 		E595DC2B2DB6CF9000B1413F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E595DC062DB6CF8F00B1413F /* OPS */;
+			baseConfigurationReferenceRelativePath = Utilities/Secrets.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -522,6 +528,8 @@
 		};
 		E595DC2C2DB6CF9000B1413F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E595DC062DB6CF8F00B1413F /* OPS */;
+			baseConfigurationReferenceRelativePath = Utilities/Secrets.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -570,6 +578,8 @@
 		};
 		E595DC2E2DB6CF9000B1413F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E595DC062DB6CF8F00B1413F /* OPS */;
+			baseConfigurationReferenceRelativePath = Utilities/Secrets.xcconfig;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -589,6 +599,8 @@
 		};
 		E595DC2F2DB6CF9000B1413F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E595DC062DB6CF8F00B1413F /* OPS */;
+			baseConfigurationReferenceRelativePath = Utilities/Secrets.xcconfig;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -608,6 +620,8 @@
 		};
 		E595DC312DB6CF9000B1413F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E595DC062DB6CF8F00B1413F /* OPS */;
+			baseConfigurationReferenceRelativePath = Utilities/Secrets.xcconfig;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -625,6 +639,8 @@
 		};
 		E595DC322DB6CF9000B1413F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E595DC062DB6CF8F00B1413F /* OPS */;
+			baseConfigurationReferenceRelativePath = Utilities/Secrets.xcconfig;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

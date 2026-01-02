@@ -1,2 +1,7 @@
 **/.claude/settings.local.json
 build/
+
+# Secrets - never commit
+Secrets.xcconfig
+**/Secrets.xcconfig
+*.xcconfig.local

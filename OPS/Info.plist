@@ -25,6 +25,14 @@
 	<string>OPS needs access to your contacts to easily import client information and save OPS contacts to your address book.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>OPS uses your location to suggest nearby addresses when entering client information, making it faster and easier to add accurate address details.</string>
+	<key>AWS_ACCESS_KEY_ID</key>
+	<string>$(AWS_ACCESS_KEY_ID)</string>
+	<key>AWS_SECRET_ACCESS_KEY</key>
+	<string>$(AWS_SECRET_ACCESS_KEY)</string>
+	<key>AWS_S3_BUCKET</key>
+	<string>$(AWS_S3_BUCKET)</string>
+	<key>AWS_REGION</key>
+	<string>$(AWS_REGION)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>BebasNeue-Regular.ttf</string>

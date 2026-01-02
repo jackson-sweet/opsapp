@@ -12,16 +12,28 @@ import CryptoKit
 /// Service for handling AWS S3 file uploads
 @MainActor
 class S3UploadService {
-    // AWS Configuration
-    private let accessKeyId = "AKIA35P7FAPD67GCBP63"
-    private let secretAccessKey = "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"
-    private let bucketName = "ops-app-files-prod"
-    private let region = "us-west-2"
-    
+    // AWS Configuration - loaded from Info.plist (set via Secrets.xcconfig)
+    private let accessKeyId: String
+    private let secretAccessKey: String
+    private let bucketName: String
+    private let region: String
+
     // Singleton instance
     static let shared = S3UploadService()
-    
-    private init() {}
+
+    private init() {
+        guard let accessKey = Bundle.main.object(forInfoDictionaryKey: "AWS_ACCESS_KEY_ID") as? String,
+              let secretKey = Bundle.main.object(forInfoDictionaryKey: "AWS_SECRET_ACCESS_KEY") as? String,
+              let bucket = Bundle.main.object(forInfoDictionaryKey: "AWS_S3_BUCKET") as? String,
+              let awsRegion = Bundle.main.object(forInfoDictionaryKey: "AWS_REGION") as? String,
+              !accessKey.isEmpty, !secretKey.isEmpty else {
+            fatalError("AWS credentials not configured. Please create Secrets.xcconfig from Secrets.xcconfig.template")
+        }
+        self.accessKeyId = accessKey
+        self.secretAccessKey = secretKey
+        self.bucketName = bucket
+        self.region = awsRegion
+    }
     
     // MARK: - Public Methods
     

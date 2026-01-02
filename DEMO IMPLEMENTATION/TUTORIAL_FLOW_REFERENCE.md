@@ -2,9 +2,9 @@
 
 This document details every step in both tutorial flows, including the tooltip text, required user action, and implementation status.
 
-**Status: PRODUCTION READY** - All phases are fully implemented.
+**Status: IN DEVELOPMENT** - Employee flow being debugged.
 
-**Last Updated:** December 23, 2024 - Copy V5 Update
+**Last Updated:** December 30, 2024 - Employee Flow Debugging
 
 ---
 
@@ -38,24 +38,39 @@ For admin/office users who create and manage projects.
 
 ---
 
-## Employee Flow (~20 seconds)
+## Employee Flow (~25 seconds)
 
 For field crew members who view and complete assigned work.
 
 | Step | Phase | Tooltip Text | User Action | Trigger | Status |
 |------|-------|--------------|-------------|---------|--------|
 | 1 | `.homeOverview` | "THESE ARE YOUR JOBS FOR TODAY" | View home | Auto-advances after 1.5s | Done |
-| 2 | `.tapProject` | "TAP \"START\" TO BEGIN" | Tap project card | `TutorialProjectTapped` | Done |
-| 3 | `.projectStarted` | "JOB STARTED." | Wait | Auto-advances after 1.5s | Done |
-| 4 | `.longPressDetails` | "PRESS AND HOLD FOR DETAILS" | Wait | Auto-advances after 2.0s | Done |
-| 5 | `.addNote` | "TAP TO ADD A NOTE" | Add a note | `TutorialNoteAdded` | Done |
-| 6 | `.addPhoto` | "TAP TO TAKE A PHOTO" | Add a photo | `TutorialPhotoAdded` | Done |
-| 7 | `.completeProject` | "TAP \"COMPLETE\" WHEN DONE" | Tap complete | `TutorialProjectCompleted` | Done |
-| 8 | `.jobBoardBrowse` | "SWIPE LEFT OR RIGHT" | Wait | Auto-advances after 2.0s | Done |
-| 9 | `.calendarWeek` | "THIS IS YOUR WEEK VIEW" | Wait | Auto-advances after 1.5s | Done |
-| 10 | `.calendarMonthPrompt` | "TAP \"MONTH\"" | Tap "Month" toggle | `TutorialCalendarMonthTapped` | Done |
-| 11 | `.calendarMonth` | "PINCH OUTWARD TO EXPAND" | Explore | Auto-advances after 2.0s | Done |
-| 12 | `.completed` | "YOU'RE READY." | — | Shows completion screen | Done |
+| 2 | `.tapProject` | "TAP A JOB CARD, THEN TAP START" | Tap card, then Start | `TutorialProjectTapped` | **Testing** |
+| 3 | `.projectStarted` | "JOB STARTED." | Wait | Auto-advances after 1.5s | Pending |
+| 4 | `.tapDetails` | "TAP \"DETAILS\" FOR MORE INFO" | Tap Details button | `TutorialDetailsTapped` | Pending |
+| 5 | `.addNote` | "TAP TO ADD A NOTE" | Add a note | `TutorialNoteAdded` | Pending |
+| 6 | `.addPhoto` | "TAP TO TAKE A PHOTO" | Add a photo | `TutorialPhotoAdded` | Pending |
+| 7 | `.completeProject` | "TAP \"COMPLETE\" WHEN DONE" | Tap complete | `TutorialProjectCompleted` | Pending |
+| 8 | `.jobBoardBrowse` | "SWIPE LEFT OR RIGHT" | Wait | Auto-advances after 2.0s | Pending |
+| 9 | `.calendarWeek` | "THIS IS YOUR WEEK VIEW" | Scroll week view | `TutorialCalendarWeekScrolled` | Pending |
+| 10 | `.calendarMonthPrompt` | "TAP \"MONTH\"" | Tap "Month" toggle | `TutorialCalendarMonthTapped` | Pending |
+| 11 | `.calendarMonth` | "PINCH OUTWARD TO EXPAND" | Explore | `TutorialCalendarMonthExplored` | Pending |
+| 12 | `.tutorialSummary` | "THAT'S THE BASICS." | Tap Done | User taps Done button | Pending |
+| 13 | `.completed` | "YOU'RE READY." | — | Shows completion screen | Pending |
+
+**Note:** Steps 9-12 now match the Company Creator flow (steps 15-18).
+
+### Step 2 Dark Overlay Implementation
+
+During `.tapProject` phase, a dark overlay (60% opacity) is displayed:
+- **Behind**: The project card carousel
+- **In front of**: Map, header, gradient, tab bar
+
+This is achieved by restructuring the HomeContentView ZStack to place the carousel in a separate layer above the overlay.
+
+### Step 4 Details Button
+
+The "Details" button is on the ProjectActionBar that appears when in project mode. User taps it to open ProjectDetailsView where they can add notes/photos.
 
 ---
 
@@ -107,7 +122,8 @@ All notifications are posted via `NotificationCenter.default.post(name:object:)`
 "TutorialCalendarMonthExplored"  // Month view explored (scroll + pinch)
 
 // Employee Flow
-"TutorialProjectTapped"          // Home view project tap
+"TutorialProjectTapped"          // Home view project tap (via EventCarousel startTask)
+"TutorialDetailsTapped"          // Details button tapped on ProjectActionBar
 "TutorialNoteAdded"              // Note added
 "TutorialPhotoAdded"             // Photo added
 "TutorialProjectCompleted"       // Project completed
@@ -118,22 +134,21 @@ All notifications are posted via `NotificationCenter.default.post(name:object:)`
 
 ---
 
-## Auto-Advancing Phases
+## Continue Button Phases
 
-These phases advance automatically after a delay or animation:
+These phases show a **"CONTINUE →" button** below the tooltip after a delay:
 
-| Phase | Delay/Trigger | Purpose |
-|-------|---------------|---------|
+| Phase | Delay | Purpose |
+|-------|-------|---------|
 | `.homeOverview` | 1.5s | Let user see Home view UI |
 | `.projectStarted` | 1.5s | Acknowledge project started |
-| `.longPressDetails` | 2.0s | Show long press hint |
 | `.jobBoardBrowse` | 2.0s | Show browse hint |
-| `.projectListStatusDemo` | Animation complete | Status animation auto-advances |
-| `.closedProjectsScroll` | Auto | Scroll animation auto-advances |
-| `.calendarWeek` | Scroll or 1.5s | Let user see week view |
-| `.calendarMonth` | 2.0s timer | Let user explore month view |
+| `.projectListStatusDemo` | 4.0s | Time for status animation |
+| `.closedProjectsScroll` | 3.0s | Time to scroll and highlight |
 
-**Note:** `.jobBoardIntro` waits for user to tap the FAB button - it does not auto-advance.
+**Behavior:** After the delay, a white "CONTINUE →" button fades in below the tooltip. User must tap it to proceed to the next step. This gives users control over pacing.
+
+**Note:** `.jobBoardIntro` waits for user to tap the FAB button - it does not show Continue button.
 
 ---
 
@@ -181,7 +196,10 @@ These phases advance automatically after a delay or animation:
 | File | Tutorial Notifications Added |
 |------|------------------------------|
 | `FloatingActionMenu.swift` | `TutorialFABTapped`, `TutorialCreateProjectTapped` |
-| `HomeView.swift` | `TutorialProjectTapped` |
+| `HomeView.swift` | `TutorialProjectTapped` (fallback) |
+| `EventCarousel.swift` | `TutorialProjectTapped` (primary - via startTask) |
+| `ProjectActionBar.swift` | `TutorialDetailsTapped` |
+| `HomeContentView.swift` | Dark overlay for `.tapProject` phase |
 | `ProjectFormSheet.swift` | `TutorialClientSelected`, `TutorialProjectNameEntered`, `TutorialAddTaskTapped`, `TutorialProjectFormComplete` |
 | `TaskFormSheet.swift` | `TutorialCrewAssigned`, `TutorialTaskTypeSelected`, `TutorialDateSet`, `TutorialTaskFormDone` |
 | `ProjectDetailsView.swift` | `TutorialNoteAdded`, `TutorialPhotoAdded`, `TutorialProjectCompleted` |

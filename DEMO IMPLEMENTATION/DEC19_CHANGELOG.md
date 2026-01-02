@@ -1589,3 +1589,409 @@ All phases now have purposeful descriptions explaining WHY, not just WHAT. Examp
 ---
 
 *Last updated: December 23, 2024 - Session 8*
+
+---
+
+## Session 9 - Tutorial Bug Fixes (December 31, 2024)
+
+### 63. Fix Step 13 (Completion) Showing Twice in Employee Flow
+
+**File:** `OPS/Tutorial/Wrappers/TutorialEmployeeFlowWrapper.swift`
+
+**Problem:**
+The completion screen was appearing twice in the employee tutorial flow. First from TutorialEmployeeFlowWrapper's own completion view, then again from TutorialLauncherView when `showingCompletion` was set to true.
+
+**Fix:**
+Changed the `.completed` case in `contentForCurrentPhase` to match TutorialCreatorFlowWrapper's pattern - just call `onComplete()` with a `Color.clear` placeholder instead of showing a separate completion view.
+
+```swift
+case .completed:
+    // Completion is handled by TutorialLauncherView, just call onComplete
+    Color.clear
+        .onAppear {
+            onComplete()
+        }
+```
+
+---
+
+### 64. Disable Week Picker and Segmented Control During calendarMonth Phase
+
+**File:** `OPS/Views/Calendar Tab/Components/CalendarToggleView.swift`
+
+**Problem:**
+During step 17 (`.calendarMonth`), users could still interact with the week picker and month/week segmented control, potentially disrupting the tutorial flow.
+
+**Fix:**
+Added `.calendarMonth` to both `isSegmentedControlDisabled` and `isWeekPickerDisabled` computed properties:
+
+```swift
+private var isSegmentedControlDisabled: Bool {
+    tutorialMode && (tutorialPhase == .calendarWeek || tutorialPhase == .calendarMonth)
+}
+
+private var isWeekPickerDisabled: Bool {
+    tutorialMode && (tutorialPhase == .calendarWeek || tutorialPhase == .calendarMonthPrompt || tutorialPhase == .calendarMonth)
+}
+```
+
+---
+
+### 65. Fix Keyboard Toolbar Enter Button Not Advancing Tutorial
+
+**File:** `OPS/Views/JobBoard/ProjectFormSheet.swift`
+
+**Problem:**
+During step 4 (`.projectFormName`), tapping the "Enter" button on the keyboard toolbar moved focus to the next form field (notes) instead of dismissing the keyboard and advancing the tutorial.
+
+**Root Cause:**
+The `advanceToNextField()` function always advanced through form fields in sequence. The `.onSubmit` handler posted the notification correctly, but toolbar's Enter button bypassed it.
+
+**Fix:**
+Added special handling in `advanceToNextField()` for tutorial mode:
+
+```swift
+private func advanceToNextField() {
+    guard let current = focusedField else {
+        focusedField = nil
+        return
+    }
+
+    // Tutorial mode: special handling for project name field
+    if tutorialMode && current == .title && tutorialPhase == .projectFormName && !title.isEmpty {
+        focusedField = nil // Dismiss keyboard
+        NotificationCenter.default.post(
+            name: Notification.Name("TutorialProjectNameEntered"),
+            object: nil
+        )
+        return
+    }
+    // ... rest of normal field advancement
+}
+```
+
+---
+
+### 66. Fix Steps 12 and 14 Auto-Advance (Remove Continue Button)
+
+**Files:**
+- `OPS/Tutorial/State/TutorialPhase.swift`
+- `OPS/Tutorial/State/TutorialStateManager.swift`
+
+**Problem:**
+Steps 12 (`.projectListStatusDemo`) and 14 (`.closedProjectsScroll`) were showing Continue buttons instead of auto-advancing after their delay.
+
+**Root Cause:**
+The `scheduleAutoAdvance()` function was changed to always show a Continue button instead of actually auto-advancing. All phases with `autoAdvances = true` were being treated the same way.
+
+**Fix:**
+Separated auto-advancing behavior into two distinct properties:
+
+**TutorialPhase.swift:**
+```swift
+/// Whether this phase auto-advances after a delay (no user action needed)
+var autoAdvances: Bool {
+    switch self {
+    case .projectListStatusDemo,  // Status animation auto-advances
+         .closedProjectsScroll:   // Scroll animation auto-advances
+        return true
+    default:
+        return false
+    }
+}
+
+/// Whether this phase shows Continue button after a delay
+var showsContinueButtonAfterDelay: Bool {
+    switch self {
+    case .homeOverview,  // Intro phase for employee flow
+         .projectStarted, // After starting project
+         .addNote, // Tap to continue
+         .addPhoto: // Tap to continue
+        return true
+    default:
+        return false
+    }
+}
+```
+
+**TutorialStateManager.swift:**
+- `scheduleAutoAdvance()` now actually calls `advancePhase()` after the delay
+- Added new `scheduleContinueButton()` for phases that show Continue button after delay
+- Updated `start()`, `advancePhase()`, and `skipTo()` to handle both cases
+
+**Result:**
+- Step 12: Auto-advances after 4 seconds, no Continue button
+- Step 14: Auto-advances after 3 seconds, no Continue button
+- Other phases (homeOverview, projectStarted, addNote, addPhoto): Show Continue button after delay
+
+---
+
+### 67. Add Console-Style Loading Overlay on Tutorial Completion
+
+**File:** `OPS/Tutorial/Flows/TutorialLauncherView.swift`
+
+**Problem:**
+When user tapped "LET'S GO" on the completion screen, there was an abrupt transition with no loading indication while demo data was being cleaned up.
+
+**Solution:**
+Added a console-style finishing overlay with animated messages:
+
+**New State Variables:**
+```swift
+@State private var isFinishing = false
+@State private var finishingMessages: [String] = []
+```
+
+**New View: `finishingLoadingView`**
+- Dark background with OPS logo
+- TacticalLoadingBarAnimated component
+- Console-style messages that appear sequentially
+
+**New Function: `startFinishing()`**
+- Hides completion screen, shows finishing overlay
+- Displays messages at 0.8s intervals:
+  - "CLEANING UP DEMO DATA..."
+  - "SYNCING USER DATA..."
+  - "LOADING YOUR PROJECTS..."
+  - "PREPARING WORKSPACE..."
+  - "ALMOST READY..."
+- Waits minimum 5 seconds before completing
+- Calls `performTutorialCleanup()` which was extracted from the original completion handler
+
+---
+
+### 68. Fix Company Tutorial Step 2 Not Opening Project Form Sheet
+
+**File:** `OPS/Tutorial/Wrappers/TutorialCreatorFlowWrapper.swift`
+
+**Problem:**
+Tapping "Create Project" from the FAB actions menu did not open the project form sheet during tutorial step 2.
+
+**Root Cause:**
+The TutorialInlineSheet components were wrapped in `if` conditions:
+```swift
+if showProjectForm {
+    TutorialInlineSheet(...) { ... }
+}
+```
+
+This violated TutorialInlineSheet's intended usage - it should be in the view hierarchy unconditionally and manage its own visibility internally.
+
+**Fix:**
+Removed the `if` wrappers from both project form and task form sheets:
+
+```swift
+// Layer 5: Inline sheet for ProjectFormSheet
+// Note: TutorialInlineSheet manages its own visibility - no `if` wrapper needed
+TutorialInlineSheet(isPresented: $showProjectForm, interactiveDismissDisabled: true) {
+    ProjectFormSheet(mode: .create) { project in
+        handleProjectCreated()
+    }
+    // ... environment modifiers
+}
+
+// Layer 6: Inline sheet for TaskFormSheet
+// Note: TutorialInlineSheet manages its own visibility - no `if` wrapper needed
+TutorialInlineSheet(isPresented: $showTaskForm, interactiveDismissDisabled: true) {
+    TaskFormSheet(draftMode: .draft(nil)) { localTask in
+        // ... handler
+    }
+    // ... environment modifiers
+}
+```
+
+---
+
+### 69. Fix Photos Showing Black Screen in Tutorial Mode
+
+**File:** `OPS/Views/Components/Project/ProjectDetailsView.swift`
+
+**Problem:**
+When viewing photos in the tutorial, tapping to expand a photo showed a black screen even though the console logs showed images were loading successfully from the asset catalog.
+
+**Root Cause:**
+The `ZoomableScrollView` used manual frame calculations in `updateUIView()` that depended on `scrollView.bounds` being valid. When presented from within TutorialInlineSheet, the scroll view's bounds were zero when `updateUIView` was first called, resulting in a zero-sized image view.
+
+**Solution:**
+Created a new `ZoomableScrollViewContainer` class that properly handles layout:
+
+```swift
+class ZoomableScrollViewContainer: UIView {
+    let scrollView: UIScrollView
+    let imageView: UIImageView
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        // Update scroll view frame to match container
+        scrollView.frame = bounds
+
+        // Update image view frame to match scroll view
+        if bounds.width > 0 && bounds.height > 0 {
+            imageView.frame = bounds
+            centerImage()
+        }
+    }
+
+    func centerImage() {
+        // ... centering logic
+    }
+}
+```
+
+**Key Insight:**
+`layoutSubviews()` is guaranteed to be called when the view gets a valid size in the view hierarchy. This ensures the image view is properly sized regardless of when the initial `updateUIView()` is called.
+
+**Changes to ZoomableScrollView:**
+- Changed `makeUIView` return type from `UIScrollView` to `ZoomableScrollViewContainer`
+- Coordinator now references container for image view access
+- Removed manual frame setting from `updateUIView()`
+
+---
+
+### 70. Add Debug Logging for Photo Loading
+
+**Files:**
+- `OPS/Views/Components/Images/ProjectPhotosGrid.swift` (PhotoThumbnail)
+- `OPS/Views/Components/Project/ProjectDetailsView.swift` (ZoomablePhotoView, photoDisplayView, photoViewerContent)
+
+**Purpose:**
+Added comprehensive console logging to diagnose photo loading issues:
+
+```
+[ProjectDetailsView] Project photos: ["flight_deck_before", "flight_deck_progress"]
+[PhotoThumbnail] Loading image with URL: flight_deck_before
+[PhotoThumbnail] Is asset name: true
+[PhotoThumbnail] Successfully loaded from asset catalog: flight_deck_before
+[PhotoViewer] Opening with photos: [...], index: 0
+[ZoomablePhotoView] Loading image with URL: flight_deck_before
+[ZoomablePhotoView] Successfully loaded from asset catalog: flight_deck_before
+```
+
+---
+
+## Files Modified in Session 9
+
+1. `OPS/Tutorial/Wrappers/TutorialEmployeeFlowWrapper.swift` (double completion fix)
+2. `OPS/Views/Calendar Tab/Components/CalendarToggleView.swift` (disable pickers)
+3. `OPS/Views/JobBoard/ProjectFormSheet.swift` (keyboard Enter button fix)
+4. `OPS/Tutorial/State/TutorialPhase.swift` (auto-advance vs Continue button separation)
+5. `OPS/Tutorial/State/TutorialStateManager.swift` (scheduleAutoAdvance + scheduleContinueButton)
+6. `OPS/Tutorial/Flows/TutorialLauncherView.swift` (finishing loading overlay)
+7. `OPS/Tutorial/Wrappers/TutorialCreatorFlowWrapper.swift` (TutorialInlineSheet wrapper fix)
+8. `OPS/Views/Components/Project/ProjectDetailsView.swift` (ZoomableScrollViewContainer + debug logging)
+9. `OPS/Views/Components/Images/ProjectPhotosGrid.swift` (debug logging)
+
+---
+
+## Session 9 Summary
+
+| Entry | Issue | Status |
+|-------|-------|--------|
+| #63 | Step 13 completion showing twice | ✅ Fixed |
+| #64 | Disable pickers during calendarMonth | ✅ Fixed |
+| #65 | Keyboard Enter button not advancing | ✅ Fixed |
+| #66 | Steps 12/14 auto-advance vs Continue | ✅ Fixed |
+| #67 | Console-style finishing overlay | ✅ Implemented |
+| #68 | Step 2 not opening form sheet | ✅ Fixed |
+| #69 | Photos showing black screen | ✅ Fixed |
+| #70 | Photo loading debug logging | ✅ Added |
+
+---
+
+---
+
+### 71. Fix Employee Flow Job Board Showing No Projects
+
+**File:** `OPS/Tutorial/Data/TutorialDemoDataManager.swift`
+
+**Problem:**
+During the employee tutorial flow, the job board showed no projects in any status lists, even though demo projects were being seeded correctly.
+
+**Root Cause:**
+The `assignCurrentUserToTasks()` function was adding the user to task team members, but the job board filters (`JobBoardProjectListView` and `JobBoardDashboard`) check if the user is a member of the **project** team, not the task team.
+
+**Fix:**
+Updated `assignCurrentUserToTasks()` to also add the user to the project's team members:
+
+```swift
+// Also add to project team members (required for job board visibility)
+if let project = task.project {
+    if !project.teamMembers.contains(where: { $0.id == userId }) {
+        project.teamMembers.append(currentUser)
+        var projectIds = project.getTeamMemberIds()
+        projectIds.append(userId)
+        project.setTeamMemberIds(projectIds)
+        print("[TUTORIAL_ASSIGN] Assigned user to project: \(project.title)")
+    }
+}
+```
+
+---
+
+### 72. Add Dark Glow Effect to Tutorial UI Elements
+
+**Files:**
+- `OPS/Tutorial/Views/TutorialCollapsibleTooltip.swift`
+- `OPS/Tutorial/Wrappers/TutorialEmployeeFlowWrapper.swift`
+- `OPS/Tutorial/Wrappers/TutorialCreatorFlowWrapper.swift`
+
+**Purpose:**
+Added a dark "glow" effect (radial shadow) around tooltips, Continue buttons, and DONE button to help these elements stand out against the app content.
+
+**Implementation:**
+Used multiple layered shadows to create a pronounced dark glow:
+
+```swift
+// Dark glow effect
+.shadow(color: Color.black.opacity(0.8), radius: 20, x: 0, y: 0)
+.shadow(color: Color.black.opacity(0.6), radius: 40, x: 0, y: 4)
+```
+
+**Tooltip (TutorialCollapsibleTooltip):**
+Added stronger glow with three shadow layers for maximum presence:
+```swift
+.shadow(color: Color.black.opacity(0.8), radius: 20, x: 0, y: 0)
+.shadow(color: Color.black.opacity(0.6), radius: 40, x: 0, y: 8)
+.shadow(color: Color.black.opacity(0.4), radius: 60, x: 0, y: 12)
+```
+
+**Buttons (Continue + DONE):**
+Added two shadow layers to both employee and creator flow wrappers for consistent styling.
+
+---
+
+## Files Modified in Session 9 (Updated)
+
+1. `OPS/Tutorial/Wrappers/TutorialEmployeeFlowWrapper.swift` (double completion fix + glow effects)
+2. `OPS/Views/Calendar Tab/Components/CalendarToggleView.swift` (disable pickers)
+3. `OPS/Views/JobBoard/ProjectFormSheet.swift` (keyboard Enter button fix)
+4. `OPS/Tutorial/State/TutorialPhase.swift` (auto-advance vs Continue button separation)
+5. `OPS/Tutorial/State/TutorialStateManager.swift` (scheduleAutoAdvance + scheduleContinueButton)
+6. `OPS/Tutorial/Flows/TutorialLauncherView.swift` (finishing loading overlay)
+7. `OPS/Tutorial/Wrappers/TutorialCreatorFlowWrapper.swift` (TutorialInlineSheet wrapper fix + glow effects)
+8. `OPS/Views/Components/Project/ProjectDetailsView.swift` (ZoomableScrollViewContainer + debug logging)
+9. `OPS/Views/Components/Images/ProjectPhotosGrid.swift` (debug logging)
+10. `OPS/Tutorial/Data/TutorialDemoDataManager.swift` (project team member assignment)
+11. `OPS/Tutorial/Views/TutorialCollapsibleTooltip.swift` (dark glow effect)
+
+---
+
+## Session 9 Summary (Updated)
+
+| Entry | Issue | Status |
+|-------|-------|--------|
+| #63 | Step 13 completion showing twice | ✅ Fixed |
+| #64 | Disable pickers during calendarMonth | ✅ Fixed |
+| #65 | Keyboard Enter button not advancing | ✅ Fixed |
+| #66 | Steps 12/14 auto-advance vs Continue | ✅ Fixed |
+| #67 | Console-style finishing overlay | ✅ Implemented |
+| #68 | Step 2 not opening form sheet | ✅ Fixed |
+| #69 | Photos showing black screen | ✅ Fixed |
+| #70 | Photo loading debug logging | ✅ Added |
+| #71 | Employee flow job board empty | ✅ Fixed |
+| #72 | Dark glow effect on tutorial UI | ✅ Added |
+
+---
+
+*Last updated: December 31, 2024 - Session 9*

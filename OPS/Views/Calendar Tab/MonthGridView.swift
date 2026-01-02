@@ -169,10 +169,15 @@ struct MonthGridView: View {
     @State private var gestureStartHeight: CGFloat = 120
     @State private var hasScrolledToCurrentMonth = false
     @State private var isProgrammaticScroll = false
-    @State private var updateWorkItem: DispatchWorkItem?
+    @State private var lastScrollTriggeredMonth: Date?
     @State private var initialScrollOffset: CGFloat?
     @State private var hasNotifiedTutorialScroll = false
     @State private var hasNotifiedTutorialPinch = false
+    @State private var scrollDirection: ScrollDirection = .down
+
+    private enum ScrollDirection {
+        case up, down
+    }
     @EnvironmentObject private var dataController: DataController
     @Environment(\.tutorialMode) private var tutorialMode
 
@@ -229,17 +234,23 @@ struct MonthGridView: View {
         guard !isProgrammaticScroll else { return }
 
         let calendar = Calendar.current
-        let threshold: CGFloat = 100
+        // Threshold: change month when first week is within this range of scroll view top
+        // Higher value = month changes earlier when scrolling into new month
+        // ~200pt ≈ 3/5 of typical visible scroll area before month reaches top
+        let threshold: CGFloat = 200
 
         if offset > -threshold && offset < threshold {
             if let monthStart = calendar.dateInterval(of: .month, for: date)?.start {
                 if !calendar.isDate(viewModel.visibleMonth, equalTo: monthStart, toGranularity: .month) {
-                    updateWorkItem?.cancel()
-                    let workItem = DispatchWorkItem {
-                        self.viewModel.visibleMonth = monthStart
+                    // Determine scroll direction based on month comparison
+                    let isScrollingToLaterMonth = monthStart > viewModel.visibleMonth
+                    scrollDirection = isScrollingToLaterMonth ? .down : .up
+                    // Track that this change came from scrolling
+                    lastScrollTriggeredMonth = monthStart
+                    // Update with animation for smooth transition
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        viewModel.visibleMonth = monthStart
                     }
-                    updateWorkItem = workItem
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
                 }
             }
         }
@@ -406,15 +417,40 @@ struct MonthGridView: View {
     var body: some View {
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    ForEach(weekdayLabels, id: \.self) { label in
-                        Text(label)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .frame(maxWidth: .infinity)
+                // Sticky header: Month/Year + Weekday labels
+                VStack(spacing: 0) {
+                    // Month and Year with directional transition
+                    Text(monthYearString(from: viewModel.visibleMonth))
+                        .font(OPSStyle.Typography.subtitle)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 6)
+                        .id(viewModel.visibleMonth)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: scrollDirection == .down ? .bottom : .top).combined(with: .opacity),
+                            removal: .move(edge: scrollDirection == .down ? .top : .bottom).combined(with: .opacity)
+                        ))
+
+                    // Separator line
+                    Rectangle()
+                        .fill(OPSStyle.Colors.secondaryText.opacity(0.3))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 4)
+
+                    // Weekday labels
+                    HStack(spacing: 0) {
+                        ForEach(weekdayLabels, id: \.self) { label in
+                            Text(label)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .frame(maxWidth: .infinity)
+                        }
                     }
+                    .padding(.top, 6)
                 }
                 .padding(.vertical, 8)
+                .clipped()
                 .background(OPSStyle.Colors.background)
 
                 ScrollView(.vertical, showsIndicators: false) {
@@ -569,8 +605,24 @@ struct MonthGridView: View {
                     }
                 }
             }
-            // Note: Removed programmatic scroll on visibleMonth change to allow free scrolling
-            // The visibleMonth property still updates for header display purposes
+            // Scroll to month when changed from picker (not from user scrolling)
+            .onChange(of: viewModel.visibleMonth) { oldMonth, newMonth in
+                let calendar = Calendar.current
+                // Only scroll if this wasn't triggered by user scrolling
+                if let lastScroll = lastScrollTriggeredMonth,
+                   calendar.isDate(lastScroll, equalTo: newMonth, toGranularity: .month) {
+                    // This change came from scrolling, don't scroll programmatically
+                    return
+                }
+                // This change came from the picker, scroll to the month
+                isProgrammaticScroll = true
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(newMonth, anchor: .top)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    isProgrammaticScroll = false
+                }
+            }
             .onChange(of: viewModel.selectedTeamMemberIds) { _, _ in
                 if let dataController = viewModel.dataController {
                     cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
@@ -629,30 +681,25 @@ struct MonthDayCell: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(spacing: 2) {
             if isToday {
                 // Today's date with white circle background
-                HStack {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 24, height: 24)
+                ZStack {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 24, height: 24)
 
-                        Text(DateHelper.dayString(from: date))
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.black)
-                    }
-                    .padding(.leading, 4)
-                    .padding(.top, 4)
-
-                    Spacer()
+                    Text(DateHelper.dayString(from: date))
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.black)
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 4)
             } else {
                 Text(DateHelper.dayString(from: date))
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(textColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 4)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 4)
             }
 

@@ -128,7 +128,28 @@ class SubscriptionManager: ObservableObject {
     }
     
     // MARK: - Public Methods
-    
+
+    /// Reset all subscription state (called on logout)
+    @MainActor
+    func resetForLogout() {
+        print("[SUBSCRIPTION] Resetting subscription state for logout...")
+        subscriptionStatus = .trial
+        subscriptionPlan = .trial
+        shouldShowLockout = false
+        shouldShowGracePeriodBanner = false
+        userHasSeat = true
+        isUserAdmin = false
+        isUserPlanHolder = false
+        trialDaysRemaining = nil
+        graceDaysRemaining = nil
+        seatedEmployees = []
+        maxSeats = 10
+        hasPrioritySupport = false
+        subscriptionEnd = nil
+        trialEndDate = nil
+        print("[SUBSCRIPTION] ✅ State reset complete")
+    }
+
     /// Force a fresh sync of company data from the API
     @MainActor
     func forceRefresh() async {

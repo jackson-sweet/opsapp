@@ -787,7 +787,17 @@ class DataController: ObservableObject {
                 if let phone = userDTO.phone {
                     user.phone = phone
                 }
-                
+
+                // Update tutorial/onboarding completion flags
+                // Use API value if true (API is source of truth once synced)
+                // Keep local value if API returns false/nil (allows offline completion to persist)
+                if userDTO.hasCompletedAppTutorial == true {
+                    user.hasCompletedAppTutorial = true
+                }
+                if userDTO.hasCompletedAppOnboarding == true {
+                    user.hasCompletedAppOnboarding = true
+                }
+
                 // We don't have these fields in the DTO currently
                 // user.latitude = userDTO.latitude ?? user.latitude
                 // user.longitude = userDTO.longitude ?? user.longitude
@@ -961,6 +971,9 @@ class DataController: ObservableObject {
         // Clear OneSignal service configuration
         OneSignalService.shared.clearConfiguration()
 
+        // Reset subscription manager state to prevent lockout screen from showing after logout
+        SubscriptionManager.shared.resetForLogout()
+
         // First, clear the current user reference to prevent views from accessing it
         self.currentUser = nil
 
@@ -975,7 +988,11 @@ class DataController: ObservableObject {
         
         // Clear PIN settings
         simplePINManager.removePIN()
-        
+
+        // Clear onboarding state to prevent stale flow data on next login
+        OnboardingState.clear()
+        UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.completed)
+
         // Give views MORE time to fully dismiss and release references
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self = self else { return }
@@ -1483,7 +1500,9 @@ class DataController: ObservableObject {
         }
         
         // Handle company details
-        company.setIndustries(dto.industry ?? [])
+        if let industryValue = dto.industry, !industryValue.isEmpty {
+            company.setIndustries([industryValue])
+        }
         company.companySize = dto.companySize
         company.companyAge = dto.companyAge
         

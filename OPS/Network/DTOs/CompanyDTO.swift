@@ -24,7 +24,7 @@ struct CompanyDTO: Codable {
     let closeHour: String?
     let phone: String?
     let officeEmail: String?
-    let industry: [String]?
+    let industry: String?
     let companySize: String?
     let companyAge: String?
     let employees: [BubbleReference]?
@@ -244,8 +244,8 @@ struct CompanyDTO: Codable {
         self.seatedEmployees = try container.decodeIfPresent([BubbleReference].self, forKey: .seatedEmployees)
         self.subscriptionEndls = try container.decodeIfPresent([BubbleReference].self, forKey: .subscriptionEndls)
         
-        // Decode array fields
-        self.industry = try container.decodeIfPresent([String].self, forKey: .industry)
+        // Decode industry as string (Bubble returns single string, not array)
+        self.industry = try container.decodeIfPresent(String.self, forKey: .industry)
         
         // Decode numeric fields
         self.receivables = try container.decodeIfPresent(Double.self, forKey: .receivables)
@@ -384,7 +384,9 @@ struct CompanyDTO: Codable {
         }
         
         // Handle company details
-        company.setIndustries(industry ?? [])
+        if let industryValue = industry, !industryValue.isEmpty {
+            company.setIndustries([industryValue])
+        }
         company.companySize = companySize
         company.companyAge = companyAge
         company.referralMethod = nil // Not in DTO yet

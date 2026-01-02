@@ -300,6 +300,12 @@ class CentralizedSyncManager {
             return
         }
 
+        // Check if user has completed tutorial - skip sync if still in tutorial
+        if let user = currentUser, !user.hasCompletedAppTutorial {
+            print("[TRIGGER_BG_SYNC] ⚠️ User hasn't completed tutorial, skipping sync to prevent mixing real data with demo")
+            return
+        }
+
         Task {
             do {
                 if forceProjectSync {
@@ -382,7 +388,9 @@ class CentralizedSyncManager {
             company.openHour = dto.openHour
             company.closeHour = dto.closeHour
             company.companyDescription = dto.companyDescription
-            company.setIndustries(dto.industry ?? [])  // Use setIndustries method
+            if let industryValue = dto.industry, !industryValue.isEmpty {
+                company.setIndustries([industryValue])
+            }
             company.companySize = dto.companySize
             company.companyAge = dto.companyAge
             company.defaultProjectColor = dto.defaultProjectColor ?? "#59779F"
@@ -1312,6 +1320,13 @@ class CentralizedSyncManager {
     func manualFullSync(companyId: String? = nil) async throws {
         // companyId parameter is deprecated - we get it from currentUser
         // Kept for backwards compatibility with DataController
+
+        // Check if user has completed tutorial - skip sync if still in tutorial
+        if let user = currentUser, !user.hasCompletedAppTutorial {
+            print("[MANUAL_SYNC] ⚠️ User hasn't completed tutorial, skipping sync to prevent mixing real data with demo")
+            return
+        }
+
         print("[MANUAL_SYNC] 🔄 User-triggered full sync")
         statusText = "Syncing all data..."
         try await syncAll()

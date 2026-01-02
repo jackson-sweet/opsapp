@@ -127,7 +127,8 @@ struct SubscriptionLockoutView: View {
             Text(adminLockoutMessage)
                 .font(OPSStyle.Typography.body)  // Changed to body size
                 .foregroundColor(OPSStyle.Colors.primaryText)  // Changed to primaryText
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 40)
             
             // Primary CTA - different for unseated admins
@@ -263,7 +264,8 @@ struct SubscriptionLockoutView: View {
             Text(nonAdminLockoutMessage)
                 .font(OPSStyle.Typography.body)  // Changed to body size
                 .foregroundColor(OPSStyle.Colors.primaryText)  // Changed to primaryText
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 40)
             
             // Admin contact - NO CARD BACKGROUND
@@ -277,11 +279,12 @@ struct SubscriptionLockoutView: View {
                         Text("\(admin.firstName) \(admin.lastName)")
                             .font(OPSStyle.Typography.caption)  // Smaller font
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        
+
                         Text("ADMINISTRATOR")
                             .font(OPSStyle.Typography.smallCaption)  // Smaller font
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 40)  // Align with message text
                     
                     // Contact buttons

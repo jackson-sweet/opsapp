@@ -119,11 +119,10 @@ struct OnboardingFlowPreview: View {
             ("Company Code", AnyView(CompanyCodeInputView(viewModel: mockViewModel))),
             ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel))),
             ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel))),
-            ("Complete", AnyView(CompletionView(onComplete: {}))),
-            ("Welcome Guide", AnyView(WelcomeGuideView().environmentObject(mockViewModel)))
+            ("Complete", AnyView(CompletionView(onComplete: {})))
         ]
     }
-    
+
     // Company flow screens (10 steps total)
     var companyFlowScreens: [(name: String, view: AnyView)] {
         [
@@ -139,8 +138,7 @@ struct OnboardingFlowPreview: View {
             ("Team Invites", AnyView(TeamInvitesView().environmentObject(mockViewModel))),
             ("Permissions", AnyView(PermissionsView(viewModel: mockViewModel))),
             ("Field Setup", AnyView(FieldSetupView(viewModel: mockViewModel))),
-            ("Complete", AnyView(CompletionView(onComplete: {}))),
-            ("Welcome Guide", AnyView(WelcomeGuideView().environmentObject(mockViewModel)))
+            ("Complete", AnyView(CompletionView(onComplete: {})))
         ]
     }
 }

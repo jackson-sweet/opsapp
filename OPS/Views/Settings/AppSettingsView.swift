@@ -203,49 +203,19 @@ struct AppSettingsView: View {
     // MARK: - Tutorial Restart
 
     private func restartTutorial() {
-        guard let user = dataController.currentUser else {
+        guard dataController.currentUser != nil else {
             print("[SETTINGS] No current user found")
             return
         }
 
         isRestartingTutorial = true
+        print("[SETTINGS] Restarting tutorial (keeping hasCompletedAppTutorial = true)")
 
-        Task {
-            do {
-                // 1. Update Bubble API
-                print("[SETTINGS] Updating hasCompletedAppTutorial to false in Bubble...")
-                try await dataController.apiService.updateUser(
-                    userId: user.id,
-                    fields: [BubbleFields.User.hasCompletedAppTutorial: false]
-                )
-                print("[SETTINGS] ✅ Bubble API updated")
-
-                // 2. Update local user model
-                await MainActor.run {
-                    user.hasCompletedAppTutorial = false
-                    user.needsSync = false // Already synced to Bubble
-                    print("[SETTINGS] ✅ Local user model updated")
-                }
-
-                // 3. Trigger tutorial restart and dismiss settings
-                await MainActor.run {
-                    isRestartingTutorial = false
-                    appState.shouldRestartTutorial = true
-                    dismiss()
-                }
-
-            } catch {
-                print("[SETTINGS] ❌ Failed to restart tutorial: \(error)")
-                await MainActor.run {
-                    isRestartingTutorial = false
-                    // Still try to restart tutorial locally even if API fails
-                    user.hasCompletedAppTutorial = false
-                    user.needsSync = true
-                    appState.shouldRestartTutorial = true
-                    dismiss()
-                }
-            }
-        }
+        // Trigger tutorial restart and dismiss settings
+        // Note: We do NOT reset hasCompletedAppTutorial so SKIP TUTORIAL button remains available
+        isRestartingTutorial = false
+        appState.shouldRestartTutorial = true
+        dismiss()
     }
 }
 

@@ -2,7 +2,7 @@
 
 This document details every screen in both onboarding flows, including screen titles, copy, user actions, and navigation paths.
 
-**Last Updated:** January 1, 2026
+**Last Updated:** January 2, 2026
 
 ---
 
@@ -219,27 +219,20 @@ Both flows share the same entry point (Welcome → Signup) and exit point (Ready
 
 ### Ready Screen (`ready`)
 
-**Purpose:** Billing info + Welcome guide pages.
+**Purpose:** Billing info before tutorial.
 
-**Page 1: Billing Info**
-- Subscription details based on user type
-- Trial information
-- "START TRIAL" button
+**Note:** Progress bar is hidden on this screen.
 
-**Welcome Guide Pages (Company Creator):**
-| Page | Title | Screenshots | Description |
-|------|-------|-------------|-------------|
-| 1 | [PAGE_TITLE] | screenshot carousel | Feature description |
+**Content:**
+- Subscription plan details based on user type
+- Company Creator: Trial information, seat count
+- Employee: Seat status, admin contact if no seat available
 
-**Welcome Guide Pages (Employee):**
-| Page | Title | Screenshots | Description |
-|------|-------|-------------|-------------|
-| 1 | [PAGE_TITLE] | screenshot carousel | Feature description |
+**Buttons:**
+- Company Creator: "START TRIAL" → Tutorial
+- Employee: "CONTINUE" → Tutorial
 
-**Navigation:**
-- Page dots for welcome guide pages
-- "NEXT" between pages
-- "LET'S GO" on final page → Tutorial (if not completed) or Main App
+**Navigation:** Proceeds directly to Tutorial (if not completed) or Main App
 
 ---
 
@@ -347,16 +340,16 @@ Onboarding state is persisted to UserDefaults under key `onboarding_state_v3`. T
 
 ## Progress Bar
 
-Progress bar appears after Credentials screen:
+Progress bar appears after Credentials screen and is hidden on Ready screen:
 
 | Screen | Progress (Company) | Progress (Employee) |
 |--------|-------------------|---------------------|
-| Profile | 1/4 | 1/3 |
+| Profile | 1/4 | 1/2 |
 | CompanySetup | 2/4 | - |
 | CompanyDetails | 3/4 | - |
 | CompanyCode | 4/4 | - |
-| CodeEntry | - | 2/3 |
-| Ready | Complete | Complete |
+| CodeEntry | - | 2/2 |
+| Ready | Hidden | Hidden |
 
 ---
 
@@ -389,7 +382,7 @@ This creates a cohesive, polished entrance animation across all screens.
 | `CompanyDetailsScreen.swift` | Company details |
 | `CompanyCodeScreen.swift` | Code display + invite |
 | `CodeEntryScreen.swift` | Join with code |
-| `ReadyScreen.swift` | Billing + welcome guide |
+| `ReadyScreen.swift` | Billing info before tutorial |
 | `UserTypeSelectionContent.swift` | Segmented picker component |
 | `OnboardingScaffold.swift` | Reusable screen layout |
 | `OnboardingComponents.swift` | Shared UI components |

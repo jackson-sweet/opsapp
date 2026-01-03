@@ -224,10 +224,10 @@ struct BillingInfoView: View {
                 Spacer()
                     .frame(height: 8)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    trialBenefitRow(text: "Every feature unlocked")
-                    trialBenefitRow(text: "Up to 10 team members")
-                    trialBenefitRow(text: "Unlimited projects")
+                VStack(alignment: .leading, spacing: 0) {
+                    trialBenefitRow(text: "Every feature unlocked", index: 0)
+                    trialBenefitRow(text: "Up to 10 team members", index: 1)
+                    trialBenefitRow(text: "Unlimited projects", index: 2, isLast: true)
                 }
 
                 Spacer()
@@ -254,15 +254,24 @@ struct BillingInfoView: View {
         }
     }
 
-    private func trialBenefitRow(text: String) -> some View {
-        HStack(spacing: 12) {
-            Rectangle()
-                .fill(OPSStyle.Colors.primaryAccent)
-                .frame(width: 2, height: 16)
+    private func trialBenefitRow(text: String, index: Int, isLast: Bool = false) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text("→")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            Text(text)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                Text(text)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+            .padding(.vertical, 12)
+
+            if !isLast {
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: 1)
+            }
         }
     }
 

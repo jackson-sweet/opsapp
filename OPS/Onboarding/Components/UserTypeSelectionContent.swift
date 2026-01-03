@@ -111,7 +111,7 @@ struct UserTypeSelectionContent: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text(config.subtitle.uppercased())
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .tracking(1)
             }
@@ -160,10 +160,10 @@ struct UserTypeSelectionContent: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: choice.icon)
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .font(.system(size: 13, weight: .medium))
 
                         Text(choice.rawValue)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .font(OPSStyle.Typography.smallCaption)
                     }
                     .foregroundColor(selectedType == choice ? OPSStyle.Colors.background : OPSStyle.Colors.tertiaryText)
                     .frame(maxWidth: .infinity)
@@ -216,11 +216,11 @@ struct UserTypeSelectionContent: View {
                 ForEach(Array(choice.features.enumerated()), id: \.offset) { index, feature in
                     HStack(spacing: 12) {
                         Text("→")
-                            .font(.system(size: 14, weight: .medium, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.4))
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         Text(feature)
-                            .font(.system(size: 14, weight: .regular, design: .monospaced))
+                            .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                     .padding(.vertical, 12)
@@ -245,7 +245,7 @@ struct UserTypeSelectionContent: View {
             Spacer()
 
             Text("[ SELECT YOUR ROLE ]")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Spacer()

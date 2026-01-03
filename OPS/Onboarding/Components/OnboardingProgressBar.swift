@@ -55,30 +55,33 @@ extension OnboardingProgressBar {
         _ screen: OnboardingScreen,
         flow: OnboardingFlow
     ) -> (current: Int, total: Int) {
+        // Hide progress bar on ready screen (billing info only, no welcome guide)
+        if screen == .ready {
+            return (0, 0)
+        }
+
         switch flow {
         case .companyCreator:
-            // profile → companySetup → companyDetails → companyCode → ready
-            let totalSteps = 5
+            // profile → companySetup → companyDetails → companyCode
+            let totalSteps = 4
             let current: Int
             switch screen {
             case .profile: current = 1
             case .companySetup: current = 2
             case .companyDetails: current = 3
             case .companyCode: current = 4
-            case .ready: current = 5
             default: current = 0
             }
             return (current, totalSteps)
 
         case .employee:
-            // profile → codeEntry → ready
-            let totalSteps = 3
+            // profile → codeEntry
+            let totalSteps = 2
             let current: Int
             switch screen {
             case .profile: current = 1
             case .codeEntry: current = 2
             case .profileJoin: current = 2 // Legacy fallback
-            case .ready: current = 3
             default: current = 0
             }
             return (current, totalSteps)

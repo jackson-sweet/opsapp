@@ -48,9 +48,19 @@ struct TutorialLauncherView: View {
     /// Console messages for finishing loading view
     @State private var finishingMessages: [String] = []
 
-    /// Typewriter animation state
-    @State private var displayedTitle = ""
-    @State private var typewriterTimer: Timer?
+    /// Cover animation states
+    @State private var showTitle = false
+    @State private var showDescription = false
+    @State private var showFeatures = false
+    @State private var showButton = false
+    @State private var showButtonText = false
+    @State private var showButtonIcon = false
+    @State private var showSkipButton = false
+
+    /// Whether user has already completed the tutorial
+    private var hasCompletedTutorial: Bool {
+        dataController.currentUser?.hasCompletedAppTutorial ?? false
+    }
 
     /// Title varies by flow type
     private var fullTitle: String {
@@ -149,82 +159,201 @@ struct TutorialLauncherView: View {
             Spacer()
 
             // Title with typewriter animation
-            VStack(alignment: .leading, spacing: 16) {
-                Text(displayedTitle)
+            ZStack(alignment: .leading) {
+                // Space reservation
+                Text(fullTitle)
                     .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .foregroundColor(.clear)
 
-                // Description varies by flow type
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(coverDescription)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(coverBulletPoints, id: \.self) { point in
-                            tutorialBulletPoint(point)
+                // Typed title
+                if showTitle {
+                    TypewriterText(
+                        fullTitle,
+                        font: OPSStyle.Typography.title,
+                        color: OPSStyle.Colors.primaryText,
+                        typingSpeed: 28
+                    ) {
+                        // Title complete - show description
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showDescription = true
+                            }
                         }
                     }
                 }
             }
-            .padding(.bottom, 60)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 40)
+
+            // Description with typewriter
+            ZStack(alignment: .leading) {
+                Text(coverDescription)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(.clear)
+                    .lineSpacing(4)
+
+                if showDescription {
+                    TypewriterText(
+                        coverDescription,
+                        font: OPSStyle.Typography.body,
+                        color: OPSStyle.Colors.secondaryText,
+                        typingSpeed: 50
+                    ) {
+                        // Description complete - show features
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            showFeatures = true
+                        }
+                    }
+                }
+            }
+            .padding(.top, 12)
+            .padding(.horizontal, 40)
+
+            // Features list with staggered slide-in
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(coverBulletPoints.enumerated()), id: \.offset) { index, feature in
+                    HStack(spacing: 12) {
+                        Text("→")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        Text(feature)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                    .padding(.vertical, 12)
+                    .opacity(showFeatures ? 1 : 0)
+                    .offset(y: showFeatures ? 0 : 8)
+                    .animation(.easeOut(duration: 0.3).delay(Double(index) * 0.1), value: showFeatures)
+
+                    if index < coverBulletPoints.count - 1 {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(height: 1)
+                            .opacity(showFeatures ? 1 : 0)
+                            .animation(.easeOut(duration: 0.3).delay(Double(index) * 0.1), value: showFeatures)
+                    }
+                }
+            }
+            .padding(.top, 28)
+            .padding(.horizontal, 40)
+            .onChange(of: showFeatures) { _, showing in
+                if showing {
+                    // After last feature animates, show button
+                    DispatchQueue.main.asyncAfter(deadline: .now() + Double(coverBulletPoints.count) * 0.1 + 0.3) {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showButton = true
+                        }
+                        // Start button text typing after container appears
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            showButtonText = true
+                        }
+                    }
+                }
+            }
 
             Spacer()
 
-            // Begin button
-            Button {
-                typewriterTimer?.invalidate()
-                withAnimation(.easeOut(duration: 0.3)) {
-                    showingCover = false
-                    isSeeding = true
+            // Buttons container
+            VStack(spacing: 16) {
+                // Begin button with phased animation
+                Button {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        showingCover = false
+                        isSeeding = true
+                    }
+                    setupAndSeedDemoData()
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .fill(Color.white)
+                            .frame(height: 56)
+
+                        HStack {
+                            ZStack(alignment: .leading) {
+                                Text("START TUTORIAL")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(.clear)
+
+                                if showButtonText {
+                                    TypewriterText(
+                                        "START TUTORIAL",
+                                        font: OPSStyle.Typography.bodyBold,
+                                        color: .black,
+                                        typingSpeed: 25
+                                    ) {
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                            withAnimation(.easeOut(duration: 0.4)) {
+                                                showButtonIcon = true
+                                            }
+                                            // Show skip button after main button animates (if applicable)
+                                            if hasCompletedTutorial {
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                                    withAnimation(.easeOut(duration: 0.3)) {
+                                                        showSkipButton = true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.black)
+                                .opacity(showButtonIcon ? 1 : 0)
+                                .offset(x: showButtonIcon ? 0 : -10)
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    .frame(height: 56)
                 }
-                setupAndSeedDemoData()
-            } label: {
-                Text("START TUTORIAL")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(Color.white)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-            }
+                .disabled(!showButton)
+                .opacity(showButton ? 1 : 0)
+                .offset(y: showButton ? 0 : 20)
 
+                // Skip button (only shown if user has completed tutorial before)
+                if hasCompletedTutorial {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        onComplete()
+                    } label: {
+                        Text("SKIP TUTORIAL")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    .opacity(showSkipButton ? 1 : 0)
+                    .offset(y: showSkipButton ? 0 : 10)
+                }
+            }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 50)
         }
-        .padding(.horizontal, 32)
         .onAppear {
-            startTypewriterAnimation()
-        }
-        .onDisappear {
-            typewriterTimer?.invalidate()
+            startCoverAnimations()
         }
     }
 
-    /// Helper view for bullet points
-    private func tutorialBulletPoint(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 16))
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-            Text(text)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-        }
-    }
+    /// Starts the cover screen animations
+    private func startCoverAnimations() {
+        // Reset all states
+        showTitle = false
+        showDescription = false
+        showFeatures = false
+        showButton = false
+        showButtonText = false
+        showButtonIcon = false
+        showSkipButton = false
 
-    /// Starts the typewriter animation for the title
-    private func startTypewriterAnimation() {
-        displayedTitle = ""
-        var characterIndex = 0
-
-        typewriterTimer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { timer in
-            if characterIndex < fullTitle.count {
-                let index = fullTitle.index(fullTitle.startIndex, offsetBy: characterIndex)
-                displayedTitle += String(fullTitle[index])
-                characterIndex += 1
-            } else {
-                timer.invalidate()
-            }
+        // Start title after brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            showTitle = true
         }
     }
 

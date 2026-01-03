@@ -113,8 +113,8 @@ struct OnboardingView: View {
                     TeamInvitesView()
                         .environmentObject(viewModel)
                 case .welcomeGuide:
-                    WelcomeGuideView()
-                        .environmentObject(viewModel)
+                    // Welcome guide removed - this case should not be reached
+                    EmptyView()
                 case .permissions:
                     // Use existing PermissionsView but configured for consolidated flow
                     PermissionsView(viewModel: viewModel)
@@ -136,9 +136,8 @@ struct OnboardingView: View {
     @ViewBuilder
     private func CompleteOnboarding() -> some View {
         CompletionView {
-            // This onComplete callback is actually not used anymore
+            // This onComplete callback is not used
             // The CompletionView calls onboardingViewModel.nextStep() directly
-            // which transitions to WelcomeGuideView
         }
         .environmentObject(viewModel)
         .onAppear {

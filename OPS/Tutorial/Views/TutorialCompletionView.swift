@@ -116,7 +116,7 @@ struct TutorialCompletionView: View {
             TutorialHaptics.success()
             onDismiss()
         } label: {
-            Text("LET'S GO")
+            Text("ENTER OPS")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
@@ -222,7 +222,7 @@ struct StandaloneCompletionView: View {
                         TutorialHaptics.success()
                         onDismiss()
                     } label: {
-                        Text("LET'S GO")
+                        Text("ENTER OPS")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)

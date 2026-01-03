@@ -74,15 +74,17 @@ struct OrganizationSettingsView: View {
                                     )
                                 }
 
-                                // Manage Subscription
-                                Button {
-                                    showManageSubscription = true
-                                } label: {
-                                    SettingsRowCard(
-                                        title: "Subscription",
-                                        description: subscriptionSummary,
-                                        iconName: "creditcard.fill"
-                                    )
+                                // Manage Subscription (admin only)
+                                if isCompanyAdmin {
+                                    Button {
+                                        showManageSubscription = true
+                                    } label: {
+                                        SettingsRowCard(
+                                            title: "Subscription",
+                                            description: subscriptionSummary,
+                                            iconName: "creditcard.fill"
+                                        )
+                                    }
                                 }
                             }
                             .padding(.horizontal, 20)

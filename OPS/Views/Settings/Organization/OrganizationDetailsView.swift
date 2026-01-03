@@ -336,27 +336,27 @@ struct OrganizationDetailsView: View {
 
     private var logoUploader: some View {
         HStack(spacing: 16) {
-            // Logo square
+            // Logo circle
             Button(action: { showImagePicker = true }) {
                 ZStack {
                     if let image = companyImage {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .frame(width: 72, height: 72)
+                            .clipShape(Circle())
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12)
+                                Circle()
                                     .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
                             )
                     } else if let data = company?.logoData, let uiImage = UIImage(data: data) {
                         Image(uiImage: uiImage)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .frame(width: 72, height: 72)
+                            .clipShape(Circle())
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12)
+                                Circle()
                                     .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
                             )
                     } else if let urlString = company?.logoURL,
@@ -368,10 +368,10 @@ struct OrganizationDetailsView: View {
                                 image
                                     .resizable()
                                     .scaledToFill()
-                                    .frame(width: 80, height: 80)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .frame(width: 72, height: 72)
+                                    .clipShape(Circle())
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
+                                        Circle()
                                             .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
                                     )
                             default:
@@ -407,16 +407,16 @@ struct OrganizationDetailsView: View {
     }
 
     private var logoPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 12)
+        Circle()
             .fill(OPSStyle.Colors.cardBackgroundDark)
-            .frame(width: 80, height: 80)
+            .frame(width: 72, height: 72)
             .overlay(
                 Image(systemName: "building.2")
-                    .font(.system(size: 32))
+                    .font(.system(size: 28))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                Circle()
                     .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
             )
     }

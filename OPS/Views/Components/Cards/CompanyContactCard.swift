@@ -25,88 +25,45 @@ struct CompanyContactCard: View {
     var showTeamCount: Bool = true
     // Note: Company code moved to OrganizationDetailsView as a separate copyable field
 
-    @State private var textHeight: CGFloat = 100
+    private let logoSize: CGFloat = 56
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            // Logo positioned on the right, sized to match text height
-            HStack {
-                Spacer()
-                logoView(height: textHeight)
-            }
+        HStack(spacing: 12) {
+            // Logo on the left as a circle
+            logoView
 
-            // Text content with gradient background for readability over logo
-            HStack {
-                VStack(alignment: .leading, spacing: 6) {
-                    // Company name
-                    Text(name.isEmpty ? "COMPANY NAME" : name.uppercased())
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(name.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
+            // Text content
+            VStack(alignment: .leading, spacing: 4) {
+                // Company name
+                Text(name.isEmpty ? "COMPANY NAME" : name.uppercased())
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(name.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
 
-                    // Primary contact (email or phone)
-                    if !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        contactRow(icon: "envelope", text: email)
-                    } else {
-                        contactRow(icon: "envelope", text: "NO EMAIL", isEmpty: true)
-                    }
+                // Email
+                if !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    contactRow(icon: "envelope", text: email)
+                }
 
-                    if !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        contactRow(icon: "phone", text: phone)
-                    } else {
-                        contactRow(icon: "phone", text: "NO PHONE", isEmpty: true)
-                    }
+                // Phone
+                if !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    contactRow(icon: "phone", text: phone)
+                }
 
-                    // Address
-                    let formattedAddress = formatAddress(address)
-                    contactRow(
-                        icon: "mappin.circle",
-                        text: formattedAddress.isEmpty ? "NO ADDRESS" : formattedAddress,
-                        isEmpty: formattedAddress.isEmpty
-                    )
-
-                    // Website
-                    if !website.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        contactRow(icon: "globe", text: website)
-                    } else {
-                        contactRow(icon: "globe", text: "NO WEBSITE", isEmpty: true)
-                    }
-
-                    // Team member count
-                    if showTeamCount {
-                        HStack(spacing: 4) {
-                            Image(systemName: "person.2")
-                                .font(.system(size: 11))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            Text("\(teamMemberCount) TEAM MEMBER\(teamMemberCount == 1 ? "" : "S")")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        .padding(.top, 2)
+                // Team member count
+                if showTeamCount {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.2")
+                            .font(.system(size: 11))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Text("\(teamMemberCount) TEAM MEMBER\(teamMemberCount == 1 ? "" : "S")")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.trailing, 16)
-                Spacer(minLength: 0)
             }
-            .background(
-                GeometryReader { geo in
-                    LinearGradient(
-                        colors: [
-                            OPSStyle.Colors.cardBackgroundDark.opacity(1),
-                            OPSStyle.Colors.cardBackgroundDark.opacity(0.7),
-                            .clear
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .onAppear { 
-                        textHeight = geo.size.height
-                    }
-                    .onChange(of: geo.size.height) { _, newHeight in
-                        textHeight = newHeight
-                    }
-                }
-            )
+
+            Spacer()
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 16)
@@ -135,21 +92,21 @@ struct CompanyContactCard: View {
     // MARK: - Logo View
 
     @ViewBuilder
-    private func logoView(height: CGFloat) -> some View {
+    private var logoView: some View {
         if let image = logoImage {
             // Custom image provided
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
-                .frame(width: height, height: height)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .frame(width: logoSize, height: logoSize)
+                .clipShape(Circle())
         } else if let data = logoData, let uiImage = UIImage(data: data) {
             // Logo from data
             Image(uiImage: uiImage)
                 .resizable()
                 .scaledToFill()
-                .frame(width: height, height: height)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .frame(width: logoSize, height: logoSize)
+                .clipShape(Circle())
         } else if let urlString = logoURL,
                   !urlString.isEmpty,
                   let url = normalizedLogoURL(urlString) {
@@ -160,35 +117,39 @@ struct CompanyContactCard: View {
                     image
                         .resizable()
                         .scaledToFill()
-                        .frame(width: height, height: height)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .frame(width: logoSize, height: logoSize)
+                        .clipShape(Circle())
                 default:
-                    logoPlaceholder(height: height)
+                    logoPlaceholder
                 }
             }
         } else if !name.isEmpty {
             // Show initial if name exists but no logo
-            RoundedRectangle(cornerRadius: 10)
+            Circle()
                 .fill(OPSStyle.Colors.primaryAccent)
-                .frame(width: height, height: height)
+                .frame(width: logoSize, height: logoSize)
                 .overlay(
                     Text(String(name.prefix(1)).uppercased())
-                        .font(.custom("Mohave-Bold", size: height * 0.4))
+                        .font(.custom("Mohave-Bold", size: logoSize * 0.4))
                         .foregroundColor(.white)
                 )
         } else {
-            logoPlaceholder(height: height)
+            logoPlaceholder
         }
     }
 
-    private func logoPlaceholder(height: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 10)
+    private var logoPlaceholder: some View {
+        Circle()
             .fill(OPSStyle.Colors.cardBackgroundDark)
-            .frame(width: height, height: height)
+            .frame(width: logoSize, height: logoSize)
             .overlay(
                 Image(systemName: "building.2")
-                    .font(.system(size: height * 0.4))
+                    .font(.system(size: logoSize * 0.4))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+            )
+            .overlay(
+                Circle()
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
             )
     }
 

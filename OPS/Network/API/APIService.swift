@@ -156,24 +156,48 @@ class APIService {
         let endpoint = "api/1.1/obj/company/\(companyId)"
         
         print("🔵 Executing PATCH request to: \(endpoint)")
-        
-        // Execute the request to update the company
+
+        // Execute the PATCH request manually to log the raw response
+        let baseURLString = baseURL.absoluteString.trimmingCharacters(in: ["/"])
+        let fullURLString = baseURLString + "/" + endpoint
+
+        guard let url = URL(string: fullURLString) else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        // Log the raw response
+        print("📥 PATCH Response Status: \(httpResponse.statusCode)")
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 PATCH Raw Response: \(responseString)")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            print("❌ PATCH failed with status \(httpResponse.statusCode)")
+            throw APIError.httpError(statusCode: httpResponse.statusCode)
+        }
+
+        // Try to decode the response
         do {
-            let wrapper: BubbleObjectResponse<CompanyDTO> = try await executeRequest(
-                endpoint: endpoint,
-                method: "PATCH",
-                body: jsonData,
-                requiresAuth: true
-            )
-            
+            let wrapper = try JSONDecoder().decode(BubbleObjectResponse<CompanyDTO>.self, from: data)
             print("✅ Successfully updated seated employees for company")
             print("📥 Updated company has \(wrapper.response.seatedEmployees?.count ?? 0) seated employees")
-            
             return wrapper.response
         } catch {
             // For PATCH requests, Bubble might return just a success response without the full object
             // In that case, we need to fetch the updated company
-            print("⚠️ PATCH response couldn't be decoded as full company, fetching updated company...")
+            print("⚠️ PATCH response couldn't be decoded as full company: \(error)")
+            print("⚠️ Fetching updated company...")
             
             // Wait a moment for Bubble to process the update
             try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
@@ -228,6 +252,47 @@ class APIService {
         }
 
         print("✅ Successfully updated user")
+    }
+
+    /// Terminate an employee (remove from company)
+    /// - Parameter userId: The user's unique ID to terminate
+    func terminateEmployee(userId: String) async throws {
+        print("🔵 API REQUEST: Terminating employee \(userId)")
+
+        let endpoint = "api/1.1/wf/terminate_employee"
+        let fullURL = baseURL.appendingPathComponent(endpoint)
+
+        var request = URLRequest(url: fullURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let parameters: [String: String] = [
+            "user": userId
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+
+        if let jsonString = String(data: request.httpBody!, encoding: .utf8) {
+            print("📤 Request body: \(jsonString)")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        print("🔵 terminate_employee response status: \(httpResponse.statusCode)")
+
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Response body: \(responseString)")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(statusCode: httpResponse.statusCode)
+        }
+
+        print("✅ Successfully terminated employee")
     }
 
     /// Update company fields in Bubble

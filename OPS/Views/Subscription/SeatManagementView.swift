@@ -327,19 +327,27 @@ struct SeatManagementView: View {
     // MARK: - Methods
     
     private func loadTeamMembers() {
+        print("[SEAT_MGMT] 📥 loadTeamMembers called")
+
         guard let company = company else {
+            print("[SEAT_MGMT] ❌ No company found")
             isLoading = false
             return
         }
-        
+
+        print("[SEAT_MGMT] Company: \(company.name)")
+        print("[SEAT_MGMT] Raw seatedEmployeeIds from company: '\(company.seatedEmployeeIds)'")
+
         // Parse seated employee IDs
         let seatedIds = company.seatedEmployeeIds
             .split(separator: ",")
             .map { String($0).trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        
+
+        print("[SEAT_MGMT] Parsed \(seatedIds.count) seated IDs: \(seatedIds)")
+
         seatedUserIds = Set(seatedIds)
-        
+
         // Load all team members
         allTeamMembers = dataController.getTeamMembers(companyId: company.id)
             .sorted { user1, user2 in
@@ -350,37 +358,66 @@ struct SeatManagementView: View {
                 if user1.role != .admin && user2.role == .admin { return false }
                 return user1.firstName < user2.firstName
             }
-        
+
+        print("[SEAT_MGMT] Loaded \(allTeamMembers.count) team members:")
+        for member in allTeamMembers {
+            let isSeated = seatedUserIds.contains(member.id)
+            print("[SEAT_MGMT]   - \(member.firstName) \(member.lastName) (ID: \(member.id)) - \(isSeated ? "SEATED" : "not seated")")
+        }
+
         isLoading = false
     }
     
     private func toggleSeat(for user: User) {
+        print("[SEAT_MGMT] toggleSeat called for user: \(user.firstName) \(user.lastName) (ID: \(user.id))")
+        print("[SEAT_MGMT] Current seatedUserIds BEFORE toggle: \(seatedUserIds)")
+
         // Don't allow toggling off the account holder
         if user.id == dataController.currentUser?.id {
+            print("[SEAT_MGMT] ⚠️ Cannot toggle current user (account holder)")
             return
         }
-        
+
         if seatedUserIds.contains(user.id) {
             seatedUserIds.remove(user.id)
+            print("[SEAT_MGMT] ➖ Removed user from seats")
         } else if availableSeats > 0 {
             seatedUserIds.insert(user.id)
+            print("[SEAT_MGMT] ➕ Added user to seats")
+        } else {
+            print("[SEAT_MGMT] ⚠️ No available seats to add user")
         }
+
+        print("[SEAT_MGMT] Current seatedUserIds AFTER toggle: \(seatedUserIds)")
         hasChanges = true
     }
     
     private func saveChanges() {
-        guard let company = company else { return }
-        
+        guard let company = company else {
+            print("[SEAT_MGMT] ❌ saveChanges: No company found")
+            return
+        }
+
+        print("[SEAT_MGMT] 💾 saveChanges called")
+        print("[SEAT_MGMT] seatedUserIds at save start: \(seatedUserIds)")
+
         isSaving = true
-        
+
         // Always include the account holder (current user) in the seated list
         if let currentUserId = dataController.currentUser?.id {
             seatedUserIds.insert(currentUserId)
+            print("[SEAT_MGMT] Added current user to seats: \(currentUserId)")
         }
-        
+
         // Convert Set to Array for API call
         let seatedIdsArray = Array(seatedUserIds)
         let seatedIdsString = seatedIdsArray.joined(separator: ",")
+
+        print("[SEAT_MGMT] 📤 Sending \(seatedIdsArray.count) seated user IDs to API:")
+        for (index, id) in seatedIdsArray.enumerated() {
+            let user = allTeamMembers.first { $0.id == id }
+            print("[SEAT_MGMT]   \(index + 1). \(user?.firstName ?? "Unknown") \(user?.lastName ?? "") - \(id)")
+        }
         
         // Call API to update seats
         Task {

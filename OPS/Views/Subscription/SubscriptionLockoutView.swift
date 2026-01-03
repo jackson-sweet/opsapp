@@ -127,7 +127,8 @@ struct SubscriptionLockoutView: View {
             Text(adminLockoutMessage)
                 .font(OPSStyle.Typography.body)  // Changed to body size
                 .foregroundColor(OPSStyle.Colors.primaryText)  // Changed to primaryText
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 40)
             
             // Primary CTA - different for unseated admins
@@ -263,7 +264,8 @@ struct SubscriptionLockoutView: View {
             Text(nonAdminLockoutMessage)
                 .font(OPSStyle.Typography.body)  // Changed to body size
                 .foregroundColor(OPSStyle.Colors.primaryText)  // Changed to primaryText
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 40)
             
             // Admin contact - NO CARD BACKGROUND
@@ -277,11 +279,12 @@ struct SubscriptionLockoutView: View {
                         Text("\(admin.firstName) \(admin.lastName)")
                             .font(OPSStyle.Typography.caption)  // Smaller font
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        
+
                         Text("ADMINISTRATOR")
                             .font(OPSStyle.Typography.smallCaption)  // Smaller font
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 40)  // Align with message text
                     
                     // Contact buttons
@@ -305,7 +308,7 @@ struct SubscriptionLockoutView: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                         }
-                        
+
                         if let email = admin.email {
                             Button(action: {
                                 if let url = URL(string: "mailto:\(email)?subject=OPS%20App%20Access") {
@@ -329,6 +332,44 @@ struct SubscriptionLockoutView: View {
                     .padding(.horizontal, 40)
                 }
             }
+
+            // Refresh button for non-admins
+            Button(action: {
+                Task {
+                    await refreshSubscription()
+                }
+            }) {
+                HStack(spacing: 8) {
+                    if isRefreshing {
+                        TacticalLoadingBar(
+                            progress: refreshProgress,
+                            barCount: 8,
+                            barWidth: 2,
+                            barHeight: 6,
+                            spacing: 4,
+                            emptyColor: OPSStyle.Colors.inputFieldBorder,
+                            fillColor: nonAdminRefreshButtonColor
+                        )
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14))
+                    }
+                    Text(nonAdminRefreshButtonText)
+                        .font(OPSStyle.Typography.captionBold)
+                }
+                .foregroundColor(nonAdminRefreshButtonColor)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(nonAdminRefreshButtonColor, lineWidth: 1)
+                )
+                .animation(.easeInOut(duration: 0.3), value: refreshComplete)
+                .animation(.easeInOut(duration: 0.3), value: refreshError)
+            }
+            .disabled(isRefreshing)
+            .padding(.horizontal, 40)
         }
     }
     
@@ -337,6 +378,34 @@ struct SubscriptionLockoutView: View {
             return "You don't have a seat in your company's OPS subscription. Contact your administrator to request access."
         } else {
             return "Your company's OPS subscription needs attention. Please contact your administrator."
+        }
+    }
+
+    private var nonAdminRefreshButtonText: String {
+        if refreshError {
+            return "NETWORK ERROR"
+        } else if refreshComplete {
+            if subscriptionManager.userHasSeat {
+                return "ACCESS GRANTED"
+            } else {
+                return "NO ACCESS"
+            }
+        } else {
+            return "CHECK ACCESS"
+        }
+    }
+
+    private var nonAdminRefreshButtonColor: Color {
+        if refreshError {
+            return OPSStyle.Colors.warningStatus
+        } else if refreshComplete {
+            if subscriptionManager.userHasSeat {
+                return OPSStyle.Colors.successStatus
+            } else {
+                return OPSStyle.Colors.errorStatus
+            }
+        } else {
+            return OPSStyle.Colors.tertiaryText
         }
     }
     

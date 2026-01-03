@@ -150,10 +150,11 @@ class OnboardingService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
         
-        // Create request body with only email and password (removed employee_type parameter)
+        // Create request body with email, password, and signup source
         let parameters: [String: String] = [
             "email": email,
-            "password": password
+            "password": password,
+            "signupPage": "ios_app"
         ]
         
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)

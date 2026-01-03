@@ -213,7 +213,7 @@ struct ExpandingBracketInput: View {
     let placeholder: String
 
     // Animation values
-    private let collapsedSpacing: CGFloat = 48
+    private let collapsedSpacing: CGFloat = 80 // Minimum width to prevent placeholder text wrapping
     private let expandedSpacing: CGFloat = UIScreen.main.bounds.width - 120 // Full width minus padding
 
     private var currentSpacing: CGFloat {

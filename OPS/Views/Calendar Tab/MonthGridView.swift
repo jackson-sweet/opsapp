@@ -32,6 +32,7 @@ struct CalendarEventPreview: Identifiable, Equatable {
     let isFirst: Bool
     let isLast: Bool
     let isFirstInWeek: Bool
+    let taskTypeDisplay: String?  // Task type for subtitle in tall events
 
     static func == (lhs: CalendarEventPreview, rhs: CalendarEventPreview) -> Bool {
         lhs.id == rhs.id
@@ -51,6 +52,7 @@ struct WeekEventSpan: Identifiable {
     let isFirstSegment: Bool
     let isLastSegment: Bool
     let isSingleDay: Bool
+    let taskTypeDisplay: String?  // Task type for subtitle in tall events
 }
 
 struct MoreEventsIndicator: Identifiable {
@@ -122,7 +124,8 @@ class MonthGridCache: ObservableObject {
                         totalDays: totalDays,
                         isFirst: isFirst,
                         isLast: isLast,
-                        isFirstInWeek: isFirstInWeek
+                        isFirstInWeek: isFirstInWeek,
+                        taskTypeDisplay: event.task?.taskType?.display
                     )
 
                     if cache[dateKey] == nil {
@@ -166,10 +169,15 @@ struct MonthGridView: View {
     @State private var gestureStartHeight: CGFloat = 120
     @State private var hasScrolledToCurrentMonth = false
     @State private var isProgrammaticScroll = false
-    @State private var updateWorkItem: DispatchWorkItem?
+    @State private var lastScrollTriggeredMonth: Date?
     @State private var initialScrollOffset: CGFloat?
     @State private var hasNotifiedTutorialScroll = false
     @State private var hasNotifiedTutorialPinch = false
+    @State private var scrollDirection: ScrollDirection = .down
+
+    private enum ScrollDirection {
+        case up, down
+    }
     @EnvironmentObject private var dataController: DataController
     @Environment(\.tutorialMode) private var tutorialMode
 
@@ -226,17 +234,23 @@ struct MonthGridView: View {
         guard !isProgrammaticScroll else { return }
 
         let calendar = Calendar.current
-        let threshold: CGFloat = 100
+        // Threshold: change month when first week is within this range of scroll view top
+        // Higher value = month changes earlier when scrolling into new month
+        // ~200pt ≈ 3/5 of typical visible scroll area before month reaches top
+        let threshold: CGFloat = 200
 
         if offset > -threshold && offset < threshold {
             if let monthStart = calendar.dateInterval(of: .month, for: date)?.start {
                 if !calendar.isDate(viewModel.visibleMonth, equalTo: monthStart, toGranularity: .month) {
-                    updateWorkItem?.cancel()
-                    let workItem = DispatchWorkItem {
-                        self.viewModel.visibleMonth = monthStart
+                    // Determine scroll direction based on month comparison
+                    let isScrollingToLaterMonth = monthStart > viewModel.visibleMonth
+                    scrollDirection = isScrollingToLaterMonth ? .down : .up
+                    // Track that this change came from scrolling
+                    lastScrollTriggeredMonth = monthStart
+                    // Update with animation for smooth transition
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        viewModel.visibleMonth = monthStart
                     }
-                    updateWorkItem = workItem
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
                 }
             }
         }
@@ -257,19 +271,22 @@ struct MonthGridView: View {
         return badgeHeight + eventRowSpacing(for: cellHeight)
     }
 
-    private func maxVisibleRows(for cellHeight: CGFloat) -> Int {
+    private func maxVisibleSlots(for cellHeight: CGFloat) -> Int {
         let availableHeight = cellHeight - 26
         let rowSpacing = eventRowSpacing(for: cellHeight)
 
         if cellHeight < 120 {
-            let rowHeight: CGFloat = 10
-            return max(4, Int(availableHeight / (rowHeight + rowSpacing / 2)))
+            // Level 1: base slot height is 10pt
+            let slotHeight: CGFloat = 10
+            return max(4, Int(availableHeight / (slotHeight + rowSpacing / 2)))
         } else if cellHeight < 180 {
-            let rowHeight: CGFloat = 14
-            return max(4, Int(availableHeight / (rowHeight + rowSpacing / 2)))
+            // Level 2: base slot height is 14pt
+            let slotHeight: CGFloat = 14
+            return max(4, Int(availableHeight / (slotHeight + rowSpacing / 2)))
         } else {
-            let rowHeight: CGFloat = 14
-            return max(5, Int(availableHeight / (rowHeight + rowSpacing / 2)))
+            // Level 3: base slot height is 14pt (tall events use 3 slots = 42pt)
+            let slotHeight: CGFloat = 14
+            return max(6, Int(availableHeight / (slotHeight + rowSpacing / 2)))
         }
     }
 
@@ -277,9 +294,10 @@ struct MonthGridView: View {
         let calendar = Calendar.current
         var spans: [WeekEventSpan] = []
         var indicators: [MoreEventsIndicator] = []
-        let maxRows = maxVisibleRows(for: cellHeight)
+        let maxSlots = maxVisibleSlots(for: cellHeight)
+        let isLevel3 = cellHeight >= 180
 
-        var occupiedRows: [[Bool]] = Array(repeating: Array(repeating: false, count: maxRows), count: 7)
+        var occupiedSlots: [[Bool]] = Array(repeating: Array(repeating: false, count: maxSlots), count: 7)
         var eventsByDay: [[CalendarEventPreview]] = Array(repeating: [], count: 7)
 
         for (dayIndex, date) in dates.enumerated() {
@@ -320,26 +338,42 @@ struct MonthGridView: View {
 
                 guard weekStartIndex >= 0 && weekEndIndex >= 0 else { continue }
 
-                var assignedRow = -1
-                for rowIndex in 0..<(maxRows - 1) {
-                    var rowAvailable = true
-                    for dayIdx in weekStartIndex...weekEndIndex {
-                        if occupiedRows[dayIdx][rowIndex] {
-                            rowAvailable = false
-                            break
-                        }
+                // Determine slots needed: single-day events at Level 3 need 3 slots, others need 1
+                let isSingleDay = !event.isMultiDay
+                let slotsNeeded = (isLevel3 && isSingleDay) ? 3 : 1
+
+                var assignedSlot = -1
+                // Reserve last slot for "+N more" indicator
+                for slotIndex in 0..<(maxSlots - 1) {
+                    // Check if we have enough consecutive slots available
+                    if slotIndex + slotsNeeded > maxSlots - 1 {
+                        break  // Not enough room for this event
                     }
 
-                    if rowAvailable {
-                        assignedRow = rowIndex
+                    var slotsAvailable = true
+                    for slotOffset in 0..<slotsNeeded {
                         for dayIdx in weekStartIndex...weekEndIndex {
-                            occupiedRows[dayIdx][rowIndex] = true
+                            if occupiedSlots[dayIdx][slotIndex + slotOffset] {
+                                slotsAvailable = false
+                                break
+                            }
+                        }
+                        if !slotsAvailable { break }
+                    }
+
+                    if slotsAvailable {
+                        assignedSlot = slotIndex
+                        // Mark all needed slots as occupied
+                        for slotOffset in 0..<slotsNeeded {
+                            for dayIdx in weekStartIndex...weekEndIndex {
+                                occupiedSlots[dayIdx][slotIndex + slotOffset] = true
+                            }
                         }
                         break
                     }
                 }
 
-                if assignedRow >= 0 {
+                if assignedSlot >= 0 {
                     let isFirstSegment = calendar.isDate(dates[weekStartIndex]!, inSameDayAs: event.startDate)
                     let isLastSegment = calendar.isDate(dates[weekEndIndex]!, inSameDayAs: event.endDate)
 
@@ -352,10 +386,11 @@ struct MonthGridView: View {
                         endDate: event.endDate,
                         startDayIndex: weekStartIndex,
                         endDayIndex: weekEndIndex,
-                        row: assignedRow,
+                        row: assignedSlot,
                         isFirstSegment: isFirstSegment,
                         isLastSegment: isLastSegment,
-                        isSingleDay: !event.isMultiDay
+                        isSingleDay: isSingleDay,
+                        taskTypeDisplay: event.taskTypeDisplay
                     ))
 
                     processedEvents.insert(event.eventId)
@@ -371,7 +406,7 @@ struct MonthGridView: View {
                 indicators.append(MoreEventsIndicator(
                     dayIndex: dayIndex,
                     count: uniqueHidden.count,
-                    row: maxRows - 1
+                    row: maxSlots - 1
                 ))
             }
         }
@@ -382,15 +417,40 @@ struct MonthGridView: View {
     var body: some View {
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    ForEach(weekdayLabels, id: \.self) { label in
-                        Text(label)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .frame(maxWidth: .infinity)
+                // Sticky header: Month/Year + Weekday labels
+                VStack(spacing: 0) {
+                    // Month and Year with directional transition
+                    Text(monthYearString(from: viewModel.visibleMonth))
+                        .font(OPSStyle.Typography.subtitle)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 6)
+                        .id(viewModel.visibleMonth)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: scrollDirection == .down ? .bottom : .top).combined(with: .opacity),
+                            removal: .move(edge: scrollDirection == .down ? .top : .bottom).combined(with: .opacity)
+                        ))
+
+                    // Separator line
+                    Rectangle()
+                        .fill(OPSStyle.Colors.secondaryText.opacity(0.3))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 4)
+
+                    // Weekday labels
+                    HStack(spacing: 0) {
+                        ForEach(weekdayLabels, id: \.self) { label in
+                            Text(label)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .frame(maxWidth: .infinity)
+                        }
                     }
+                    .padding(.top, 6)
                 }
                 .padding(.vertical, 8)
+                .clipped()
                 .background(OPSStyle.Colors.background)
 
                 ScrollView(.vertical, showsIndicators: false) {
@@ -545,8 +605,24 @@ struct MonthGridView: View {
                     }
                 }
             }
-            // Note: Removed programmatic scroll on visibleMonth change to allow free scrolling
-            // The visibleMonth property still updates for header display purposes
+            // Scroll to month when changed from picker (not from user scrolling)
+            .onChange(of: viewModel.visibleMonth) { oldMonth, newMonth in
+                let calendar = Calendar.current
+                // Only scroll if this wasn't triggered by user scrolling
+                if let lastScroll = lastScrollTriggeredMonth,
+                   calendar.isDate(lastScroll, equalTo: newMonth, toGranularity: .month) {
+                    // This change came from scrolling, don't scroll programmatically
+                    return
+                }
+                // This change came from the picker, scroll to the month
+                isProgrammaticScroll = true
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(newMonth, anchor: .top)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    isProgrammaticScroll = false
+                }
+            }
             .onChange(of: viewModel.selectedTeamMemberIds) { _, _ in
                 if let dataController = viewModel.dataController {
                     cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
@@ -605,30 +681,25 @@ struct MonthDayCell: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(spacing: 2) {
             if isToday {
                 // Today's date with white circle background
-                HStack {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 24, height: 24)
+                ZStack {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 24, height: 24)
 
-                        Text(DateHelper.dayString(from: date))
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.black)
-                    }
-                    .padding(.leading, 4)
-                    .padding(.top, 4)
-
-                    Spacer()
+                    Text(DateHelper.dayString(from: date))
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.black)
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 4)
             } else {
                 Text(DateHelper.dayString(from: date))
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(textColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 4)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 4)
             }
 
@@ -777,9 +848,9 @@ struct EventBar: View {
     let dayWidth: CGFloat
 
     private enum DisplayLevel {
-        case level1
-        case level2
-        case level3
+        case level1  // < 120: compact dots
+        case level2  // 120-180: short bars with title
+        case level3  // >= 180: short (multi-day) or tall (single-day) bars
     }
 
     private var displayLevel: DisplayLevel {
@@ -792,15 +863,22 @@ struct EventBar: View {
         }
     }
 
-    private var badgeHeight: CGFloat {
-        switch displayLevel {
-        case .level1:
-            return 10
-        case .level2:
-            return 14
-        case .level3:
-            return 14
+    // At Level 3, single-day events are tall (3x height)
+    private var isTallEvent: Bool {
+        displayLevel == .level3 && span.isSingleDay
+    }
+
+    // Base slot height (unit height for positioning)
+    private var baseSlotHeight: CGFloat {
+        displayLevel == .level1 ? 10 : 14
+    }
+
+    // Actual bar height: tall events are 3x base height
+    private var barHeight: CGFloat {
+        if isTallEvent {
+            return baseSlotHeight * 3  // 42pt for tall single-day events
         }
+        return baseSlotHeight
     }
 
     private var badgeOpacity: Double {
@@ -811,41 +889,76 @@ struct EventBar: View {
         displayLevel != .level1
     }
 
-    private var fontSize: Font {
-        Font.system(size: 10)
-    }
-
-    private var lineLimit: Int? {
-        // Allow text to wrap when at level 3 (expanded view)
-        displayLevel == .level3 ? nil : 1
+    private var eventColor: Color {
+        Color(hex: span.color) ?? OPSStyle.Colors.primaryAccent
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
+        Group {
+            if isTallEvent {
+                tallEventContent
+            } else {
+                shortEventContent
+            }
+        }
+        .frame(width: dayWidth * CGFloat(span.endDayIndex - span.startDayIndex + 1))
+        .frame(height: barHeight)
+        .clipped()
+        .background(eventBackground)
+        .padding(.horizontal, 2)
+    }
+
+    // Short event: single line title (Level 1, 2, and multi-day at Level 3)
+    private var shortEventContent: some View {
+        HStack(alignment: .center, spacing: 0) {
             if showText && (span.isSingleDay || span.isFirstSegment) {
                 Text(span.title)
-                    .font(fontSize)
-                    .foregroundColor(Color(hex: span.color) ?? OPSStyle.Colors.primaryText)
-                    .lineLimit(lineLimit)
+                    .font(.system(size: 10))
+                    .foregroundColor(eventColor)
+                    .lineLimit(1)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 2)
-                    .fixedSize(horizontal: false, vertical: displayLevel == .level3)
             }
             Spacer(minLength: 0)
         }
-        .frame(width: dayWidth * CGFloat(span.endDayIndex - span.startDayIndex + 1))
-        .frame(minHeight: badgeHeight)
-        .clipped()
-        .background(
-            (Color(hex: span.color) ?? OPSStyle.Colors.primaryAccent).opacity(badgeOpacity)
-                .clipShape(UnevenRoundedRectangle(
-                    topLeadingRadius: span.isSingleDay || span.isFirstSegment ? 3 : 0,
-                    bottomLeadingRadius: span.isSingleDay || span.isFirstSegment ? 3 : 0,
-                    bottomTrailingRadius: span.isSingleDay || span.isLastSegment ? 3 : 0,
-                    topTrailingRadius: span.isSingleDay || span.isLastSegment ? 3 : 0
-                ))
-        )
-        .padding(.horizontal, 2)
+    }
+
+    // Tall event: 2 lines title + 1 line task type (single-day at Level 3)
+    private var tallEventContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Title: 2 lines max, fixed to top two rows
+            if span.isFirstSegment || span.isSingleDay {
+                Text(span.title)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(eventColor)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 2)
+            }
+
+            Spacer(minLength: 0)
+
+            // Task type subtitle: always on 3rd row (bottom)
+            if let taskType = span.taskTypeDisplay, !taskType.isEmpty {
+                Text(taskType.uppercased())
+                    .font(.system(size: 9))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 2)
+            }
+        }
+    }
+
+    private var eventBackground: some View {
+        eventColor.opacity(badgeOpacity)
+            .clipShape(UnevenRoundedRectangle(
+                topLeadingRadius: span.isSingleDay || span.isFirstSegment ? 3 : 0,
+                bottomLeadingRadius: span.isSingleDay || span.isFirstSegment ? 3 : 0,
+                bottomTrailingRadius: span.isSingleDay || span.isLastSegment ? 3 : 0,
+                topTrailingRadius: span.isSingleDay || span.isLastSegment ? 3 : 0
+            ))
     }
 }
 

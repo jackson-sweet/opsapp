@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ManageTeamView: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @Environment(\.dismiss) private var dismiss
 
     @State private var teamMembers: [User] = []
@@ -23,9 +24,14 @@ struct ManageTeamView: View {
     @State private var showInviteSentMessage = false
     @State private var inviteSentCount = 0
     @State private var memberToView: User? = nil
+    @State private var showSeatManagement = false
 
     private var company: Company? {
         dataController.getCurrentUserCompany()
+    }
+
+    private var seatedUserIds: Set<String> {
+        Set(subscriptionManager.seatedEmployees.map { $0.id })
     }
 
     private var isCompanyAdmin: Bool {
@@ -94,11 +100,35 @@ struct ManageTeamView: View {
                                 emptyStateView
                                     .padding(.horizontal, 20)
                             } else {
-                                SectionCard(
-                                    icon: "person.3.fill",
-                                    title: "Team Members",
-                                    contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-                                ) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    // Section header with ASSIGN SEATS button
+                                    HStack {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "person.3.fill")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                            Text("TEAM MEMBERS")
+                                                .font(OPSStyle.Typography.captionBold)
+                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                        }
+
+                                        Spacer()
+
+                                        if isCompanyAdmin {
+                                            Button(action: { showSeatManagement = true }) {
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: "person.crop.rectangle.stack")
+                                                        .font(.system(size: 10))
+                                                    Text("ASSIGN SEATS")
+                                                        .font(OPSStyle.Typography.smallCaption)
+                                                }
+                                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 20)
+
+                                    // Team members card
                                     VStack(spacing: 0) {
                                         ForEach(filteredMembers) { member in
                                             teamMemberRow(member)
@@ -109,8 +139,14 @@ struct ManageTeamView: View {
                                             }
                                         }
                                     }
+                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    )
+                                    .padding(.horizontal, 20)
                                 }
-                                .padding(.horizontal, 20)
                             }
 
                             // Add Team Members button (admin only)
@@ -167,6 +203,11 @@ struct ManageTeamView: View {
         .sheet(isPresented: $showInviteSheet) {
             TeamInviteSheet(companyId: company?.id ?? "")
                 .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showSeatManagement) {
+            SeatManagementView()
+                .environmentObject(dataController)
+                .environmentObject(subscriptionManager)
         }
         .alert("Remove Team Member", isPresented: $showRemoveConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -237,6 +278,25 @@ struct ManageTeamView: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(OPSStyle.Colors.warningStatus.opacity(0.2))
+                                .cornerRadius(4)
+                        }
+
+                        // Seated status badge
+                        if seatedUserIds.contains(member.id) {
+                            Text("SEATED")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.successStatus)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(OPSStyle.Colors.successStatus.opacity(0.2))
+                                .cornerRadius(4)
+                        } else {
+                            Text("NO SEAT")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.errorStatus)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(OPSStyle.Colors.errorStatus.opacity(0.2))
                                 .cornerRadius(4)
                         }
                     }
@@ -388,11 +448,8 @@ struct ManageTeamView: View {
         errorMessage = nil
 
         do {
-            // Remove company association from user
-            try await dataController.apiService.updateUser(
-                id: member.id,
-                userData: [BubbleFields.User.company: NSNull()]
-            )
+            // Call terminate_employee endpoint to properly remove from company
+            try await dataController.apiService.terminateEmployee(userId: member.id)
 
             // Remove from local list
             await MainActor.run {
@@ -400,14 +457,14 @@ struct ManageTeamView: View {
                 memberToRemove = nil
             }
 
-            print("[MANAGE_TEAM] Removed \(member.fullName) from team")
+            print("[MANAGE_TEAM] Terminated \(member.fullName) from team")
 
         } catch {
             await MainActor.run {
                 errorMessage = "Failed to remove team member"
                 memberToRemove = nil
             }
-            print("[MANAGE_TEAM] Error removing member: \(error)")
+            print("[MANAGE_TEAM] Error terminating member: \(error)")
         }
     }
 }

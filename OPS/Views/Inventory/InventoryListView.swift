@@ -11,18 +11,24 @@ import SwiftData
 
 struct InventoryListView: View {
     let items: [InventoryItem]
+    let isSelectionMode: Bool
+    @Binding var selectedItemIds: Set<String>
     let onItemTap: (InventoryItem) -> Void
     let onItemEdit: (InventoryItem) -> Void
     let onItemDelete: (InventoryItem) -> Void
+    let onItemSelect: (InventoryItem) -> Void
 
     var body: some View {
         LazyVStack(spacing: OPSStyle.Layout.spacing2) {
             ForEach(items) { item in
                 InventoryItemCard(
                     item: item,
+                    isSelectionMode: isSelectionMode,
+                    isSelected: selectedItemIds.contains(item.id),
                     onTap: { onItemTap(item) },
                     onEdit: { onItemEdit(item) },
-                    onDelete: { onItemDelete(item) }
+                    onDelete: { onItemDelete(item) },
+                    onSelect: { onItemSelect(item) }
                 )
             }
         }
@@ -37,9 +43,12 @@ struct InventoryListView: View {
 struct InventoryItemCard: View {
     @EnvironmentObject private var dataController: DataController
     let item: InventoryItem
+    let isSelectionMode: Bool
+    let isSelected: Bool
     let onTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
+    let onSelect: () -> Void
 
     @Query private var units: [InventoryUnit]
     @State private var showingActions = false
@@ -55,6 +64,14 @@ struct InventoryItemCard: View {
 
     var body: some View {
         HStack(spacing: OPSStyle.Layout.spacing3) {
+            // Selection checkbox (shown in selection mode)
+            if isSelectionMode {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .frame(width: 32)
+            }
+
             // Quantity
             VStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(formatQuantity(item.quantity))
@@ -112,33 +129,40 @@ struct InventoryItemCard: View {
 
             Spacer()
 
-            // Edit button
-            Button(action: onEdit) {
-                Image(systemName: OPSStyle.Icons.pencil)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            // Edit button (hidden in selection mode)
+            if !isSelectionMode {
+                Button(action: onEdit) {
+                    Image(systemName: OPSStyle.Icons.pencil)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.15) : OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: isSelected ? 2 : 1)
         )
         .contentShape(Rectangle())
         .onTapGesture {
             onTap()
         }
         .onLongPressGesture(minimumDuration: 0.5) {
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.impactOccurred()
-            showingActions = true
+            if !isSelectionMode {
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+                showingActions = true
+            }
         }
         .confirmationDialog(item.name, isPresented: $showingActions, titleVisibility: .visible) {
+            Button("Select") {
+                onSelect()
+            }
             Button("Edit") {
                 onEdit()
             }
@@ -179,9 +203,12 @@ struct InventoryItemCard: View {
 #Preview {
     InventoryListView(
         items: [],
+        isSelectionMode: false,
+        selectedItemIds: .constant([]),
         onItemTap: { _ in },
         onItemEdit: { _ in },
-        onItemDelete: { _ in }
+        onItemDelete: { _ in },
+        onItemSelect: { _ in }
     )
     .environmentObject(DataController())
 }

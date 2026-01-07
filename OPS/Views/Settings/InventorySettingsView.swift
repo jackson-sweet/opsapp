@@ -29,6 +29,9 @@ struct InventorySettingsView: View {
     @State private var isCreatingSnapshot = false
     @State private var snapshotSuccess = false
 
+    // Import settings
+    @State private var showingImportSheet = false
+
     @Query private var allUnits: [InventoryUnit]
 
     private var companyId: String {
@@ -68,6 +71,9 @@ struct InventorySettingsView: View {
                         // SNAPSHOTS SECTION
                         snapshotsSection
 
+                        // IMPORT SECTION
+                        importSection
+
                         // UNITS SECTION
                         unitsSection
 
@@ -95,6 +101,10 @@ struct InventorySettingsView: View {
         }
         .sheet(isPresented: $showingSnapshots) {
             SnapshotListView()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingImportSheet) {
+            SpreadsheetImportSheet()
                 .environmentObject(dataController)
         }
         .alert("Add Unit", isPresented: $showingAddUnit) {
@@ -234,6 +244,58 @@ struct InventorySettingsView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .disabled(isCreatingSnapshot)
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+        }
+    }
+
+    // MARK: - Import Section
+
+    private var importSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            // Section header
+            Text("IMPORT")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+            // Import card
+            VStack(spacing: 0) {
+                Button(action: { showingImportSheet = true }) {
+                    HStack {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(width: 24)
+
+                        Text("Import from Spreadsheet")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                        Spacer()
+
+                        Image(systemName: OPSStyle.Icons.chevronRight)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                // Info text
+                Text("Import inventory items from CSV or Excel files")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing3)
             }
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)

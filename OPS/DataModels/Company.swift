@@ -49,6 +49,10 @@ final class Company {
     // Relationship to task types
     @Relationship(deleteRule: .cascade)
     var taskTypes: [TaskType] = []
+
+    // Relationship to inventory units
+    @Relationship(deleteRule: .cascade)
+    var inventoryUnits: [InventoryUnit] = []
     
     // Default color for project-level calendar events (hex)
     var defaultProjectColor: String = "#9CA3AF"  // Light grey default

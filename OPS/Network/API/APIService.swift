@@ -610,6 +610,9 @@ class APIService {
         } catch let apiError as APIError {
             throw apiError
         } catch {
+            print("[API_SERVICE] ❌ Unexpected error: \(error)")
+            print("[API_SERVICE] ❌ Error type: \(type(of: error))")
+            print("[API_SERVICE] ❌ Error description: \(error.localizedDescription)")
             throw APIError.networkError
         }
     }
@@ -888,8 +891,13 @@ class APIService {
     // MARK: - Request Helper Methods
     
     private func executeWithRetry<T: Decodable>(request: URLRequest, retries: Int) async throws -> T {
+        print("[API_SERVICE] 🌐 Making request to: \(request.url?.absoluteString ?? "unknown")")
+        print("[API_SERVICE] 🌐 Method: \(request.httpMethod ?? "GET")")
+
         do {
             let (data, response) = try await session.data(for: request)
+
+            print("[API_SERVICE] 📥 Received response, data size: \(data.count) bytes")
             
             // Record last request time for rate limiting
             lastRequestTime = Date()
@@ -906,6 +914,11 @@ class APIService {
                     // Explicitly specify the generic type to help Swift with type inference
                     return try decodeResponse(data: data) as T
                 } catch {
+                    print("[API_SERVICE] ❌ Decoding failed for response")
+                    if let responseString = String(data: data, encoding: .utf8) {
+                        print("[API_SERVICE] 📄 Response body: \(responseString.prefix(500))")
+                    }
+                    print("[API_SERVICE] ❌ Decoding error: \(error)")
                     throw APIError.decodingFailed
                 }
                 
@@ -938,12 +951,28 @@ class APIService {
             
         } catch let error as APIError {
             throw error
+        } catch let urlError as URLError {
+            print("[API_SERVICE] ⚠️ URLError: code=\(urlError.code.rawValue), \(urlError.localizedDescription)")
+            print("[API_SERVICE] ⚠️ URL: \(request.url?.absoluteString ?? "unknown")")
+            if urlError.code == .cancelled {
+                print("[API_SERVICE] ⚠️ Request was CANCELLED - this may indicate a task cancellation or session issue")
+            }
+            // Network error - retry if possible
+            if retries > 0 && urlError.code != .cancelled {
+                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                return try await executeWithRetry(request: request, retries: retries - 1)
+            } else {
+                print("[API_SERVICE] ❌ Not retrying cancelled request")
+                throw APIError.networkError
+            }
         } catch {
             // Network error - retry if possible
+            print("[API_SERVICE] ⚠️ Request failed (retries left: \(retries)): \(error)")
             if retries > 0 {
                 try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                 return try await executeWithRetry(request: request, retries: retries - 1)
             } else {
+                print("[API_SERVICE] ❌ All retries exhausted. Original error: \(error)")
                 throw APIError.networkError
             }
         }

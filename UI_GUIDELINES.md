@@ -2,7 +2,7 @@
 
 **Purpose**: This document provides Claude (AI assistant) with complete UI design standards, OPSStyle reference, and field-first design principles. This ensures all generated UI code maintains brand consistency and field usability.
 
-**Last Updated**: December 4, 2025
+**Last Updated**: January 6, 2026
 
 ---
 
@@ -51,6 +51,35 @@ OPS exists to make trade workers' lives easier through technology that "just wor
    - Every minute managing software is a minute not billing
    - Quick actions, minimal taps
    - Respect user's time
+
+### Tactical/Military Minimalism
+
+Every element must adhere to the OPS visual identity:
+
+- **High contrast**: Dark backgrounds, light text
+- **Generous negative space**: Elements breathe, no cramped layouts
+- **Understated feedback**: Subtle state changes, never celebratory
+- **Functional typography**: Readable, not decorative
+- **Monochromatic palette**: Single accent color only
+- **Flat design**: No shadows, no gradients (except background if existing)
+- **Minimal corner radius**: Sharp or near-sharp corners (5pt standard)
+- **Icons serve function only**: No decorative icons
+
+#### What to Avoid (Tactical Minimalism)
+
+- Emojis (never, anywhere)
+- Bouncy or playful animations
+- Celebratory language ("Nice work!", "Awesome!", "You did it!")
+- Soft, rounded, friendly shapes
+- Multiple accent colors
+- Decorative illustrations or graphics
+- Exclamation points in UI copy
+- Large iconography as visual centerpieces
+
+#### Reference Aesthetic
+
+**Think**: Terminal interface, cockpit HUD, military briefing screen.
+**Not**: Consumer fintech app, social media, gamified fitness tracker.
 
 ### Steve Jobs Design Principles (Applied)
 
@@ -799,55 +828,66 @@ struct CollapsibleSection<Content: View>: View {
    - Only for active projects/tasks
    - Not for decoration
 
-3. **❌ Avoid gradients** except main background gradient
+3. **❌ No gradients** (except existing background gradient)
    - Stick to solid colors
-   - Gradients impact performance
+   - Flat design only
 
-4. **❌ Avoid complex shadows or blur effects**
-   - Simple shadows only
-   - Blurs hurt performance on older devices
+4. **❌ No shadows**
+   - Flat design - no drop shadows on any elements
+   - No blur effects
+   - Visual hierarchy through color/border only
 
-5. **❌ Don't center large blocks of text**
+5. **❌ No celebratory language or emojis**
+   - Never use: "Nice work!", "Awesome!", "You did it!"
+   - No exclamation points in UI copy
+   - Understated, functional feedback only
+
+6. **❌ Don't center large blocks of text**
    - Use left alignment for readability
    - Center only for titles/headers
 
-6. **❌ Don't use decorative elements**
+7. **❌ Don't use decorative elements**
    - Everything serves a functional purpose
    - No decoration for decoration's sake
+   - No large icons as visual centerpieces
 
-7. **❌ Never sacrifice functionality for aesthetics**
+8. **❌ Never sacrifice functionality for aesthetics**
    - Field usability always comes first
    - Pretty but unusable = failure
 
-8. **❌ Avoid tiny touch targets**
+9. **❌ Avoid tiny touch targets**
    - Remember users wear gloves
    - Minimum 44×44pt required
 
-9. **❌ Don't use low contrast**
-   - Must be readable in direct sunlight
-   - Test outdoors in bright conditions
+10. **❌ Don't use low contrast**
+    - Must be readable in direct sunlight
+    - Test outdoors in bright conditions
 
-10. **❌ Avoid complex gestures**
+11. **❌ Avoid complex gestures**
     - Simple taps and swipes only
     - No multi-finger gestures
     - No long press for critical functions
 
-11. **❌ Never hardcode SF Symbol strings**
+12. **❌ Never hardcode SF Symbol strings**
     - Always use OPSStyle.Icons constants
     - Enables centralized updates
 
-12. **❌ Avoid .id() modifiers on TabView or NavigationStack**
+13. **❌ Avoid .id() modifiers on TabView or NavigationStack**
     - Causes view recreation
     - Performance issues
     - SwiftData model invalidation
 
-13. **❌ Never hardcode border colors**
+14. **❌ Never hardcode border colors**
     - Always use `OPSStyle.Colors.cardBorder` or `cardBorderSubtle`
     - Never `Color.white.opacity(0.1)` inline
 
-14. **❌ Never nest cards within cards**
+15. **❌ Never nest cards within cards**
     - No double backgrounds
     - Single visual hierarchy level
+
+16. **❌ No bouncy or playful animations**
+    - Keep animations subtle and functional
+    - Spring animations should feel mechanical, not bouncy
 
 ### Quick Decision Matrix
 

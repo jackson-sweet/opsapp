@@ -525,6 +525,7 @@ enum ScreenName: String {
     // Main tabs
     case home = "home"
     case jobBoard = "job_board"
+    case inventory = "inventory"
     case schedule = "schedule"
     case settings = "settings"
 
@@ -565,15 +566,19 @@ enum ScreenName: String {
 enum TabName: String {
     case home = "home"
     case jobBoard = "job_board"
+    case inventory = "inventory"
     case schedule = "schedule"
     case settings = "settings"
 
+    /// Base index (without dynamic tabs like inventory)
+    /// Note: Actual tab index may vary based on user permissions
     var index: Int {
         switch self {
         case .home: return 0
         case .jobBoard: return 1
-        case .schedule: return 2
-        case .settings: return 3
+        case .inventory: return 2 // Only present when user has inventoryAccess
+        case .schedule: return 2  // or 3 with inventory
+        case .settings: return 3  // or 4 with inventory
         }
     }
 }

@@ -32,7 +32,11 @@ struct OPSApp: App {
             TaskType.self,
             TaskStatusOption.self,
             CalendarEvent.self,
-            OpsContact.self
+            OpsContact.self,
+            InventoryItem.self,
+            InventoryUnit.self,
+            InventorySnapshot.self,
+            InventorySnapshotItem.self
         ])
         
         let modelConfiguration = ModelConfiguration(
@@ -109,6 +113,9 @@ struct OPSApp: App {
                             await deleteProjectLevelCalendarEvents()
                             UserDefaults.standard.set(true, forKey: "project_events_cleaned_v1")
                         }
+
+                        // Check for automatic inventory snapshot
+                        await checkAndCreateAutoSnapshot()
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
@@ -264,6 +271,77 @@ struct OPSApp: App {
             print("[MIGRATION] ✅ Task-only scheduling migration complete")
         } catch {
             print("[MIGRATION] ❌ Failed to delete project-level CalendarEvents: \(error)")
+        }
+    }
+
+    /// Check if automatic inventory snapshot is due and create if needed
+    @MainActor
+    private func checkAndCreateAutoSnapshot() async {
+        print("[AUTO_SNAPSHOT] 📸 Checking if automatic inventory snapshot is due...")
+
+        // Check if user has inventory access
+        guard let user = dataController.currentUser, user.inventoryAccess else {
+            print("[AUTO_SNAPSHOT] ⏭️ User doesn't have inventory access - skipping")
+            return
+        }
+
+        // Check if snapshot is due
+        let settings = SnapshotSettings.load()
+        guard settings.isSnapshotDue() else {
+            if let lastDate = settings.lastSnapshotDate {
+                print("[AUTO_SNAPSHOT] ⏭️ Snapshot not due yet (last: \(lastDate), frequency: \(settings.frequency.displayName))")
+            } else {
+                print("[AUTO_SNAPSHOT] ⏭️ Auto snapshots are disabled")
+            }
+            return
+        }
+
+        print("[AUTO_SNAPSHOT] ✅ Snapshot is due - creating automatic snapshot...")
+
+        // Get company ID
+        guard let companyId = user.companyId, !companyId.isEmpty else {
+            print("[AUTO_SNAPSHOT] ❌ No company ID available")
+            return
+        }
+
+        // Get model context
+        guard let modelContext = dataController.modelContext else {
+            print("[AUTO_SNAPSHOT] ❌ Model context not available")
+            return
+        }
+
+        do {
+            // Fetch all inventory items for the company
+            let descriptor = FetchDescriptor<InventoryItem>(
+                predicate: #Predicate<InventoryItem> { item in
+                    item.companyId == companyId && item.deletedAt == nil
+                }
+            )
+            let items = try modelContext.fetch(descriptor)
+
+            if items.isEmpty {
+                print("[AUTO_SNAPSHOT] ⏭️ No inventory items to snapshot")
+                return
+            }
+
+            print("[AUTO_SNAPSHOT] 📦 Creating snapshot with \(items.count) items...")
+
+            // Create snapshot via API
+            _ = try await dataController.apiService.createFullSnapshot(
+                companyId: companyId,
+                userId: user.id,
+                isAutomatic: true,
+                items: items
+            )
+
+            // Update last snapshot date
+            var updatedSettings = SnapshotSettings.load()
+            updatedSettings.lastSnapshotDate = Date()
+            updatedSettings.save()
+
+            print("[AUTO_SNAPSHOT] ✅ Automatic snapshot created successfully!")
+        } catch {
+            print("[AUTO_SNAPSHOT] ❌ Failed to create automatic snapshot: \(error)")
         }
     }
 }

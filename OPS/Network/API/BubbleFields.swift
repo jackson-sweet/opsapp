@@ -21,6 +21,10 @@ struct BubbleFields {
         static let task = "Task"
         static let taskType = "TaskType"
         static let calendarEvent = "calendarevent"  // Bubble uses lowercase
+        static let inventoryItem = "inventoryitem"  // Bubble API uses lowercase
+        static let inventoryUnit = "inventoryunit"  // Bubble API uses lowercase
+        static let inventorySnapshot = "inventorysnapshot"  // Bubble API uses lowercase
+        static let inventorySnapshotItem = "inventorysnapshotitem"  // Bubble API uses lowercase
     }
     
     /// Job status values (from your Job Status custom type)
@@ -110,6 +114,7 @@ struct BubbleFields {
         static let homeAddress = "homeAddress"
         static let deviceToken = "deviceToken"  // APNs device token for push notifications
         static let hasCompletedAppTutorial = "hasCompletedAppTutorial"  // Bool for tutorial completion
+        static let inventoryAccess = "inventoryAccess"  // Bool for inventory feature access
     }
     
     /// Company entity fields (match your Bubble field names exactly)
@@ -126,6 +131,7 @@ struct BubbleFields {
         static let clients = "clients"
         static let taskTypes = "taskTypes"
         static let calendarEventsList = "calendarEventsList"
+        static let inventoryUnits = "inventoryUnits"  // List of InventoryUnit references
     }
     
     /// Client entity fields (match your Bubble field names exactly)
@@ -216,5 +222,54 @@ struct BubbleFields {
         static let inProgress = "In Progress"
         static let completed = "Completed"
         static let cancelled = "Cancelled"
+    }
+
+    /// InventoryItem entity fields (match your Bubble field names exactly)
+    struct InventoryItem {
+        static let id = "_id"
+        static let name = "name"
+        static let description = "description"
+        static let quantity = "quantity"
+        static let unit = "unit"
+        static let tags = "tags"
+        static let company = "company"
+        static let sku = "sku"
+        static let notes = "notes"
+        static let imageUrl = "imageUrl"
+        static let deletedAt = "deletedAt"
+    }
+
+    /// InventoryUnit entity fields (match your Bubble field names exactly)
+    struct InventoryUnit {
+        static let id = "_id"
+        static let display = "display"
+        static let company = "company"
+        static let isDefault = "isDefault"
+        static let sortOrder = "sortOrder"
+        static let deletedAt = "deletedAt"
+    }
+
+    /// InventorySnapshot entity fields (match your Bubble field names exactly)
+    struct InventorySnapshot {
+        static let id = "_id"
+        static let company = "company"
+        static let createdAt = "createdAt"
+        static let createdBy = "createdBy"
+        static let isAutomatic = "isAutomatic"
+        static let itemCount = "itemCount"
+        static let notes = "notes"
+    }
+
+    /// InventorySnapshotItem entity fields (match your Bubble field names exactly)
+    struct InventorySnapshotItem {
+        static let id = "_id"
+        static let snapshot = "snapshot"
+        static let originalItemId = "originalItemId"
+        static let name = "name"
+        static let quantity = "quantity"
+        static let unitDisplay = "unitDisplay"
+        static let sku = "sku"
+        static let tags = "tags"
+        static let description = "description"
     }
 }

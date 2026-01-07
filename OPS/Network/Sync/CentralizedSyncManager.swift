@@ -162,6 +162,12 @@ class CentralizedSyncManager {
             debugLog("→ Syncing Task Types...", enabled: DebugFlags.syncAll)
             try await syncTaskTypes()
 
+            debugLog("→ Syncing Inventory Units...", enabled: DebugFlags.syncAll)
+            try await syncInventoryUnits()
+
+            debugLog("→ Syncing Inventory Items...", enabled: DebugFlags.syncAll)
+            try await syncInventoryItems()
+
             debugLog("→ Syncing Projects...", enabled: DebugFlags.syncAll)
             try await syncProjects()
 
@@ -444,6 +450,16 @@ class CentralizedSyncManager {
             try modelContext.save()
             debugLog("✅ Company saved successfully", enabled: DebugFlags.syncCompany)
             print("[SYNC_COMPANY] ✅ Company synced: \(company.name)")
+
+            // Also sync inventory when company syncs
+            print("[SYNC_COMPANY] 📦 Syncing inventory...")
+            do {
+                try await syncInventory()
+            } catch {
+                print("[SYNC_COMPANY] ⚠️ Inventory sync failed: \(error)")
+                // Don't throw - inventory sync failure shouldn't fail company sync
+            }
+
             print("[SYNC_COMPANY] ========== SYNC COMPANY END (SUCCESS) ==========")
         } catch {
             debugLog("❌ Sync failed with error: \(error)", enabled: DebugFlags.syncCompany)
@@ -663,6 +679,159 @@ class CentralizedSyncManager {
         } catch {
             print("[SYNC_TASK_TYPES] ❌ Failed: \(error)")
             throw error
+        }
+    }
+
+    // MARK: - Inventory Sync
+
+    /// Sync all inventory data (units and items)
+    func syncInventory() async throws {
+        print("[SYNC_INVENTORY] 📦 ========== SYNC INVENTORY START ==========")
+
+        guard let companyId = currentUser?.companyId else {
+            print("[SYNC_INVENTORY] ⚠️ No company ID")
+            throw SyncError.missingCompanyId
+        }
+
+        print("[SYNC_INVENTORY] Company ID: \(companyId)")
+
+        // Sync units first (items depend on units)
+        do {
+            try await syncInventoryUnits()
+        } catch {
+            print("[SYNC_INVENTORY] ⚠️ Units sync failed: \(error)")
+            // Continue to try items even if units fail
+        }
+
+        // Sync items
+        do {
+            try await syncInventoryItems()
+        } catch {
+            print("[SYNC_INVENTORY] ⚠️ Items sync failed: \(error)")
+        }
+
+        // Save all changes at once (prevents mid-sync @Query updates that cancel tasks)
+        do {
+            try modelContext.save()
+            print("[SYNC_INVENTORY] 💾 Saved all inventory changes")
+        } catch {
+            print("[SYNC_INVENTORY] ⚠️ Failed to save: \(error)")
+        }
+
+        print("[SYNC_INVENTORY] 📦 ========== SYNC INVENTORY END ==========")
+    }
+
+    /// Sync inventory units for the company
+    func syncInventoryUnits() async throws {
+        print("[SYNC_INVENTORY_UNITS] 📦 Syncing inventory units...")
+
+        guard let companyId = currentUser?.companyId else {
+            print("[SYNC_INVENTORY_UNITS] ⚠️ No company ID")
+            throw SyncError.missingCompanyId
+        }
+
+        do {
+            // Fetch from Bubble
+            let dtos = try await apiService.fetchCompanyInventoryUnits(companyId: companyId)
+
+            // Handle deletions
+            let remoteIds = Set(dtos.map { $0.id })
+            try await handleInventoryUnitDeletions(keepingIds: remoteIds)
+
+            // Upsert each inventory unit
+            for dto in dtos {
+                let unit = try await getOrCreateInventoryUnit(id: dto.id)
+
+                unit.display = dto.display
+                unit.companyId = dto.company ?? companyId
+                unit.isDefault = dto.isDefault ?? false
+                unit.sortOrder = dto.sortOrder ?? 0
+
+                // Parse deletedAt if present
+                if let deletedAtString = dto.deletedAt {
+                    let formatter = ISO8601DateFormatter()
+                    unit.deletedAt = formatter.date(from: deletedAtString)
+                } else {
+                    unit.deletedAt = nil
+                }
+
+                unit.needsSync = false
+                unit.lastSyncedAt = Date()
+            }
+
+            // NOTE: Don't save here - defer save until after items sync
+            // Saving here triggers @Query updates which cancels the refreshable task
+            print("[SYNC_INVENTORY_UNITS] ✅ Processed \(dtos.count) inventory units (save deferred)")
+        } catch {
+            print("[SYNC_INVENTORY_UNITS] ❌ Failed: \(error)")
+            throw error
+        }
+    }
+
+    /// Sync inventory items for the company
+    func syncInventoryItems() async throws {
+        print("[SYNC_INVENTORY_ITEMS] 📦 Syncing inventory items...")
+
+        guard let companyId = currentUser?.companyId else {
+            print("[SYNC_INVENTORY_ITEMS] ⚠️ No company ID")
+            throw SyncError.missingCompanyId
+        }
+
+        do {
+            // Fetch from Bubble
+            let dtos = try await apiService.fetchCompanyInventoryItems(companyId: companyId)
+
+            // Handle deletions
+            let remoteIds = Set(dtos.map { $0.id })
+            try await handleInventoryItemDeletions(keepingIds: remoteIds)
+
+            // Upsert each inventory item
+            for dto in dtos {
+                let item = try await getOrCreateInventoryItem(id: dto.id)
+
+                item.name = dto.name ?? "Unnamed Item"
+                item.itemDescription = dto.description
+                item.quantity = dto.quantity ?? 0
+                item.unitId = dto.unit
+                item.tagsString = dto.tags?.joined(separator: ",") ?? ""
+                item.companyId = dto.company ?? companyId
+                item.sku = dto.sku
+                item.notes = dto.notes
+                item.imageUrl = dto.imageUrl
+
+                // Parse deletedAt if present
+                if let deletedAtString = dto.deletedAt {
+                    let formatter = ISO8601DateFormatter()
+                    item.deletedAt = formatter.date(from: deletedAtString)
+                } else {
+                    item.deletedAt = nil
+                }
+
+                item.needsSync = false
+                item.lastSyncedAt = Date()
+            }
+
+            // Link inventory items to their units
+            try await linkInventoryItemsToUnits()
+
+            // NOTE: Save is handled by syncInventory() to avoid mid-sync @Query updates
+            print("[SYNC_INVENTORY_ITEMS] ✅ Processed \(dtos.count) inventory items (save deferred)")
+        } catch {
+            print("[SYNC_INVENTORY_ITEMS] ❌ Failed: \(error)")
+            throw error
+        }
+    }
+
+    /// Link inventory items to their inventory units
+    private func linkInventoryItemsToUnits() async throws {
+        let items = try modelContext.fetch(FetchDescriptor<InventoryItem>())
+        let units = try modelContext.fetch(FetchDescriptor<InventoryUnit>())
+        let unitsById = Dictionary(uniqueKeysWithValues: units.map { ($0.id, $0) })
+
+        for item in items {
+            if let unitId = item.unitId {
+                item.unit = unitsById[unitId]
+            }
         }
     }
 
@@ -1826,6 +1995,20 @@ class CentralizedSyncManager {
             }
         }
 
+        // Link inventoryItem → unit relationships
+        let inventoryItems = try modelContext.fetch(FetchDescriptor<InventoryItem>())
+        for item in inventoryItems {
+            if let unitId = item.unitId, !unitId.isEmpty, item.unit == nil {
+                let unitDescriptor = FetchDescriptor<InventoryUnit>(
+                    predicate: #Predicate { $0.id == unitId }
+                )
+                if let unit = try modelContext.fetch(unitDescriptor).first {
+                    item.unit = unit
+                    linkedCount += 1
+                }
+            }
+        }
+
         try modelContext.save()
         print("[LINK_RELATIONSHIPS] ✅ Linked \(linkedCount) relationships")
     }
@@ -2007,6 +2190,55 @@ class CentralizedSyncManager {
         }
     }
 
+    private func handleInventoryUnitDeletions(keepingIds: Set<String>) async throws {
+        let descriptor = FetchDescriptor<InventoryUnit>()
+        let localUnits = try modelContext.fetch(descriptor)
+
+        var deletedCount = 0
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+
+        for unit in localUnits {
+            if !keepingIds.contains(unit.id) {
+                // Only delete if not already deleted and has been synced before
+                if unit.deletedAt == nil &&
+                   (unit.lastSyncedAt ?? .distantPast) > thirtyDaysAgo &&
+                   !unit.isDefault {
+                    print("[DELETION] 🗑️ Soft deleting inventory unit: \(unit.display)")
+                    unit.deletedAt = Date()
+                    deletedCount += 1
+                }
+            }
+        }
+
+        if deletedCount > 0 {
+            print("[DELETION] ✅ Soft deleted \(deletedCount) inventory units")
+        }
+    }
+
+    private func handleInventoryItemDeletions(keepingIds: Set<String>) async throws {
+        let descriptor = FetchDescriptor<InventoryItem>()
+        let localItems = try modelContext.fetch(descriptor)
+
+        var deletedCount = 0
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+
+        for item in localItems {
+            if !keepingIds.contains(item.id) {
+                // Only delete if not already deleted and has been synced before
+                if item.deletedAt == nil &&
+                   (item.lastSyncedAt ?? .distantPast) > thirtyDaysAgo {
+                    print("[DELETION] 🗑️ Soft deleting inventory item: \(item.name)")
+                    item.deletedAt = Date()
+                    deletedCount += 1
+                }
+            }
+        }
+
+        if deletedCount > 0 {
+            print("[DELETION] ✅ Soft deleted \(deletedCount) inventory items")
+        }
+    }
+
     // MARK: - Notification Scheduling
 
     /// Schedule local advance notice notifications for user's assigned tasks
@@ -2084,6 +2316,26 @@ class CentralizedSyncManager {
             return existing
         }
         let new = CalendarEvent(id: id, projectId: "", companyId: "", title: "Event", startDate: nil, endDate: nil, color: "#59779F")
+        modelContext.insert(new)
+        return new
+    }
+
+    private func getOrCreateInventoryUnit(id: String) async throws -> InventoryUnit {
+        let descriptor = FetchDescriptor<InventoryUnit>(predicate: #Predicate { $0.id == id })
+        if let existing = try modelContext.fetch(descriptor).first {
+            return existing
+        }
+        let new = InventoryUnit(id: id, display: "unit", companyId: "", isDefault: false, sortOrder: 0)
+        modelContext.insert(new)
+        return new
+    }
+
+    private func getOrCreateInventoryItem(id: String) async throws -> InventoryItem {
+        let descriptor = FetchDescriptor<InventoryItem>(predicate: #Predicate { $0.id == id })
+        if let existing = try modelContext.fetch(descriptor).first {
+            return existing
+        }
+        let new = InventoryItem(id: id, name: "Unnamed Item", quantity: 0, companyId: "")
         modelContext.insert(new)
         return new
     }

@@ -15,6 +15,7 @@ struct AppSettingsView: View {
     @State private var showDataSettings = false
     @State private var showSecuritySettings = false
     @State private var showProjectSettings = false
+    @State private var showInventorySettings = false
     @State private var showDeveloperDashboard = false
     @State private var developerModeEnabled: Bool = false
     @State private var developerModeExplicitlyDisabled: Bool = false
@@ -92,6 +93,20 @@ struct AppSettingsView: View {
                                 title: "Project Settings",
                                 description: "Manage task types and project defaults",
                                 iconName: "hammer.circle"
+                            )
+                        }
+                    }
+
+                    // Inventory Settings - only for users with inventory access
+                    if let user = dataController.currentUser,
+                       user.inventoryAccess {
+                        Button {
+                            showInventorySettings = true
+                        } label: {
+                            SettingsRowCard(
+                                title: "Inventory Settings",
+                                description: "Manage units of measurement",
+                                iconName: "shippingbox"
                             )
                         }
                     }
@@ -178,6 +193,12 @@ struct AppSettingsView: View {
         .fullScreenCover(isPresented: $showProjectSettings) {
             NavigationStack {
                 ProjectSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showInventorySettings) {
+            NavigationStack {
+                InventorySettingsView()
                     .environmentObject(dataController)
             }
         }

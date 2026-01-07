@@ -34,7 +34,8 @@ final class User {
     var hasCompletedAppOnboarding: Bool = false  // Track if user has completed onboarding
     var hasCompletedAppTutorial: Bool = false  // Track if user has completed the interactive tutorial
     var isCompanyAdmin: Bool = false  // Whether user is an admin for their company
-    
+    var inventoryAccess: Bool = false  // Whether user can access inventory feature
+
     // Stripe integration
     var stripeCustomerId: String?  // User's Stripe customer ID (for plan holders)
 

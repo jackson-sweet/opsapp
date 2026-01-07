@@ -25,6 +25,7 @@ struct DeveloperDashboard: View {
         case apiCalls = "API Calls"
         case clearData = "Clear Data"
         case taskTypes = "Task Types"
+        case inventoryUnits = "Inventory Units"
 
         var icon: String {
             switch self {
@@ -37,6 +38,7 @@ struct DeveloperDashboard: View {
             case .apiCalls: return "network"
             case .clearData: return "trash.circle"
             case .taskTypes: return "square.grid.2x2"
+            case .inventoryUnits: return "shippingbox.fill"
             }
         }
 
@@ -51,6 +53,7 @@ struct DeveloperDashboard: View {
             case .apiCalls: return "Test API endpoints and responses"
             case .clearData: return "Clear local database data"
             case .taskTypes: return "Manage task type definitions"
+            case .inventoryUnits: return "Create default inventory units for company"
             }
         }
 
@@ -65,6 +68,7 @@ struct DeveloperDashboard: View {
             case .apiCalls: return Color.purple
             case .clearData: return OPSStyle.Colors.errorStatus
             case .taskTypes: return Color.orange
+            case .inventoryUnits: return Color.teal
             }
         }
     }
@@ -149,6 +153,10 @@ struct DeveloperDashboard: View {
                                     selectedTool = .taskTypes
                                 }
 
+                                ToolCard(tool: .inventoryUnits) {
+                                    selectedTool = .inventoryUnits
+                                }
+
                                 ToolCard(tool: .clearData) {
                                     selectedTool = .clearData
                                 }
@@ -213,6 +221,9 @@ struct DeveloperDashboard: View {
                         .environmentObject(dataController)
                 case .taskTypes:
                     TaskTypesDebugView()
+                        .environmentObject(dataController)
+                case .inventoryUnits:
+                    CreateDefaultInventoryUnitsView()
                         .environmentObject(dataController)
                 }
             }

@@ -13,6 +13,7 @@ struct AppHeader: View {
         case settings
         case schedule
         case jobBoard
+        case inventory
     }
     
     @EnvironmentObject private var dataController: DataController
@@ -36,6 +37,8 @@ struct AppHeader: View {
             return "SCHEDULE"
         case .jobBoard:
             return "JOB BOARD"
+        case .inventory:
+            return "INVENTORY"
         }
     }
     
@@ -197,7 +200,7 @@ struct AppHeader: View {
                 }
                 
                 // User information if available
-                if headerType == .settings || headerType == .jobBoard {
+                if headerType == .settings || headerType == .jobBoard || headerType == .inventory {
                     if let user = dataController.currentUser {
                         VStack(alignment: .trailing, spacing: 2) {
                             // Name and role

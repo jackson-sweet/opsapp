@@ -40,6 +40,9 @@ struct CompanyDTO: Codable {
     let calendarEventsList: [BubbleReference]?
     let defaultProjectColor: String?
     let taskTypes: [BubbleReference]?
+
+    // Inventory
+    let inventoryUnits: [BubbleReference]?
     
     // Client management
     let clients: [BubbleReference]?
@@ -134,6 +137,9 @@ struct CompanyDTO: Codable {
         case calendarEventsList = "calendarEventsList"
         case defaultProjectColor = "defaultProjectColor"
         case taskTypes = "taskTypes"
+
+        // Inventory
+        case inventoryUnits = "inventoryUnits"
 
         // Client management
         case clients = "clients"
@@ -236,6 +242,7 @@ struct CompanyDTO: Codable {
         self.lateProjects = try container.decodeIfPresent([BubbleReference].self, forKey: .lateProjects)
         self.calendarEventsList = try container.decodeIfPresent([BubbleReference].self, forKey: .calendarEventsList)
         self.taskTypes = try container.decodeIfPresent([BubbleReference].self, forKey: .taskTypes)
+        self.inventoryUnits = try container.decodeIfPresent([BubbleReference].self, forKey: .inventoryUnits)
         self.clients = try container.decodeIfPresent([BubbleReference].self, forKey: .clients)
         self.estimates = try container.decodeIfPresent([BubbleReference].self, forKey: .estimates)
         self.invoices = try container.decodeIfPresent([BubbleReference].self, forKey: .invoices)

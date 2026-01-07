@@ -23,6 +23,11 @@ struct MainTabView: View {
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
     @ObservedObject private var inProgressManager = InProgressManager.shared
     @State private var userRole: UserRole? = nil // Track user role changes explicitly
+
+    // Track inventory access for conditional tab
+    private var hasInventoryAccess: Bool {
+        dataController.currentUser?.inventoryAccess ?? false
+    }
     
     // Observer for fetch active project notifications
     private let fetchProjectObserver = NotificationCenter.default
@@ -56,7 +61,7 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
-    // Dynamic tabs based on user role
+    // Dynamic tabs based on user role and inventory access
     private var tabs: [TabItem] {
         var baseTabs: [TabItem] = [
             TabItem(iconName: "house.fill")
@@ -65,6 +70,11 @@ struct MainTabView: View {
         // Add Job Board tab for all users (admin, office crew, and field crew)
         baseTabs.append(TabItem(iconName: "briefcase.fill"))
 
+        // Add Inventory tab if user has inventory access
+        if hasInventoryAccess {
+            baseTabs.append(TabItem(iconName: "shippingbox.fill"))
+        }
+
         // Add Schedule and Settings for all users
         baseTabs.append(contentsOf: [
             TabItem(iconName: "calendar"),
@@ -72,6 +82,15 @@ struct MainTabView: View {
         ])
 
         return baseTabs
+    }
+
+    // Get tab index for specific tab type, accounting for conditional tabs
+    private var scheduleTabIndex: Int {
+        hasInventoryAccess ? 3 : 2
+    }
+
+    private var jobBoardTabIndex: Int {
+        1
     }
 
     // Check if currently on Settings tab
@@ -106,17 +125,37 @@ struct MainTabView: View {
             // Content views with transition - each complete view slides as a unit
             ZStack {
                 // All users now have Job Board access
-                switch selectedTab {
-                case 0:
-                    HomeView()
-                case 1:
-                    JobBoardView()
-                case 2:
-                    ScheduleView()
-                case 3:
-                    SettingsView()
-                default:
-                    HomeView()
+                // Tab indices shift when inventory tab is present
+                if hasInventoryAccess {
+                    // With inventory: Home(0), JobBoard(1), Inventory(2), Schedule(3), Settings(4)
+                    switch selectedTab {
+                    case 0:
+                        HomeView()
+                    case 1:
+                        JobBoardView()
+                    case 2:
+                        InventoryView()
+                    case 3:
+                        ScheduleView()
+                    case 4:
+                        SettingsView()
+                    default:
+                        HomeView()
+                    }
+                } else {
+                    // Without inventory: Home(0), JobBoard(1), Schedule(2), Settings(3)
+                    switch selectedTab {
+                    case 0:
+                        HomeView()
+                    case 1:
+                        JobBoardView()
+                    case 2:
+                        ScheduleView()
+                    case 3:
+                        SettingsView()
+                    default:
+                        HomeView()
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -236,7 +275,7 @@ struct MainTabView: View {
         .onReceive(openScheduleObserver) { _ in
             print("[PUSH_NAVIGATION] Opening schedule view")
             withAnimation(.easeInOut(duration: 0.2)) {
-                selectedTab = 2 // Schedule tab
+                selectedTab = scheduleTabIndex
             }
         }
 
@@ -244,7 +283,7 @@ struct MainTabView: View {
         .onReceive(openJobBoardObserver) { _ in
             print("[PUSH_NAVIGATION] Opening job board")
             withAnimation(.easeInOut(duration: 0.2)) {
-                selectedTab = 1 // Job Board tab
+                selectedTab = jobBoardTabIndex
             }
         }
 
@@ -253,13 +292,25 @@ struct MainTabView: View {
             previousTab = oldValue
 
             // Track tab selection for analytics
+            // Tab indices shift when inventory is present
             let tabName: TabName = {
-                switch newValue {
-                case 0: return .home
-                case 1: return .jobBoard
-                case 2: return .schedule
-                case 3: return .settings
-                default: return .home
+                if hasInventoryAccess {
+                    switch newValue {
+                    case 0: return .home
+                    case 1: return .jobBoard
+                    case 2: return .inventory
+                    case 3: return .schedule
+                    case 4: return .settings
+                    default: return .home
+                    }
+                } else {
+                    switch newValue {
+                    case 0: return .home
+                    case 1: return .jobBoard
+                    case 2: return .schedule
+                    case 3: return .settings
+                    default: return .home
+                    }
                 }
             }()
             AnalyticsManager.shared.trackTabSelected(tabName: tabName)
@@ -315,6 +366,16 @@ struct MainTabView: View {
             if let newRole = newUser?.role {
                 userRole = newRole
                 print("[MAIN_TAB_VIEW] Updated userRole to: \(newRole)")
+            }
+        }
+        .onChange(of: dataController.currentUser?.inventoryAccess) { oldValue, newValue in
+            print("[MAIN_TAB_VIEW] inventoryAccess changed from \(String(describing: oldValue)) to \(String(describing: newValue))")
+            print("[MAIN_TAB_VIEW] After inventoryAccess change - Tab count: \(tabs.count)")
+
+            // Ensure selected tab is valid for new tab count
+            let newTabCount = tabs.count
+            if selectedTab >= newTabCount {
+                selectedTab = 0 // Reset to home if current tab no longer exists
             }
         }
     }

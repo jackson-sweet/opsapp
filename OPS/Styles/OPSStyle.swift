@@ -444,6 +444,78 @@ enum OPSStyle {
         static let clock = "clock"
         static let copy = "doc.on.doc"
     }
+
+    // MARK: - Inventory
+    /// Reusable styling constants for inventory views
+    enum Inventory {
+        /// Size variants for tag badges
+        enum TagSize {
+            case compact   // For display in cards, lists
+            case standard  // Default size
+            case button    // Larger for touch targets in management screens
+
+            var font: Font {
+                switch self {
+                case .compact: return Typography.smallCaption
+                case .standard: return Typography.smallCaption
+                case .button: return Typography.caption
+                }
+            }
+
+            var paddingHorizontal: CGFloat {
+                switch self {
+                case .compact: return 6
+                case .standard: return 6
+                case .button: return 12
+                }
+            }
+
+            var paddingVertical: CGFloat {
+                switch self {
+                case .compact: return 2
+                case .standard: return 2
+                case .button: return 8
+                }
+            }
+
+            var cornerRadius: CGFloat {
+                switch self {
+                case .compact: return 4
+                case .standard: return 4
+                case .button: return 6
+                }
+            }
+        }
+
+        // Tag badge styling (monochromatic)
+        enum TagBadge {
+            static let font = Typography.smallCaption
+            static let textColor = Colors.secondaryText
+            static let backgroundColor = Colors.cardBackgroundDark
+            static let borderColor = Colors.cardBorder
+            static let paddingHorizontal: CGFloat = 8
+            static let paddingVertical: CGFloat = 4
+            static let cornerRadius: CGFloat = Layout.cornerRadius
+            static let spacing: CGFloat = 6
+        }
+
+        // Status/threshold badge styling
+        enum ThresholdBadge {
+            static let font = Typography.smallCaption
+            static let paddingHorizontal: CGFloat = 6
+            static let paddingVertical: CGFloat = 2
+            static let cornerRadius: CGFloat = 4
+            static let maxWidth: CGFloat = 60  // Limit badge size
+        }
+
+        // Card scaling
+        enum CardScale {
+            static let minScale: CGFloat = 0.8
+            static let maxScale: CGFloat = 1.5
+            static let tagVisibilityThreshold: CGFloat = 0.9
+            static let metadataVisibilityThreshold: CGFloat = 1.0
+        }
+    }
 }
 
 // OPSComponents.swift

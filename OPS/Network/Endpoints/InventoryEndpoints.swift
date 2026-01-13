@@ -355,13 +355,27 @@ extension APIService {
     ///   - updates: Dictionary of fields to update
     func updateInventoryItem(id: String, updates: [String: Any]) async throws {
         print("[UPDATE_INVENTORY_ITEM] 📝 Updating inventory item: \(id)")
+        print("[UPDATE_INVENTORY_ITEM] 📋 Updates keys: \(updates.keys.joined(separator: ", "))")
+
+        // Debug: Log each value type to catch non-serializable objects
+        for (key, value) in updates {
+            let valueType = type(of: value)
+            print("[UPDATE_INVENTORY_ITEM] 🔍 \(key): \(valueType) = \(value)")
+        }
 
         guard !updates.isEmpty else {
             print("[UPDATE_INVENTORY_ITEM] ⚠️ No updates to send")
             return
         }
 
-        let bodyData = try JSONSerialization.data(withJSONObject: updates)
+        let bodyData: Data
+        do {
+            bodyData = try JSONSerialization.data(withJSONObject: updates)
+        } catch {
+            print("[UPDATE_INVENTORY_ITEM] ❌ JSON serialization failed: \(error)")
+            print("[UPDATE_INVENTORY_ITEM] ❌ Updates that failed: \(updates)")
+            throw error
+        }
 
         if let jsonString = String(data: bodyData, encoding: .utf8) {
             print("[UPDATE_INVENTORY_ITEM] 📤 Request body: \(jsonString)")
@@ -594,6 +608,138 @@ extension APIService {
 
         print("[API_SNAPSHOT] ✅ Full snapshot created with \(items.count) items")
         return snapshot.id
+    }
+
+    // MARK: - Tag Fetching
+
+    /// Fetch all tags for a company
+    /// - Parameter companyId: The company ID
+    /// - Returns: Array of tag DTOs
+    func fetchCompanyTags(companyId: String) async throws -> [InventoryTagDTO] {
+        print("[API_TAGS] 🏷️ Fetching tags for company: \(companyId)")
+
+        let constraints: [[String: Any]] = [
+            [
+                "key": BubbleFields.Tag.company,
+                "constraint_type": "equals",
+                "value": companyId
+            ],
+            [
+                "key": BubbleFields.Tag.deletedAt,
+                "constraint_type": "is_empty"
+            ]
+        ]
+
+        let apiService = self
+        let tags: [InventoryTagDTO] = try await withCheckedThrowingContinuation { continuation in
+            Task.detached {
+                do {
+                    let result: [InventoryTagDTO] = try await apiService.fetchBubbleObjectsWithArrayConstraintsPaginated(
+                        objectType: BubbleFields.Types.tag,
+                        constraints: constraints,
+                        sortField: BubbleFields.Tag.name
+                    )
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+
+        print("[API_TAGS] ✅ Fetched \(tags.count) tags")
+        return tags
+    }
+
+    // MARK: - Tag Creation
+
+    /// Create a new tag
+    /// - Parameter tag: The tag DTO to create
+    /// - Returns: The created tag DTO with server-assigned ID
+    func createTag(_ tag: InventoryTagDTO) async throws -> InventoryTagDTO {
+        print("[API_TAG_CREATE] 🔵 Creating tag: \(tag.name ?? "unknown")")
+
+        var tagData: [String: Any] = [
+            BubbleFields.Tag.name: tag.name ?? "",
+            BubbleFields.Tag.company: tag.company ?? ""
+        ]
+
+        if let warning = tag.warningThreshold {
+            tagData[BubbleFields.Tag.warningThreshold] = warning
+        }
+
+        if let critical = tag.criticalThreshold {
+            tagData[BubbleFields.Tag.criticalThreshold] = critical
+        }
+
+        let bodyData = try JSONSerialization.data(withJSONObject: tagData)
+
+        print("[API_TAG_CREATE] 📡 Sending POST request to Bubble...")
+        let response: InventoryTagCreationResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.tag)",
+            method: "POST",
+            body: bodyData,
+            requiresAuth: false
+        )
+
+        print("[API_TAG_CREATE] ✅ Bubble returned ID: \(response.id)")
+
+        return InventoryTagDTO(
+            id: response.id,
+            name: tag.name,
+            warningThreshold: tag.warningThreshold,
+            criticalThreshold: tag.criticalThreshold,
+            company: tag.company
+        )
+    }
+
+    // MARK: - Tag Updates
+
+    /// Update a tag
+    /// - Parameters:
+    ///   - id: The tag ID
+    ///   - updates: Dictionary of fields to update
+    func updateTag(id: String, updates: [String: Any]) async throws {
+        print("[UPDATE_TAG] 📝 Updating tag: \(id)")
+
+        guard !updates.isEmpty else {
+            print("[UPDATE_TAG] ⚠️ No updates to send")
+            return
+        }
+
+        let bodyData = try JSONSerialization.data(withJSONObject: updates)
+
+        print("[UPDATE_TAG] 📡 Sending PATCH request to Bubble...")
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.tag)/\(id)",
+            method: "PATCH",
+            body: bodyData,
+            requiresAuth: false
+        )
+
+        print("[UPDATE_TAG] ✅ Tag successfully updated in Bubble")
+    }
+
+    // MARK: - Tag Deletion
+
+    /// Delete a tag (soft delete)
+    /// - Parameter id: The tag ID to delete
+    func deleteTag(id: String) async throws {
+        print("[API] Deleting tag: \(id)")
+
+        let updateData: [String: Any] = [
+            BubbleFields.Tag.deletedAt: ISO8601DateFormatter().string(from: Date())
+        ]
+
+        let bodyData = try JSONSerialization.data(withJSONObject: updateData)
+
+        let _: EmptyResponse = try await executeRequest(
+            endpoint: "api/1.1/obj/\(BubbleFields.Types.tag)/\(id)",
+            method: "PATCH",
+            body: bodyData,
+            requiresAuth: false
+        )
+
+        print("[API] ✅ Tag soft deleted successfully")
     }
 }
 

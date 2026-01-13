@@ -20,7 +20,7 @@ struct InventoryManageTagsSheet: View {
     @State private var searchText: String = ""
 
     private var allTags: [String] {
-        Set(items.flatMap { $0.tags }).sorted()
+        Set(items.flatMap { $0.tagNames }).sorted()
     }
 
     private var filteredTags: [String] {
@@ -31,7 +31,7 @@ struct InventoryManageTagsSheet: View {
     }
 
     private func itemCount(for tag: String) -> Int {
-        items.filter { $0.tags.contains(tag) }.count
+        items.filter { $0.tagNames.contains(tag) }.count
     }
 
     var body: some View {
@@ -155,7 +155,7 @@ struct InventoryManageTagsSheet: View {
                 .frame(width: 1, height: 12)
 
             // Total items with tags
-            let itemsWithTags = items.filter { !$0.tags.isEmpty }.count
+            let itemsWithTags = items.filter { !$0.tagNames.isEmpty }.count
             HStack(spacing: 4) {
                 Text("\(itemsWithTags)")
                     .font(OPSStyle.Typography.captionBold)
@@ -226,21 +226,19 @@ struct InventoryManageTagsSheet: View {
         let count = itemCount(for: tag)
 
         return HStack(spacing: OPSStyle.Layout.spacing3) {
-            // Tag name and count
-            VStack(alignment: .leading, spacing: 2) {
-                Text(tag)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+            // Tag badge with count
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                InventoryTagBadge(tag: tag, size: .button)
 
                 Text("\(count) item\(count == 1 ? "" : "s")")
-                    .font(OPSStyle.Typography.smallCaption)
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
 
             Spacer()
 
             // Action buttons
-            HStack(spacing: 2) {
+            HStack(spacing: 4) {
                 // Rename button
                 actionButton(icon: "pencil") {
                     renameTagText = tag
@@ -253,7 +251,7 @@ struct InventoryManageTagsSheet: View {
                 }
             }
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .overlay(
@@ -269,13 +267,13 @@ struct InventoryManageTagsSheet: View {
     private func actionButton(icon: String, isDestructive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .font(.system(size: 14))
                 .foregroundColor(isDestructive ? OPSStyle.Colors.errorStatus.opacity(0.7) : OPSStyle.Colors.secondaryText)
-                .frame(width: 32, height: 32)
+                .frame(width: 40, height: 40)
                 .background(OPSStyle.Colors.background)
-                .cornerRadius(4)
+                .cornerRadius(6)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: 6)
                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
         }

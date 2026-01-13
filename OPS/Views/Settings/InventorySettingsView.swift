@@ -32,7 +32,19 @@ struct InventorySettingsView: View {
     // Import settings
     @State private var showingImportSheet = false
 
+    // Tag settings
+    @State private var showingAddTag = false
+    @State private var editingTag: InventoryTag? = nil
+
     @Query private var allUnits: [InventoryUnit]
+    @Query private var allTags: [InventoryTag]
+
+    /// Tags for the current company
+    private var companyTags: [InventoryTag] {
+        allTags
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
 
     private var companyId: String {
         dataController.currentUser?.companyId ?? ""
@@ -53,6 +65,11 @@ struct InventorySettingsView: View {
     }
 
     @Query private var allItems: [InventoryItem]
+
+    /// All tag names from company tags (for display)
+    private var existingTagNames: [String] {
+        companyTags.map { $0.name }
+    }
 
     var body: some View {
         ZStack {
@@ -80,6 +97,9 @@ struct InventorySettingsView: View {
                         // QUICK ADJUST SECTION
                         adjustmentSettingsSection
 
+                        // TAG THRESHOLDS SECTION
+                        tagThresholdsSection
+
                         // Error
                         if let error = errorMessage {
                             Text(error)
@@ -106,6 +126,22 @@ struct InventorySettingsView: View {
         .sheet(isPresented: $showingImportSheet) {
             SpreadsheetImportSheet()
                 .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingAddTag) {
+            TagEditSheet(
+                existingTag: nil,
+                onSave: { tagName, warning, critical in
+                    createTag(tagName: tagName, warning: warning, critical: critical)
+                }
+            )
+        }
+        .sheet(item: $editingTag) { tag in
+            TagEditSheet(
+                existingTag: tag,
+                onSave: { tagName, warning, critical in
+                    updateTag(tag, name: tagName, warning: warning, critical: critical)
+                }
+            )
         }
         .alert("Add Unit", isPresented: $showingAddUnit) {
             TextField("Unit name", text: $newUnitName)
@@ -434,6 +470,212 @@ struct InventorySettingsView: View {
 
     // MARK: - Adjustment Settings Section
 
+    // MARK: - Tag Thresholds Section
+
+    private var tagThresholdsSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            // Section header
+            HStack {
+                Text("TAGS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Spacer()
+
+                Button(action: { showingAddTag = true }) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Image(systemName: OPSStyle.Icons.plus)
+                        Text("Add")
+                    }
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+            // Tags card
+            VStack(spacing: 0) {
+                if companyTags.isEmpty {
+                    // Empty state
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: "tag")
+                            .font(.system(size: 24))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        Text("No tags configured")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        Text("Create tags to categorize inventory items")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, OPSStyle.Layout.spacing4)
+                } else {
+                    // Tag rows
+                    ForEach(companyTags) { tag in
+                        VStack(spacing: 0) {
+                            Button(action: { editingTag = tag }) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(tag.name)
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                        if tag.hasThresholds {
+                                            HStack(spacing: OPSStyle.Layout.spacing2) {
+                                                if let warning = tag.warningThreshold {
+                                                    HStack(spacing: 4) {
+                                                        Circle()
+                                                            .fill(OPSStyle.Colors.warningStatus)
+                                                            .frame(width: 6, height: 6)
+                                                        Text("≤\(formatThresholdValue(warning))")
+                                                            .font(OPSStyle.Typography.smallCaption)
+                                                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                                                    }
+                                                }
+                                                if let critical = tag.criticalThreshold {
+                                                    HStack(spacing: 4) {
+                                                        Circle()
+                                                            .fill(OPSStyle.Colors.errorStatus)
+                                                            .frame(width: 6, height: 6)
+                                                        Text("≤\(formatThresholdValue(critical))")
+                                                            .font(OPSStyle.Typography.smallCaption)
+                                                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            Text("No thresholds")
+                                                .font(OPSStyle.Typography.smallCaption)
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    Button(action: { deleteTag(tag) }) {
+                                        Image(systemName: OPSStyle.Icons.trash)
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                                    }
+                                }
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                .padding(.vertical, OPSStyle.Layout.spacing3)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            if tag.id != companyTags.last?.id {
+                                Divider()
+                                    .background(OPSStyle.Colors.cardBorder)
+                                    .padding(.leading, OPSStyle.Layout.spacing3)
+                            }
+                        }
+                    }
+                }
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+            // Help text
+            Text("Items inherit the stricter threshold when both item and tag thresholds exist")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+        }
+    }
+
+    private func formatThresholdValue(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(Int(value))
+        } else {
+            return String(format: "%.1f", value)
+        }
+    }
+
+    private func createTag(tagName: String, warning: Double?, critical: Double?) {
+        let newId = UUID().uuidString
+        let newTag = InventoryTag(
+            id: newId,
+            name: tagName.trimmingCharacters(in: .whitespaces),
+            warningThreshold: warning,
+            criticalThreshold: critical,
+            companyId: companyId
+        )
+        newTag.needsSync = true
+
+        modelContext.insert(newTag)
+
+        Task {
+            do {
+                let dto = InventoryTagDTO(
+                    id: newId,
+                    name: newTag.name,
+                    warningThreshold: warning,
+                    criticalThreshold: critical,
+                    company: companyId
+                )
+                let created = try await dataController.apiService.createTag(dto)
+
+                await MainActor.run {
+                    newTag.id = created.id
+                    newTag.needsSync = false
+                    newTag.lastSyncedAt = Date()
+                    try? modelContext.save()
+                }
+            } catch {
+                print("[TAG] Failed to create: \(error)")
+            }
+        }
+    }
+
+    private func updateTag(_ tag: InventoryTag, name: String, warning: Double?, critical: Double?) {
+        tag.name = name.trimmingCharacters(in: .whitespaces)
+        tag.warningThreshold = warning
+        tag.criticalThreshold = critical
+        tag.needsSync = true
+
+        Task {
+            do {
+                let updates = InventoryTagDTO.dictionaryFrom(tag)
+                try await dataController.apiService.updateTag(id: tag.id, updates: updates)
+
+                await MainActor.run {
+                    tag.needsSync = false
+                    tag.lastSyncedAt = Date()
+                    try? modelContext.save()
+                }
+            } catch {
+                print("[TAG] Failed to update: \(error)")
+            }
+        }
+    }
+
+    private func deleteTag(_ tag: InventoryTag) {
+        tag.deletedAt = Date()
+        tag.needsSync = true
+
+        Task {
+            do {
+                try await dataController.apiService.deleteTag(id: tag.id)
+
+                await MainActor.run {
+                    tag.needsSync = false
+                    try? modelContext.save()
+                }
+            } catch {
+                print("[TAG] Failed to delete: \(error)")
+            }
+        }
+    }
+
     private var adjustmentSettingsSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Section header
@@ -756,6 +998,199 @@ struct SnapshotSettings: Codable {
 
         let daysSinceLastSnapshot = Calendar.current.dateComponents([.day], from: lastDate, to: Date()).day ?? 0
         return daysSinceLastSnapshot >= intervalDays
+    }
+}
+
+// MARK: - Tag Edit Sheet
+
+struct TagEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let existingTag: InventoryTag?  // nil for new, non-nil for edit
+    let onSave: (String, Double?, Double?) -> Void
+
+    @State private var tagName: String = ""
+    @State private var warningThresholdText: String = ""
+    @State private var criticalThresholdText: String = ""
+
+    private var isEditing: Bool { existingTag != nil }
+
+    private var warningValue: Double? {
+        Double(warningThresholdText.trimmingCharacters(in: .whitespaces))
+    }
+
+    private var criticalValue: Double? {
+        Double(criticalThresholdText.trimmingCharacters(in: .whitespaces))
+    }
+
+    private var canSave: Bool {
+        !tagName.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                OPSStyle.Colors.background
+                    .ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
+                            // TAG NAME
+                            tagNameSection
+
+                            // THRESHOLD VALUES (optional)
+                            thresholdValuesSection
+
+                            // HELP TEXT
+                            helpSection
+                        }
+                        .padding(OPSStyle.Layout.spacing3)
+                    }
+                }
+            }
+            .standardSheetToolbar(
+                title: isEditing ? "Edit Tag" : "Add Tag",
+                actionText: "Save",
+                isActionEnabled: canSave,
+                isSaving: false,
+                onCancel: { dismiss() },
+                onAction: {
+                    onSave(tagName, warningValue, criticalValue)
+                    dismiss()
+                }
+            )
+        }
+        .presentationDetents([.medium])
+        .onAppear {
+            if let existing = existingTag {
+                tagName = existing.name
+                if let warning = existing.warningThreshold {
+                    warningThresholdText = formatValue(warning)
+                }
+                if let critical = existing.criticalThreshold {
+                    criticalThresholdText = formatValue(critical)
+                }
+            }
+        }
+    }
+
+    private var tagNameSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("TAG NAME")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            TextField("e.g. Fasteners, Lumber, Electrical", text: $tagName)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                )
+                .disabled(isEditing)  // Can't change name when editing
+                .opacity(isEditing ? 0.6 : 1.0)
+        }
+    }
+
+    private var thresholdValuesSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            Text("THRESHOLDS (OPTIONAL)")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(spacing: OPSStyle.Layout.spacing3) {
+                // Warning threshold
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Circle()
+                            .fill(OPSStyle.Colors.warningStatus)
+                            .frame(width: 8, height: 8)
+                        Text("Warning Level")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+
+                    TextField("e.g. 20", text: $warningThresholdText)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .keyboardType(.decimalPad)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
+                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        )
+                }
+
+                // Critical threshold
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Circle()
+                            .fill(OPSStyle.Colors.errorStatus)
+                            .frame(width: 8, height: 8)
+                        Text("Critical Level")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+
+                    TextField("e.g. 5", text: $criticalThresholdText)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .keyboardType(.decimalPad)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
+                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        )
+                }
+            }
+        }
+    }
+
+    private var helpSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("Items with this tag will show:")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Circle()
+                        .fill(OPSStyle.Colors.warningStatus)
+                        .frame(width: 6, height: 6)
+                    Text("LOW badge when quantity ≤ warning level")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Circle()
+                        .fill(OPSStyle.Colors.errorStatus)
+                        .frame(width: 6, height: 6)
+                    Text("CRITICAL badge when quantity ≤ critical level")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+            }
+        }
+    }
+
+    private func formatValue(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(Int(value))
+        } else {
+            return String(format: "%.1f", value)
+        }
     }
 }
 

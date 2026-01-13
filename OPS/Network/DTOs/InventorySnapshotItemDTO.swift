@@ -123,7 +123,7 @@ struct InventorySnapshotItemDTO: Codable {
             quantity: item.quantity,
             unitDisplay: item.unit?.display,
             sku: item.sku,
-            tags: item.tags,
+            tags: item.tagNames,
             description: item.itemDescription
         )
     }

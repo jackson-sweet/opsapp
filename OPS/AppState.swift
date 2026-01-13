@@ -22,6 +22,9 @@ class AppState: ObservableObject {
     // Track when home view is loading projects
     @Published var isLoadingProjects: Bool = false
 
+    // Track when inventory view is in selection mode (hides FAB)
+    @Published var isInventorySelectionMode: Bool = false
+
     // Tutorial restart flag - when true, ContentView should show the tutorial
     @Published var shouldRestartTutorial: Bool = false
 

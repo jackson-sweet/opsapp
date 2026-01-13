@@ -26,6 +26,10 @@ struct InventoryFormSheet: View {
     @State private var sku: String = ""
     @State private var notes: String = ""
 
+    // Threshold state
+    @State private var warningThresholdText: String = ""
+    @State private var criticalThresholdText: String = ""
+
     // UI state
     @State private var isSaving = false
     @State private var showingDeleteConfirmation = false
@@ -44,6 +48,7 @@ struct InventoryFormSheet: View {
 
     @Query private var allUnits: [InventoryUnit]
     @Query private var allItems: [InventoryItem]
+    @Query private var allTags: [InventoryTag]
 
     private var companyUnits: [InventoryUnit] {
         let companyId = dataController.currentUser?.companyId ?? ""
@@ -52,12 +57,13 @@ struct InventoryFormSheet: View {
             .sorted { $0.sortOrder < $1.sortOrder }
     }
 
-    private var existingTags: [String] {
+    private var companyTags: [InventoryTag] {
         let companyId = dataController.currentUser?.companyId ?? ""
-        let tags = allItems
-            .filter { $0.companyId == companyId && $0.deletedAt == nil }
-            .flatMap { $0.tags }
-        return Array(Set(tags)).sorted()
+        return allTags.filter { $0.companyId == companyId && $0.deletedAt == nil }
+    }
+
+    private var existingTags: [String] {
+        companyTags.map { $0.name }.sorted()
     }
 
     private var currentTags: [String] {
@@ -69,6 +75,13 @@ struct InventoryFormSheet: View {
 
     private var suggestedTags: [String] {
         existingTags.filter { !currentTags.contains($0) }
+    }
+
+    /// Tags that match the current input text (predictive suggestions)
+    private var predictiveTags: [String] {
+        let input = newTagInput.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !input.isEmpty else { return [] }
+        return suggestedTags.filter { $0.lowercased().contains(input) }
     }
 
     private var isEditing: Bool { item != nil }
@@ -288,36 +301,66 @@ struct InventoryFormSheet: View {
                 .disabled(newTagInput.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
-            // Suggestions
-            if !suggestedTags.isEmpty {
+            // Predictive suggestions (when typing)
+            if !predictiveTags.isEmpty {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    Text("Suggestions:")
+                    Text("MATCHES")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                    FlowLayout(spacing: OPSStyle.Layout.spacing1) {
-                        ForEach(suggestedTags, id: \.self) { tag in
-                            Button(action: { addTag(tag) }) {
-                                Text(tag)
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    .padding(.horizontal, OPSStyle.Layout.spacing2)
-                                    .padding(.vertical, OPSStyle.Layout.spacing1)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: 1)
-                                    )
-                            }
+                    FlowLayout(spacing: 8) {
+                        ForEach(predictiveTags, id: \.self) { tag in
+                            tagSuggestionPill(tag: tag)
                         }
                     }
                 }
-            } else if existingTags.isEmpty && currentTags.isEmpty {
+            }
+
+            // All available suggestions (when not typing)
+            if predictiveTags.isEmpty && !suggestedTags.isEmpty {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    Text("AVAILABLE TAGS")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    FlowLayout(spacing: 8) {
+                        ForEach(suggestedTags, id: \.self) { tag in
+                            tagSuggestionPill(tag: tag)
+                        }
+                    }
+                }
+            } else if existingTags.isEmpty && currentTags.isEmpty && predictiveTags.isEmpty {
                 Text("e.g. fastener, steel, exterior")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
+    }
+
+    /// Prominent pill button for tag suggestions (monochromatic)
+    private func tagSuggestionPill(tag: String) -> some View {
+        Button(action: {
+            addTag(tag)
+            newTagInput = "" // Clear input after selecting
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .bold))
+                Text(tag)
+                    .font(OPSStyle.Typography.caption)
+            }
+            .foregroundColor(OPSStyle.Colors.primaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Additional Details Content
@@ -327,6 +370,72 @@ struct InventoryFormSheet: View {
             inputField(title: "DESCRIPTION", placeholder: "Enter description (optional)", text: $itemDescription, field: .description, isMultiline: true)
             inputField(title: "SKU / PART NUMBER", placeholder: "Enter SKU (optional)", text: $sku, field: .sku)
             inputField(title: "NOTES", placeholder: "Enter notes (optional)", text: $notes, field: .notes, isMultiline: true)
+
+            // Threshold Settings
+            thresholdSettingsSection
+        }
+    }
+
+    // MARK: - Threshold Settings Section
+
+    private var thresholdSettingsSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("QUANTITY THRESHOLDS")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            // Warning threshold
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Circle()
+                        .fill(OPSStyle.Colors.warningStatus)
+                        .frame(width: 8, height: 8)
+                    Text("Warning Level")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+
+                TextField("e.g. 20 (optional)", text: $warningThresholdText)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .keyboardType(.decimalPad)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
+            }
+
+            // Critical threshold
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Circle()
+                        .fill(OPSStyle.Colors.errorStatus)
+                        .frame(width: 8, height: 8)
+                    Text("Critical Level")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+
+                TextField("e.g. 5 (optional)", text: $criticalThresholdText)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .keyboardType(.decimalPad)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
+            }
+
+            // Help text
+            Text("Leave empty to use tag defaults")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
     }
 
@@ -378,11 +487,20 @@ struct InventoryFormSheet: View {
         itemDescription = item.itemDescription ?? ""
         quantity = item.quantity > 0 ? formatQuantity(item.quantity) : ""
         selectedUnitId = item.unitId
-        tagsText = item.tags.joined(separator: ", ")
+        tagsText = item.tagNames.joined(separator: ", ")
         sku = item.sku ?? ""
         notes = item.notes ?? ""
 
-        if !itemDescription.isEmpty || !sku.isEmpty || !notes.isEmpty {
+        // Load threshold values
+        if let warning = item.warningThreshold {
+            warningThresholdText = formatQuantity(warning)
+        }
+        if let critical = item.criticalThreshold {
+            criticalThresholdText = formatQuantity(critical)
+        }
+
+        if !itemDescription.isEmpty || !sku.isEmpty || !notes.isEmpty ||
+           item.warningThreshold != nil || item.criticalThreshold != nil {
             isAdditionalDetailsExpanded = true
         }
     }
@@ -419,6 +537,87 @@ struct InventoryFormSheet: View {
         value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(format: "%.2f", value)
     }
 
+    /// Find existing tag or create new one in Bubble (async - waits for Bubble ID)
+    private func findOrCreateTag(name: String, companyId: String) async throws -> InventoryTag {
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+
+        // Look for existing tag with matching name (case-insensitive)
+        if let existingTag = companyTags.first(where: { $0.name.lowercased() == trimmedName.lowercased() }) {
+            // Check if this tag has been synced to Bubble (Bubble IDs are long numeric strings)
+            let isBubbleId = existingTag.id.contains("x") || existingTag.id.count > 20
+
+            if isBubbleId && !existingTag.needsSync {
+                print("[INVENTORY_FORM] 🏷️ Found existing synced tag: \(existingTag.name) (ID: \(existingTag.id))")
+                return existingTag
+            } else {
+                // Tag exists locally but needs to be created in Bubble
+                print("[INVENTORY_FORM] 🏷️ Found local tag '\(existingTag.name)' - syncing to Bubble first...")
+                let dto = InventoryTagDTO(
+                    id: "",
+                    name: existingTag.name,
+                    warningThreshold: existingTag.warningThreshold,
+                    criticalThreshold: existingTag.criticalThreshold,
+                    company: companyId
+                )
+                let created = try await dataController.apiService.createTag(dto)
+                print("[INVENTORY_FORM] ✅ Tag synced with Bubble ID: \(created.id)")
+
+                // Update local tag with Bubble ID
+                await MainActor.run {
+                    existingTag.id = created.id
+                    existingTag.needsSync = false
+                    existingTag.lastSyncedAt = Date()
+                }
+                return existingTag
+            }
+        }
+
+        // Create new tag in Bubble FIRST to get the real ID
+        print("[INVENTORY_FORM] 🏷️ Creating new tag in Bubble: \(trimmedName)")
+        let dto = InventoryTagDTO(
+            id: "", // Will be assigned by Bubble
+            name: trimmedName,
+            warningThreshold: nil,
+            criticalThreshold: nil,
+            company: companyId
+        )
+        let created = try await dataController.apiService.createTag(dto)
+        print("[INVENTORY_FORM] ✅ Tag created with Bubble ID: \(created.id)")
+
+        // Now create local tag with Bubble's ID
+        let newTag = InventoryTag(
+            id: created.id,
+            name: trimmedName,
+            companyId: companyId
+        )
+        newTag.needsSync = false
+        newTag.lastSyncedAt = Date()
+
+        await MainActor.run {
+            modelContext.insert(newTag)
+        }
+
+        return newTag
+    }
+
+    /// Apply tags to an item (clears existing and adds new ones) - async to wait for tag creation
+    private func applyTagsToItem(_ item: InventoryItem, tagNames: [String], companyId: String) async throws {
+        // Clear existing tags
+        await MainActor.run {
+            item.tags.removeAll()
+            item.tagIds.removeAll()
+        }
+
+        // Add each tag (creating in Bubble if needed)
+        for tagName in tagNames {
+            let tag = try await findOrCreateTag(name: tagName, companyId: companyId)
+            await MainActor.run {
+                item.addTag(tag)
+            }
+        }
+        print("[INVENTORY_FORM] 📋 Applied tags: \(item.tagIds)")
+    }
+
     private func saveItem() {
         guard isValid else { return }
         isSaving = true
@@ -427,15 +626,21 @@ struct InventoryFormSheet: View {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let parsedQuantity = Double(quantity) ?? 0
         let parsedTags = currentTags
+        let companyId = dataController.currentUser?.companyId ?? ""
+
+        // Parse threshold values (nil if empty or invalid)
+        let parsedWarningThreshold: Double? = Double(warningThresholdText.trimmingCharacters(in: .whitespaces))
+        let parsedCriticalThreshold: Double? = Double(criticalThresholdText.trimmingCharacters(in: .whitespaces))
 
         if let existingItem = item {
             existingItem.name = trimmedName
             existingItem.itemDescription = itemDescription.isEmpty ? nil : itemDescription
             existingItem.quantity = parsedQuantity
             existingItem.unitId = selectedUnitId
-            existingItem.tagsString = parsedTags.joined(separator: ",")
             existingItem.sku = sku.isEmpty ? nil : sku
             existingItem.notes = notes.isEmpty ? nil : notes
+            existingItem.warningThreshold = parsedWarningThreshold
+            existingItem.criticalThreshold = parsedCriticalThreshold
             existingItem.needsSync = true
 
             if let unitId = selectedUnitId {
@@ -446,24 +651,30 @@ struct InventoryFormSheet: View {
 
             Task {
                 do {
+                    // Apply tags FIRST (creates any new tags in Bubble and waits for IDs)
+                    try await applyTagsToItem(existingItem, tagNames: parsedTags, companyId: companyId)
+
+                    // Now save with valid Bubble tag IDs
                     let updates = InventoryItemDTO.dictionaryFrom(existingItem)
+                    print("[INVENTORY_FORM] 📤 Saving item: \(existingItem.id)")
+                    print("[INVENTORY_FORM] 📋 Tags: \(existingItem.tagIds)")
                     try await dataController.apiService.updateInventoryItem(id: existingItem.id, updates: updates)
                     await MainActor.run {
                         existingItem.needsSync = false
                         existingItem.lastSyncedAt = Date()
                         try? modelContext.save()
+                        print("[INVENTORY_FORM] ✅ Item saved successfully")
                         dismiss()
                     }
                 } catch {
+                    print("[INVENTORY_FORM] ❌ Failed to save: \(error)")
                     await MainActor.run {
-                        errorMessage = "Failed to save: \(error.localizedDescription)"
+                        errorMessage = "Failed to save: \(error)"
                         isSaving = false
                     }
                 }
             }
         } else {
-            let companyId = dataController.currentUser?.companyId ?? ""
-
             let newItem = InventoryItem(
                 id: UUID().uuidString,
                 name: trimmedName,
@@ -471,10 +682,11 @@ struct InventoryFormSheet: View {
                 companyId: companyId,
                 unitId: selectedUnitId,
                 itemDescription: itemDescription.isEmpty ? nil : itemDescription,
-                tagsString: parsedTags.joined(separator: ","),
                 sku: sku.isEmpty ? nil : sku,
                 notes: notes.isEmpty ? nil : notes,
-                imageUrl: nil
+                imageUrl: nil,
+                warningThreshold: parsedWarningThreshold,
+                criticalThreshold: parsedCriticalThreshold
             )
             newItem.needsSync = true
 
@@ -486,7 +698,12 @@ struct InventoryFormSheet: View {
 
             Task {
                 do {
+                    // Apply tags FIRST (creates any new tags in Bubble and waits for IDs)
+                    try await applyTagsToItem(newItem, tagNames: parsedTags, companyId: companyId)
+
+                    // Now create item with valid Bubble tag IDs
                     let dto = InventoryItemDTO.from(newItem)
+                    print("[INVENTORY_FORM] 📤 Creating new item with tags: \(newItem.tagIds)")
                     let createdDTO = try await dataController.apiService.createInventoryItem(dto)
 
                     await MainActor.run {
@@ -494,11 +711,13 @@ struct InventoryFormSheet: View {
                         newItem.needsSync = false
                         newItem.lastSyncedAt = Date()
                         try? modelContext.save()
+                        print("[INVENTORY_FORM] ✅ Item created successfully")
                         dismiss()
                     }
                 } catch {
+                    print("[INVENTORY_FORM] ❌ Failed to create: \(error)")
                     await MainActor.run {
-                        errorMessage = "Failed to create: \(error.localizedDescription)"
+                        errorMessage = "Failed to create: \(error)"
                         isSaving = false
                     }
                 }

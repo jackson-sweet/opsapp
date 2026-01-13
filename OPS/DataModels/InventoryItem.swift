@@ -7,6 +7,43 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
+
+// MARK: - ThresholdStatus Enum
+
+/// Status based on quantity compared to thresholds
+enum ThresholdStatus: Int, Comparable, CaseIterable {
+    case normal = 0
+    case warning = 1
+    case critical = 2
+
+    static func < (lhs: ThresholdStatus, rhs: ThresholdStatus) -> Bool {
+        return lhs.rawValue < rhs.rawValue
+    }
+
+    var color: Color {
+        switch self {
+        case .normal:
+            return OPSStyle.Colors.primaryText
+        case .warning:
+            return OPSStyle.Colors.warningStatus
+        case .critical:
+            return OPSStyle.Colors.errorStatus
+        }
+    }
+
+    /// Label for badge display (nil for normal status)
+    var label: String? {
+        switch self {
+        case .normal:
+            return nil
+        case .warning:
+            return "LOW"
+        case .critical:
+            return "CRITICAL"
+        }
+    }
+}
 
 /// InventoryItem model - items tracked in inventory
 @Model
@@ -17,15 +54,26 @@ final class InventoryItem: Identifiable {
     var itemDescription: String?
     var quantity: Double
     var unitId: String?
-    var tagsString: String = ""  // Comma-separated tags for flexible categorization
     var companyId: String
     var sku: String?
     var notes: String?
     var imageUrl: String?
 
+    // Tag IDs for sync (stores Bubble IDs)
+    var tagIds: [String] = []
+
+    // MARK: - Threshold Properties
+    /// Quantity at which to show warning (yellow). nil = no item-level warning threshold
+    var warningThreshold: Double?
+    /// Quantity at which to show critical (red). nil = no item-level critical threshold
+    var criticalThreshold: Double?
+
     // MARK: - Relationships
     @Relationship(deleteRule: .nullify)
     var unit: InventoryUnit?
+
+    @Relationship(deleteRule: .nullify)
+    var tags: [InventoryTag] = []
 
     // MARK: - Sync tracking
     var lastSyncedAt: Date?
@@ -42,10 +90,12 @@ final class InventoryItem: Identifiable {
         companyId: String,
         unitId: String? = nil,
         itemDescription: String? = nil,
-        tagsString: String = "",
+        tagIds: [String] = [],
         sku: String? = nil,
         notes: String? = nil,
-        imageUrl: String? = nil
+        imageUrl: String? = nil,
+        warningThreshold: Double? = nil,
+        criticalThreshold: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -53,25 +103,19 @@ final class InventoryItem: Identifiable {
         self.companyId = companyId
         self.unitId = unitId
         self.itemDescription = itemDescription
-        self.tagsString = tagsString
+        self.tagIds = tagIds
         self.sku = sku
         self.notes = notes
         self.imageUrl = imageUrl
+        self.warningThreshold = warningThreshold
+        self.criticalThreshold = criticalThreshold
     }
 
     // MARK: - Computed Properties
 
-    /// Tags as an array (parsed from comma-separated string)
-    var tags: [String] {
-        get {
-            guard !tagsString.isEmpty else { return [] }
-            return tagsString.components(separatedBy: ",")
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-        }
-        set {
-            tagsString = newValue.joined(separator: ",")
-        }
+    /// Tag names as an array (for display and backward compatibility)
+    var tagNames: [String] {
+        tags.filter { $0.deletedAt == nil }.map { $0.name }
     }
 
     /// Display string for quantity with unit (e.g., "10 ea", "5.5 ft")
@@ -88,11 +132,67 @@ final class InventoryItem: Identifiable {
         }
     }
 
-    /// Check if item is low on stock (below a threshold)
-    /// Note: minQuantity is Phase 2, for now just returns false
+    /// Get threshold status for this item (item-level thresholds only)
+    /// For effective threshold considering tag relationships, use `effectiveThresholdStatus()` method
+    var thresholdStatus: ThresholdStatus {
+        return Self.calculateThresholdStatus(
+            quantity: quantity,
+            warningThreshold: warningThreshold,
+            criticalThreshold: criticalThreshold
+        )
+    }
+
+    /// Get threshold status considering both item-level and tag-level thresholds
+    /// Uses the stricter (higher) threshold when both exist
+    func effectiveThresholdStatus() -> ThresholdStatus {
+        let effective = effectiveThresholds()
+        return Self.calculateThresholdStatus(
+            quantity: quantity,
+            warningThreshold: effective.warning,
+            criticalThreshold: effective.critical
+        )
+    }
+
+    /// Calculate effective thresholds considering tag thresholds from relationships
+    /// Uses the stricter (higher) threshold when both item and tag thresholds exist
+    func effectiveThresholds() -> (warning: Double?, critical: Double?) {
+        var warning = warningThreshold
+        var critical = criticalThreshold
+
+        // Check each tag for stricter thresholds
+        for tag in tags where tag.deletedAt == nil {
+            if let tw = tag.warningThreshold {
+                // Higher threshold is stricter (warns earlier)
+                warning = warning.map { max($0, tw) } ?? tw
+            }
+            if let tc = tag.criticalThreshold {
+                critical = critical.map { max($0, tc) } ?? tc
+            }
+        }
+
+        return (warning, critical)
+    }
+
+    /// Calculate threshold status from quantity and thresholds
+    private static func calculateThresholdStatus(
+        quantity: Double,
+        warningThreshold: Double?,
+        criticalThreshold: Double?
+    ) -> ThresholdStatus {
+        // Check critical first (takes precedence)
+        if let critical = criticalThreshold, quantity <= critical {
+            return .critical
+        }
+        // Then check warning
+        if let warning = warningThreshold, quantity <= warning {
+            return .warning
+        }
+        return .normal
+    }
+
+    /// Check if item is low on stock (has any threshold warning)
     var isLowStock: Bool {
-        // Future: compare against minQuantity threshold
-        return false
+        return thresholdStatus != .normal
     }
 
     // MARK: - Helper Methods
@@ -110,30 +210,33 @@ final class InventoryItem: Identifiable {
         return user.role == .admin || user.role == .officeCrew
     }
 
-    /// Add a tag if not already present
-    func addTag(_ tag: String) {
-        let trimmedTag = tag.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !trimmedTag.isEmpty else { return }
-
-        var currentTags = tags
-        if !currentTags.contains(trimmedTag) {
-            currentTags.append(trimmedTag)
-            tags = currentTags
+    /// Add a tag to this item
+    func addTag(_ tag: InventoryTag) {
+        if !tags.contains(where: { $0.id == tag.id }) {
+            tags.append(tag)
+            if !tagIds.contains(tag.id) {
+                tagIds.append(tag.id)
+            }
+            needsSync = true
         }
     }
 
-    /// Remove a tag
-    func removeTag(_ tag: String) {
-        let trimmedTag = tag.trimmingCharacters(in: .whitespaces).lowercased()
-        var currentTags = tags
-        currentTags.removeAll { $0.lowercased() == trimmedTag }
-        tags = currentTags
+    /// Remove a tag from this item
+    func removeTag(_ tag: InventoryTag) {
+        tags.removeAll { $0.id == tag.id }
+        tagIds.removeAll { $0 == tag.id }
+        needsSync = true
     }
 
     /// Check if item has a specific tag
-    func hasTag(_ tag: String) -> Bool {
-        let trimmedTag = tag.trimmingCharacters(in: .whitespaces).lowercased()
-        return tags.contains { $0.lowercased() == trimmedTag }
+    func hasTag(_ tag: InventoryTag) -> Bool {
+        return tags.contains { $0.id == tag.id }
+    }
+
+    /// Check if item has a tag by name
+    func hasTagNamed(_ name: String) -> Bool {
+        let lowercasedName = name.lowercased().trimmingCharacters(in: .whitespaces)
+        return tags.contains { $0.name.lowercased() == lowercasedName && $0.deletedAt == nil }
     }
 
     /// Adjust quantity by a delta (positive or negative)

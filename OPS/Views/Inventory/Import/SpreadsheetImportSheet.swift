@@ -36,6 +36,7 @@ struct SpreadsheetImportSheet: View {
 
     // Existing inventory for duplicate detection
     @Query private var existingItems: [InventoryItem]
+    @Query private var existingTags: [InventoryTag]
 
     private var companyId: String {
         dataController.currentUser?.companyId ?? ""
@@ -43,6 +44,10 @@ struct SpreadsheetImportSheet: View {
 
     private var companyItems: [InventoryItem] {
         existingItems.filter { $0.companyId == companyId }
+    }
+
+    private var companyTags: [InventoryTag] {
+        existingTags.filter { $0.companyId == companyId && $0.deletedAt == nil }
     }
 
     enum ImportStep {
@@ -530,12 +535,55 @@ struct SpreadsheetImportSheet: View {
                     companyId: companyId,
                     unitId: unitId,
                     itemDescription: item.description,
-                    tagsString: item.tags.joined(separator: ","),
                     sku: item.sku,
                     notes: item.notes
                 )
 
                 modelContext.insert(newItem)
+
+                // Apply tags from spreadsheet
+                for tagName in item.tags {
+                    let trimmedTagName = tagName.trimmingCharacters(in: .whitespaces)
+                    guard !trimmedTagName.isEmpty else { continue }
+
+                    // Look for existing tag (case-insensitive)
+                    if let existingTag = companyTags.first(where: {
+                        $0.name.lowercased() == trimmedTagName.lowercased()
+                    }) {
+                        newItem.addTag(existingTag)
+                    } else {
+                        // Create new tag
+                        let newTag = InventoryTag(
+                            id: UUID().uuidString,
+                            name: trimmedTagName,
+                            companyId: companyId
+                        )
+                        newTag.needsSync = true
+                        modelContext.insert(newTag)
+                        newItem.addTag(newTag)
+
+                        // Create tag in Bubble asynchronously
+                        Task {
+                            do {
+                                let tagDTO = InventoryTagDTO(
+                                    id: newTag.id,
+                                    name: trimmedTagName,
+                                    warningThreshold: nil,
+                                    criticalThreshold: nil,
+                                    company: companyId
+                                )
+                                let createdTag = try await dataController.apiService.createTag(tagDTO)
+                                await MainActor.run {
+                                    newTag.id = createdTag.id
+                                    newTag.needsSync = false
+                                    newTag.lastSyncedAt = Date()
+                                }
+                            } catch {
+                                print("[IMPORT] Failed to create tag '\(trimmedTagName)': \(error)")
+                            }
+                        }
+                    }
+                }
 
                 // Create via API
                 let dto = InventoryItemDTO.from(newItem)

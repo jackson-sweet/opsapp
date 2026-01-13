@@ -367,7 +367,6 @@ struct BulkQuantityAdjustmentSheet: View {
                 companyId: "company",
                 unitId: nil,
                 itemDescription: nil,
-                tagsString: "",
                 sku: nil,
                 notes: nil,
                 imageUrl: nil
@@ -379,7 +378,6 @@ struct BulkQuantityAdjustmentSheet: View {
                 companyId: "company",
                 unitId: nil,
                 itemDescription: nil,
-                tagsString: "",
                 sku: nil,
                 notes: nil,
                 imageUrl: nil

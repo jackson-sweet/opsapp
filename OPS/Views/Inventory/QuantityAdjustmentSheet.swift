@@ -220,9 +220,9 @@ struct QuantityAdjustmentSheet: View {
             }
 
             // Tags
-            if !item.tags.isEmpty {
+            if !item.tagNames.isEmpty {
                 HStack(spacing: OPSStyle.Layout.spacing1) {
-                    ForEach(item.tags.prefix(3), id: \.self) { tag in
+                    ForEach(item.tagNames.prefix(3), id: \.self) { tag in
                         Text(tag)
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -360,6 +360,7 @@ struct QuantityAdjustmentSheet: View {
                 let updates: [String: Any] = [
                     BubbleFields.InventoryItem.quantity: currentQuantity
                 ]
+                print("[QUANTITY_ADJUST] 📤 Updating quantity for \(item.id) to \(currentQuantity)")
 
                 try await dataController.apiService.updateInventoryItem(id: item.id, updates: updates)
 
@@ -370,12 +371,14 @@ struct QuantityAdjustmentSheet: View {
 
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)
+                    print("[QUANTITY_ADJUST] ✅ Quantity updated successfully")
 
                     dismiss()
                 }
             } catch {
+                print("[QUANTITY_ADJUST] ❌ Failed to save: \(error)")
                 await MainActor.run {
-                    errorMessage = "Failed to save: \(error.localizedDescription)"
+                    errorMessage = "Failed to save: \(error)"
                     isSaving = false
                 }
             }
@@ -416,7 +419,6 @@ struct AdjustmentSettings: Codable {
             companyId: "company",
             unitId: nil,
             itemDescription: "Standard framing lumber",
-            tagsString: "lumber,framing,exterior",
             sku: "LBR-2X4-8",
             notes: nil,
             imageUrl: nil

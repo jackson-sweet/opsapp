@@ -36,7 +36,8 @@ struct OPSApp: App {
             InventoryItem.self,
             InventoryUnit.self,
             InventorySnapshot.self,
-            InventorySnapshotItem.self
+            InventorySnapshotItem.self,
+            InventoryTag.self
         ])
         
         let modelConfiguration = ModelConfiguration(

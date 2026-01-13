@@ -10,6 +10,7 @@ import SwiftUI
 
 struct FloatingActionMenu: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @State private var showCreateMenu = false
@@ -17,10 +18,22 @@ struct FloatingActionMenu: View {
     @State private var showingCreateClient = false
     @State private var showingCreateTaskType = false
     @State private var showingCreateTask = false
+    @State private var showingCreateInventoryItem = false
+
+    // Parameters to determine which tab we're on
+    let currentTab: Int
+    let hasInventoryAccess: Bool
+
+    // Inventory tab is index 2 when user has inventory access
+    private var isInventoryTab: Bool {
+        hasInventoryAccess && currentTab == 2
+    }
 
     // Check if current user can see FAB
     private var canShowFAB: Bool {
         guard let user = dataController.currentUser else { return false }
+        // Hide FAB when in inventory selection mode
+        if appState.isInventorySelectionMode { return false }
         return user.role == .admin || user.role == .officeCrew
     }
 
@@ -131,6 +144,12 @@ struct FloatingActionMenu: View {
                             // Main plus button
                             // In tutorial fabTap phase: FAB is disabled and greyed out
                             Button(action: {
+                                // On inventory tab, directly show inventory form
+                                if isInventoryTab {
+                                    showingCreateInventoryItem = true
+                                    return
+                                }
+
                                 // Tutorial mode: notify FAB tapped
                                 if tutorialMode && !showCreateMenu {
                                     NotificationCenter.default.post(
@@ -180,6 +199,9 @@ struct FloatingActionMenu: View {
         }
         .sheet(isPresented: $showingCreateTask) {
             TaskFormSheet(mode: .create) { _ in }
+        }
+        .sheet(isPresented: $showingCreateInventoryItem) {
+            InventoryFormSheet(item: nil)
         }
     }
 }

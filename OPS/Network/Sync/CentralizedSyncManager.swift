@@ -710,6 +710,13 @@ class CentralizedSyncManager {
             print("[SYNC_INVENTORY] ⚠️ Items sync failed: \(error)")
         }
 
+        // Sync tag thresholds
+        do {
+            try await syncTags()
+        } catch {
+            print("[SYNC_INVENTORY] ⚠️ Tag thresholds sync failed: \(error)")
+        }
+
         // Save all changes at once (prevents mid-sync @Query updates that cancel tasks)
         do {
             try modelContext.save()
@@ -793,7 +800,7 @@ class CentralizedSyncManager {
                 item.itemDescription = dto.description
                 item.quantity = dto.quantity ?? 0
                 item.unitId = dto.unit
-                item.tagsString = dto.tags?.joined(separator: ",") ?? ""
+                item.tagIds = dto.tags ?? []
                 item.companyId = dto.company ?? companyId
                 item.sku = dto.sku
                 item.notes = dto.notes
@@ -811,8 +818,9 @@ class CentralizedSyncManager {
                 item.lastSyncedAt = Date()
             }
 
-            // Link inventory items to their units
+            // Link inventory items to their units and tags
             try await linkInventoryItemsToUnits()
+            try await linkInventoryItemsToTags()
 
             // NOTE: Save is handled by syncInventory() to avoid mid-sync @Query updates
             print("[SYNC_INVENTORY_ITEMS] ✅ Processed \(dtos.count) inventory items (save deferred)")
@@ -832,6 +840,54 @@ class CentralizedSyncManager {
             if let unitId = item.unitId {
                 item.unit = unitsById[unitId]
             }
+        }
+    }
+
+    /// Link inventory items to their tags
+    private func linkInventoryItemsToTags() async throws {
+        let items = try modelContext.fetch(FetchDescriptor<InventoryItem>())
+        let tags = try modelContext.fetch(FetchDescriptor<InventoryTag>())
+        let tagsById = Dictionary(uniqueKeysWithValues: tags.map { ($0.id, $0) })
+
+        for item in items {
+            // Clear existing tags and rebuild from tagIds
+            item.tags.removeAll()
+            for tagId in item.tagIds {
+                if let tag = tagsById[tagId] {
+                    item.tags.append(tag)
+                }
+            }
+        }
+    }
+
+    /// Sync tags for inventory
+    func syncTags() async throws {
+        print("[SYNC_TAGS] 🏷️ Syncing tags...")
+
+        guard let companyId = currentUser?.companyId else {
+            print("[SYNC_TAGS] ⚠️ No company ID")
+            throw SyncError.missingCompanyId
+        }
+
+        do {
+            // Fetch from Bubble
+            let dtos = try await apiService.fetchCompanyTags(companyId: companyId)
+
+            // Handle deletions
+            let remoteIds = Set(dtos.map { $0.id })
+            try await handleTagDeletions(keepingIds: remoteIds)
+
+            // Upsert each tag
+            for dto in dtos {
+                let tag = try await getOrCreateTag(id: dto.id)
+                dto.updateModel(tag)
+            }
+
+            // NOTE: Save is handled by syncInventory() to avoid mid-sync @Query updates
+            print("[SYNC_TAGS] ✅ Processed \(dtos.count) tags (save deferred)")
+        } catch {
+            print("[SYNC_TAGS] ❌ Failed: \(error)")
+            throw error
         }
     }
 
@@ -2239,6 +2295,31 @@ class CentralizedSyncManager {
         }
     }
 
+    /// Handle tag deletions for items no longer in Bubble
+    private func handleTagDeletions(keepingIds: Set<String>) async throws {
+        let descriptor = FetchDescriptor<InventoryTag>()
+        let localTags = try modelContext.fetch(descriptor)
+
+        var deletedCount = 0
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+
+        for tag in localTags {
+            if !keepingIds.contains(tag.id) {
+                // Only delete if not already deleted and has been synced before
+                if tag.deletedAt == nil &&
+                   (tag.lastSyncedAt ?? .distantPast) > thirtyDaysAgo {
+                    print("[DELETION] 🗑️ Soft deleting tag: \(tag.name)")
+                    tag.deletedAt = Date()
+                    deletedCount += 1
+                }
+            }
+        }
+
+        if deletedCount > 0 {
+            print("[DELETION] ✅ Soft deleted \(deletedCount) tags")
+        }
+    }
+
     // MARK: - Notification Scheduling
 
     /// Schedule local advance notice notifications for user's assigned tasks
@@ -2336,6 +2417,16 @@ class CentralizedSyncManager {
             return existing
         }
         let new = InventoryItem(id: id, name: "Unnamed Item", quantity: 0, companyId: "")
+        modelContext.insert(new)
+        return new
+    }
+
+    private func getOrCreateTag(id: String) async throws -> InventoryTag {
+        let descriptor = FetchDescriptor<InventoryTag>(predicate: #Predicate { $0.id == id })
+        if let existing = try modelContext.fetch(descriptor).first {
+            return existing
+        }
+        let new = InventoryTag(id: id, name: "", companyId: "")
         modelContext.insert(new)
         return new
     }

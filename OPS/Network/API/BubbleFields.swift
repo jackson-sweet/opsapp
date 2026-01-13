@@ -25,6 +25,7 @@ struct BubbleFields {
         static let inventoryUnit = "inventoryunit"  // Bubble API uses lowercase
         static let inventorySnapshot = "inventorysnapshot"  // Bubble API uses lowercase
         static let inventorySnapshotItem = "inventorysnapshotitem"  // Bubble API uses lowercase
+        static let tag = "tag"  // Bubble API uses lowercase
     }
     
     /// Job status values (from your Job Status custom type)
@@ -237,6 +238,8 @@ struct BubbleFields {
         static let notes = "notes"
         static let imageUrl = "imageUrl"
         static let deletedAt = "deletedAt"
+        static let warningThreshold = "warningThreshold"
+        static let criticalThreshold = "criticalThreshold"
     }
 
     /// InventoryUnit entity fields (match your Bubble field names exactly)
@@ -271,5 +274,16 @@ struct BubbleFields {
         static let sku = "sku"
         static let tags = "tags"
         static let description = "description"
+    }
+
+    /// Tag entity fields (match your Bubble field names exactly)
+    /// Tags for inventory items with optional quantity thresholds
+    struct Tag {
+        static let id = "_id"
+        static let name = "name"
+        static let warningThreshold = "warningThreshold"
+        static let criticalThreshold = "criticalThreshold"
+        static let company = "company"
+        static let deletedAt = "deletedAt"
     }
 }

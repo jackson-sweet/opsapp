@@ -15,23 +15,41 @@ struct InventoryView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var searchText = ""
-    @State private var selectedTag: String? = nil
+    @State private var selectedTags: Set<String> = []
     @State private var showingAddItemSheet = false
     @State private var selectedItem: InventoryItem? = nil
     @State private var itemForQuantityAdjustment: InventoryItem? = nil
     @State private var isRefreshing = false
     @State private var showingImportSheet = false
 
+    // Pinch-to-zoom scale
+    @AppStorage("inventoryCardScale") private var cardScale: Double = 1.0
+    @State private var gestureStartScale: CGFloat = 1.0
+    private let minScale: CGFloat = 0.8
+    private let maxScale: CGFloat = 1.5
+
+    // Sort options - default will be set based on whether tags exist
+    @State private var sortMode: InventorySortMode = .tag
+
+    enum InventorySortMode: String, CaseIterable {
+        case tag = "TAG"
+        case name = "NAME"
+        case quantity = "QUANTITY"
+        case threshold = "THRESHOLD"
+    }
+
     // Selection mode
     @State private var isSelectionMode = false
     @State private var selectedItemIds: Set<String> = []
     @State private var showingDeleteConfirmation = false
     @State private var showingBulkAdjustSheet = false
+    @State private var showingBulkTagsSheet = false
     @State private var showingManageTagsSheet = false
     @State private var showingSelectionTools = false
     @State private var activeSelectionFilter: SelectionFilter? = nil
     @State private var renamingTag: String? = nil
     @State private var renameTagText: String = ""
+    @State private var selectionKeywordText: String = ""
 
     struct SelectionFilter: Identifiable, Equatable {
         let id = UUID()
@@ -40,19 +58,35 @@ struct InventoryView: View {
 
         enum FilterType {
             case tag
+            case keyword
         }
 
         var displayText: String {
             value
         }
+
+        var icon: String {
+            switch type {
+            case .tag:
+                return "tag"
+            case .keyword:
+                return "magnifyingglass"
+            }
+        }
     }
 
     @Query private var allItems: [InventoryItem]
+    @Query private var allInventoryTags: [InventoryTag]
+
+    private var companyTags: [InventoryTag] {
+        let companyId = dataController.currentUser?.companyId ?? ""
+        return allInventoryTags.filter { $0.companyId == companyId && $0.deletedAt == nil }
+    }
 
     private var filteredItems: [InventoryItem] {
         let companyId = dataController.currentUser?.companyId ?? ""
 
-        return allItems.filter { item in
+        let filtered = allItems.filter { item in
             guard item.companyId == companyId else { return false }
             guard item.deletedAt == nil else { return false }
 
@@ -66,23 +100,62 @@ struct InventoryView: View {
                 }
             }
 
-            if let tag = selectedTag {
-                if !item.tags.contains(tag) {
+            // Multi-tag filtering: item must have ANY of the selected tags (OR logic)
+            if !selectedTags.isEmpty {
+                let itemTagsLower = Set(item.tagNames.map { $0.lowercased() })
+                let selectedTagsLower = Set(selectedTags.map { $0.lowercased() })
+                if itemTagsLower.isDisjoint(with: selectedTagsLower) {
                     return false
                 }
             }
 
             return true
         }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        // Sort based on current sort mode
+        switch sortMode {
+        case .tag:
+            // Sort by first tag alphabetically, then by name
+            return filtered.sorted { item1, item2 in
+                let tag1 = item1.tagNames.sorted().first ?? ""
+                let tag2 = item2.tagNames.sorted().first ?? ""
+                if tag1 != tag2 {
+                    // Items with no tags go last
+                    if tag1.isEmpty { return false }
+                    if tag2.isEmpty { return true }
+                    return tag1.localizedCaseInsensitiveCompare(tag2) == .orderedAscending
+                }
+                return item1.name.localizedCaseInsensitiveCompare(item2.name) == .orderedAscending
+            }
+        case .name:
+            return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .quantity:
+            // Sort by quantity descending (highest first), then by name
+            return filtered.sorted { item1, item2 in
+                if item1.quantity != item2.quantity {
+                    return item1.quantity > item2.quantity
+                }
+                return item1.name.localizedCaseInsensitiveCompare(item2.name) == .orderedAscending
+            }
+        case .threshold:
+            // Sort by threshold status (critical > warning > normal), then by name
+            return filtered.sorted { item1, item2 in
+                let status1 = item1.effectiveThresholdStatus()
+                let status2 = item2.effectiveThresholdStatus()
+                if status1 != status2 {
+                    return status1 > status2  // Higher status (critical) comes first
+                }
+                return item1.name.localizedCaseInsensitiveCompare(item2.name) == .orderedAscending
+            }
+        }
     }
 
     private var allTags: [String] {
         let companyId = dataController.currentUser?.companyId ?? ""
-        let tags = allItems
+        let tagNames = allItems
             .filter { $0.companyId == companyId && $0.deletedAt == nil }
-            .flatMap { $0.tags }
-        return Array(Set(tags)).sorted()
+            .flatMap { $0.tagNames }
+        return Array(Set(tagNames)).sorted()
     }
 
     private var companyItems: [InventoryItem] {
@@ -101,10 +174,15 @@ struct InventoryView: View {
                 Spacer()
                     .frame(height: 70)
 
-                // Search
-                SearchBar(searchText: $searchText, placeholder: "Search inventory...")
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, OPSStyle.Layout.spacing2)
+                // Search and Sort
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    SearchBar(searchText: $searchText, placeholder: "Search inventory...")
+
+                    // Sort toggle
+                    sortToggleButton
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.top, OPSStyle.Layout.spacing2)
 
                 // Tag filters
                 if !allTags.isEmpty {
@@ -121,6 +199,7 @@ struct InventoryView: View {
                             items: filteredItems,
                             isSelectionMode: isSelectionMode,
                             selectedItemIds: $selectedItemIds,
+                            scale: CGFloat(cardScale),
                             onItemTap: { item in
                                 if isSelectionMode {
                                     toggleItemSelection(item)
@@ -144,6 +223,20 @@ struct InventoryView: View {
                     Spacer()
                         .frame(height: isSelectionMode ? 160 : 100)
                 }
+                .simultaneousGesture(
+                    MagnificationGesture()
+                        .onChanged { value in
+                            let newScale = gestureStartScale * value
+                            cardScale = Double(min(max(newScale, minScale), maxScale))
+                        }
+                        .onEnded { _ in
+                            gestureStartScale = CGFloat(cardScale)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                )
+                .onAppear {
+                    gestureStartScale = CGFloat(cardScale)
+                }
                 .refreshable {
                     await refreshInventory()
                 }
@@ -152,29 +245,6 @@ struct InventoryView: View {
             // Selection mode footer
             if isSelectionMode {
                 selectionFooter
-            }
-
-            // Floating add button (hidden in selection mode)
-            if !isSelectionMode {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Button(action: {
-                            selectedItem = nil
-                            showingAddItemSheet = true
-                        }) {
-                            Image(systemName: OPSStyle.Icons.plus)
-                                .font(OPSStyle.Typography.title)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
-                                .background(OPSStyle.Colors.primaryAccent)
-                                .clipShape(Circle())
-                        }
-                        .padding(.trailing, OPSStyle.Layout.spacing3)
-                        .padding(.bottom, 120)
-                    }
-                }
             }
         }
         .sheet(isPresented: $showingAddItemSheet) {
@@ -198,6 +268,15 @@ struct InventoryView: View {
             )
             .environmentObject(dataController)
         }
+        .sheet(isPresented: $showingBulkTagsSheet) {
+            BulkTagsSheet(
+                items: selectedItems,
+                onComplete: {
+                    // BulkTagsSheet handles all syncing internally
+                }
+            )
+            .environmentObject(dataController)
+        }
         .sheet(isPresented: $showingManageTagsSheet) {
             InventoryManageTagsSheet(
                 items: companyItems,
@@ -214,6 +293,57 @@ struct InventoryView: View {
         }
         .onAppear {
             AnalyticsManager.shared.trackScreenView(screenName: .inventory)
+            // Set default sort mode: by tag if tags exist, otherwise by name
+            if allTags.isEmpty && sortMode == .tag {
+                sortMode = .name
+            }
+        }
+    }
+
+    // MARK: - Sort Toggle Button
+
+    private var sortIcon: String {
+        switch sortMode {
+        case .tag: return "tag"
+        case .name: return "arrow.up.arrow.down"
+        case .quantity: return "number"
+        case .threshold: return "exclamationmark.triangle"
+        }
+    }
+
+    private var sortIconColor: Color {
+        switch sortMode {
+        case .threshold: return OPSStyle.Colors.warningStatus
+        default: return OPSStyle.Colors.secondaryText
+        }
+    }
+
+    private var sortToggleButton: some View {
+        Menu {
+            ForEach(InventorySortMode.allCases, id: \.self) { mode in
+                Button(action: { sortMode = mode }) {
+                    HStack {
+                        Text(mode.rawValue)
+                        if sortMode == mode {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Image(systemName: sortIcon)
+                    .font(.system(size: 12))
+                    .foregroundColor(sortIconColor)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(sortMode == .threshold ? OPSStyle.Colors.warningStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
         }
     }
 
@@ -222,14 +352,23 @@ struct InventoryView: View {
     private var tagFilterSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                // All chip
-                tagChip(title: "All", isSelected: selectedTag == nil) {
-                    selectedTag = nil
+                // Clear all chip (only shown when tags are selected)
+                if !selectedTags.isEmpty {
+                    tagChip(title: "Clear", isSelected: false, showClearIcon: true) {
+                        selectedTags.removeAll()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
                 }
 
                 ForEach(allTags, id: \.self) { tag in
-                    tagChip(title: tag, isSelected: selectedTag == tag) {
-                        selectedTag = selectedTag == tag ? nil : tag
+                    let isSelected = selectedTags.contains(tag)
+                    tagChip(title: tag, isSelected: isSelected) {
+                        if isSelected {
+                            selectedTags.remove(tag)
+                        } else {
+                            selectedTags.insert(tag)
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                 }
             }
@@ -238,19 +377,25 @@ struct InventoryView: View {
         .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
-    private func tagChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func tagChip(title: String, isSelected: Bool, showClearIcon: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.separator, lineWidth: isSelected ? 2 : 1)
-                )
+            HStack(spacing: 4) {
+                if showClearIcon {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                Text(title)
+                    .font(OPSStyle.Typography.captionBold)
+            }
+            .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.separator, lineWidth: isSelected ? 2 : 1)
+            )
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -273,7 +418,7 @@ struct InventoryView: View {
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                if !searchText.isEmpty || selectedTag != nil {
+                if !searchText.isEmpty || !selectedTags.isEmpty {
                     Text("No items found")
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -390,6 +535,7 @@ struct InventoryView: View {
 
     private func enterSelectionMode(with item: InventoryItem) {
         isSelectionMode = true
+        appState.isInventorySelectionMode = true
         selectedItemIds = [item.id]
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
@@ -397,6 +543,7 @@ struct InventoryView: View {
 
     private func exitSelectionMode() {
         isSelectionMode = false
+        appState.isInventorySelectionMode = false
         selectedItemIds = []
     }
 
@@ -421,10 +568,53 @@ struct InventoryView: View {
         activeSelectionFilter = nil
     }
 
+    private func invertSelection() {
+        let allIds = Set(filteredItems.map { $0.id })
+        selectedItemIds = allIds.subtracting(selectedItemIds)
+        activeSelectionFilter = nil
+    }
+
+    private func syncTagChanges(for items: [InventoryItem]) {
+        Task {
+            for item in items where item.needsSync {
+                do {
+                    let updates: [String: Any] = [
+                        BubbleFields.InventoryItem.tags: item.tagIds
+                    ]
+                    try await dataController.apiService.updateInventoryItem(id: item.id, updates: updates)
+                    await MainActor.run {
+                        item.needsSync = false
+                        item.lastSyncedAt = Date()
+                    }
+                } catch {
+                    print("[INVENTORY] Failed to sync tags for \(item.name): \(error)")
+                }
+            }
+            await MainActor.run {
+                try? modelContext.save()
+            }
+        }
+    }
+
     private func selectByTag(_ tag: String) {
-        let matchingIds = filteredItems.filter { $0.tags.contains(tag) }.map { $0.id }
+        let matchingIds = filteredItems.filter { $0.tagNames.contains(tag) }.map { $0.id }
         selectedItemIds = Set(matchingIds)
         activeSelectionFilter = SelectionFilter(type: .tag, value: tag)
+    }
+
+    private func selectByKeyword(_ keyword: String) {
+        let searchLower = keyword.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !searchLower.isEmpty else { return }
+
+        let matchingIds = filteredItems.filter { item in
+            item.name.lowercased().contains(searchLower) ||
+            (item.sku?.lowercased().contains(searchLower) ?? false) ||
+            (item.itemDescription?.lowercased().contains(searchLower) ?? false) ||
+            item.tagNames.contains { $0.lowercased().contains(searchLower) }
+        }.map { $0.id }
+
+        selectedItemIds = Set(matchingIds)
+        activeSelectionFilter = SelectionFilter(type: .keyword, value: keyword)
     }
 
     private func clearSelectionFilter() {
@@ -437,67 +627,71 @@ struct InventoryView: View {
         let trimmedNew = newTag.trimmingCharacters(in: .whitespaces)
         guard !trimmedNew.isEmpty, trimmedNew != oldTag else { return }
 
-        for item in companyItems {
-            if item.tags.contains(oldTag) {
-                var updatedTags = item.tags
-                if let index = updatedTags.firstIndex(of: oldTag) {
-                    updatedTags[index] = trimmedNew
-                }
-                item.tagsString = updatedTags.joined(separator: ",")
-                item.needsSync = true
-            }
-        }
+        // Find the InventoryTag entity with this name
+        guard let tag = companyTags.first(where: { $0.name.lowercased() == oldTag.lowercased() }) else { return }
+
+        // Rename the tag itself
+        tag.name = trimmedNew
+        tag.needsSync = true
 
         try? modelContext.save()
 
-        // Sync changes to API
+        // Sync the tag rename to API
         Task {
-            for item in companyItems where item.needsSync {
-                do {
-                    let updates: [String: Any] = [
-                        BubbleFields.InventoryItem.tags: item.tags
-                    ]
-                    try await dataController.apiService.updateInventoryItem(id: item.id, updates: updates)
-                    await MainActor.run {
-                        item.needsSync = false
-                        item.lastSyncedAt = Date()
-                    }
-                } catch {
-                    print("[INVENTORY] Failed to sync tag rename for \(item.name): \(error)")
+            do {
+                let updates = InventoryTagDTO.dictionaryFrom(tag)
+                try await dataController.apiService.updateTag(id: tag.id, updates: updates)
+                await MainActor.run {
+                    tag.needsSync = false
+                    tag.lastSyncedAt = Date()
+                    try? modelContext.save()
                 }
-            }
-            await MainActor.run {
-                try? modelContext.save()
+            } catch {
+                print("[INVENTORY] Failed to sync tag rename: \(error)")
             }
         }
     }
 
-    private func deleteTagGlobally(_ tag: String) {
+    private func deleteTagGlobally(_ tagName: String) {
+        // Find the InventoryTag entity with this name
+        guard let tag = companyTags.first(where: { $0.name.lowercased() == tagName.lowercased() }) else { return }
+
+        // Remove this tag from all items
         for item in companyItems {
-            if item.tags.contains(tag) {
-                var updatedTags = item.tags
-                updatedTags.removeAll { $0 == tag }
-                item.tagsString = updatedTags.joined(separator: ",")
-                item.needsSync = true
+            if item.tags.contains(where: { $0.id == tag.id }) {
+                item.removeTag(tag)
             }
         }
 
+        // Soft delete the tag
+        tag.deletedAt = Date()
+        tag.needsSync = true
+
         try? modelContext.save()
 
-        // Sync changes to API
+        // Sync deletion to API
         Task {
+            do {
+                try await dataController.apiService.deleteTag(id: tag.id)
+                await MainActor.run {
+                    tag.needsSync = false
+                    try? modelContext.save()
+                }
+            } catch {
+                print("[INVENTORY] Failed to sync tag delete: \(error)")
+            }
+
+            // Sync item updates
             for item in companyItems where item.needsSync {
                 do {
-                    let updates: [String: Any] = [
-                        BubbleFields.InventoryItem.tags: item.tags
-                    ]
+                    let updates = InventoryItemDTO.dictionaryFrom(item)
                     try await dataController.apiService.updateInventoryItem(id: item.id, updates: updates)
                     await MainActor.run {
                         item.needsSync = false
                         item.lastSyncedAt = Date()
                     }
                 } catch {
-                    print("[INVENTORY] Failed to sync tag delete for \(item.name): \(error)")
+                    print("[INVENTORY] Failed to sync item after tag delete for \(item.name): \(error)")
                 }
             }
             await MainActor.run {
@@ -508,32 +702,37 @@ struct InventoryView: View {
 
     private func deleteSelectedItems() {
         let itemsToDelete = selectedItems
+        let itemIds = itemsToDelete.map { $0.id }
 
+        // Mark all items as deleted immediately (optimistic update)
         for item in itemsToDelete {
             item.deletedAt = Date()
             item.needsSync = true
         }
 
-        Task {
-            for item in itemsToDelete {
+        // Save locally and exit selection mode immediately
+        try? modelContext.save()
+        exitSelectionMode()
+
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+
+        // Capture apiService for background task
+        let apiService = dataController.apiService
+
+        // Sync deletions to Bubble in background (fire and forget)
+        Task.detached(priority: .background) {
+            print("[INVENTORY] 🗑️ Starting background deletion of \(itemIds.count) items")
+            for itemId in itemIds {
                 do {
-                    try await dataController.apiService.deleteInventoryItem(id: item.id)
+                    try await apiService.deleteInventoryItem(id: itemId)
                 } catch {
-                    await MainActor.run {
-                        item.deletedAt = nil
-                        item.needsSync = false
-                        print("[INVENTORY] Delete failed for \(item.name): \(error)")
-                    }
+                    print("[INVENTORY] ❌ Background delete failed for \(itemId): \(error)")
+                    // Item stays marked as deleted locally with needsSync = true
+                    // Will be retried on next sync
                 }
             }
-
-            await MainActor.run {
-                try? modelContext.save()
-                exitSelectionMode()
-
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.success)
-            }
+            print("[INVENTORY] ✅ Background deletion complete")
         }
     }
 
@@ -606,6 +805,26 @@ struct InventoryView: View {
                         .disabled(selectedItemIds.isEmpty)
                         .buttonStyle(PlainButtonStyle())
 
+                        // Tags button
+                        Button(action: { showingBulkTagsSheet = true }) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
+                                Image(systemName: "tag")
+                                Text("TAGS")
+                            }
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(selectedItemIds.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBorder : OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
+                            )
+                        }
+                        .disabled(selectedItemIds.isEmpty)
+                        .buttonStyle(PlainButtonStyle())
+
                         // Delete button
                         Button(action: { showingDeleteConfirmation = true }) {
                             HStack(spacing: OPSStyle.Layout.spacing1) {
@@ -667,7 +886,7 @@ struct InventoryView: View {
     private func filterPill(_ filter: SelectionFilter) -> some View {
         Button(action: { clearSelectionFilter() }) {
             HStack(spacing: 4) {
-                Image(systemName: "tag")
+                Image(systemName: filter.icon)
                     .font(.system(size: 10))
                 Text(filter.displayText)
                     .font(OPSStyle.Typography.smallCaption)
@@ -695,55 +914,128 @@ struct InventoryView: View {
                 OPSStyle.Colors.background
                     .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // Quick actions
-                    VStack(spacing: 1) {
-                        selectionToolRow(icon: "checkmark.circle", title: "Select All", subtitle: "Select all \(filteredItems.count) items") {
-                            selectAll()
-                            showingSelectionTools = false
-                        }
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Quick actions
+                        VStack(spacing: 1) {
+                            selectionToolRow(icon: "checkmark.circle", title: "Select All", subtitle: "Select all \(filteredItems.count) items") {
+                                selectAll()
+                                showingSelectionTools = false
+                            }
 
-                        selectionToolRow(icon: "circle", title: "Select None", subtitle: "Clear selection") {
-                            selectNone()
-                            showingSelectionTools = false
+                            selectionToolRow(icon: "circle", title: "Select None", subtitle: "Clear selection") {
+                                selectNone()
+                                showingSelectionTools = false
+                            }
+
+                            selectionToolRow(icon: "arrow.triangle.2.circlepath", title: "Invert Selection", subtitle: "Toggle all \(filteredItems.count) items") {
+                                invertSelection()
+                                showingSelectionTools = false
+                            }
+                        }
+                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        )
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.top, OPSStyle.Layout.spacing3)
+
+                        // Keyword search section
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                        Text("BY KEYWORD")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                TextField("Search name, SKU, description...", text: $selectionKeywordText)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .submitLabel(.search)
+                                    .onSubmit {
+                                        if !selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty {
+                                            selectByKeyword(selectionKeywordText)
+                                            showingSelectionTools = false
+                                        }
+                                    }
+
+                                if !selectionKeywordText.isEmpty {
+                                    Button(action: { selectionKeywordText = "" }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, 10)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            )
+
+                            Button(action: {
+                                if !selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty {
+                                    selectByKeyword(selectionKeywordText)
+                                    showingSelectionTools = false
+                                }
+                            }) {
+                                Text("SELECT")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty ? OPSStyle.Colors.tertiaryText : .black)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                    .padding(.vertical, 10)
+                                    .background(selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty ? OPSStyle.Colors.cardBackgroundDark : Color.white)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty ? OPSStyle.Colors.cardBorder : Color.clear, lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+                        // Match count preview
+                        if !selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty {
+                            let matchCount = filteredItems.filter { item in
+                                let searchLower = selectionKeywordText.lowercased()
+                                return item.name.lowercased().contains(searchLower) ||
+                                    (item.sku?.lowercased().contains(searchLower) ?? false) ||
+                                    (item.itemDescription?.lowercased().contains(searchLower) ?? false) ||
+                                    item.tagNames.contains { $0.lowercased().contains(searchLower) }
+                            }.count
+
+                            Text("\(matchCount) items match")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(matchCount > 0 ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing4)
 
                     // Tags section
                     if !allTags.isEmpty {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                            HStack {
-                                Text("BY TAG")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                                Spacer()
-
-                                Button(action: {
-                                    showingSelectionTools = false
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        showingManageTagsSheet = true
-                                    }
-                                }) {
-                                    Text("MANAGE")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            Text("BY TAG")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                             VStack(spacing: 1) {
                                 ForEach(allTags, id: \.self) { tag in
-                                    let tagCount = filteredItems.filter { $0.tags.contains(tag) }.count
+                                    let tagCount = filteredItems.filter { $0.tagNames.contains(tag) }.count
                                     selectionToolRow(icon: "tag", title: tag, subtitle: "\(tagCount) items") {
                                         selectByTag(tag)
                                         showingSelectionTools = false
@@ -761,12 +1053,21 @@ struct InventoryView: View {
                         .padding(.top, OPSStyle.Layout.spacing4)
                     }
 
-                    Spacer()
+                        Spacer()
+                            .frame(height: OPSStyle.Layout.spacing4)
+                    }
                 }
             }
-            .navigationTitle("SELECTION TOOLS")
+            .onDisappear {
+                selectionKeywordText = ""
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("SELECTION TOOLS")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { showingSelectionTools = false }
                         .font(OPSStyle.Typography.captionBold)

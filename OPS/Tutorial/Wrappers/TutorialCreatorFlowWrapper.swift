@@ -57,7 +57,7 @@ struct TutorialCreatorFlowWrapper: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        FloatingActionMenu()
+                        FloatingActionMenu(currentTab: currentTabForPhase, hasInventoryAccess: false)
                             .environment(\.tutorialMode, true)
                             .environment(\.tutorialPhase, stateManager.currentPhase)
                             .background(

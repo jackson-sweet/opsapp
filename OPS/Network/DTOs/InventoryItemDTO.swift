@@ -21,6 +21,10 @@ struct InventoryItemDTO: Codable {
     let notes: String?
     let imageUrl: String?
 
+    // Threshold properties
+    let warningThreshold: Double?
+    let criticalThreshold: Double?
+
     // Metadata
     let createdDate: String?
     let modifiedDate: String?
@@ -40,6 +44,8 @@ struct InventoryItemDTO: Codable {
         case sku = "sku"
         case notes = "notes"
         case imageUrl = "imageUrl"
+        case warningThreshold = "warningThreshold"
+        case criticalThreshold = "criticalThreshold"
         case createdDate = "Created Date"
         case modifiedDate = "Modified Date"
         case deletedAt = "deletedAt"
@@ -65,6 +71,8 @@ struct InventoryItemDTO: Codable {
         self.sku = try container.decodeIfPresent(String.self, forKey: .sku)
         self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
         self.imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
+        self.warningThreshold = try container.decodeIfPresent(Double.self, forKey: .warningThreshold)
+        self.criticalThreshold = try container.decodeIfPresent(Double.self, forKey: .criticalThreshold)
         self.createdDate = try container.decodeIfPresent(String.self, forKey: .createdDate)
         self.modifiedDate = try container.decodeIfPresent(String.self, forKey: .modifiedDate)
         self.deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
@@ -81,6 +89,8 @@ struct InventoryItemDTO: Codable {
         sku: String?,
         notes: String?,
         imageUrl: String?,
+        warningThreshold: Double? = nil,
+        criticalThreshold: Double? = nil,
         createdDate: String?,
         modifiedDate: String?,
         deletedAt: String? = nil
@@ -95,6 +105,8 @@ struct InventoryItemDTO: Codable {
         self.sku = sku
         self.notes = notes
         self.imageUrl = imageUrl
+        self.warningThreshold = warningThreshold
+        self.criticalThreshold = criticalThreshold
         self.createdDate = createdDate
         self.modifiedDate = modifiedDate
         self.deletedAt = deletedAt
@@ -122,10 +134,12 @@ struct InventoryItemDTO: Codable {
             companyId: company ?? "",
             unitId: unit,
             itemDescription: description,
-            tagsString: tags?.joined(separator: ",") ?? "",
+            tagIds: tags ?? [],
             sku: sku,
             notes: notes,
-            imageUrl: imageUrl
+            imageUrl: imageUrl,
+            warningThreshold: warningThreshold,
+            criticalThreshold: criticalThreshold
         )
 
         // Parse deletedAt if present
@@ -147,11 +161,13 @@ struct InventoryItemDTO: Codable {
             description: item.itemDescription,
             quantity: item.quantity,
             unit: item.unitId,
-            tags: item.tags,
+            tags: item.tagIds,
             company: item.companyId,
             sku: item.sku,
             notes: item.notes,
             imageUrl: item.imageUrl,
+            warningThreshold: item.warningThreshold,
+            criticalThreshold: item.criticalThreshold,
             createdDate: nil,
             modifiedDate: nil,
             deletedAt: nil
@@ -170,6 +186,8 @@ struct InventoryItemDTO: Codable {
         if let sku = sku { dict["sku"] = sku }
         if let notes = notes { dict["notes"] = notes }
         if let imageUrl = imageUrl { dict["imageUrl"] = imageUrl }
+        if let warningThreshold = warningThreshold { dict["warningThreshold"] = warningThreshold }
+        if let criticalThreshold = criticalThreshold { dict["criticalThreshold"] = criticalThreshold }
         return dict
     }
 
@@ -182,10 +200,12 @@ struct InventoryItemDTO: Codable {
         ]
         if let description = item.itemDescription { dict["description"] = description }
         if let unit = item.unitId { dict["unit"] = unit }
-        if !item.tags.isEmpty { dict["tags"] = item.tags }
+        if !item.tagIds.isEmpty { dict["tags"] = item.tagIds }
         if let sku = item.sku { dict["sku"] = sku }
         if let notes = item.notes { dict["notes"] = notes }
         if let imageUrl = item.imageUrl { dict["imageUrl"] = imageUrl }
+        if let warningThreshold = item.warningThreshold { dict["warningThreshold"] = warningThreshold }
+        if let criticalThreshold = item.criticalThreshold { dict["criticalThreshold"] = criticalThreshold }
         return dict
     }
 }

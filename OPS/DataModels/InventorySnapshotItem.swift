@@ -93,7 +93,7 @@ final class InventorySnapshotItem: Identifiable {
             quantity: inventoryItem.quantity,
             unitDisplay: inventoryItem.unit?.display,
             sku: inventoryItem.sku,
-            tagsString: inventoryItem.tagsString,
+            tagsString: inventoryItem.tagNames.joined(separator: ","),
             itemDescription: inventoryItem.itemDescription
         )
     }

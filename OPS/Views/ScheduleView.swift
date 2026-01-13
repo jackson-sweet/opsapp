@@ -275,10 +275,12 @@ struct ScheduleView: View {
             // Fetch fresh models using IDs
             if let project = dataController.getProject(id: taskDetail.projectId),
                let task = project.tasks.first(where: { $0.id == taskDetail.taskId }) {
-                TaskDetailsView(task: task, project: project)
-                    .environmentObject(dataController)
-                    .environmentObject(appState)
-                    .environment(\.modelContext, dataController.modelContext!)
+                NavigationView {
+                    ProjectDetailsView(project: project, initialSelectedTask: task)
+                        .environmentObject(dataController)
+                        .environmentObject(appState)
+                        .environment(\.modelContext, dataController.modelContext!)
+                }
             } else {
                 Text("Task no longer available")
                     .font(OPSStyle.Typography.body)

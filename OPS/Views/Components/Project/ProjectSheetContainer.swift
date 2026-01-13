@@ -67,7 +67,7 @@ struct ProjectSheetContainer: View {
             if let project = dataController.getProject(id: taskDetail.projectId),
                let task = project.tasks.first(where: { $0.id == taskDetail.taskId }) {
                 NavigationView {
-                    TaskDetailsView(task: task, project: project)
+                    ProjectDetailsView(project: project, initialSelectedTask: task)
                         .environmentObject(dataController)
                         .environmentObject(appState)
                         .onAppear {

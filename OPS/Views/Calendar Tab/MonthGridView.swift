@@ -1245,10 +1245,12 @@ struct EventDetailCard: View {
         .sheet(isPresented: $showingDetailView) {
             // Task-only scheduling migration: All events are task events
             if let task = event.task, let project = task.project {
-                TaskDetailsView(task: task, project: project)
-                    .environmentObject(dataController)
-                    .environmentObject(appState)
-                    .environment(\.modelContext, dataController.modelContext!)
+                NavigationView {
+                    ProjectDetailsView(project: project, initialSelectedTask: task)
+                        .environmentObject(dataController)
+                        .environmentObject(appState)
+                        .environment(\.modelContext, dataController.modelContext!)
+                }
             }
         }
         .sheet(isPresented: $showingReschedule) {

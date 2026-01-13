@@ -964,7 +964,7 @@ struct UniversalJobBoardCard: View {
         case .task(let task):
             if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
                 NavigationView {
-                    TaskDetailsView(task: task, project: project)
+                    ProjectDetailsView(project: project, initialSelectedTask: task)
                         .environmentObject(dataController)
                 }
             }

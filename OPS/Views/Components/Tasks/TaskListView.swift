@@ -11,9 +11,9 @@ import SwiftData
 struct TaskListView: View {
     let project: Project
     var onSwitchToProjectBased: (() -> Void)? = nil
+    var onTaskSelected: ((ProjectTask) -> Void)? = nil  // Callback for task selection
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
-    @State private var selectedTask: ProjectTask? = nil
     @State private var showingTaskForm = false
     @State private var showingSchedulingModeAlert = false
 
@@ -78,7 +78,8 @@ struct TaskListView: View {
                             isFirst: task.id == project.tasks.sorted { $0.displayOrder < $1.displayOrder }.first?.id,
                             isLast: task.id == project.tasks.sorted { $0.displayOrder < $1.displayOrder }.last?.id,
                             onTap: {
-                                selectedTask = task
+                                // Use callback if provided, otherwise no action
+                                onTaskSelected?(task)
                             }
                         )
                         .environmentObject(dataController)
@@ -89,12 +90,6 @@ struct TaskListView: View {
                 .padding(.vertical, 12)
                 // Animation removed - was causing parent sheet to dismiss when tasks were deleted
             }
-        }
-        .sheet(item: $selectedTask) { task in
-            TaskDetailsView(task: task, project: project)
-                .environmentObject(dataController)
-                .environmentObject(appState)
-                .environment(\.modelContext, dataController.modelContext!)
         }
         .sheet(isPresented: $showingTaskForm) {
             TaskFormSheet(mode: .create, preselectedProjectId: project.id) { _ in }

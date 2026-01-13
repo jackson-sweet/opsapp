@@ -14,6 +14,7 @@ import CoreLocation
 struct ProjectDetailsView: View {
     @Bindable var project: Project
     var isEditMode: Bool = false
+    var initialSelectedTask: ProjectTask? = nil  // Task to show when view opens
     @Environment(\.dismiss) var dismiss
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
@@ -62,13 +63,34 @@ struct ProjectDetailsView: View {
     @State private var notesBorderPulse = false  // Tutorial mode: pulsing border for notes section
     @State private var showCompletedFlash = false  // Tutorial mode: flash "PROJECT COMPLETED" on button
 
-    // Initialize with project's existing notes
-    init(project: Project, isEditMode: Bool = false) {
+    // MARK: - Task Selection State
+    @State private var selectedTask: ProjectTask? = nil  // Currently selected task
+    @State private var taskNotes: String = ""
+    @State private var originalTaskNotes: String = ""
+    @State private var isTaskNotesExpanded: Bool = false
+    @State private var showingTaskTeamPicker: Bool = false
+    @State private var selectedTaskTeamMemberIds: Set<String> = []
+    @State private var taskTeamMembers: [TeamMember] = []
+    @State private var showingTaskScheduler: Bool = false
+    @State private var showingTaskDeleteConfirmation: Bool = false
+    @State private var showTaskTeamUpdateMessage: Bool = false
+
+    // Initialize with project's existing notes and optional selected task
+    init(project: Project, isEditMode: Bool = false, initialSelectedTask: ProjectTask? = nil) {
         self._project = Bindable(wrappedValue: project)
         self.isEditMode = isEditMode
+        self.initialSelectedTask = initialSelectedTask
         let notes = project.notes ?? ""
         self._noteText = State(initialValue: notes)
         self._originalNoteText = State(initialValue: notes)
+
+        // Initialize selected task and task notes
+        self._selectedTask = State(initialValue: initialSelectedTask)
+        if let task = initialSelectedTask {
+            let taskNotesValue = task.taskNotes ?? ""
+            self._taskNotes = State(initialValue: taskNotesValue)
+            self._originalTaskNotes = State(initialValue: taskNotesValue)
+        }
 
         // Initialize address map region to project's location
         if let coordinate = project.coordinate {
@@ -189,6 +211,18 @@ struct ProjectDetailsView: View {
                             }
                         )
                         .environmentObject(dataController)
+                    }
+                    .sheet(isPresented: $showingTaskScheduler) {
+                        if let task = selectedTask {
+                            CalendarSchedulerSheet(
+                                isPresented: $showingTaskScheduler,
+                                itemType: .task(task),
+                                currentStartDate: task.calendarEvent?.startDate,
+                                currentEndDate: task.calendarEvent?.endDate,
+                                onScheduleUpdate: handleTaskScheduleUpdate
+                            )
+                            .environmentObject(dataController)
+                        }
                     }
             }
         }
@@ -322,6 +356,31 @@ struct ProjectDetailsView: View {
 
                 Spacer()
             }
+
+            // Task indicator row
+            HStack(spacing: 6) {
+                Text("TASK:")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                if let task = selectedTask {
+                    // Show task type with color indicator
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent)
+                            .frame(width: 6, height: 6)
+                        Text(task.taskType?.display.uppercased() ?? "TASK")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                } else {
+                    Text("[ — ]")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                Spacer()
+            }
         }
     }
 
@@ -337,6 +396,12 @@ struct ProjectDetailsView: View {
 
                     // projectInfoSection handles its own internal dimming
                     projectInfoSection
+
+                    // Task details section (shown when a task is selected)
+                    if selectedTask != nil {
+                        taskDetailsSection
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
 
                     tasksSection
                         .modifier(TutorialSectionDimModifier(
@@ -1669,7 +1734,335 @@ struct ProjectDetailsView: View {
         .animation(.easeInOut(duration: 0.3), value: showingSaveNotification)
         .zIndex(100)
     }
-    
+
+    // MARK: - Task Details Section
+
+    private var taskDetailsSection: some View {
+        VStack(spacing: 0) {
+            // Color stripe at top
+            if let task = selectedTask {
+                Rectangle()
+                    .fill(Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent)
+                    .frame(height: 3)
+            }
+
+            VStack(spacing: 16) {
+                // Task type header
+                if let task = selectedTask {
+                    HStack {
+                        Text("TASK: \(task.taskType?.display.uppercased() ?? "TASK")")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 16)
+                }
+
+                // Status update chips
+                taskStatusSection
+
+                // Schedule section
+                taskScheduleSection
+
+                // Task notes section
+                taskNotesSection
+
+                // Task team section
+                taskTeamSection
+
+                // Previous/Next navigation
+                taskNavigationSection
+            }
+            .padding(.bottom, 16)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
+        }
+        .padding(.horizontal)
+    }
+
+    private var taskStatusSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("STATUS")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(availableTaskStatuses, id: \.self) { status in
+                        TaskStatusChip(
+                            status: status,
+                            isSelected: selectedTask?.status == status,
+                            onTap: {
+                                if selectedTask?.status != status {
+                                    updateSelectedTaskStatus(to: status)
+                                }
+                            }
+                        )
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+
+    private var availableTaskStatuses: [TaskStatus] {
+        guard let currentUser = dataController.currentUser else {
+            return [.booked, .inProgress, .completed]
+        }
+        if currentUser.role == .admin || currentUser.role == .officeCrew {
+            return TaskStatus.allCases
+        } else {
+            return [.booked, .inProgress, .completed]
+        }
+    }
+
+    private var taskScheduleSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("SCHEDULE")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Button(action: {
+                if canEditProjectSettings() {
+                    showingTaskScheduler = true
+                }
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: OPSStyle.Icons.calendar)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let task = selectedTask,
+                           let calendarEvent = task.calendarEvent,
+                           let start = calendarEvent.startDate {
+                            Text(formatTaskDateRange(start, calendarEvent.endDate))
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        } else {
+                            Text("Tap to Schedule")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                    }
+
+                    Spacer()
+
+                    if canEditProjectSettings() {
+                        Image(systemName: OPSStyle.Icons.chevronRight)
+                            .font(.system(size: 14))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .allowsHitTesting(canEditProjectSettings())
+        }
+        .padding(.horizontal)
+    }
+
+    private var taskNotesSection: some View {
+        NotesDisplayField(
+            title: "Task Notes",
+            notes: selectedTask?.taskNotes ?? "",
+            isExpanded: $isTaskNotesExpanded,
+            editedNotes: $taskNotes,
+            canEdit: true,
+            onSave: saveSelectedTaskNotes
+        )
+        .padding(.horizontal)
+    }
+
+    private var taskTeamSection: some View {
+        SectionCard(
+            icon: OPSStyle.Icons.personTwo,
+            title: "Task Team",
+            actionIcon: canEditProjectSettings() ? "pencil.circle" : nil,
+            actionLabel: canEditProjectSettings() ? "Edit" : nil,
+            onAction: canEditProjectSettings() ? {
+                if let task = selectedTask {
+                    selectedTaskTeamMemberIds = Set(task.getTeamMemberIds())
+                    loadTaskTeamMembers()
+                    showingTaskTeamPicker = true
+                }
+            } : nil
+        ) {
+            if let task = selectedTask {
+                TaskTeamView(task: task)
+                    .environmentObject(dataController)
+            }
+        }
+        .padding(.horizontal)
+        .sheet(isPresented: $showingTaskTeamPicker, onDismiss: {
+            saveTaskTeamChanges()
+        }) {
+            TeamMemberPickerSheet(
+                selectedTeamMemberIds: $selectedTaskTeamMemberIds,
+                allTeamMembers: taskTeamMembers
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var taskNavigationSection: some View {
+        VStack(spacing: 12) {
+            let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
+            let currentIndex = sortedTasks.firstIndex(where: { $0.id == selectedTask?.id })
+
+            HStack(spacing: 12) {
+                // Previous task pill
+                if let index = currentIndex, index > 0 {
+                    let prevTask = sortedTasks[index - 1]
+                    taskNavigationPill(
+                        caption: "PREVIOUS",
+                        label: prevTask.taskType?.display ?? "Task",
+                        icon: "chevron.left",
+                        iconPosition: .leading,
+                        task: prevTask
+                    )
+                } else {
+                    emptyTaskNavigationPill(caption: "PREVIOUS", iconPosition: .leading)
+                }
+
+                // Next task pill
+                if let index = currentIndex, index < sortedTasks.count - 1 {
+                    let nextTask = sortedTasks[index + 1]
+                    taskNavigationPill(
+                        caption: "NEXT",
+                        label: nextTask.taskType?.display ?? "Task",
+                        icon: "chevron.right",
+                        iconPosition: .trailing,
+                        task: nextTask
+                    )
+                } else {
+                    emptyTaskNavigationPill(caption: "NEXT", iconPosition: .trailing)
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private enum TaskNavIconPosition {
+        case leading, trailing
+    }
+
+    private func taskNavigationPill(caption: String, label: String, icon: String, iconPosition: TaskNavIconPosition, task: ProjectTask) -> some View {
+        Button(action: {
+            // Save current task notes if changed
+            if taskNotes != originalTaskNotes {
+                saveSelectedTaskNotes()
+            }
+
+            // Switch to new task
+            withAnimation(.easeInOut(duration: 0.3)) {
+                selectedTask = task
+                let notes = task.taskNotes ?? ""
+                taskNotes = notes
+                originalTaskNotes = notes
+                isTaskNotesExpanded = false
+            }
+        }) {
+            HStack(spacing: 8) {
+                if iconPosition == .leading {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+
+                VStack(alignment: iconPosition == .leading ? .leading : .trailing, spacing: 2) {
+                    Text(caption)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Text(label.uppercased())
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                }
+
+                if iconPosition == .trailing {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .strokeBorder(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
+        }
+    }
+
+    private func emptyTaskNavigationPill(caption: String, iconPosition: TaskNavIconPosition) -> some View {
+        HStack(spacing: 8) {
+            if iconPosition == .leading {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
+            }
+
+            VStack(alignment: iconPosition == .leading ? .leading : .trailing, spacing: 2) {
+                Text(caption)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                Text("NO TASK")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
+            }
+
+            if iconPosition == .trailing {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .fill(Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .strokeBorder(OPSStyle.Colors.inputFieldBorder.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func formatTaskDateRange(_ start: Date, _ end: Date?) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+
+        if let end = end, !Calendar.current.isDate(start, inSameDayAs: end) {
+            return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
+        } else {
+            return formatter.string(from: start)
+        }
+    }
+
     // Tasks section
     private var tasksSection: some View {
         SectionCard(
@@ -1683,9 +2076,26 @@ struct ProjectDetailsView: View {
             },
             contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
         ) {
-            TaskListView(project: project)
-                .environmentObject(dataController)
-                .environmentObject(appState)
+            TaskListView(
+                project: project,
+                onTaskSelected: { task in
+                    // Save current task notes if changed before switching
+                    if selectedTask != nil && taskNotes != originalTaskNotes {
+                        saveSelectedTaskNotes()
+                    }
+
+                    // Switch to new task
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        selectedTask = task
+                        let notes = task.taskNotes ?? ""
+                        taskNotes = notes
+                        originalTaskNotes = notes
+                        isTaskNotesExpanded = false
+                    }
+                }
+            )
+            .environmentObject(dataController)
+            .environmentObject(appState)
         }
         .padding(.horizontal)
     }
@@ -2230,6 +2640,258 @@ struct ProjectDetailsView: View {
                 print("❌ Failed to save address: \(error)")
             }
         }
+    }
+
+    // MARK: - Task Operations
+
+    private func updateSelectedTaskStatus(to newStatus: TaskStatus) {
+        guard let task = selectedTask else { return }
+
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        // Handle project status updates before task status update
+        if newStatus == .inProgress {
+            if project.status == .completed {
+                project.status = .inProgress
+                project.needsSync = true
+                Task {
+                    try? await dataController.syncManager?.updateProjectStatus(
+                        projectId: project.id,
+                        status: .inProgress,
+                        forceSync: true
+                    )
+                }
+            }
+        }
+
+        // Use centralized status update function
+        Task {
+            do {
+                try await dataController.updateTaskStatus(task: task, to: newStatus)
+
+                // Check if all tasks are complete after successful update
+                if newStatus == .completed {
+                    await MainActor.run {
+                        checkIfAllTasksComplete()
+                    }
+                }
+            } catch {
+                print("[TASK_DETAILS] ❌ Failed to update task status: \(error)")
+            }
+        }
+    }
+
+    private func saveSelectedTaskNotes() {
+        guard let task = selectedTask else { return }
+
+        // Haptic feedback on save
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
+        task.needsSync = true
+        try? dataController.modelContext?.save()
+
+        originalTaskNotes = taskNotes
+        showSaveNotification()
+
+        // Sync to API
+        Task {
+            await syncTaskNotesToAPI()
+        }
+    }
+
+    @MainActor
+    private func syncTaskNotesToAPI() async {
+        guard let task = selectedTask,
+              let syncManager = dataController.syncManager else { return }
+
+        do {
+            print("📤 Syncing task notes to API")
+            try await syncManager.updateTaskNotes(taskId: task.id, notes: task.taskNotes ?? "")
+            print("✅ Task notes synced successfully")
+            task.needsSync = false
+            try? dataController.modelContext?.save()
+        } catch {
+            print("❌ Failed to sync task notes: \(error)")
+        }
+    }
+
+    private func checkIfAllTasksComplete() {
+        let allTasks = project.tasks
+        let incompleteTasks = allTasks.filter { $0.status != .completed && $0.status != .cancelled }
+
+        if incompleteTasks.isEmpty && !allTasks.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                showingCompletionAlert = true
+            }
+        }
+    }
+
+    private func loadTaskTeamMembers() {
+        guard let company = dataController.getCurrentUserCompany() else { return }
+        taskTeamMembers = Array(company.teamMembers)
+    }
+
+    private func handleTaskScheduleUpdate(startDate: Date, endDate: Date) {
+        guard let task = selectedTask else { return }
+
+        print("🔄 Task handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
+
+        // Update or create the calendar event for the task
+        if let calendarEvent = task.calendarEvent {
+            calendarEvent.startDate = startDate
+            calendarEvent.endDate = endDate
+            let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+            calendarEvent.duration = daysDiff + 1
+            calendarEvent.needsSync = true
+        } else {
+            let newEvent = CalendarEvent.fromTask(task, startDate: startDate, endDate: endDate)
+            task.calendarEvent = newEvent
+            dataController.modelContext?.insert(newEvent)
+        }
+
+        task.needsSync = true
+        try? dataController.modelContext?.save()
+
+        // Notify calendar views to refresh
+        dataController.calendarEventsDidChange.toggle()
+
+        // Sync to server
+        if let calendarEvent = task.calendarEvent {
+            Task {
+                await syncTaskCalendarEventToServer(calendarEvent)
+            }
+        }
+    }
+
+    private func syncTaskCalendarEventToServer(_ calendarEvent: CalendarEvent) async {
+        guard let task = selectedTask else { return }
+
+        print("🔄 Syncing task calendar event to server: \(calendarEvent.id)")
+
+        do {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+
+            let isNewEvent = calendarEvent.lastSyncedAt == nil
+
+            if isNewEvent {
+                print("📅 Creating new calendar event on server for task")
+
+                let company = dataController.getCompany(id: task.companyId)
+                let projectColor = company?.defaultProjectColor ?? "#9CA3AF"
+                let taskTypeName = task.taskType?.display ?? "Task"
+                let taskTitle = "\(taskTypeName) - \(project.title)"
+
+                let eventDTO = CalendarEventDTO(
+                    id: calendarEvent.id,
+                    color: task.taskColor,
+                    companyId: task.companyId,
+                    projectId: task.projectId,
+                    taskId: task.id,
+                    duration: Double(calendarEvent.duration),
+                    endDate: calendarEvent.endDate.map { formatter.string(from: $0) } ?? "",
+                    startDate: calendarEvent.startDate.map { formatter.string(from: $0) } ?? "",
+                    teamMembers: task.getTeamMemberIds(),
+                    title: taskTitle,
+                    createdDate: nil,
+                    modifiedDate: nil,
+                    deletedAt: nil
+                )
+
+                let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
+                print("✅ Task calendar event created on server with ID: \(createdEvent.id)")
+            } else {
+                print("📅 Updating existing calendar event on server")
+
+                let startDateString = calendarEvent.startDate.map { formatter.string(from: $0) } ?? ""
+                let endDateString = calendarEvent.endDate.map { formatter.string(from: $0) } ?? ""
+
+                let updates: [String: Any] = [
+                    BubbleFields.CalendarEvent.startDate: startDateString,
+                    BubbleFields.CalendarEvent.endDate: endDateString,
+                    BubbleFields.CalendarEvent.duration: calendarEvent.duration
+                ]
+
+                try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
+                print("✅ Task calendar event updated on server")
+            }
+
+            await MainActor.run {
+                calendarEvent.needsSync = false
+                calendarEvent.lastSyncedAt = Date()
+                try? dataController.modelContext?.save()
+            }
+        } catch {
+            print("⚠️ Failed to sync task calendar event to server: \(error)")
+        }
+    }
+
+    private func saveTaskTeamChanges() {
+        guard let task = selectedTask else { return }
+
+        let previousIds = Set(task.getTeamMemberIds())
+        let newIds = selectedTaskTeamMemberIds
+
+        if previousIds != newIds {
+            // Update task
+            task.setTeamMemberIds(Array(newIds))
+            task.needsSync = true
+
+            // Update calendar event if exists
+            if let calendarEvent = task.calendarEvent {
+                calendarEvent.setTeamMemberIds(Array(newIds))
+                calendarEvent.needsSync = true
+            }
+
+            try? dataController.modelContext?.save()
+
+            // Show update message
+            showTaskTeamUpdateMessage = true
+
+            // Sync to API
+            Task {
+                do {
+                    try await dataController.apiService.updateTaskTeamMembers(
+                        id: task.id,
+                        teamMemberIds: Array(newIds)
+                    )
+                    print("✅ Task team members synced successfully")
+                } catch {
+                    print("❌ Failed to sync task team members: \(error)")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - TaskStatusChip
+
+/// Compact horizontal status chip for task status selection
+private struct TaskStatusChip: View {
+    let status: TaskStatus
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(status.displayName.uppercased())
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(isSelected ? .white : status.color)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .fill(isSelected ? status.color : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .strokeBorder(status.color, lineWidth: 1)
+                )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

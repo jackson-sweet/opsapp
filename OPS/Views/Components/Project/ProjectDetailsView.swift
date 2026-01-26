@@ -11,6 +11,38 @@ import MapKit
 import CoreLocation
 // Import team member components
 
+/// Enum for collapsible sections in ProjectDetailsView
+enum DetailsSection: String, CaseIterable, Hashable, Codable {
+    case client
+    case schedule
+    case notes
+    case tasks
+    case photos
+    case team
+
+    var title: String {
+        switch self {
+        case .client: return "CLIENT"
+        case .schedule: return "SCHEDULE"
+        case .notes: return "NOTES"
+        case .tasks: return "TASKS"
+        case .photos: return "PHOTOS"
+        case .team: return "TEAM"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .client: return "person.circle"
+        case .schedule: return OPSStyle.Icons.calendar
+        case .notes: return "note.text"
+        case .tasks: return OPSStyle.Icons.task
+        case .photos: return OPSStyle.Icons.photo
+        case .team: return OPSStyle.Icons.personTwo
+        }
+    }
+}
+
 struct ProjectDetailsView: View {
     @Bindable var project: Project
     var isEditMode: Bool = false
@@ -74,6 +106,19 @@ struct ProjectDetailsView: View {
     @State private var showingTaskScheduler: Bool = false
     @State private var showingTaskDeleteConfirmation: Bool = false
     @State private var showTaskTeamUpdateMessage: Bool = false
+
+    // MARK: - Collapsible Section State
+    @State private var sectionOrder: [DetailsSection] = DetailsSection.allCases
+    @State private var isClientExpanded: Bool = false
+    @State private var isScheduleExpanded: Bool = false
+    @State private var isProjectNotesExpanded: Bool = false
+    @State private var isTasksExpanded: Bool = false
+    @State private var isPhotosExpanded: Bool = false
+    // Note: isTeamExpanded is defined earlier at line 91
+    @State private var pinnedSections: Set<DetailsSection> = []
+
+    // UserDefaults key for section preferences
+    private static let sectionPrefsKey = "projectDetailsExpandedSections"
 
     // Initialize with project's existing notes and optional selected task
     init(project: Project, isEditMode: Bool = false, initialSelectedTask: ProjectTask? = nil) {
@@ -387,35 +432,46 @@ struct ProjectDetailsView: View {
     private var scrollableContent: some View {
         ScrollViewReader { scrollProxy in
             ScrollView {
-                VStack(spacing: 24) {
-                    locationSection
-                        .modifier(TutorialSectionDimModifier(
-                            shouldDim: shouldDimSection(except: nil),
-                            tutorialMode: tutorialMode
-                        ))
+                VStack(spacing: 16) {
+                    // MARK: - Task Selector Bar
+                    TaskSelectorBar(
+                        selectedTask: $selectedTask,
+                        tasks: Array(project.tasks),
+                        hasUnsavedChanges: taskNotes != originalTaskNotes,
+                        onSaveChanges: saveSelectedTaskNotes
+                    )
+                    .padding(.horizontal)
+                    .onChange(of: selectedTask) { oldTask, newTask in
+                        // Update task notes when selection changes
+                        if let task = newTask {
+                            let notes = task.taskNotes ?? ""
+                            taskNotes = notes
+                            originalTaskNotes = notes
+                            isTaskNotesExpanded = false
+                        }
+                    }
 
-                    // projectInfoSection handles its own internal dimming
-                    projectInfoSection
+                    // MARK: - Summary Card with Map
+                    ProjectSummaryCard(project: project)
+                        .padding(.horizontal)
 
-                    // Task details section (shown when a task is selected)
+                    // MARK: - Quick Access Pills
+                    sectionPillsView
+                        .padding(.horizontal)
+
+                    // MARK: - Collapsible Sections (dynamic order)
+                    ForEach(sectionOrder, id: \.self) { section in
+                        sectionView(for: section)
+                            .id(section)
+                    }
+
+                    // MARK: - Task Details Section (when task selected)
                     if selectedTask != nil {
                         taskDetailsSection
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
-                    tasksSection
-                        .modifier(TutorialSectionDimModifier(
-                            shouldDim: shouldDimSection(except: nil),
-                            tutorialMode: tutorialMode
-                        ))
-
-                    // photosSection - NOT dimmed during addPhoto phase
-                    photosSection
-                        .modifier(TutorialSectionDimModifier(
-                            shouldDim: shouldDimSection(except: .addPhoto),
-                            tutorialMode: tutorialMode
-                        ))
-
+                    // MARK: - Action Buttons
                     if project.status != .completed && project.status != .closed {
                         Spacer()
                             .frame(height: 40)
@@ -440,6 +496,7 @@ struct ProjectDetailsView: View {
                 }
                 .padding(.top, 16)
                 .animation(.easeInOut(duration: 0.3), value: project.status)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: sectionOrder)
             }
             .onAppear {
                 // Scroll to appropriate section if already in that phase when view appears
@@ -510,6 +567,530 @@ struct ProjectDetailsView: View {
 
         // Dim this section
         return true
+    }
+
+    // MARK: - Collapsible Section Helpers
+
+    /// Quick access pills for collapsed sections
+    private var sectionPillsView: some View {
+        OptionalSectionPillGroup(
+            pills: [
+                (
+                    title: DetailsSection.client.title,
+                    icon: DetailsSection.client.icon,
+                    isExpanded: isClientExpanded,
+                    isDisabled: false,
+                    isHighlighted: false,
+                    action: { expandSection(.client) }
+                ),
+                (
+                    title: DetailsSection.schedule.title,
+                    icon: DetailsSection.schedule.icon,
+                    isExpanded: isScheduleExpanded,
+                    isDisabled: false,
+                    isHighlighted: false,
+                    action: { expandSection(.schedule) }
+                ),
+                (
+                    title: DetailsSection.notes.title,
+                    icon: DetailsSection.notes.icon,
+                    isExpanded: isProjectNotesExpanded,
+                    isDisabled: false,
+                    isHighlighted: tutorialMode && tutorialPhase == .addNote,
+                    action: { expandSection(.notes) }
+                ),
+                (
+                    title: DetailsSection.tasks.title,
+                    icon: DetailsSection.tasks.icon,
+                    isExpanded: isTasksExpanded,
+                    isDisabled: false,
+                    isHighlighted: false,
+                    action: { expandSection(.tasks) }
+                ),
+                (
+                    title: DetailsSection.photos.title,
+                    icon: DetailsSection.photos.icon,
+                    isExpanded: isPhotosExpanded,
+                    isDisabled: false,
+                    isHighlighted: tutorialMode && tutorialPhase == .addPhoto,
+                    action: { expandSection(.photos) }
+                ),
+                (
+                    title: DetailsSection.team.title,
+                    icon: DetailsSection.team.icon,
+                    isExpanded: isTeamExpanded,
+                    isDisabled: project.tasks.isEmpty,
+                    isHighlighted: false,
+                    action: { expandSection(.team) }
+                )
+            ],
+            highlightPulse: tutorialMode
+        )
+    }
+
+    /// Expand a section and bring it to top
+    private func expandSection(_ section: DetailsSection) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            bringSectionToTop(section)
+            setExpanded(true, for: section)
+        }
+    }
+
+    /// Move a section to the top of the order
+    private func bringSectionToTop(_ section: DetailsSection) {
+        sectionOrder.removeAll { $0 == section }
+        sectionOrder.insert(section, at: 0)
+    }
+
+    /// Get/set expanded state for a section
+    private func isExpanded(for section: DetailsSection) -> Bool {
+        switch section {
+        case .client: return isClientExpanded
+        case .schedule: return isScheduleExpanded
+        case .notes: return isProjectNotesExpanded
+        case .tasks: return isTasksExpanded
+        case .photos: return isPhotosExpanded
+        case .team: return isTeamExpanded
+        }
+    }
+
+    private func setExpanded(_ value: Bool, for section: DetailsSection) {
+        switch section {
+        case .client: isClientExpanded = value
+        case .schedule: isScheduleExpanded = value
+        case .notes: isProjectNotesExpanded = value
+        case .tasks: isTasksExpanded = value
+        case .photos: isPhotosExpanded = value
+        case .team: isTeamExpanded = value
+        }
+    }
+
+    /// Check if a section is pinned
+    private func isPinned(_ section: DetailsSection) -> Bool {
+        pinnedSections.contains(section)
+    }
+
+    /// Toggle pin state for a section
+    private func togglePin(for section: DetailsSection) {
+        if pinnedSections.contains(section) {
+            pinnedSections.remove(section)
+        } else {
+            pinnedSections.insert(section)
+        }
+        saveSectionPreferences()
+    }
+
+    /// Load pinned section preferences from UserDefaults
+    private func loadSectionPreferences() {
+        if let data = UserDefaults.standard.data(forKey: Self.sectionPrefsKey),
+           let sections = try? JSONDecoder().decode(Set<DetailsSection>.self, from: data) {
+            pinnedSections = sections
+            // Auto-expand pinned sections
+            for section in sections {
+                setExpanded(true, for: section)
+            }
+        }
+    }
+
+    /// Save pinned section preferences to UserDefaults
+    private func saveSectionPreferences() {
+        if let data = try? JSONEncoder().encode(pinnedSections) {
+            UserDefaults.standard.set(data, forKey: Self.sectionPrefsKey)
+        }
+    }
+
+    /// Returns the appropriate view for a section
+    @ViewBuilder
+    private func sectionView(for section: DetailsSection) -> some View {
+        switch section {
+        case .client:
+            if isClientExpanded {
+                clientExpandableSection
+                    .padding(.horizontal)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        case .schedule:
+            if isScheduleExpanded {
+                scheduleExpandableSection
+                    .padding(.horizontal)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        case .notes:
+            if isProjectNotesExpanded {
+                notesExpandableSection
+                    .padding(.horizontal)
+                    .modifier(TutorialSectionDimModifier(
+                        shouldDim: shouldDimSection(except: .addNote),
+                        tutorialMode: tutorialMode
+                    ))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        case .tasks:
+            if isTasksExpanded {
+                tasksExpandableSection
+                    .padding(.horizontal)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        case .photos:
+            if isPhotosExpanded {
+                photosExpandableSection
+                    .padding(.horizontal)
+                    .modifier(TutorialSectionDimModifier(
+                        shouldDim: shouldDimSection(except: .addPhoto),
+                        tutorialMode: tutorialMode
+                    ))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        case .team:
+            if isTeamExpanded {
+                teamExpandableSection
+                    .padding(.horizontal)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    // MARK: - Expandable Section Views
+
+    private var clientExpandableSection: some View {
+        ExpandableSection(
+            title: "CLIENT",
+            icon: "person.circle",
+            isExpanded: $isClientExpanded,
+            onDelete: nil,
+            collapsible: true
+        ) {
+            clientSectionContent
+        }
+        .overlay(alignment: .topTrailing) {
+            pinButton(for: .client)
+        }
+    }
+
+    /// Pin button for sections
+    private func pinButton(for section: DetailsSection) -> some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                togglePin(for: section)
+            }
+            #if !targetEnvironment(simulator)
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+            #endif
+        }) {
+            Image(systemName: isPinned(section) ? "pin.fill" : "pin")
+                .font(.system(size: 12))
+                .foregroundColor(isPinned(section) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                .padding(8)
+        }
+        .offset(x: -32, y: 4)
+    }
+
+    private var clientSectionContent: some View {
+        Button(action: {
+            showingClientContact = true
+        }) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(project.effectiveClientName)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    if let email = project.effectiveClientEmail {
+                        Text(email)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 8) {
+                    Image(systemName: OPSStyle.Icons.phoneFill)
+                        .font(.system(size: 16))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.3)
+
+                    Image(systemName: OPSStyle.Icons.envelopeFill)
+                        .font(.system(size: 16))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.3)
+                }
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: 12))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private var scheduleExpandableSection: some View {
+        ExpandableSection(
+            title: "SCHEDULE",
+            icon: OPSStyle.Icons.calendar,
+            isExpanded: $isScheduleExpanded,
+            onDelete: nil,
+            collapsible: true
+        ) {
+            scheduleSectionContent
+        }
+        .overlay(alignment: .topTrailing) {
+            pinButton(for: .schedule)
+        }
+    }
+
+    private var scheduleSectionContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if project.tasks.isEmpty {
+                HStack(spacing: 8) {
+                    Text("No tasks to schedule. Create one?")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    Spacer()
+
+                    Button(action: {
+                        showingAddTaskSheet = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 14))
+                            Text("Add Task")
+                                .font(OPSStyle.Typography.caption)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
+            } else if project.computedStartDate == nil {
+                HStack {
+                    Text("Not Scheduled")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Spacer()
+                }
+            } else {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("START DATE")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        if let startDate = project.computedStartDate {
+                            Text(formatDate(startDate))
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                    }
+
+                    Spacer()
+
+                    if let endDate = project.computedEndDate,
+                       let startDate = project.computedStartDate,
+                       endDate >= startDate {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("END DATE")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            Text(formatDate(endDate))
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var notesExpandableSection: some View {
+        ExpandableSection(
+            title: "TEAM NOTES",
+            icon: "note.text",
+            isExpanded: $isProjectNotesExpanded,
+            onDelete: nil,
+            collapsible: true
+        ) {
+            NotesDisplayField(
+                title: "",
+                notes: project.notes ?? "",
+                isExpanded: $isNotesExpanded,
+                editedNotes: $noteText,
+                canEdit: true,
+                onSave: saveNotes
+            )
+            .id("teamNotesField")
+        }
+        .overlay(alignment: .topTrailing) {
+            pinButton(for: .notes)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + TutorialHighlightStyle.padding)
+                .stroke(
+                    shouldHighlightNotesSection ? TutorialHighlightStyle.color : Color.clear,
+                    lineWidth: shouldHighlightNotesSection ? TutorialHighlightStyle.lineWidth : 0
+                )
+                .opacity(shouldHighlightNotesSection ? (notesBorderPulse ? 1.0 : 0.4) : 0)
+                .padding(-TutorialHighlightStyle.padding)
+        )
+    }
+
+    private var tasksExpandableSection: some View {
+        ExpandableSection(
+            title: "TASKS",
+            icon: OPSStyle.Icons.task,
+            isExpanded: $isTasksExpanded,
+            onDelete: nil,
+            collapsible: true
+        ) {
+            VStack(spacing: 12) {
+                // Add task button at top
+                if canEditProjectSettings() {
+                    Button(action: {
+                        showingAddTaskSheet = true
+                    }) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 16))
+                            Text("Add Task")
+                                .font(OPSStyle.Typography.captionBold)
+                            Spacer()
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+
+                // Task list
+                TaskListView(
+                    project: project,
+                    onTaskSelected: { task in
+                        if taskNotes != originalTaskNotes {
+                            saveSelectedTaskNotes()
+                        }
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            selectedTask = task
+                            let notes = task.taskNotes ?? ""
+                            taskNotes = notes
+                            originalTaskNotes = notes
+                            isTaskNotesExpanded = false
+                        }
+                    }
+                )
+                .environmentObject(dataController)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            pinButton(for: .tasks)
+        }
+    }
+
+    private var photosExpandableSection: some View {
+        ExpandableSection(
+            title: "PROJECT PHOTOS",
+            icon: OPSStyle.Icons.photo,
+            isExpanded: $isPhotosExpanded,
+            onDelete: nil,
+            collapsible: true
+        ) {
+            photoContentView
+        }
+        .id("photosSection")
+        .overlay(alignment: .topTrailing) {
+            pinButton(for: .photos)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + TutorialHighlightStyle.padding)
+                .stroke(
+                    shouldHighlightPhotosSection ? TutorialHighlightStyle.color : Color.clear,
+                    lineWidth: shouldHighlightPhotosSection ? TutorialHighlightStyle.lineWidth : 0
+                )
+                .opacity(shouldHighlightPhotosSection ? (photosBorderPulse ? 1.0 : 0.4) : 0)
+                .padding(-TutorialHighlightStyle.padding)
+        )
+    }
+
+    private var teamExpandableSection: some View {
+        ExpandableSection(
+            title: "ASSIGNED TEAM",
+            icon: OPSStyle.Icons.personTwo,
+            isExpanded: $isTeamExpanded,
+            onDelete: nil,
+            collapsible: true
+        ) {
+            teamSectionContent
+        }
+        .overlay(alignment: .topTrailing) {
+            pinButton(for: .team)
+        }
+    }
+
+    private var teamSectionContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if project.tasks.isEmpty {
+                HStack(spacing: 8) {
+                    Text("No tasks to assign to. Create one?")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    Spacer()
+
+                    Button(action: {
+                        showingAddTaskSheet = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 14))
+                            Text("Add Task")
+                                .font(OPSStyle.Typography.caption)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
+            } else if project.teamMembers.isEmpty {
+                HStack {
+                    Text("No team assigned")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Spacer()
+                }
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(project.teamMembers.prefix(5), id: \.id) { member in
+                        Button(action: {
+                            selectedTeamMember = member
+                        }) {
+                            HStack(spacing: 12) {
+                                UserAvatar(user: member, size: 32)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(member.fullName)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                    Text(member.role.rawValue)
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: OPSStyle.Icons.chevronRight)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
+                    if project.teamMembers.count > 5 {
+                        Text("+ \(project.teamMembers.count - 5) more")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Sheet Contents
@@ -584,6 +1165,9 @@ struct ProjectDetailsView: View {
     private func handleOnAppear() {
         // Track screen view for analytics
         AnalyticsManager.shared.trackScreenView(screenName: .projectDetails, screenClass: "ProjectDetailsView")
+
+        // Load pinned section preferences
+        loadSectionPreferences()
 
         DispatchQueue.main.async {
             if let appState = dataController.appState {

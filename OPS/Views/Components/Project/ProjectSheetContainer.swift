@@ -27,7 +27,7 @@ struct ProjectSheetContainer: View {
                         .onAppear {
                         }
                 }
-                .interactiveDismissDisabled(false)
+                .interactiveDismissDisabled(true)
             } else {
                 // Fallback if project isn't available (should rarely happen)
                 VStack {
@@ -73,7 +73,7 @@ struct ProjectSheetContainer: View {
                         .onAppear {
                         }
                 }
-                .interactiveDismissDisabled(false)
+                .interactiveDismissDisabled(true)
             } else {
                 VStack {
                     Text("Task no longer available")

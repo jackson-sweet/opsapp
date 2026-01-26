@@ -7,46 +7,38 @@
 
 import SwiftUI
 import MapKit
+import CoreLocation
 
 /// Compact project summary card with tappable map and key info
 ///
 /// Features:
 /// - Compact map view (~80pt) with location pin
-/// - Tap map to open directions in Maps app
-/// - Info row below: address, date range, team count, status badge
+/// - Tap anywhere on map to open directions in Maps app
+/// - Info row below: address, distance in minutes
 struct ProjectSummaryCard: View {
     let project: Project
+    @EnvironmentObject private var locationManager: LocationManager
+
+    // MARK: - State
+    @State private var estimatedTravelTime: String? = nil
 
     // MARK: - Computed Properties
-    private var dateRangeText: String {
-        let startDate = project.computedStartDate
-        let endDate = project.computedEndDate
-
-        if let start = startDate, let end = endDate {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM d"
-            return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
-        } else if let start = startDate {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM d"
-            return "From \(formatter.string(from: start))"
-        } else {
-            return "Not scheduled"
-        }
-    }
-
-    private var teamCount: Int {
-        // Get unique team member count from all tasks
-        let uniqueIds = Set(project.tasks.flatMap { $0.getTeamMemberIds() })
-        return uniqueIds.count
-    }
-
     private var shortAddress: String {
         guard let address = project.address, !address.isEmpty else {
             return "No address"
         }
         // Return first line of address (street address)
         return address.components(separatedBy: ",").first ?? address
+    }
+
+    /// Extract street number and name for Maps title
+    private var streetAddress: String {
+        guard let address = project.address, !address.isEmpty else {
+            return "Destination"
+        }
+        // First part before comma is typically street number + street name
+        let firstPart = address.components(separatedBy: ",").first ?? address
+        return firstPart.trimmingCharacters(in: .whitespaces)
     }
 
     // MARK: - Body
@@ -65,12 +57,19 @@ struct ProjectSummaryCard: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
+        .onAppear {
+            calculateTravelTime()
+        }
     }
 
     // MARK: - Compact Map View
     private var compactMapView: some View {
         Button(action: {
-            openInMaps(coordinate: project.coordinate, address: project.address ?? "")
+            openInMapsWithTitle(
+                coordinate: project.coordinate,
+                address: project.address ?? "",
+                title: streetAddress
+            )
         }) {
             ZStack {
                 if let coordinate = project.coordinate {
@@ -104,26 +103,6 @@ struct ProjectSummaryCard: View {
                             }
                         )
                 }
-
-                // Directions hint overlay
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                                .font(.system(size: 10))
-                            Text("DIRECTIONS")
-                                .font(OPSStyle.Typography.smallCaption)
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(OPSStyle.Colors.primaryAccent.opacity(0.9))
-                        .cornerRadius(4)
-                        .padding(8)
-                    }
-                }
             }
         }
         .buttonStyle(PlainButtonStyle())
@@ -139,8 +118,8 @@ struct ProjectSummaryCard: View {
 
     // MARK: - Info Row
     private var infoRow: some View {
-        HStack(spacing: 16) {
-            // Address
+        HStack(spacing: 12) {
+            // Address with map pin icon
             HStack(spacing: 4) {
                 Image(systemName: "mappin.circle")
                     .font(.system(size: 11))
@@ -154,45 +133,86 @@ struct ProjectSummaryCard: View {
 
             Spacer()
 
-            // Date range
+            // Distance in minutes
             HStack(spacing: 4) {
-                Image(systemName: OPSStyle.Icons.calendar)
+                Image(systemName: "car.fill")
                     .font(.system(size: 11))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                Text(dateRangeText.uppercased())
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(project.computedStartDate != nil ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
+                if let travelTime = estimatedTravelTime {
+                    Text(travelTime.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                } else if project.coordinate != nil {
+                    Text("CALCULATING...")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                } else {
+                    Text("—")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
             }
-
-            // Team count
-            HStack(spacing: 4) {
-                Image(systemName: OPSStyle.Icons.personTwo)
-                    .font(.system(size: 11))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                Text("\(teamCount)")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(teamCount > 0 ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
-            }
-
-            // Status badge
-            Text(project.status.displayName.uppercased())
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(project.status.color)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(project.status.color.opacity(0.1))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(project.status.color.opacity(0.3), lineWidth: 1)
-                )
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(OPSStyle.Colors.cardBackgroundDark)
+    }
+
+    // MARK: - Travel Time Calculation
+    private func calculateTravelTime() {
+        guard let destinationCoordinate = project.coordinate else {
+            estimatedTravelTime = nil
+            return
+        }
+
+        // Get current location
+        guard let currentLocation = locationManager.userLocation else {
+            estimatedTravelTime = "—"
+            return
+        }
+
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: currentLocation))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destinationCoordinate))
+        request.transportType = .automobile
+
+        let directions = MKDirections(request: request)
+        directions.calculateETA { response, error in
+            DispatchQueue.main.async {
+                if let eta = response?.expectedTravelTime {
+                    let minutes = Int(eta / 60)
+                    if minutes < 60 {
+                        self.estimatedTravelTime = "\(minutes) MIN"
+                    } else {
+                        let hours = minutes / 60
+                        let remainingMinutes = minutes % 60
+                        if remainingMinutes == 0 {
+                            self.estimatedTravelTime = "\(hours) HR"
+                        } else {
+                            self.estimatedTravelTime = "\(hours) HR \(remainingMinutes) MIN"
+                        }
+                    }
+                } else {
+                    self.estimatedTravelTime = "—"
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Helper Function
+
+/// Opens Maps app with directions using a custom title
+func openInMapsWithTitle(coordinate: CLLocationCoordinate2D?, address: String, title: String) {
+    if let coordinate = coordinate {
+        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        mapItem.name = title
+        mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+    } else if !address.isEmpty {
+        let addressString = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let url = URL(string: "http://maps.apple.com/?address=\(addressString)") {
+            UIApplication.shared.open(url)
+        }
     }
 }

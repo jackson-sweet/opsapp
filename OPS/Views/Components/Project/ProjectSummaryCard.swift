@@ -64,48 +64,46 @@ struct ProjectSummaryCard: View {
 
     // MARK: - Compact Map View
     private var compactMapView: some View {
-        Button(action: {
+        ZStack {
+            if let coordinate = project.coordinate {
+                // Map with location
+                Map(initialPosition: .region(MKCoordinateRegion(
+                    center: coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                ))) {
+                    Annotation("", coordinate: coordinate) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundColor(.white)
+                            .shadow(color: Color.black.opacity(0.5), radius: 3, x: 0, y: 2)
+                    }
+                }
+                .mapStyle(.standard(elevation: .flat))
+                .allowsHitTesting(false)
+            } else {
+                // No location fallback
+                OPSStyle.Colors.cardBackground
+                    .overlay(
+                        HStack(spacing: 8) {
+                            Image(systemName: "map.slash")
+                                .font(.system(size: 16))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            Text("NO LOCATION")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                    )
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
             openInMapsWithTitle(
                 coordinate: project.coordinate,
                 address: project.address ?? "",
                 title: streetAddress
             )
-        }) {
-            ZStack {
-                if let coordinate = project.coordinate {
-                    // Map with location
-                    Map(initialPosition: .region(MKCoordinateRegion(
-                        center: coordinate,
-                        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                    ))) {
-                        Annotation("", coordinate: coordinate) {
-                            Image(systemName: "mappin.circle.fill")
-                                .font(.system(size: 24, weight: .semibold))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
-                        }
-                    }
-                    .mapStyle(.standard(elevation: .flat))
-                    .allowsHitTesting(false)
-                    .disabled(true)
-                } else {
-                    // No location fallback
-                    OPSStyle.Colors.cardBackground
-                        .overlay(
-                            HStack(spacing: 8) {
-                                Image(systemName: "map.slash")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                                Text("NO LOCATION")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                        )
-                }
-            }
         }
-        .buttonStyle(PlainButtonStyle())
         .clipShape(
             UnevenRoundedRectangle(
                 topLeadingRadius: OPSStyle.Layout.cornerRadius,

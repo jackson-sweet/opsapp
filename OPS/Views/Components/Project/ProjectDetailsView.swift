@@ -43,6 +43,12 @@ enum DetailsSection: String, CaseIterable, Hashable, Codable {
     }
 }
 
+/// Tab options for the task details section
+enum TaskSectionTab: String, CaseIterable {
+    case scheduleTeam = "Schedule & Team"
+    case notes = "Notes"
+}
+
 struct ProjectDetailsView: View {
     @Bindable var project: Project
     var isEditMode: Bool = false
@@ -107,6 +113,7 @@ struct ProjectDetailsView: View {
     @State private var showingTaskDeleteConfirmation: Bool = false
     @State private var showingCancelTaskConfirmation: Bool = false
     @State private var showTaskTeamUpdateMessage: Bool = false
+    @State private var selectedTaskTab: TaskSectionTab = .scheduleTeam
 
     // MARK: - Collapsible Section State
     @State private var sectionOrder: [DetailsSection] = DetailsSection.allCases
@@ -434,22 +441,21 @@ struct ProjectDetailsView: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(spacing: 16) {
-                    // MARK: - Task Selector Bar
-                    TaskSelectorBar(
-                        selectedTask: $selectedTask,
-                        tasks: Array(project.tasks),
-                        hasUnsavedChanges: taskNotes != originalTaskNotes,
-                        onSaveChanges: saveSelectedTaskNotes
-                    )
-                    .padding(.horizontal)
-                    .onChange(of: selectedTask) { oldTask, newTask in
-                        // Update task notes when selection changes
-                        if let task = newTask {
-                            let notes = task.taskNotes ?? ""
-                            taskNotes = notes
-                            originalTaskNotes = notes
-                            isTaskNotesExpanded = false
-                        }
+                    // MARK: - Task Details Section (FIRST when task selected)
+                    if selectedTask != nil {
+                        taskDetailsSection
+                            .id("taskDetailsSection")
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            .onChange(of: selectedTask) { oldTask, newTask in
+                                // Update task notes when selection changes
+                                if let task = newTask {
+                                    let notes = task.taskNotes ?? ""
+                                    taskNotes = notes
+                                    originalTaskNotes = notes
+                                    isTaskNotesExpanded = false
+                                    selectedTaskTab = .scheduleTeam // Reset to first tab
+                                }
+                            }
                     }
 
                     // MARK: - Summary Card with Map
@@ -464,12 +470,6 @@ struct ProjectDetailsView: View {
                     ForEach(sectionOrder, id: \.self) { section in
                         sectionView(for: section)
                             .id(section)
-                    }
-
-                    // MARK: - Task Details Section (when task selected)
-                    if selectedTask != nil {
-                        taskDetailsSection
-                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
                     // MARK: - Action Buttons
@@ -2330,73 +2330,253 @@ struct ProjectDetailsView: View {
     // MARK: - Task Details Section
 
     private var taskDetailsSection: some View {
-        VStack(spacing: 0) {
-            // Color stripe at top
+        HStack(spacing: 0) {
+            // Left colored border
             if let task = selectedTask {
                 Rectangle()
                     .fill(Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent)
-                    .frame(height: 3)
+                    .frame(width: 4)
             }
 
-            VStack(spacing: 16) {
-                // Task type header
-                if let task = selectedTask {
-                    HStack {
-                        Text("TASK: \(task.taskType?.display.uppercased() ?? "TASK")")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
+            VStack(spacing: 0) {
+                // Task selector header with status badge
+                taskSelectorHeader
+                    .padding(.horizontal, 16)
                     .padding(.top, 16)
+                    .padding(.bottom, 12)
+
+                // Tab selector
+                taskTabSelector
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+
+                // Tab content
+                switch selectedTaskTab {
+                case .scheduleTeam:
+                    VStack(spacing: 16) {
+                        taskScheduleContent
+                        taskTeamContent
+                    }
+                    .padding(.horizontal, 16)
+                case .notes:
+                    taskNotesContent
+                        .padding(.horizontal, 16)
                 }
 
-                // Status update chips
-                taskStatusSection
-
-                // Schedule section
-                taskScheduleSection
-
-                // Task notes section
-                taskNotesSection
-
-                // Task team section
-                taskTeamSection
+                // Complete/Reopen button
+                taskStatusButton
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
 
                 // Previous/Next navigation
                 taskNavigationSection
+                    .padding(.top, 8)
             }
             .padding(.bottom, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            )
         }
+        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
         .padding(.horizontal)
     }
 
-    private var taskStatusSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Status indicator
+    /// Task selector header with inline status badge
+    private var taskSelectorHeader: some View {
+        HStack(spacing: 12) {
             if let task = selectedTask {
-                HStack(spacing: 8) {
-                    Text("STATUS:")
-                        .font(OPSStyle.Typography.captionBold)
+                // Task type name (acts as selector)
+                Button(action: {
+                    // Could open task picker dropdown in future
+                }) {
+                    HStack(spacing: 8) {
+                        Text(task.taskType?.display.uppercased() ?? "TASK")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                        // Status badge inline
+                        StatusBadge(
+                            status: task.status.displayName,
+                            color: task.status.color,
+                            size: .small
+                        )
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Spacer()
+
+                // Task navigation arrows
+                HStack(spacing: 4) {
+                    let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
+                    let currentIndex = sortedTasks.firstIndex(where: { $0.id == task.id }) ?? 0
+
+                    Button(action: {
+                        if currentIndex > 0 {
+                            selectedTask = sortedTasks[currentIndex - 1]
+                        }
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(currentIndex > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                            .frame(width: 32, height: 32)
+                    }
+                    .disabled(currentIndex == 0)
+
+                    Text("\(currentIndex + 1)/\(sortedTasks.count)")
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    Text(task.status.displayName.uppercased())
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(task.status.color)
+                    Button(action: {
+                        if currentIndex < sortedTasks.count - 1 {
+                            selectedTask = sortedTasks[currentIndex + 1]
+                        }
+                    }) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(currentIndex < sortedTasks.count - 1 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                            .frame(width: 32, height: 32)
+                    }
+                    .disabled(currentIndex >= sortedTasks.count - 1)
                 }
-                .padding(.horizontal)
+            }
+        }
+    }
+
+    /// Tab selector for task section
+    private var taskTabSelector: some View {
+        HStack(spacing: 0) {
+            ForEach(TaskSectionTab.allCases, id: \.self) { tab in
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedTaskTab = tab
+                    }
+                }) {
+                    Text(tab.rawValue.uppercased())
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(selectedTaskTab == tab ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            selectedTaskTab == tab
+                                ? OPSStyle.Colors.cardBackground
+                                : Color.clear
+                        )
+                        .cornerRadius(OPSStyle.Layout.cornerRadius / 2)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(4)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+        )
+    }
+
+    /// Schedule content for task tab
+    private var taskScheduleContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("SCHEDULE")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Button(action: {
+                if canEditProjectSettings() {
+                    showingTaskScheduler = true
+                }
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: OPSStyle.Icons.calendar)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(width: 20)
+
+                    if let task = selectedTask,
+                       let calendarEvent = task.calendarEvent,
+                       let start = calendarEvent.startDate {
+                        Text(formatTaskDateRange(start, calendarEvent.endDate))
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    } else {
+                        Text("Tap to Schedule")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+
+                    Spacer()
+
+                    if canEditProjectSettings() {
+                        Image(systemName: OPSStyle.Icons.chevronRight)
+                            .font(.system(size: 12))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .background(OPSStyle.Colors.cardBackground)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .allowsHitTesting(canEditProjectSettings())
+        }
+    }
+
+    /// Team content for task tab
+    private var taskTeamContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("TEAM")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                Spacer()
+
+                if canEditProjectSettings() {
+                    Button(action: {
+                        if let task = selectedTask {
+                            selectedTaskTeamMemberIds = Set(task.getTeamMemberIds())
+                            loadTaskTeamMembers()
+                            showingTaskTeamPicker = true
+                        }
+                    }) {
+                        Text("Edit")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
             }
 
-            // Complete/Reopen button
-            taskStatusButton
-                .padding(.horizontal)
+            if let task = selectedTask {
+                TaskTeamView(task: task)
+                    .environmentObject(dataController)
+            }
         }
+        .sheet(isPresented: $showingTaskTeamPicker, onDismiss: {
+            saveTaskTeamChanges()
+        }) {
+            TeamMemberPickerSheet(
+                selectedTeamMemberIds: $selectedTaskTeamMemberIds,
+                allTeamMembers: taskTeamMembers
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    /// Notes content for task tab
+    private var taskNotesContent: some View {
+        NotesDisplayField(
+            title: "Task Notes",
+            notes: selectedTask?.taskNotes ?? "",
+            isExpanded: $isTaskNotesExpanded,
+            editedNotes: $taskNotes,
+            canEdit: true,
+            onSave: saveSelectedTaskNotes
+        )
     }
 
     /// Button to toggle task status between active and completed
@@ -2424,116 +2604,6 @@ struct ProjectDetailsView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
-        }
-    }
-
-    private var availableTaskStatuses: [TaskStatus] {
-        // Simplified 3-state system: Active, Completed, Cancelled
-        // Field crew doesn't see Cancelled option
-        guard let currentUser = dataController.currentUser else {
-            return [.active, .completed]
-        }
-        if currentUser.role == .admin || currentUser.role == .officeCrew {
-            return TaskStatus.allCases
-        } else {
-            return [.active, .completed]
-        }
-    }
-
-    private var taskScheduleSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("SCHEDULE")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            Button(action: {
-                if canEditProjectSettings() {
-                    showingTaskScheduler = true
-                }
-            }) {
-                HStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.calendar)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(width: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        if let task = selectedTask,
-                           let calendarEvent = task.calendarEvent,
-                           let start = calendarEvent.startDate {
-                            Text(formatTaskDateRange(start, calendarEvent.endDate))
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        } else {
-                            Text("Tap to Schedule")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                    }
-
-                    Spacer()
-
-                    if canEditProjectSettings() {
-                        Image(systemName: OPSStyle.Icons.chevronRight)
-                            .font(.system(size: 14))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .background(Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .allowsHitTesting(canEditProjectSettings())
-        }
-        .padding(.horizontal)
-    }
-
-    private var taskNotesSection: some View {
-        NotesDisplayField(
-            title: "Task Notes",
-            notes: selectedTask?.taskNotes ?? "",
-            isExpanded: $isTaskNotesExpanded,
-            editedNotes: $taskNotes,
-            canEdit: true,
-            onSave: saveSelectedTaskNotes
-        )
-        .padding(.horizontal)
-    }
-
-    private var taskTeamSection: some View {
-        SectionCard(
-            icon: OPSStyle.Icons.personTwo,
-            title: "Task Team",
-            actionIcon: canEditProjectSettings() ? "pencil.circle" : nil,
-            actionLabel: canEditProjectSettings() ? "Edit" : nil,
-            onAction: canEditProjectSettings() ? {
-                if let task = selectedTask {
-                    selectedTaskTeamMemberIds = Set(task.getTeamMemberIds())
-                    loadTaskTeamMembers()
-                    showingTaskTeamPicker = true
-                }
-            } : nil
-        ) {
-            if let task = selectedTask {
-                TaskTeamView(task: task)
-                    .environmentObject(dataController)
-            }
-        }
-        .padding(.horizontal)
-        .sheet(isPresented: $showingTaskTeamPicker, onDismiss: {
-            saveTaskTeamChanges()
-        }) {
-            TeamMemberPickerSheet(
-                selectedTeamMemberIds: $selectedTaskTeamMemberIds,
-                allTeamMembers: taskTeamMembers
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
         }
     }
 

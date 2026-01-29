@@ -105,6 +105,7 @@ struct ProjectDetailsView: View {
     @State private var taskTeamMembers: [TeamMember] = []
     @State private var showingTaskScheduler: Bool = false
     @State private var showingTaskDeleteConfirmation: Bool = false
+    @State private var showingCancelTaskConfirmation: Bool = false
     @State private var showTaskTeamUpdateMessage: Bool = false
 
     // MARK: - Collapsible Section State
@@ -492,6 +493,13 @@ struct ProjectDetailsView: View {
 
                     if canEditProjectSettings() {
                         deleteButton
+                    }
+
+                    // Cancel Task button - only show for admin/office when a task is selected and not cancelled
+                    if let task = selectedTask,
+                       task.status != .cancelled,
+                       canEditProjectSettings() {
+                        cancelTaskButton
                     }
                 }
                 .padding(.top, 16)
@@ -2370,39 +2378,65 @@ struct ProjectDetailsView: View {
     }
 
     private var taskStatusSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("STATUS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal)
-
-            ScrollView(.horizontal, showsIndicators: false) {
+        VStack(alignment: .leading, spacing: 12) {
+            // Status indicator
+            if let task = selectedTask {
                 HStack(spacing: 8) {
-                    ForEach(availableTaskStatuses, id: \.self) { status in
-                        TaskStatusChip(
-                            status: status,
-                            isSelected: selectedTask?.status == status,
-                            onTap: {
-                                if selectedTask?.status != status {
-                                    updateSelectedTaskStatus(to: status)
-                                }
-                            }
-                        )
-                    }
+                    Text("STATUS:")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Text(task.status.displayName.uppercased())
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(task.status.color)
                 }
                 .padding(.horizontal)
+            }
+
+            // Complete/Reopen button
+            taskStatusButton
+                .padding(.horizontal)
+        }
+    }
+
+    /// Button to toggle task status between active and completed
+    private var taskStatusButton: some View {
+        Group {
+            if let task = selectedTask {
+                Button(action: {
+                    let newStatus: TaskStatus = task.status == .completed ? .active : .completed
+                    updateSelectedTaskStatus(to: newStatus)
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: task.status == .completed ? "arrow.uturn.backward.circle.fill" : "checkmark.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+
+                        Text(task.status == .completed ? "REOPEN TASK" : "COMPLETE TASK")
+                            .font(OPSStyle.Typography.bodyBold)
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .fill(task.status == .completed ? OPSStyle.Colors.primaryAccent : Color("StatusCompleted"))
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
             }
         }
     }
 
     private var availableTaskStatuses: [TaskStatus] {
+        // Simplified 3-state system: Active, Completed, Cancelled
+        // Field crew doesn't see Cancelled option
         guard let currentUser = dataController.currentUser else {
-            return [.booked, .inProgress, .completed]
+            return [.active, .completed]
         }
         if currentUser.role == .admin || currentUser.role == .officeCrew {
             return TaskStatus.allCases
         } else {
-            return [.booked, .inProgress, .completed]
+            return [.active, .completed]
         }
     }
 
@@ -2807,6 +2841,56 @@ struct ProjectDetailsView: View {
             message: "Are you sure you want to delete this project? This action cannot be undone.",
             onConfirm: deleteProject
         )
+    }
+
+    /// Button to cancel the selected task
+    private var cancelTaskButton: some View {
+        Button(action: {
+            showingCancelTaskConfirmation = true
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "xmark.circle")
+                    .font(.system(size: 16, weight: .medium))
+
+                Text("CANCEL TASK")
+                    .font(OPSStyle.Typography.bodyBold)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+            .background(Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.5), lineWidth: 1)
+            )
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .alert("Cancel Task", isPresented: $showingCancelTaskConfirmation) {
+            Button("Keep Task", role: .cancel) { }
+            Button("Cancel Task", role: .destructive) {
+                cancelSelectedTask()
+            }
+        } message: {
+            Text("Are you sure you want to cancel this task? You can reactivate it later if needed.")
+        }
+    }
+
+    /// Cancel the selected task
+    private func cancelSelectedTask() {
+        guard let task = selectedTask else { return }
+
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        Task {
+            do {
+                try await dataController.updateTaskStatus(task: task, to: .cancelled)
+                print("[TASK_CANCEL] ✅ Task \(task.id) cancelled")
+            } catch {
+                print("[TASK_CANCEL] ❌ Failed to cancel task: \(error)")
+            }
+        }
     }
 
     // Check if user can edit project settings
@@ -3235,7 +3319,8 @@ struct ProjectDetailsView: View {
         impactFeedback.impactOccurred()
 
         // Handle project status updates before task status update
-        if newStatus == .inProgress {
+        // If task is being reactivated and project is completed, reopen project
+        if newStatus == .active {
             if project.status == .completed {
                 project.status = .inProgress
                 project.needsSync = true

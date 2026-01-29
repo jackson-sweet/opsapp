@@ -454,11 +454,11 @@ struct JobBoardProjectListView: View {
         // Animation sequence: accepted → in progress → completed
         // Each transition greys out the card briefly and animates the status badge
 
-        // Step 1: Change to accepted
-        animateStatusChange(demoProject, to: .accepted, taskStatus: .booked) {
+        // Step 1: Change to accepted with active task
+        animateStatusChange(demoProject, to: .accepted, taskStatus: .active) {
             // Step 2: After a delay, change to in progress
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                self.animateStatusChange(demoProject, to: .inProgress, taskStatus: .inProgress) {
+                self.animateStatusChange(demoProject, to: .inProgress, taskStatus: .active) {
                     // Step 3: After another delay, change to completed
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                         self.animateStatusChange(demoProject, to: .completed, taskStatus: .completed) {

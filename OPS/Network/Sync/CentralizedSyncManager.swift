@@ -1072,7 +1072,7 @@ class CentralizedSyncManager {
                 task.projectId = dto.projectId ?? ""
                 task.taskTypeId = dto.type ?? ""
                 task.companyId = dto.companyId ?? ""
-                task.status = TaskStatus(rawValue: dto.status ?? "Booked") ?? .booked
+                task.status = TaskStatus(rawValue: dto.status ?? "Active") ?? .active
                 task.taskNotes = dto.taskNotes
                 task.taskColor = dto.taskColor ?? "#59779F"
                 task.displayOrder = dto.taskIndex ?? 0
@@ -1492,7 +1492,7 @@ class CentralizedSyncManager {
 
             task.projectId = dto.projectId ?? ""
             task.taskTypeId = dto.type ?? ""
-            task.status = TaskStatus(rawValue: dto.status ?? "Booked") ?? .booked
+            task.status = TaskStatus(rawValue: dto.status ?? "Active") ?? .active
             task.taskNotes = dto.taskNotes
             task.taskColor = dto.taskColor ?? "#59779F"
             task.displayOrder = dto.taskIndex ?? 0
@@ -2386,7 +2386,7 @@ class CentralizedSyncManager {
         if let existing = try modelContext.fetch(descriptor).first {
             return existing
         }
-        let new = ProjectTask(id: id, projectId: "", taskTypeId: "", companyId: "", status: .booked, taskColor: "#59779F")
+        let new = ProjectTask(id: id, projectId: "", taskTypeId: "", companyId: "", status: .active, taskColor: "#59779F")
         modelContext.insert(new)
         return new
     }

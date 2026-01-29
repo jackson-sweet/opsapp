@@ -399,11 +399,11 @@ struct EventCardView: View {
             )
         }
 
-        // Update task status to in progress using centralized function
-        if task.status != .inProgress {
+        // Reactivate task if it was cancelled/completed (user starting work on it again)
+        if task.status != .active {
             Task {
                 do {
-                    try await dataController.updateTaskStatus(task: task, to: .inProgress)
+                    try await dataController.updateTaskStatus(task: task, to: .active)
                 } catch {
                     print("[EVENT_CAROUSEL] ❌ Failed to update task status: \(error)")
                 }

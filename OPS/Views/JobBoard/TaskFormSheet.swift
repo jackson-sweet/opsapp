@@ -98,7 +98,7 @@ struct TaskFormSheet: View {
     @State private var projectSearchText: String = ""
     @State private var showingProjectSuggestions = false
     @State private var showingTeamPicker = false
-    @State private var selectedStatus: TaskStatus = .booked
+    @State private var selectedStatus: TaskStatus = .active
 
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -305,7 +305,7 @@ struct TaskFormSheet: View {
                             projectId: project.id,
                             taskTypeId: selectedTaskTypeId ?? "",
                             companyId: dataController.currentUser?.companyId ?? "",
-                            status: .booked
+                            status: .active
                         )),
                         currentStartDate: startDate,
                         currentEndDate: endDate,

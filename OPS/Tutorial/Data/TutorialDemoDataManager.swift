@@ -94,8 +94,8 @@ class TutorialDemoDataManager {
         let allDemoTasks = try fetchAllDemoTasks()
         print("[TUTORIAL_ASSIGN] Found \(allDemoTasks.count) demo tasks total")
 
-        // First, identify tasks scheduled for today (in_progress status = today's work)
-        let todayTasks = allDemoTasks.filter { $0.status == .inProgress }
+        // First, identify tasks scheduled for today (active status = today's work)
+        let todayTasks = allDemoTasks.filter { $0.status == .active }
         print("[TUTORIAL_ASSIGN] Found \(todayTasks.count) tasks for today")
 
         // Assign user to ALL today's tasks so they appear on Home view
@@ -536,8 +536,8 @@ class TutorialDemoDataManager {
             return .accepted
         }
 
-        // If any task is in progress, project is in progress
-        if tasks.contains(where: { $0.status == .inProgress }) {
+        // If any task is active, project is in progress
+        if tasks.contains(where: { $0.status == .active }) {
             return .inProgress
         }
 
@@ -551,7 +551,7 @@ class TutorialDemoDataManager {
             return .accepted
         }
 
-        // Default to accepted (includes future tasks in .booked status)
+        // Default to accepted (includes future tasks in .active status)
         return .accepted
     }
 
@@ -583,8 +583,8 @@ class TutorialDemoDataManager {
             }
         )
         let allDemoTasks = try context.fetch(descriptor)
-        // Filter to only in-progress tasks (today's work)
-        return allDemoTasks.filter { $0.status == .inProgress }
+        // Filter to only active tasks (today's work)
+        return allDemoTasks.filter { $0.status == .active }
     }
 
     /// Fetches all demo tasks (for calendar assignment across all dates)

@@ -312,7 +312,7 @@ struct TaskTestView: View {
                 projectId: project.id,
                 taskTypeId: taskTypes[1].id,
                 companyId: companyId,
-                status: .inProgress,
+                status: .active,
                 taskColor: taskTypes[1].color
             ),
             ProjectTask(
@@ -320,7 +320,7 @@ struct TaskTestView: View {
                 projectId: project.id,
                 taskTypeId: taskTypes[2].id,
                 companyId: companyId,
-                status: .booked,
+                status: .active,
                 taskColor: taskTypes[2].color
             )
         ]
@@ -358,11 +358,11 @@ struct TaskTestView: View {
         let allCompleteStatus = project.computedStatus
         statusMessage = "All tasks completed -> Project status: \(allCompleteStatus.displayName)"
         
-        // Test 2: Mark one task as in progress
+        // Test 2: Mark one task as active
         if let firstTask = testTasks.first {
-            firstTask.status = .inProgress
-            let inProgressStatus = project.computedStatus
-            statusMessage += "\nOne task in progress -> Project status: \(inProgressStatus.displayName)"
+            firstTask.status = .active
+            let activeStatus = project.computedStatus
+            statusMessage += "\nOne task active -> Project status: \(activeStatus.displayName)"
         }
         
         // Test 3: Cancel all tasks
@@ -464,10 +464,8 @@ struct TaskTestView: View {
     
     private func statusColor(for status: TaskStatus) -> Color {
         switch status {
-        case .booked:
+        case .active:
             return .blue
-        case .inProgress:
-            return .orange
         case .completed:
             return .green
         case .cancelled:

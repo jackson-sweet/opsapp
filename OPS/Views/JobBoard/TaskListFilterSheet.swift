@@ -41,7 +41,7 @@ struct TaskListFilterSheet: View {
         filters.append(.multiSelect(
             title: "TASK STATUS",
             icon: OPSStyle.Icons.alert,
-            options: [TaskStatus.booked, .inProgress, .completed, .cancelled],
+            options: [TaskStatus.active, .completed, .cancelled],
             selection: $selectedStatuses,
             getDisplay: { $0.displayName },
             getColorIndicator: { .rectangle($0.color) }

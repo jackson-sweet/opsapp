@@ -229,7 +229,7 @@ extension View {
         TaskLineItem(
             title: "Electrical",
             color: .blue,
-            status: .booked,
+            status: .active,
             startDate: Date(),
             teamMemberCount: 3,
             onTap: {},
@@ -239,7 +239,7 @@ extension View {
         TaskLineItem(
             title: "Plumbing",
             color: .orange,
-            status: .inProgress,
+            status: .completed,
             startDate: nil,
             teamMemberCount: 1,
             onTap: {},
@@ -250,7 +250,7 @@ extension View {
         TaskLineItem(
             title: "Framing",
             color: .green,
-            status: .completed,
+            status: .cancelled,
             startDate: Date().addingTimeInterval(-86400),
             teamMemberCount: 5,
             onTap: {}

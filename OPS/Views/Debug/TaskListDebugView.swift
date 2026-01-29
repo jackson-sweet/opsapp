@@ -276,8 +276,7 @@ struct TaskDetailCard: View {
     
     private func statusColor(for status: TaskStatus) -> Color {
         switch status {
-        case .booked: return .blue
-        case .inProgress: return .orange
+        case .active: return .blue
         case .completed: return .green
         case .cancelled: return .gray
         }

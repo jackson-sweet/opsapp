@@ -9,28 +9,32 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-/// Status enum for tasks
+/// Status enum for tasks - simplified 3-state system
 enum TaskStatus: String, Codable, CaseIterable {
-    case booked = "Booked"
-    case inProgress = "In Progress"
+    case active = "Active"
     case completed = "Completed"
     case cancelled = "Cancelled"
 
-    // Custom decoder to handle migration from "Scheduled" to "Booked"
+    // Custom decoder to handle migration from legacy statuses
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
 
-        // Handle legacy "Scheduled" status by mapping to "Booked"
-        if rawValue == "Scheduled" {
-            self = .booked
-        } else if let status = TaskStatus(rawValue: rawValue) {
-            self = status
-        } else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Cannot initialize TaskStatus from invalid String value \(rawValue)"
-            )
+        // Handle legacy statuses by mapping to "Active"
+        switch rawValue {
+        case "Scheduled", "Booked", "In Progress":
+            self = .active
+        case "Completed":
+            self = .completed
+        case "Cancelled":
+            self = .cancelled
+        default:
+            if let status = TaskStatus(rawValue: rawValue) {
+                self = status
+            } else {
+                // Default unknown statuses to active
+                self = .active
+            }
         }
     }
 
@@ -40,9 +44,7 @@ enum TaskStatus: String, Codable, CaseIterable {
 
     var color: Color {
         switch self {
-        case .booked:
-            return Color("StatusAccepted")
-        case .inProgress:
+        case .active:
             return Color("StatusInProgress")
         case .completed:
             return Color("StatusCompleted")
@@ -51,21 +53,50 @@ enum TaskStatus: String, Codable, CaseIterable {
         }
     }
 
-    func nextStatus() -> TaskStatus? {
+    /// Toggle between active and completed
+    func toggled() -> TaskStatus {
         switch self {
-        case .booked: return .inProgress
-        case .inProgress: return .completed
-        case .completed: return nil
-        case .cancelled: return .booked
+        case .active: return .completed
+        case .completed: return .active
+        case .cancelled: return .active // Reactivate cancelled tasks
         }
     }
 
+    /// Whether this task can be toggled (cancelled tasks can be reactivated)
+    var canToggle: Bool {
+        return true
+    }
+
+    /// Whether this task is in a terminal state
+    var isTerminal: Bool {
+        return self == .completed || self == .cancelled
+    }
+
+    var sortOrder: Int {
+        switch self {
+        case .active: return 0
+        case .completed: return 1
+        case .cancelled: return 2
+        }
+    }
+
+    // MARK: - Swipe Navigation (for UniversalJobBoardCard)
+
+    /// Next status when swiping right (forward)
+    func nextStatus() -> TaskStatus? {
+        switch self {
+        case .active: return .completed
+        case .completed: return nil // Already complete
+        case .cancelled: return .active // Reactivate
+        }
+    }
+
+    /// Previous status when swiping left (backward)
     func previousStatus() -> TaskStatus? {
         switch self {
-        case .booked: return nil
-        case .inProgress: return .booked
-        case .completed: return .inProgress
-        case .cancelled: return nil
+        case .active: return nil // Can't go back from active
+        case .completed: return .active // Reopen
+        case .cancelled: return nil // Can't go back from cancelled
         }
     }
 
@@ -75,15 +106,6 @@ enum TaskStatus: String, Codable, CaseIterable {
 
     var canSwipeBackward: Bool {
         return previousStatus() != nil
-    }
-
-    var sortOrder: Int {
-        switch self {
-        case .booked: return 0
-        case .inProgress: return 1
-        case .completed: return 2
-        case .cancelled: return 3
-        }
     }
 }
 
@@ -132,7 +154,7 @@ final class ProjectTask {
         projectId: String,
         taskTypeId: String,
         companyId: String,
-        status: TaskStatus = .booked,
+        status: TaskStatus = .active,
         taskColor: String = "#59779F"
     ) {
         self.id = id

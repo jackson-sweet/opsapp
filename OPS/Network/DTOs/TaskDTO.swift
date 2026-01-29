@@ -78,17 +78,13 @@ struct TaskDTO: Codable {
             validColor = defaultColor
         }
         
-        // Map status from Bubble - handle both "Scheduled" (old) and "Booked" (new)
+        // Map status from Bubble - handle legacy statuses
         let taskStatus: TaskStatus
         if let statusValue = status {
-            if statusValue == "Scheduled" {
-                // Backward compatibility: map old "Scheduled" to new "Booked"
-                taskStatus = .booked
-            } else {
-                taskStatus = TaskStatus(rawValue: statusValue) ?? .booked
-            }
+            // The TaskStatus decoder handles legacy mapping (Scheduled, Booked, In Progress -> Active)
+            taskStatus = TaskStatus(rawValue: statusValue) ?? .active
         } else {
-            taskStatus = .booked
+            taskStatus = .active
         }
 
         let task = ProjectTask(

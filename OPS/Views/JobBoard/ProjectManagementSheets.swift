@@ -132,10 +132,6 @@ struct ProjectStatusChangeSheet: View {
                             if task.status != .completed && task.status != .cancelled {
                                 newTaskStatus = .completed
                             }
-                        case .inProgress:
-                            if task.status == .booked {
-                                newTaskStatus = .inProgress
-                            }
                         default:
                             break
                         }

@@ -524,10 +524,9 @@ struct DemoDateCalculator {
     func taskStatus(for daysFromCurrent: Int) -> TaskStatus {
         if daysFromCurrent < -1 {
             return .completed
-        } else if daysFromCurrent >= -1 && daysFromCurrent <= 1 {
-            return .inProgress
         } else {
-            return .booked
+            // Current or future tasks are "active"
+            return .active
         }
     }
 

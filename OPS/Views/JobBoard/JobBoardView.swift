@@ -376,7 +376,7 @@ struct JobBoardDashboardOld: View {
         let projects = dataController.getAllProjects()
         let allTasks = projects.flatMap { $0.tasks }
         return allTasks.filter { task in
-            task.status == .booked || task.status == .inProgress
+            task.status == .active
         }.count
     }
     

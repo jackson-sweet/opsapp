@@ -3359,24 +3359,24 @@ class DataController: ObservableObject {
     ) async {
         var shouldUpdateToInProgress = false
 
-        // Case 1: Project is "accepted" and task is set to "inProgress"
-        if project.status == .accepted && taskNewStatus == .inProgress {
+        // Case 1: Project is "accepted" and task is set to "active"
+        if project.status == .accepted && taskNewStatus == .active {
             shouldUpdateToInProgress = true
-            print("[PROJECT_STATUS] Project '\(project.title)' is accepted and task set to inProgress - updating project to inProgress")
+            print("[PROJECT_STATUS] Project '\(project.title)' is accepted and task set to active - updating project to inProgress")
         }
 
-        // Case 2: Project is "completed" and task changed from "completed" to "inProgress" or "booked"
+        // Case 2: Project is "completed" and task changed from "completed" to "active"
         if project.status == .completed &&
            taskOldStatus == .completed &&
-           (taskNewStatus == .inProgress || taskNewStatus == .booked) {
+           taskNewStatus == .active {
             shouldUpdateToInProgress = true
             print("[PROJECT_STATUS] Project '\(project.title)' is completed but task changed to \(taskNewStatus.rawValue) - updating project to inProgress")
         }
 
-        // Case 3: Project is "rfq" or "estimated" and task is set to "inProgress"
-        if (project.status == .rfq || project.status == .estimated) && taskNewStatus == .inProgress {
+        // Case 3: Project is "rfq" or "estimated" and task is set to "active"
+        if (project.status == .rfq || project.status == .estimated) && taskNewStatus == .active {
             shouldUpdateToInProgress = true
-            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and task set to inProgress - updating project to inProgress")
+            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and task set to active - updating project to inProgress")
         }
 
         if shouldUpdateToInProgress {
@@ -3391,7 +3391,7 @@ class DataController: ObservableObject {
 
     /// Updates project status when a NEW task is added
     /// - If project is "completed" or "closed" and a non-completed/non-cancelled task is added → project becomes "inProgress"
-    /// - If project is "rfq" or "estimated" and task is "inProgress" → project becomes "inProgress"
+    /// - If project is "rfq" or "estimated" and task is "active" → project becomes "inProgress"
     @MainActor
     func updateProjectStatusForNewTask(project: Project, taskStatus: TaskStatus) async {
         var shouldUpdateToInProgress = false
@@ -3403,10 +3403,10 @@ class DataController: ObservableObject {
             print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) but new task added with status \(taskStatus.rawValue) - updating project to inProgress")
         }
 
-        // Case 2: Project is "rfq" or "estimated" and new task is "inProgress"
-        if (project.status == .rfq || project.status == .estimated) && taskStatus == .inProgress {
+        // Case 2: Project is "rfq" or "estimated" and new task is "active"
+        if (project.status == .rfq || project.status == .estimated) && taskStatus == .active {
             shouldUpdateToInProgress = true
-            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and new task is inProgress - updating project to inProgress")
+            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and new task is active - updating project to inProgress")
         }
 
         if shouldUpdateToInProgress {

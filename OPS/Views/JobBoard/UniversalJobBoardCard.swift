@@ -1352,10 +1352,8 @@ struct UniversalJobBoardCard: View {
             return OPSStyle.Colors.primaryAccent
         case .task(let task):
             switch task.status {
-            case .booked:
+            case .active:
                 return OPSStyle.Colors.primaryAccent
-            case .inProgress:
-                return Color.blue
             case .completed:
                 return Color.green
             case .cancelled:

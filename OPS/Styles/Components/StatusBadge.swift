@@ -74,10 +74,8 @@ extension StatusBadge {
     static func forTaskStatus(_ status: TaskStatus, size: StatusBadgeSize = .small) -> StatusBadge {
         let color: Color
         switch status {
-        case .booked:
+        case .active:
             color = OPSStyle.Colors.primaryAccent
-        case .inProgress:
-            color = Color.blue
         case .completed:
             color = Color.green
         case .cancelled:

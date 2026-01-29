@@ -2583,23 +2583,25 @@ struct ProjectDetailsView: View {
     private var taskStatusButton: some View {
         Group {
             if let task = selectedTask {
+                let buttonColor = task.status == .completed ? OPSStyle.Colors.primaryAccent : Color("StatusCompleted")
                 Button(action: {
                     let newStatus: TaskStatus = task.status == .completed ? .active : .completed
                     updateSelectedTaskStatus(to: newStatus)
                 }) {
                     HStack(spacing: 8) {
-                        Image(systemName: task.status == .completed ? "arrow.uturn.backward.circle.fill" : "checkmark.circle.fill")
-                            .font(.system(size: 18, weight: .semibold))
+                        Image(systemName: task.status == .completed ? "arrow.uturn.backward" : "checkmark")
+                            .font(.system(size: 14, weight: .semibold))
 
                         Text(task.status == .completed ? "REOPEN TASK" : "COMPLETE TASK")
                             .font(OPSStyle.Typography.bodyBold)
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(buttonColor)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(
+                    .padding(.vertical, 12)
+                    .background(Color.clear)
+                    .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(task.status == .completed ? OPSStyle.Colors.primaryAccent : Color("StatusCompleted"))
+                            .stroke(buttonColor, lineWidth: 1)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())

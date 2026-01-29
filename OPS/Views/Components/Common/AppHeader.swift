@@ -278,7 +278,7 @@ struct AppHeader: View {
                 let dateString = formatter.string(from: trialEnd)
 
                 if days > 0 {
-                    return "TRIAL • ENDS \(dateString)"
+                    return "TRIAL ENDS \(dateString)"
                 } else {
                     return "TRIAL ENDING"
                 }
@@ -295,7 +295,7 @@ struct AppHeader: View {
             if let company = dataController.getCurrentUserCompany(),
                let days = company.daysRemainingInGracePeriod {
                 if days > 0 {
-                    return "GRACE • \(days) DAYS"
+                    return "GRACE \(days) DAYS"
                 } else {
                     return "GRACE ENDING"
                 }

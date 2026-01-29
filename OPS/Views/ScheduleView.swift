@@ -281,6 +281,7 @@ struct ScheduleView: View {
                         .environmentObject(appState)
                         .environment(\.modelContext, dataController.modelContext!)
                 }
+                .interactiveDismissDisabled(true)
             } else {
                 Text("Task no longer available")
                     .font(OPSStyle.Typography.body)

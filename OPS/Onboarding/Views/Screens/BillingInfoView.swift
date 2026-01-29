@@ -229,6 +229,7 @@ struct BillingInfoView: View {
                     trialBenefitRow(text: "Up to 10 team members", index: 1)
                     trialBenefitRow(text: "Unlimited projects", index: 2, isLast: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Spacer()
                     .frame(height: 24)
@@ -278,7 +279,7 @@ struct BillingInfoView: View {
     // MARK: - Employee View
 
     private var employeeView: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             Spacer()
                 .frame(height: 60)
 

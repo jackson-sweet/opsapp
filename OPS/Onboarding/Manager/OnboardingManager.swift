@@ -294,6 +294,16 @@ class OnboardingManager: ObservableObject {
             print("[ONBOARDING_MANAGER]   - currentUser exists: \(user != nil)")
             print("[ONBOARDING_MANAGER]   - hasCompletedAppTutorial: \(hasCompletedTutorial)")
 
+            // Mark onboarding as complete before tutorial (user finished all onboarding steps)
+            Task {
+                await markOnboardingComplete()
+
+                // Also update local user object
+                await MainActor.run {
+                    dataController.currentUser?.hasCompletedAppOnboarding = true
+                }
+            }
+
             if !hasCompletedTutorial {
                 print("[ONBOARDING_MANAGER]   -> Navigating to tutorial")
                 goToScreen(.tutorial)
@@ -595,15 +605,20 @@ class OnboardingManager: ObservableObject {
             state.hasExistingCompany = true
             state.save()
 
-            // CRITICAL: Update local user's companyId before syncing company
+            // CRITICAL: Update local user's data before syncing company
             // syncCompany() relies on currentUser?.companyId to fetch company data
             if let currentUser = dataController.currentUser {
                 print("[ONBOARDING_MANAGER] DataController.currentUser exists:")
                 print("[ONBOARDING_MANAGER]   - id: \(currentUser.id)")
                 print("[ONBOARDING_MANAGER]   - companyId BEFORE: \(currentUser.companyId ?? "nil")")
                 currentUser.companyId = companyId
-                print("[ONBOARDING_MANAGER] ✅ Updated local user companyId to: \(companyId)")
-                print("[ONBOARDING_MANAGER]   - companyId AFTER: \(currentUser.companyId ?? "nil")")
+                // Also update name fields that were PATCHed to Bubble in updateUserProfile()
+                currentUser.firstName = state.userData.firstName
+                currentUser.lastName = state.userData.lastName
+                if !state.userData.phone.isEmpty {
+                    currentUser.phone = state.userData.phone
+                }
+                print("[ONBOARDING_MANAGER] ✅ Updated local user - companyId: \(companyId), name: \(currentUser.fullName)")
             } else {
                 print("[ONBOARDING_MANAGER] ⚠️ DataController.currentUser is NIL! Cannot set companyId!")
             }
@@ -663,10 +678,16 @@ class OnboardingManager: ObservableObject {
             state.hasExistingCompany = true
             state.save()
 
-            // CRITICAL: Update local user's companyId before syncing company
+            // CRITICAL: Update local user's data before syncing company
             if let currentUser = dataController.currentUser {
                 currentUser.companyId = companyId
-                print("[ONBOARDING_MANAGER] Updated local user companyId to: \(companyId)")
+                // Also update name fields that were PATCHed to Bubble in updateUserProfile()
+                currentUser.firstName = state.userData.firstName
+                currentUser.lastName = state.userData.lastName
+                if !state.userData.phone.isEmpty {
+                    currentUser.phone = state.userData.phone
+                }
+                print("[ONBOARDING_MANAGER] Updated local user - companyId: \(companyId), name: \(currentUser.fullName)")
             }
 
             // Trigger sync to load company data

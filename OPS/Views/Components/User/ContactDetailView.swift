@@ -320,6 +320,7 @@ struct ContactDetailView: View {
             NavigationView {
                 ProjectDetailsView(project: project)
             }
+            .interactiveDismissDisabled(true)
         }
         .sheet(isPresented: $showingCreateProject) {
             if let client = client {

@@ -770,12 +770,13 @@ class BubbleSubscriptionService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+        // Note: Bubble workflow expects "customer_id" not "stripe_customer_id"
         let body: [String: Any] = [
-            "stripe_customer_id": stripeCustomerId
+            "customer_id": stripeCustomerId
         ]
 
         print("📤 FETCH SUBSCRIPTION INFO REQUEST:")
-        print("  - Stripe Customer ID: \(stripeCustomerId)")
+        print("  - Customer ID: \(stripeCustomerId)")
 
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -808,10 +809,17 @@ class BubbleSubscriptionService {
 
             #if DEBUG
             print("📥 SUBSCRIPTION INFO: HTTP \(httpResponse.statusCode), \(data.count) bytes")
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("📥 SUBSCRIPTION INFO BODY: \(jsonString)")
+            }
             #endif
 
             guard httpResponse.statusCode == 200 else {
                 print("❌ FETCH SUBSCRIPTION INFO ERROR \(httpResponse.statusCode)")
+                // Log the error response body for debugging
+                if let errorBody = String(data: data, encoding: .utf8) {
+                    print("❌ FETCH SUBSCRIPTION INFO ERROR BODY: \(errorBody)")
+                }
                 DispatchQueue.main.async {
                     completion(.failure(BubbleAPIError.httpError(httpResponse.statusCode)))
                 }
@@ -898,6 +906,11 @@ class BubbleSubscriptionService {
         let canceledAt = parseStripeTimestamp(sub["canceled_at"])
         let trialEnd = parseStripeTimestamp(sub["trial_end"])
 
+        // Debug logging for billing date investigation
+        print("[STRIPE_PARSE] current_period_end raw value: \(String(describing: sub["current_period_end"]))")
+        print("[STRIPE_PARSE] current_period_end type: \(type(of: sub["current_period_end"] as Any))")
+        print("[STRIPE_PARSE] current_period_end parsed: \(String(describing: currentPeriodEnd))")
+
         return SubscriptionInfoResponse(
             subscriptionId: sub["id"] as? String,
             status: sub["status"] as? String,
@@ -926,11 +939,18 @@ class BubbleSubscriptionService {
     private func parseStripeTimestamp(_ value: Any?) -> Date? {
         guard let value = value else { return nil }
 
+        // Handle NSNumber (common from JSONSerialization)
+        if let number = value as? NSNumber {
+            return Date(timeIntervalSince1970: number.doubleValue)
+        }
+
         if let timestamp = value as? TimeInterval {
             // Stripe uses seconds since epoch
             return Date(timeIntervalSince1970: timestamp)
         } else if let timestampInt = value as? Int {
             return Date(timeIntervalSince1970: TimeInterval(timestampInt))
+        } else if let timestampInt64 = value as? Int64 {
+            return Date(timeIntervalSince1970: TimeInterval(timestampInt64))
         } else if let timestampString = value as? String, let timestamp = Double(timestampString) {
             return Date(timeIntervalSince1970: timestamp)
         }

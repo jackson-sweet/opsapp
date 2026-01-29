@@ -1251,6 +1251,7 @@ struct EventDetailCard: View {
                         .environmentObject(appState)
                         .environment(\.modelContext, dataController.modelContext!)
                 }
+                .interactiveDismissDisabled(true)
             }
         }
         .sheet(isPresented: $showingReschedule) {

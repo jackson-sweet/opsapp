@@ -447,9 +447,18 @@ struct ManageTeamView: View {
     private func removeMember(_ member: User) async {
         errorMessage = nil
 
+        guard let companyId = company?.id else {
+            await MainActor.run {
+                errorMessage = "Company not found"
+                memberToRemove = nil
+            }
+            print("[MANAGE_TEAM] Error: No company ID available")
+            return
+        }
+
         do {
             // Call terminate_employee endpoint to properly remove from company
-            try await dataController.apiService.terminateEmployee(userId: member.id)
+            try await dataController.apiService.terminateEmployee(userId: member.id, companyId: companyId)
 
             // Remove from local list
             await MainActor.run {

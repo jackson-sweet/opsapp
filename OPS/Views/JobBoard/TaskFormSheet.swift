@@ -491,6 +491,10 @@ struct TaskFormSheet: View {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button {
+                    // Save notes content if notes field is focused
+                    if focusedField == .notes {
+                        taskNotes = tempNotes
+                    }
                     focusedField = nil
                 } label: {
                     HStack(spacing: 4) {

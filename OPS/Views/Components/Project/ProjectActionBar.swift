@@ -109,6 +109,7 @@ struct ProjectActionBar: View {
             NavigationView {
                 ProjectDetailsView(project: project)
             }
+            .interactiveDismissDisabled(true)
         }
         // Photo Picker for project photos - modified to use both camera and library
         .sheet(isPresented: $showImagePicker, onDismiss: {

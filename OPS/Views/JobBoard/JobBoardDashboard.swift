@@ -977,6 +977,7 @@ struct DirectionalDragCard: View {
                 NavigationView {
                     ProjectDetailsView(project: project)
                 }
+                .interactiveDismissDisabled(true)
             }
     }
 

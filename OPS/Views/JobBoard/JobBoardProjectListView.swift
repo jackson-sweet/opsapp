@@ -58,7 +58,8 @@ struct JobBoardProjectListView: View {
             filtered = filtered.filter { project in
                 project.title.localizedCaseInsensitiveContains(searchText) ||
                 project.effectiveClientName.localizedCaseInsensitiveContains(searchText) ||
-                (project.projectDescription?.localizedCaseInsensitiveContains(searchText) ?? false)
+                (project.projectDescription?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                (project.address?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
 

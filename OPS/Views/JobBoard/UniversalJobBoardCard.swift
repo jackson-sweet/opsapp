@@ -121,6 +121,7 @@ struct UniversalJobBoardCard: View {
         }
         .sheet(isPresented: $showingDetails) {
             detailsSheet
+                .interactiveDismissDisabled(true)
         }
         .sheet(isPresented: $showingProjectForm) {
             if case .client(let client) = cardType {
@@ -537,6 +538,7 @@ struct UniversalJobBoardCard: View {
         }
         .sheet(isPresented: $showingDetails) {
             detailsSheet
+                .interactiveDismissDisabled(true)
         }
         .sheet(isPresented: $showingTaskForm) {
             if case .project(let project) = cardType {
@@ -740,6 +742,7 @@ struct UniversalJobBoardCard: View {
         }
         .sheet(isPresented: $showingDetails) {
             detailsSheet
+                .interactiveDismissDisabled(true)
         }
         .sheet(isPresented: $showingTaskForm) {
             if case .task(let task) = cardType {
@@ -782,6 +785,7 @@ struct UniversalJobBoardCard: View {
                     NavigationView {
                         ProjectDetailsView(project: project)
                     }
+                    .interactiveDismissDisabled(true)
                 }
             }
         }

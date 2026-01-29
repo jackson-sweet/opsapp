@@ -255,9 +255,11 @@ class APIService {
     }
 
     /// Terminate an employee (remove from company)
-    /// - Parameter userId: The user's unique ID to terminate
-    func terminateEmployee(userId: String) async throws {
-        print("🔵 API REQUEST: Terminating employee \(userId)")
+    /// - Parameters:
+    ///   - userId: The user's unique ID to terminate
+    ///   - companyId: The company's unique ID
+    func terminateEmployee(userId: String, companyId: String) async throws {
+        print("🔵 API REQUEST: Terminating employee \(userId) from company \(companyId)")
 
         let endpoint = "api/1.1/wf/terminate_employee"
         let fullURL = baseURL.appendingPathComponent(endpoint)
@@ -267,7 +269,8 @@ class APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let parameters: [String: String] = [
-            "user": userId
+            "user": userId,
+            "company": companyId
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)

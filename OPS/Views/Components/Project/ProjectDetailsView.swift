@@ -2345,6 +2345,11 @@ struct ProjectDetailsView: View {
                     .padding(.top, 16)
                     .padding(.bottom, 12)
 
+                // Complete/Reopen button (above tabs)
+                taskStatusButton
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+
                 // Tab selector
                 taskTabSelector
                     .padding(.horizontal, 16)
@@ -2362,11 +2367,6 @@ struct ProjectDetailsView: View {
                     taskNotesContent
                         .padding(.horizontal, 16)
                 }
-
-                // Complete/Reopen button
-                taskStatusButton
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
 
                 // Previous/Next navigation
                 taskNavigationSection

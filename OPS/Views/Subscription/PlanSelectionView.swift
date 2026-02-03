@@ -1495,7 +1495,7 @@ extension PlanSelectionView {
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        Text("Perfect for small crews and independent contractors. Includes all core features with up to \(SubscriptionPlan.starter.maxSeats) team members.")
+                        Text("For solo operators and small crews. Full access to all features with up to \(SubscriptionPlan.starter.maxSeats) team members.")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -1513,7 +1513,7 @@ extension PlanSelectionView {
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        Text("Ideal for growing companies. Supports up to \(SubscriptionPlan.team.maxSeats) team members with enhanced collaboration features.")
+                        Text("For growing teams. Full access to all features with up to \(SubscriptionPlan.team.maxSeats) team members.")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -1531,7 +1531,7 @@ extension PlanSelectionView {
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        Text("For established companies. Supports up to \(SubscriptionPlan.business.maxSeats) team members with priority support and advanced features.")
+                        Text("For larger operations. Full access to all features with up to \(SubscriptionPlan.business.maxSeats) team members.")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }

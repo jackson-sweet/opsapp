@@ -58,6 +58,18 @@ class OnboardingManager: ObservableObject {
         } else {
             self.state = OnboardingState.initial
             print("[ONBOARDING_MANAGER] Created initial state")
+
+            // Start new analytics session for fresh onboarding
+            OnboardingAnalyticsService.shared.startNewSession()
+
+            // Track initial welcome screen view
+            OnboardingAnalyticsService.shared.trackPageView(
+                pageName: OnboardingScreen.welcome.rawValue,
+                pageIndex: 1,
+                totalPages: 9, // Max possible (company creator flow)
+                flowType: "unknown", // Flow not selected yet
+                userId: nil
+            )
         }
     }
 
@@ -180,6 +192,63 @@ class OnboardingManager: ObservableObject {
         navigationDirection = direction
         state.currentScreen = screen
         state.save()
+
+        // Track analytics (only for forward navigation to avoid duplicate events)
+        if direction == .forward {
+            trackPageView(screen: screen)
+        }
+    }
+
+    // MARK: - Analytics Tracking
+
+    /// Track page view for onboarding analytics
+    private func trackPageView(screen: OnboardingScreen) {
+        let (pageIndex, totalPages) = getPageIndexAndTotal(for: screen)
+        let flowType = state.flow?.rawValue ?? "unknown"
+
+        OnboardingAnalyticsService.shared.trackPageView(
+            pageName: screen.rawValue,
+            pageIndex: pageIndex,
+            totalPages: totalPages,
+            flowType: flowType,
+            userId: state.userData.userId
+        )
+    }
+
+    /// Get page index and total pages for analytics
+    /// Returns (pageIndex, totalPages) - indices are 1-based
+    private func getPageIndexAndTotal(for screen: OnboardingScreen) -> (Int, Int) {
+        // Define screen order for each flow
+        // These are the main user-facing screens (excluding legacy/deprecated)
+        let companyCreatorScreens: [OnboardingScreen] = [
+            .welcome, .signup, .credentials, .profile,
+            .companySetup, .companyDetails, .companyCode, .ready, .tutorial
+        ]
+
+        let employeeScreens: [OnboardingScreen] = [
+            .welcome, .signup, .credentials, .profile,
+            .codeEntry, .ready, .tutorial
+        ]
+
+        // Determine which flow's screens to use
+        let screens: [OnboardingScreen]
+        switch state.flow {
+        case .companyCreator:
+            screens = companyCreatorScreens
+        case .employee:
+            screens = employeeScreens
+        case .none:
+            // Before flow is selected, use a minimal set
+            screens = [.welcome, .login, .signup]
+        }
+
+        // Find index (1-based)
+        if let index = screens.firstIndex(of: screen) {
+            return (index + 1, screens.count)
+        }
+
+        // Screen not in flow (e.g., login) - return reasonable defaults
+        return (1, screens.count)
     }
 
     /// Go back to previous screen (if applicable)
@@ -803,6 +872,12 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER]   - userId: \(state.userData.userId ?? "nil")")
         print("[ONBOARDING_MANAGER]   - companyId: \(state.companyData.companyId ?? "nil")")
         print("[ONBOARDING_MANAGER]   - companyCode: \(state.companyData.companyCode ?? "nil")")
+
+        // Track analytics completion
+        OnboardingAnalyticsService.shared.trackCompleted(
+            flowType: state.flow?.rawValue ?? "unknown",
+            userId: state.userData.userId
+        )
 
         // Store credentials so app can load user data on next launch
         storeCredentials()

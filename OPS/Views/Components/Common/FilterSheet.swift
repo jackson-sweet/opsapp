@@ -103,11 +103,12 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("DONE") {
-                        dismiss()
+                    Button("RESET") {
+                        resetFilters()
                     }
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .disabled(!hasActiveFilters)
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -117,12 +118,11 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("RESET") {
-                        resetFilters()
+                    Button("DONE") {
+                        dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .disabled(!hasActiveFilters)
                 }
             }
         }

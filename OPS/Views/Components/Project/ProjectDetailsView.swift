@@ -325,9 +325,9 @@ struct ProjectDetailsView: View {
         }
     }
 
-    /// Map background that fills 1:1 ratio at top
+    /// Map background that fills 1:1 ratio at top, with gradient overlay
     private func mapBackgroundView(height: CGFloat) -> some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             if let coordinate = project.coordinate {
                 Map(coordinateRegion: .constant(MKCoordinateRegion(
                     center: coordinate,
@@ -361,41 +361,40 @@ struct ProjectDetailsView: View {
                         }
                     )
             }
-        }
-    }
 
-    /// Content area with gradient overlay
-    private func contentWithGradient(mapHeight: CGFloat) -> some View {
-        ZStack(alignment: .top) {
-            // Vertical gradient: transparent → background color
+            // Gradient overlay on map: starts at 1/3 down, full opacity at bottom
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: Color.clear, location: 0),
-                    .init(color: OPSStyle.Colors.background.opacity(0.8), location: 0.15),
-                    .init(color: OPSStyle.Colors.background, location: 0.3)
+                    .init(color: OPSStyle.Colors.background.opacity(0.5), location: 0.5),
+                    .init(color: OPSStyle.Colors.background, location: 1.0)
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 200)
-            .offset(y: -200)
-
-            // Main content
-            VStack(spacing: 16) {
-                // Task section (only when task selected)
-                if selectedTask != nil {
-                    compactTaskSection
-                }
-
-                // Tab selector with sliding underline
-                tabSelector
-
-                // Tab content
-                tabContent
-            }
-            .padding(.top, 20)
-            .background(OPSStyle.Colors.background)
+            .frame(height: height * 0.67) // Covers bottom 2/3 of map (gradient starts at 1/3 down)
+            .allowsHitTesting(false)
         }
+        .frame(height: height)
+    }
+
+    /// Content area (no gradient here - gradient is on map)
+    private func contentWithGradient(mapHeight: CGFloat) -> some View {
+        // Main content
+        VStack(spacing: 16) {
+            // Task section (only when task selected)
+            if selectedTask != nil {
+                compactTaskSection
+            }
+
+            // Tab selector with sliding underline
+            tabSelector
+
+            // Tab content
+            tabContent
+        }
+        .padding(.top, 20)
+        .background(OPSStyle.Colors.background)
     }
 
     private var headerView: some View {

@@ -308,16 +308,9 @@ struct ProjectDetailsView: View {
                     // Header nav bar
                     headerView
 
-                    // Scrollable content starting at 2/3 of map
+                    // Scrollable content with gradient behind it
                     ScrollView {
-                        VStack(spacing: 0) {
-                            // Spacer to position content at ~2/3 down the map
-                            Spacer()
-                                .frame(height: mapHeight * 0.5)
-
-                            // Gradient overlay behind content
-                            contentWithGradient(mapHeight: mapHeight)
-                        }
+                        contentWithGradient(mapHeight: mapHeight)
                     }
                 }
             }
@@ -325,9 +318,9 @@ struct ProjectDetailsView: View {
         }
     }
 
-    /// Map background that fills 1:1 ratio at top, with gradient overlay
+    /// Map background that fills 1:1 ratio at top (no gradient - gradient is in scroll content)
     private func mapBackgroundView(height: CGFloat) -> some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             if let coordinate = project.coordinate {
                 Map(coordinateRegion: .constant(MKCoordinateRegion(
                     center: coordinate,
@@ -361,40 +354,46 @@ struct ProjectDetailsView: View {
                         }
                     )
             }
-
-            // Gradient overlay on map: starts at 1/3 down, full opacity at bottom
-            LinearGradient(
-                gradient: Gradient(stops: [
-                    .init(color: Color.clear, location: 0),
-                    .init(color: OPSStyle.Colors.background.opacity(0.5), location: 0.5),
-                    .init(color: OPSStyle.Colors.background, location: 1.0)
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: height * 0.67) // Covers bottom 2/3 of map (gradient starts at 1/3 down)
-            .allowsHitTesting(false)
         }
         .frame(height: height)
     }
 
-    /// Content area (no gradient here - gradient is on map)
+    /// Content area with gradient behind it
     private func contentWithGradient(mapHeight: CGFloat) -> some View {
-        // Main content
-        VStack(spacing: 16) {
-            // Task section (only when task selected)
-            if selectedTask != nil {
-                compactTaskSection
+        ZStack(alignment: .top) {
+            // Gradient background: starts clear, fades to solid
+            // Height covers from 1/3 of map to well below content start
+            VStack(spacing: 0) {
+                LinearGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: Color.clear, location: 0),
+                        .init(color: OPSStyle.Colors.background.opacity(0.7), location: 0.5),
+                        .init(color: OPSStyle.Colors.background, location: 1.0)
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: mapHeight * 0.67) // Gradient covers bottom 2/3 of map area
+
+                // Solid background continues below
+                OPSStyle.Colors.background
             }
 
-            // Tab selector with sliding underline
-            tabSelector
+            // Main content with top padding to position at ~2/3 down map
+            VStack(spacing: 16) {
+                // Task section (only when task selected)
+                if selectedTask != nil {
+                    compactTaskSection
+                }
 
-            // Tab content
-            tabContent
+                // Tab selector with sliding underline
+                tabSelector
+
+                // Tab content
+                tabContent
+            }
+            .padding(.top, mapHeight * 0.33) // Content starts 1/3 into the gradient area
         }
-        .padding(.top, 20)
-        .background(OPSStyle.Colors.background)
     }
 
     private var headerView: some View {

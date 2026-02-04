@@ -362,8 +362,16 @@ struct ProjectDetailsView: View {
     private func contentWithGradient(mapHeight: CGFloat) -> some View {
         ZStack(alignment: .top) {
             // Gradient background: starts clear, fades to solid
-            // Height covers from 1/3 of map to well below content start
             VStack(spacing: 0) {
+                // Transparent spacer for top 1/3 - allows map touches to pass through
+                Color.clear
+                    .frame(height: mapHeight * 0.33)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        openDirections()
+                    }
+
+                // Gradient from 1/3 to 2/3 of map
                 LinearGradient(
                     gradient: Gradient(stops: [
                         .init(color: Color.clear, location: 0),
@@ -373,13 +381,14 @@ struct ProjectDetailsView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: mapHeight * 0.67) // Gradient covers bottom 2/3 of map area
+                .frame(height: mapHeight * 0.34)
+                .allowsHitTesting(false)
 
                 // Solid background continues below
                 OPSStyle.Colors.background
             }
 
-            // Main content with top padding to position at ~2/3 down map
+            // Main content positioned at 2/3 down the map
             VStack(spacing: 16) {
                 // Task section (only when task selected)
                 if selectedTask != nil {
@@ -392,7 +401,7 @@ struct ProjectDetailsView: View {
                 // Tab content
                 tabContent
             }
-            .padding(.top, mapHeight * 0.33) // Content starts 1/3 into the gradient area
+            .padding(.top, mapHeight * 0.67) // Content starts at 2/3 of map height
         }
     }
 
@@ -679,7 +688,6 @@ struct ProjectDetailsView: View {
             }
             .padding(16)
         }
-        .background(OPSStyle.Colors.background)
         .confirmationDialog(
             "Cancel Task?",
             isPresented: $showingCancelTaskConfirmation,
@@ -730,17 +738,13 @@ struct ProjectDetailsView: View {
 
                 // Sliding underline
                 Rectangle()
-                    .fill(OPSStyle.Colors.primaryAccent)
+                    .fill(OPSStyle.Colors.primaryText)
                     .frame(width: tabWidth, height: 2)
                     .offset(x: tabWidth * CGFloat(ProjectDetailsTab.allCases.firstIndex(of: selectedProjectTab) ?? 0))
                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selectedProjectTab)
             }
         }
         .frame(height: 44)
-        .background(
-            Rectangle()
-                .fill(Color.white.opacity(0.05))
-        )
         .padding(.horizontal)
     }
 

@@ -60,6 +60,74 @@ private struct ProjectLocationAnnotation: Identifiable {
     let coordinate: CLLocationCoordinate2D
 }
 
+/// Pointed pill shape - pill with a point on the left side (like a map callout)
+struct PointedPillShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        let pointWidth: CGFloat = 8
+        let cornerRadius: CGFloat = rect.height / 2
+
+        // Start at the point (left side)
+        path.move(to: CGPoint(x: 0, y: rect.midY))
+
+        // Line to top-left of pill body
+        path.addLine(to: CGPoint(x: pointWidth, y: cornerRadius))
+
+        // Top-left corner arc
+        path.addArc(
+            center: CGPoint(x: pointWidth + cornerRadius, y: cornerRadius),
+            radius: cornerRadius,
+            startAngle: .degrees(180),
+            endAngle: .degrees(270),
+            clockwise: false
+        )
+
+        // Top edge
+        path.addLine(to: CGPoint(x: rect.width - cornerRadius, y: 0))
+
+        // Top-right corner arc
+        path.addArc(
+            center: CGPoint(x: rect.width - cornerRadius, y: cornerRadius),
+            radius: cornerRadius,
+            startAngle: .degrees(270),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+
+        // Right edge
+        path.addLine(to: CGPoint(x: rect.width, y: rect.height - cornerRadius))
+
+        // Bottom-right corner arc
+        path.addArc(
+            center: CGPoint(x: rect.width - cornerRadius, y: rect.height - cornerRadius),
+            radius: cornerRadius,
+            startAngle: .degrees(0),
+            endAngle: .degrees(90),
+            clockwise: false
+        )
+
+        // Bottom edge
+        path.addLine(to: CGPoint(x: pointWidth + cornerRadius, y: rect.height))
+
+        // Bottom-left corner arc
+        path.addArc(
+            center: CGPoint(x: pointWidth + cornerRadius, y: rect.height - cornerRadius),
+            radius: cornerRadius,
+            startAngle: .degrees(90),
+            endAngle: .degrees(180),
+            clockwise: false
+        )
+
+        // Line back to point
+        path.addLine(to: CGPoint(x: pointWidth, y: rect.height - cornerRadius))
+
+        path.closeSubpath()
+
+        return path
+    }
+}
+
 struct ProjectDetailsView: View {
     @Bindable var project: Project
     var isEditMode: Bool = false
@@ -297,7 +365,7 @@ struct ProjectDetailsView: View {
 
     private var mainView: some View {
         GeometryReader { geometry in
-            let mapHeight = geometry.size.width // 1:1 aspect ratio
+            let mapHeight = geometry.size.width * 5 / 3 // 5:3 aspect ratio (height:width)
 
             ZStack(alignment: .top) {
                 // MARK: - Map Background
@@ -318,19 +386,17 @@ struct ProjectDetailsView: View {
         }
     }
 
-    /// Map background that fills 1:1 ratio at top (no gradient - gradient is in scroll content)
+    /// Map background with 5:3 aspect ratio, address badge, and project label annotation
     private func mapBackgroundView(height: CGFloat) -> some View {
-        ZStack {
+        ZStack(alignment: .topTrailing) {
             if let coordinate = project.coordinate {
                 Map(coordinateRegion: .constant(MKCoordinateRegion(
                     center: coordinate,
                     span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
                 )), annotationItems: [ProjectLocationAnnotation(coordinate: coordinate)]) { item in
                     MapAnnotation(coordinate: item.coordinate) {
-                        Image(systemName: "mappin.and.ellipse")
-                            .font(.system(size: 32))
-                            .foregroundColor(.white)
-                            .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 2)
+                        // Pointed label: pill with point on left side
+                        mapAnnotationLabel
                     }
                 }
                 .frame(height: height)
@@ -354,8 +420,57 @@ struct ProjectDetailsView: View {
                         }
                     )
             }
+
+            // Address badge at top right
+            if let address = project.address, !address.isEmpty {
+                addressBadge(address: address)
+                    .padding(.top, 100) // Below header
+                    .padding(.trailing, 12)
+            }
         }
         .frame(height: height)
+    }
+
+    /// Address badge for map overlay
+    private func addressBadge(address: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "mappin.circle.fill")
+                .font(.system(size: 10))
+            Text(formatHeaderAddress(address))
+                .font(OPSStyle.Typography.smallCaption)
+                .lineLimit(1)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(Color.black.opacity(0.6))
+        )
+    }
+
+    /// Pointed label annotation for map (pill with point on left)
+    private var mapAnnotationLabel: some View {
+        HStack(spacing: 6) {
+            // Colored dot for task (or primary accent if no task)
+            Circle()
+                .fill(selectedTask != nil ? (Color(hex: selectedTask!.taskColor) ?? OPSStyle.Colors.primaryAccent) : OPSStyle.Colors.primaryAccent)
+                .frame(width: 8, height: 8)
+
+            // Project title or task name
+            Text(selectedTask?.taskType?.display.uppercased() ?? project.title.uppercased())
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(.white)
+                .lineLimit(1)
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 12)
+        .padding(.vertical, 6)
+        .background(
+            PointedPillShape()
+                .fill(Color.black.opacity(0.75))
+        )
+        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
     }
 
     /// Content area with gradient behind it
@@ -375,13 +490,13 @@ struct ProjectDetailsView: View {
                 LinearGradient(
                     gradient: Gradient(stops: [
                         .init(color: Color.clear, location: 0),
-                        .init(color: OPSStyle.Colors.background.opacity(0.7), location: 0.5),
+                        .init(color: OPSStyle.Colors.background.opacity(0.5), location: 0.5),
                         .init(color: OPSStyle.Colors.background, location: 1.0)
                     ]),
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: mapHeight * 0.34)
+                .frame(height: mapHeight * 0.5)
                 .allowsHitTesting(false)
 
                 // Solid background continues below
@@ -401,7 +516,7 @@ struct ProjectDetailsView: View {
                 // Tab content
                 tabContent
             }
-            .padding(.top, mapHeight * 0.67) // Content starts at 2/3 of map height
+            .padding(.top, mapHeight * 0.5) // Content starts at 2/3 of map height
         }
     }
 
@@ -469,14 +584,6 @@ struct ProjectDetailsView: View {
                 Text(project.effectiveClientName.uppercased())
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(1)
-            }
-
-            // Address row
-            if let address = project.address, !address.isEmpty {
-                Text(formatHeaderAddress(address))
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .lineLimit(1)
             }
 
@@ -1367,21 +1474,21 @@ struct ProjectDetailsView: View {
     }
 
     private var detailsActionButtons: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             // Complete Project button
             if project.status != .completed && project.status != .closed {
                 Button(action: {
                     handleProjectCompletion()
                 }) {
-                    HStack {
+                    HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle")
-                            .font(.system(size: 16))
+                            .font(.system(size: 12))
                         Text("COMPLETE PROJECT")
-                            .font(OPSStyle.Typography.bodyBold)
+                            .font(OPSStyle.Typography.captionBold)
                     }
                     .foregroundColor(Color("StatusCompleted"))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 10)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                             .stroke(Color("StatusCompleted"), lineWidth: 1)
@@ -1396,15 +1503,15 @@ struct ProjectDetailsView: View {
                 Button(action: {
                     showingDeleteAlert = true
                 }) {
-                    HStack {
+                    HStack(spacing: 6) {
                         Image(systemName: "trash")
-                            .font(.system(size: 16))
+                            .font(.system(size: 12))
                         Text("DELETE PROJECT")
-                            .font(OPSStyle.Typography.bodyBold)
+                            .font(OPSStyle.Typography.captionBold)
                     }
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 10)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                             .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1)

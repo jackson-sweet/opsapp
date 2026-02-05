@@ -634,6 +634,154 @@ extension View {
     }
 }
 
+// MARK: - Map Marker Shape
+
+/// Custom map marker shape: rectangle with pointer triangle on the left
+/// The triangle's hypotenuse is colinear with the left edge of the rectangle
+/// Used for map annotations to point to specific coordinates
+struct MapMarkerShape: Shape {
+    /// Corner radius for the right side of the rectangle (matches status badge)
+    var cornerRadius: CGFloat = 4
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        // Triangle width is equal to half the height (for a 45-45-90 triangle,
+        // but we want hypotenuse = height, so it's an isoceles right triangle)
+        // For hypotenuse = height: if h = height, then leg = h / sqrt(2)
+        let triangleWidth = rect.height / 2
+        let rectLeft = triangleWidth
+
+        // Start at the triangle tip (left point, middle height)
+        path.move(to: CGPoint(x: 0, y: rect.midY))
+
+        // Triangle: tip to top-left of rectangle
+        path.addLine(to: CGPoint(x: rectLeft, y: 0))
+
+        // Top edge to top-right corner
+        path.addLine(to: CGPoint(x: rect.width - cornerRadius, y: 0))
+
+        // Top-right corner
+        path.addArc(
+            center: CGPoint(x: rect.width - cornerRadius, y: cornerRadius),
+            radius: cornerRadius,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+
+        // Right edge
+        path.addLine(to: CGPoint(x: rect.width, y: rect.height - cornerRadius))
+
+        // Bottom-right corner
+        path.addArc(
+            center: CGPoint(x: rect.width - cornerRadius, y: rect.height - cornerRadius),
+            radius: cornerRadius,
+            startAngle: .degrees(0),
+            endAngle: .degrees(90),
+            clockwise: false
+        )
+
+        // Bottom edge to bottom-left of rectangle
+        path.addLine(to: CGPoint(x: rectLeft, y: rect.height))
+
+        // Triangle: bottom-left back to tip
+        path.addLine(to: CGPoint(x: 0, y: rect.midY))
+
+        path.closeSubpath()
+
+        return path
+    }
+}
+
+/// Stroke shape that only outlines the outer edges (excludes hypotenuse of triangle)
+/// This creates an outline on: triangle's base and height, rectangle's top, right, bottom edges
+struct MapMarkerOutlineShape: Shape {
+    var cornerRadius: CGFloat = 4
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        let triangleWidth = rect.height / 2
+        let rectLeft = triangleWidth
+
+        // Start at triangle tip
+        path.move(to: CGPoint(x: 0, y: rect.midY))
+
+        // Triangle top edge (base of right triangle) - tip to top-left of rectangle
+        path.addLine(to: CGPoint(x: rectLeft, y: 0))
+
+        // Top edge to top-right corner
+        path.addLine(to: CGPoint(x: rect.width - cornerRadius, y: 0))
+
+        // Top-right corner
+        path.addArc(
+            center: CGPoint(x: rect.width - cornerRadius, y: cornerRadius),
+            radius: cornerRadius,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+
+        // Right edge
+        path.addLine(to: CGPoint(x: rect.width, y: rect.height - cornerRadius))
+
+        // Bottom-right corner
+        path.addArc(
+            center: CGPoint(x: rect.width - cornerRadius, y: rect.height - cornerRadius),
+            radius: cornerRadius,
+            startAngle: .degrees(0),
+            endAngle: .degrees(90),
+            clockwise: false
+        )
+
+        // Bottom edge to bottom-left of rectangle
+        path.addLine(to: CGPoint(x: rectLeft, y: rect.height))
+
+        // Triangle bottom edge (height of right triangle) - bottom-left back to tip
+        path.addLine(to: CGPoint(x: 0, y: rect.midY))
+
+        // Note: We don't close the path - the hypotenuse (left edge of rectangle) is not drawn
+
+        return path
+    }
+}
+
+/// A view that combines the map marker fill and outline
+struct MapMarkerBadge<Content: View>: View {
+    let fillColor: Color
+    let strokeColor: Color
+    let strokeWidth: CGFloat
+    let content: Content
+
+    init(
+        fillColor: Color = Color.black.opacity(0.8),
+        strokeColor: Color = OPSStyle.Colors.secondaryText.opacity(0.5),
+        strokeWidth: CGFloat = 1,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.fillColor = fillColor
+        self.strokeColor = strokeColor
+        self.strokeWidth = strokeWidth
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(.leading, 16) // Extra padding on left for triangle
+            .padding(.trailing, 10)
+            .padding(.vertical, 6)
+            .background(
+                MapMarkerShape()
+                    .fill(fillColor)
+            )
+            .overlay(
+                MapMarkerOutlineShape()
+                    .stroke(strokeColor, lineWidth: strokeWidth)
+            )
+    }
+}
+
 // MARK: - Blur View
 
 struct BlurView: UIViewRepresentable {

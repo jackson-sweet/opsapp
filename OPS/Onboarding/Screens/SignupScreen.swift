@@ -22,11 +22,11 @@ struct SignupScreen: View {
                 },
                 onSelectCompanyCreator: {
                     manager.selectFlow(.companyCreator)
-                    manager.goToScreen(.credentials)
+                    manager.goForward()
                 },
                 onSelectEmployee: {
                     manager.selectFlow(.employee)
-                    manager.goToScreen(.credentials)
+                    manager.goForward()
                 }
             )
         )

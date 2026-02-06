@@ -26,6 +26,8 @@ enum OnboardingScreen: String, Codable, CaseIterable {
     case profileJoin       // Legacy: Profile + join company with code (deprecated)
     case ready             // Welcome guide / billing
     case tutorial          // Interactive tutorial for new users
+    case preSignupTutorial // Tutorial shown before account creation
+    case postTutorialCTA   // CTA screen after pre-signup tutorial
 
     /// Display title for debugging
     var title: String {
@@ -44,6 +46,8 @@ enum OnboardingScreen: String, Codable, CaseIterable {
         case .profileJoin: return "Profile & Join"
         case .ready: return "Ready"
         case .tutorial: return "Tutorial"
+        case .preSignupTutorial: return "Pre-Signup Tutorial"
+        case .postTutorialCTA: return "Post-Tutorial CTA"
         }
     }
 }
@@ -156,6 +160,7 @@ struct OnboardingState: Codable, Equatable {
     // Flags
     var isAuthenticated: Bool = false
     var hasExistingCompany: Bool = false
+    var hasCompletedPreSignupTutorial: Bool = false
 
     /// Create default initial state
     static var initial: OnboardingState {
@@ -183,6 +188,7 @@ struct OnboardingState: Codable, Equatable {
 enum OnboardingStorageKeys {
     static let stateV3 = "onboarding_state_v3"
     static let completed = "onboarding_completed"
+    static let preSignupTutorialCompleted = "pre_signup_tutorial_completed"
 
     // Legacy keys (for cleanup)
     static let stateV2 = "onboarding_state_v2"

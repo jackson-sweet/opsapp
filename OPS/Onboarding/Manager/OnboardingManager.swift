@@ -221,13 +221,13 @@ class OnboardingManager: ObservableObject {
         // Define screen order for each flow
         // These are the main user-facing screens (excluding legacy/deprecated)
         let companyCreatorScreens: [OnboardingScreen] = [
-            .welcome, .signup, .credentials, .profile,
-            .companySetup, .companyDetails, .companyCode, .ready, .tutorial
+            .welcome, .signup, .preSignupTutorial, .credentials, .profile,
+            .companySetup, .companyDetails, .companyCode, .ready
         ]
 
         let employeeScreens: [OnboardingScreen] = [
-            .welcome, .signup, .credentials, .profile,
-            .codeEntry, .ready, .tutorial
+            .welcome, .signup, .preSignupTutorial, .credentials, .profile,
+            .codeEntry, .ready
         ]
 
         // Determine which flow's screens to use
@@ -265,7 +265,16 @@ class OnboardingManager: ObservableObject {
             // Back to welcome (logout scenario)
             goToScreen(.welcome, direction: .backward)
 
+        case .preSignupTutorial:
+            // Can't go back from tutorial (it has internal navigation)
+            break
+
+        case .postTutorialCTA:
+            // Legacy/unused
+            goToScreen(.signup, direction: .backward)
+
         case .credentials:
+            // Always go back to signup (path selection)
             goToScreen(.signup, direction: .backward)
 
         case .profile:
@@ -317,6 +326,19 @@ class OnboardingManager: ObservableObject {
             resume()
 
         case .signup:
+            // After path selection, always show pre-signup tutorial
+            // Skip button is available if they've already completed it
+            goToScreen(.preSignupTutorial)
+
+        case .preSignupTutorial:
+            // Tutorial completed, mark flag and go straight to credentials
+            state.hasCompletedPreSignupTutorial = true
+            UserDefaults.standard.set(true, forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
+            state.save()
+            goToScreen(.credentials)
+
+        case .postTutorialCTA:
+            // Legacy/unused — go to credentials
             goToScreen(.credentials)
 
         case .userTypeSelection:
@@ -354,31 +376,46 @@ class OnboardingManager: ObservableObject {
             goToScreen(.ready)
 
         case .ready:
-            // Check if user needs to complete tutorial
-            // For new users, always show tutorial (hasCompletedAppTutorial defaults to false)
-            let user = dataController.currentUser
-            let hasCompletedTutorial = user?.hasCompletedAppTutorial ?? false
+            // If pre-signup tutorial was already completed, skip post-signup tutorial
+            let preSignupDone = state.hasCompletedPreSignupTutorial ||
+                UserDefaults.standard.bool(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
 
             print("[ONBOARDING_MANAGER] Ready screen - checking tutorial status:")
-            print("[ONBOARDING_MANAGER]   - currentUser exists: \(user != nil)")
-            print("[ONBOARDING_MANAGER]   - hasCompletedAppTutorial: \(hasCompletedTutorial)")
+            print("[ONBOARDING_MANAGER]   - preSignupTutorialDone: \(preSignupDone)")
 
-            // Mark onboarding as complete before tutorial (user finished all onboarding steps)
+            // Mark onboarding as complete (user finished all onboarding steps)
             Task {
                 await markOnboardingComplete()
 
-                // Also update local user object
                 await MainActor.run {
                     dataController.currentUser?.hasCompletedAppOnboarding = true
                 }
             }
 
-            if !hasCompletedTutorial {
-                print("[ONBOARDING_MANAGER]   -> Navigating to tutorial")
-                goToScreen(.tutorial)
+            if preSignupDone {
+                // Pre-signup tutorial was done, mark hasCompletedAppTutorial and skip
+                print("[ONBOARDING_MANAGER]   -> Pre-signup tutorial done, marking tutorial complete and finishing")
+                Task {
+                    await markTutorialComplete()
+                    await MainActor.run {
+                        completeOnboarding()
+                    }
+                }
             } else {
-                print("[ONBOARDING_MANAGER]   -> Skipping tutorial, completing onboarding")
-                completeOnboarding()
+                // No pre-signup tutorial, check if post-signup tutorial needed
+                let user = dataController.currentUser
+                let hasCompletedTutorial = user?.hasCompletedAppTutorial ?? false
+
+                print("[ONBOARDING_MANAGER]   - currentUser exists: \(user != nil)")
+                print("[ONBOARDING_MANAGER]   - hasCompletedAppTutorial: \(hasCompletedTutorial)")
+
+                if !hasCompletedTutorial {
+                    print("[ONBOARDING_MANAGER]   -> Navigating to tutorial")
+                    goToScreen(.tutorial)
+                } else {
+                    print("[ONBOARDING_MANAGER]   -> Skipping tutorial, completing onboarding")
+                    completeOnboarding()
+                }
             }
 
         case .tutorial:
@@ -889,6 +926,8 @@ class OnboardingManager: ObservableObject {
             await MainActor.run {
                 // Clear state
                 OnboardingState.markCompleted()
+                // Clean up pre-signup tutorial key
+                UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
                 print("[ONBOARDING_MANAGER] ✅ Onboarding state marked as completed")
 
                 // Verify UserDefaults
@@ -946,6 +985,27 @@ class OnboardingManager: ObservableObject {
         } catch {
             print("[ONBOARDING_MANAGER] Failed to patch completion: \(error)")
             // Non-fatal, continue anyway
+        }
+    }
+
+    /// Mark tutorial as completed (used when pre-signup tutorial was already done)
+    private func markTutorialComplete() async {
+        // Update local user
+        dataController.currentUser?.hasCompletedAppTutorial = true
+
+        // Sync to Bubble
+        guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
+            print("[ONBOARDING_MANAGER] No user ID for tutorial completion patch")
+            return
+        }
+
+        do {
+            let fields: [String: Any] = [BubbleFields.User.hasCompletedAppTutorial: true]
+            try await apiService.updateUser(userId: userId, fields: fields)
+            print("[ONBOARDING_MANAGER] hasCompletedAppTutorial PATCHed to true (pre-signup tutorial)")
+        } catch {
+            print("[ONBOARDING_MANAGER] Failed to patch tutorial completion: \(error)")
+            // Non-fatal, will be caught by ContentView fallback
         }
     }
 

@@ -305,27 +305,25 @@ struct ClientSheet: View {
                             }
                         }
 
-                        // IMPORT FROM CONTACTS BUTTON (at bottom)
-                        if mode.isCreate {
-                            Button(action: { showingContactPicker = true }) {
-                                HStack {
-                                    Image(systemName: "person.crop.circle")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        // IMPORT FROM CONTACTS BUTTON (at bottom) - available in both create and edit modes
+                        Button(action: { showingContactPicker = true }) {
+                            HStack {
+                                Image(systemName: "person.crop.circle")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                    Text("IMPORT FROM CONTACTS")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
-                                )
+                                Text("IMPORT FROM CONTACTS")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
+                            )
                         }
                     }
                     .padding()

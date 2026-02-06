@@ -359,7 +359,7 @@ struct ProjectDetailsView: View {
             // Address badge at top right
             if let address = project.address, !address.isEmpty {
                 addressBadge(address: address)
-                    .padding(.top, 100) // Below header
+                    .padding(.top, 108) // Below header with extra spacing
                     .padding(.trailing, 12)
             }
 
@@ -392,32 +392,55 @@ struct ProjectDetailsView: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color.black.opacity(0.8))
+                .fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .dark)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(OPSStyle.Colors.secondaryText.opacity(0.5), lineWidth: 1)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
     }
 
     /// Map annotation label - uses custom MapMarkerBadge with pointer
     private var mapAnnotationLabel: some View {
-        MapMarkerBadge(
-            fillColor: Color.black.opacity(0.85),
-            strokeColor: OPSStyle.Colors.secondaryText.opacity(0.6),
-            strokeWidth: 1
-        ) {
-            HStack(spacing: 6) {
-                // Colored dot for task (or primary accent if no task)
-                Circle()
-                    .fill(selectedTask != nil ? (Color(hex: selectedTask!.taskColor) ?? OPSStyle.Colors.primaryAccent) : OPSStyle.Colors.primaryAccent)
-                    .frame(width: 8, height: 8)
+        let isTaskCompleted = selectedTask?.status == .completed
 
-                // Project title or task name
-                Text(selectedTask?.taskType?.display.uppercased() ?? project.title.uppercased())
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+        return VStack(spacing: 4) {
+            // Completed badge above marker
+            if isTaskCompleted {
+                Text("COMPLETED")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(Color("StatusCompleted"))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color("StatusCompleted").opacity(0.15))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .stroke(Color("StatusCompleted"), lineWidth: 0.5)
+                    )
+            }
+
+            MapMarkerBadge(
+                fillColor: Color.black.opacity(0.85),
+                strokeColor: isTaskCompleted ? Color("StatusCompleted").opacity(0.5) : OPSStyle.Colors.primaryText,
+                strokeWidth: 1
+            ) {
+                HStack(spacing: 6) {
+                    // Colored dot for task (or primary accent if no task)
+                    Circle()
+                        .fill(selectedTask != nil ? (Color(hex: selectedTask!.taskColor) ?? OPSStyle.Colors.primaryAccent) : OPSStyle.Colors.primaryAccent)
+                        .frame(width: 8, height: 8)
+
+                    // Project title or task name
+                    Text(selectedTask?.taskType?.display.uppercased() ?? project.title.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(isTaskCompleted ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                        .strikethrough(isTaskCompleted, color: OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
+                }
             }
         }
         .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
@@ -473,10 +496,10 @@ struct ProjectDetailsView: View {
     private var headerView: some View {
         HStack(alignment: .bottom, spacing: 12) {
             // Left side: Title, client, metadata
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 // Spacer to add padding above title
                 Spacer()
-                    .frame(height: 12)
+                    .frame(height: 8)
 
                 // Title
                 if isEditingTitle {
@@ -495,16 +518,11 @@ struct ProjectDetailsView: View {
                         .lineLimit(1)
                 }
 
-                // Client name with prefix
-                HStack(spacing: 4) {
-                    Text("CLIENT:")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text(project.effectiveClientName.uppercased())
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .lineLimit(1)
-                }
+                // Client name
+                Text(project.effectiveClientName.uppercased())
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
 
                 // Metadata row
                 HStack(spacing: 12) {
@@ -576,9 +594,15 @@ struct ProjectDetailsView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
-        .padding(.bottom, 8)
-        .background(.ultraThinMaterial)
-        .background(Color.black)
+        .padding(.bottom, 16)
+        .background {
+            ZStack {
+                Color.black
+                Rectangle().fill(.ultraThinMaterial)
+                Color.black.opacity(0.5)
+            }
+            .environment(\.colorScheme, .dark)
+        }
     }
 
     private var doneButton: some View {
@@ -777,7 +801,9 @@ struct ProjectDetailsView: View {
                     }
                 }
             }
-            .padding(16)
+            .padding(.vertical, 16)
+            .padding(.leading, 20)  // Extra 4pt to account for color stripe
+            .padding(.trailing, 16)
         .background(
             HStack(spacing: 0) {
                 // Left color stripe - full height via background
@@ -1052,28 +1078,60 @@ struct ProjectDetailsView: View {
                     .padding(.horizontal)
                 } else {
                     // Show preview of first note
-                    if !noteText.isEmpty {
-                        Text(noteText)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .lineLimit(2)
-                            .padding(.horizontal)
-                            .onTapGesture {
-                                withAnimation {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !noteText.isEmpty {
+                            Text(noteText)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .lineLimit(2)
+                        } else if let firstTaskWithNotes = project.tasks.first(where: { !($0.taskNotes ?? "").isEmpty }) {
+                            Text(firstTaskWithNotes.taskNotes ?? "")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .lineLimit(2)
+                        }
+
+                        // "SEE ALL NOTES" button with colored dots for tasks with hidden notes
+                        let tasksWithNotes = project.tasks
+                            .sorted { $0.displayOrder < $1.displayOrder }
+                            .filter { !($0.taskNotes ?? "").isEmpty }
+                        let hasMultipleNotes = notesCount > 1
+                        let previewedNoteIsLong = (!noteText.isEmpty && noteText.count > 80) ||
+                            (noteText.isEmpty && (project.tasks.first(where: { !($0.taskNotes ?? "").isEmpty })?.taskNotes?.count ?? 0) > 80)
+
+                        if hasMultipleNotes || previewedNoteIsLong {
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     isNotesExpanded = true
                                 }
-                            }
-                    } else if let firstTaskWithNotes = project.tasks.first(where: { !($0.taskNotes ?? "").isEmpty }) {
-                        Text(firstTaskWithNotes.taskNotes ?? "")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .lineLimit(2)
-                            .padding(.horizontal)
-                            .onTapGesture {
-                                withAnimation {
-                                    isNotesExpanded = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Text("SEE ALL NOTES")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                                    // Colored dots for tasks with notes
+                                    if !tasksWithNotes.isEmpty {
+                                        HStack(spacing: 4) {
+                                            ForEach(tasksWithNotes, id: \.id) { task in
+                                                Circle()
+                                                    .fill(Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent)
+                                                    .frame(width: 6, height: 6)
+                                            }
+                                        }
+                                    }
+
+                                    Spacer()
                                 }
                             }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    .padding(.horizontal)
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            isNotesExpanded = true
+                        }
                     }
                 }
             }

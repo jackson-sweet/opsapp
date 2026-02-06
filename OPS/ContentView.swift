@@ -96,7 +96,15 @@ struct ContentView: View {
                     }
                     print("[CONTENT_VIEW]   - hasCompletedTutorial (with nil fallback): \(hasCompletedTutorial)")
 
-                    if !hasCompletedTutorial {
+                    // Also check UserDefaults fallback from pre-signup tutorial
+                    let preSignupDone = UserDefaults.standard.bool(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
+
+                    if !hasCompletedTutorial && preSignupDone {
+                        // Pre-signup tutorial was done but flag wasn't synced to user yet
+                        print("[CONTENT_VIEW]   -> Pre-signup tutorial done, marking tutorial complete on user")
+                        user?.hasCompletedAppTutorial = true
+                        UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
+                    } else if !hasCompletedTutorial {
                         print("[CONTENT_VIEW]   -> Showing tutorial for returning user")
                         showTutorialForReturningUser = true
                     } else {
@@ -115,10 +123,17 @@ struct ContentView: View {
                 // User just became authenticated (login completed)
                 // Check if they need to complete the tutorial
                 let hasCompletedTutorial = dataController.currentUser?.hasCompletedAppTutorial ?? false
+                let preSignupDone = UserDefaults.standard.bool(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
                 print("[CONTENT_VIEW] Auth changed to true - checking tutorial:")
                 print("[CONTENT_VIEW]   - hasCompletedAppTutorial: \(hasCompletedTutorial)")
+                print("[CONTENT_VIEW]   - preSignupTutorialDone: \(preSignupDone)")
 
-                if !hasCompletedTutorial {
+                if !hasCompletedTutorial && preSignupDone {
+                    // Pre-signup tutorial was done, mark on user and skip
+                    print("[CONTENT_VIEW]   -> Pre-signup tutorial done, marking complete")
+                    dataController.currentUser?.hasCompletedAppTutorial = true
+                    UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
+                } else if !hasCompletedTutorial {
                     print("[CONTENT_VIEW]   -> Showing tutorial after login")
                     showTutorialForReturningUser = true
                 }

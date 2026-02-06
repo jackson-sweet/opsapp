@@ -37,11 +37,8 @@ struct JobBoardDashboard: View {
         dataController.currentUser?.role == .fieldCrew
     }
 
-    /// Status columns to display - field crew only sees Accepted, In Progress, Completed
+    /// Status columns to display - all users see all statuses
     private var statuses: [Status] {
-        if isFieldCrew {
-            return [.accepted, .inProgress, .completed]
-        }
         return [.rfq, .estimated, .accepted, .inProgress, .completed]
     }
     private let columnWidth: CGFloat = 280

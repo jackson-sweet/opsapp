@@ -516,4 +516,34 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
             return .homeOverview
         }
     }
+
+    // MARK: - Ordered Phase List
+
+    /// Returns all phases in order for a given flow type (excludes notStarted and completed)
+    static func allPhases(for flowType: TutorialFlowType) -> [TutorialPhase] {
+        var phases: [TutorialPhase] = []
+        var current: TutorialPhase? = firstPhase(for: flowType)
+        while let phase = current, phase != .completed {
+            phases.append(phase)
+            current = phase.next(for: flowType)
+        }
+        return phases
+    }
+
+    /// Returns the 1-based step index for this phase within its flow, or nil if not in the flow
+    func stepIndex(for flowType: TutorialFlowType) -> Int? {
+        let phases = TutorialPhase.allPhases(for: flowType)
+        guard let index = phases.firstIndex(of: self) else { return nil }
+        return index + 1
+    }
+
+    /// A short human-readable descriptor for logging (based on tooltipText)
+    var stepDescriptor: String {
+        tooltipText.isEmpty ? rawDescription : tooltipText.lowercased()
+    }
+
+    /// Raw description of the phase for logging
+    private var rawDescription: String {
+        String(describing: self)
+    }
 }

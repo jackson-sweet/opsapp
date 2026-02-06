@@ -130,6 +130,22 @@ struct OnboardingContainer: View {
             .environmentObject(dataController)
             .environmentObject(appState)
             .environmentObject(locationManager)
+
+        case .preSignupTutorial:
+            let flowType: TutorialFlowType = manager.state.flow == .employee ? .employee : .companyCreator
+            TutorialLauncherView(
+                flowType: flowType,
+                isPreSignup: true,
+                onComplete: {
+                    manager.goForward() // Will go to postTutorialCTA
+                }
+            )
+            .environmentObject(dataController)
+            .environmentObject(appState)
+            .environmentObject(locationManager)
+
+        case .postTutorialCTA:
+            PostTutorialCTAScreen(manager: manager)
         }
     }
 
@@ -157,7 +173,7 @@ struct OnboardingContainer: View {
             return "Creating your company..."
         case .codeEntry:
             return "Joining crew..."
-        case .welcome, .signup, .userTypeSelection, .profile, .companyCode, .ready, .tutorial:
+        case .welcome, .signup, .userTypeSelection, .profile, .companyCode, .ready, .tutorial, .preSignupTutorial, .postTutorialCTA:
             return "Loading..."
         }
     }

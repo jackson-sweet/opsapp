@@ -13,6 +13,9 @@ struct TutorialCompletionView: View {
     /// The tutorial state manager
     @ObservedObject var manager: TutorialStateManager
 
+    /// Whether this is a pre-signup tutorial (before account creation)
+    var isPreSignup: Bool = false
+
     /// Callback when user dismisses the completion screen
     let onDismiss: () -> Void
 
@@ -103,6 +106,14 @@ struct TutorialCompletionView: View {
 
     /// Flow-specific subtext for completion screen
     private var completionSubtext: String {
+        if isPreSignup {
+            switch manager.flowType {
+            case .companyCreator:
+                return "Set up your company and start managing real projects."
+            case .employee:
+                return "Join your crew and start tracking real work."
+            }
+        }
         switch manager.flowType {
         case .companyCreator:
             return "Now build your first real project and run your crew right."
@@ -116,7 +127,7 @@ struct TutorialCompletionView: View {
             TutorialHaptics.success()
             onDismiss()
         } label: {
-            Text("ENTER OPS")
+            Text(isPreSignup ? "CREATE YOUR ACCOUNT" : "ENTER OPS")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)

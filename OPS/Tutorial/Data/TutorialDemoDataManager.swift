@@ -20,7 +20,7 @@ class TutorialDemoDataManager {
     /// IDs of projects created by the user during the tutorial (not pre-seeded)
     private var userCreatedProjectIds: [String] = []
 
-    init(context: ModelContext, companyId: String) {
+    init(context: ModelContext, companyId: String = DemoIDs.demoCompany) {
         self.context = context
         self.companyId = companyId
         self.dateCalculator = DemoDateCalculator()
@@ -607,6 +607,74 @@ class TutorialDemoDataManager {
         )
         let count = (try? context.fetchCount(descriptor)) ?? 0
         return count > 0
+    }
+
+    // MARK: - Temporary Demo User (Pre-Signup)
+
+    /// ID for the anonymous demo user created before signup
+    static let temporaryDemoUserId = "DEMO_USER_ANONYMOUS"
+    static let temporaryDemoCompanyId = DemoIDs.demoCompany
+
+    /// Creates a temporary demo user and company in SwiftData for pre-signup tutorial.
+    /// Sets dataController.currentUser so the tutorial can function normally.
+    func createTemporaryDemoUser(dataController: DataController) throws {
+        print("[TUTORIAL_DEMO] Creating temporary demo user for pre-signup tutorial...")
+
+        // Create demo company
+        let company = Company(
+            id: TutorialDemoDataManager.temporaryDemoCompanyId,
+            name: "TOPGUN Academy"
+        )
+        context.insert(company)
+
+        // Create demo user
+        let user = User(
+            id: TutorialDemoDataManager.temporaryDemoUserId,
+            firstName: "Demo",
+            lastName: "User",
+            role: .admin,
+            companyId: TutorialDemoDataManager.temporaryDemoCompanyId
+        )
+        user.isActive = true
+        context.insert(user)
+
+        try context.save()
+
+        // Set as current user so tutorial can reference it
+        dataController.currentUser = user
+
+        print("[TUTORIAL_DEMO] Temporary demo user created: \(user.id)")
+    }
+
+    /// Cleans up the temporary demo user and company created for pre-signup tutorial.
+    /// Resets dataController.currentUser to nil.
+    func cleanupTemporaryDemoUser(dataController: DataController) throws {
+        print("[TUTORIAL_DEMO] Cleaning up temporary demo user...")
+
+        // Delete the anonymous demo user
+        let userDescriptor = FetchDescriptor<User>(
+            predicate: #Predicate<User> { $0.id == "DEMO_USER_ANONYMOUS" }
+        )
+        let users = try context.fetch(userDescriptor)
+        for user in users {
+            context.delete(user)
+        }
+
+        // Delete the demo company
+        let companyDescriptor = FetchDescriptor<Company>(
+            predicate: #Predicate<Company> { $0.id.starts(with: "DEMO_") }
+        )
+        let companies = try context.fetch(companyDescriptor)
+        for company in companies {
+            context.delete(company)
+        }
+
+        try context.save()
+
+        // Reset current user
+        dataController.currentUser = nil
+
+        print("[TUTORIAL_DEMO] Temporary demo user cleaned up")
     }
 
     /// Gets a count of all demo entities for debugging

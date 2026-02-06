@@ -57,6 +57,11 @@ class TutorialStateManager: ObservableObject {
     /// The type of tutorial flow (company creator or employee)
     let flowType: TutorialFlowType
 
+    // MARK: - Step Tracking
+
+    /// The highest phase reached during this tutorial session (for logging)
+    @Published var highestPhaseReached: TutorialPhase = .notStarted
+
     // MARK: - Private Properties
 
     private var autoAdvanceTask: Task<Void, Never>?
@@ -85,6 +90,19 @@ class TutorialStateManager: ObservableObject {
         return Date().timeIntervalSince(start)
     }
 
+    /// Steps completed as "X/N" string for logging
+    var stepsCompletedString: String {
+        let allPhases = TutorialPhase.allPhases(for: flowType)
+        let total = allPhases.count
+        let stepIndex = highestPhaseReached.stepIndex(for: flowType) ?? 0
+        return "\(stepIndex)/\(total)"
+    }
+
+    /// Human-readable descriptor of the last completed step
+    var lastCompletedStepDescriptor: String {
+        highestPhaseReached.stepDescriptor
+    }
+
     // MARK: - Initialization
 
     init(flowType: TutorialFlowType) {
@@ -98,6 +116,7 @@ class TutorialStateManager: ObservableObject {
         isActive = true
         startTime = Date()
         currentPhase = TutorialPhase.firstPhase(for: flowType)
+        highestPhaseReached = currentPhase
         updateForCurrentPhase()
 
         // Handle auto-advancing phases (truly auto-advance, no user action)
@@ -131,6 +150,7 @@ class TutorialStateManager: ObservableObject {
         }
 
         currentPhase = nextPhase
+        highestPhaseReached = nextPhase
         updateForCurrentPhase()
 
         // Handle auto-advancing phases (truly auto-advance, no user action)
@@ -188,6 +208,7 @@ class TutorialStateManager: ObservableObject {
         autoAdvanceTask = nil
 
         currentPhase = .notStarted
+        highestPhaseReached = .notStarted
         isActive = false
         showSwipeHint = false
         swipeDirection = .right

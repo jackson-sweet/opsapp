@@ -83,7 +83,7 @@ struct TaskLineItem: View {
                     .fill(color)
                     .frame(width: 4)
 
-                // Main tappable content area
+                // Main content area
                 VStack(alignment: .leading, spacing: 8) {
                     // Title
                     Text(title.uppercased())
@@ -130,10 +130,6 @@ struct TaskLineItem: View {
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .padding(.vertical, 8)
                 .padding(.horizontal, 16)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    onTap()
-                }
 
                 Spacer()
 
@@ -177,6 +173,11 @@ struct TaskLineItem: View {
                 Spacer()
             }
             .padding(.top, 8)
+            .allowsHitTesting(false)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap()
         }
         .background(Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))

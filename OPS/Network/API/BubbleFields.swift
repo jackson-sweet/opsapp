@@ -26,6 +26,20 @@ struct BubbleFields {
         static let inventorySnapshot = "inventorysnapshot"  // Bubble API uses lowercase
         static let inventorySnapshotItem = "inventorysnapshotitem"  // Bubble API uses lowercase
         static let tag = "tag"  // Bubble API uses lowercase
+        static let tutorialLog = "TutorialLog"
+    }
+
+    /// TutorialLog fields (analytics for tutorial completion tracking)
+    struct TutorialLog {
+        static let date = "date"
+        static let appVersion = "appVersion"
+        static let isLoggedIn = "isLoggedIn"
+        static let flowType = "flowType"
+        static let stepsCompleted = "stepsCompleted"
+        static let lastCompletedStep = "lastCompletedStep"
+        static let completed = "completed"
+        static let skipped = "skipped"
+        static let durationSeconds = "durationSeconds"
     }
     
     /// Job status values (from your Job Status custom type)

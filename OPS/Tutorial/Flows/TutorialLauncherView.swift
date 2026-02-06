@@ -24,6 +24,9 @@ struct TutorialLauncherView: View {
     /// Determines which flow to show based on user role
     let flowType: TutorialFlowType
 
+    /// Whether this is a pre-signup tutorial (before account creation)
+    let isPreSignup: Bool
+
     /// State manager for the tutorial
     @StateObject private var stateManager: TutorialStateManager
 
@@ -59,7 +62,8 @@ struct TutorialLauncherView: View {
 
     /// Whether user has already completed the tutorial
     private var hasCompletedTutorial: Bool {
-        dataController.currentUser?.hasCompletedAppTutorial ?? false
+        if isPreSignup { return false }
+        return dataController.currentUser?.hasCompletedAppTutorial ?? false
     }
 
     /// Title varies by flow type
@@ -105,9 +109,11 @@ struct TutorialLauncherView: View {
     /// Creates the tutorial launcher
     /// - Parameters:
     ///   - flowType: The type of tutorial flow (auto-detected from user role if nil)
+    ///   - isPreSignup: Whether this is running before account creation
     ///   - onComplete: Callback when tutorial finishes
-    init(flowType: TutorialFlowType? = nil, onComplete: @escaping () -> Void) {
+    init(flowType: TutorialFlowType? = nil, isPreSignup: Bool = false, onComplete: @escaping () -> Void) {
         self.onComplete = onComplete
+        self.isPreSignup = isPreSignup
 
         // Determine flow type from parameter or default to company creator
         let resolvedFlowType = flowType ?? .companyCreator
@@ -133,6 +139,7 @@ struct TutorialLauncherView: View {
             } else if showingCompletion {
                 TutorialCompletionView(
                     manager: stateManager,
+                    isPreSignup: isPreSignup,
                     onDismiss: startFinishing
                 )
             } else {
@@ -289,7 +296,7 @@ struct TutorialLauncherView: View {
                                                 showButtonIcon = true
                                             }
                                             // Show skip button after main button animates (if applicable)
-                                            if hasCompletedTutorial {
+                                            if hasCompletedTutorial || isPreSignup {
                                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                                     withAnimation(.easeOut(duration: 0.3)) {
                                                         showSkipButton = true
@@ -317,14 +324,26 @@ struct TutorialLauncherView: View {
                 .opacity(showButton ? 1 : 0)
                 .offset(y: showButton ? 0 : 20)
 
-                // Skip button (only shown if user has completed tutorial before)
-                if hasCompletedTutorial {
+                // Skip button (shown if user has completed tutorial before, or during pre-signup)
+                if hasCompletedTutorial || isPreSignup {
                     Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
-                        onComplete()
+                        Task { @MainActor in
+                            // Send tutorial log with skipped=true
+                            await sendTutorialLog(skipped: true)
+
+                            if isPreSignup {
+                                // Clean up any temp demo data before skipping
+                                if let manager = demoDataManager {
+                                    try? await manager.cleanupAllDemoData()
+                                    try? manager.cleanupTemporaryDemoUser(dataController: dataController)
+                                }
+                            }
+                            onComplete()
+                        }
                     } label: {
-                        Text("SKIP TUTORIAL")
+                        Text(isPreSignup ? "SKIP THE THEATRICS, TAKE ME TO SIGNUP" : "SKIP TUTORIAL")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -489,23 +508,44 @@ struct TutorialLauncherView: View {
     private func setupAndSeedDemoData() {
         Task { @MainActor in
             do {
-                print("[TUTORIAL_LAUNCHER] Starting demo data seeding...")
+                print("[TUTORIAL_LAUNCHER] Starting demo data seeding... (isPreSignup: \(isPreSignup))")
 
-                // Create demo data manager with current user's company ID
-                guard let userCompanyId = dataController.currentUser?.companyId else {
-                    print("[TUTORIAL_LAUNCHER] Error: No current user or company ID")
-                    seedingError = "Unable to determine company. Please log in again."
-                    isSeeding = false
-                    return
-                }
-                let manager = TutorialDemoDataManager(context: modelContext, companyId: userCompanyId)
-                demoDataManager = manager
+                let userCompanyId: String
 
-                // Check if demo data already exists
-                if manager.hasDemoData() {
-                    print("[TUTORIAL_LAUNCHER] Demo data already exists, cleaning up first...")
-                    try await manager.cleanupAllDemoData()
+                if isPreSignup {
+                    // Pre-signup: create a temporary demo user and company
+                    let manager = TutorialDemoDataManager(context: modelContext)
+                    demoDataManager = manager
+
+                    // Clean up any leftover demo data first
+                    if manager.hasDemoData() {
+                        print("[TUTORIAL_LAUNCHER] Demo data already exists, cleaning up first...")
+                        try await manager.cleanupAllDemoData()
+                    }
+
+                    // Create temp user so tutorial can function
+                    try manager.createTemporaryDemoUser(dataController: dataController)
+                    userCompanyId = TutorialDemoDataManager.temporaryDemoCompanyId
+                } else {
+                    // Normal post-signup: use current user's company ID
+                    guard let companyId = dataController.currentUser?.companyId else {
+                        print("[TUTORIAL_LAUNCHER] Error: No current user or company ID")
+                        seedingError = "Unable to determine company. Please log in again."
+                        isSeeding = false
+                        return
+                    }
+                    userCompanyId = companyId
+                    let manager = TutorialDemoDataManager(context: modelContext, companyId: userCompanyId)
+                    demoDataManager = manager
+
+                    // Check if demo data already exists
+                    if manager.hasDemoData() {
+                        print("[TUTORIAL_LAUNCHER] Demo data already exists, cleaning up first...")
+                        try await manager.cleanupAllDemoData()
+                    }
                 }
+
+                guard let manager = demoDataManager else { return }
 
                 // Seed fresh demo data
                 try await manager.seedAllDemoData()
@@ -554,6 +594,25 @@ struct TutorialLauncherView: View {
         }
     }
 
+    // MARK: - Tutorial Logging
+
+    /// Sends a tutorial log to Bubble for analytics
+    private func sendTutorialLog(skipped: Bool) async {
+        let completed = stateManager.currentPhase == .completed
+        let duration = Int(stateManager.completionTime ?? stateManager.elapsedTime)
+
+        await dataController.apiService.createTutorialLog(
+            appVersion: AppConfiguration.AppInfo.version,
+            isLoggedIn: !isPreSignup,
+            flowType: flowType.rawValue,
+            stepsCompleted: stateManager.stepsCompletedString,
+            lastCompletedStep: stateManager.lastCompletedStepDescriptor,
+            completed: completed,
+            skipped: skipped,
+            durationSeconds: duration
+        )
+    }
+
     // MARK: - Completion Handling
 
     /// Called when a flow wrapper signals completion
@@ -573,13 +632,22 @@ struct TutorialLauncherView: View {
         }
 
         // Start showing console messages with delays
-        let messages = [
-            "CLEANING UP DEMO DATA...",
-            "SYNCING USER DATA...",
-            "LOADING YOUR PROJECTS...",
-            "PREPARING WORKSPACE...",
-            "ALMOST READY..."
-        ]
+        let messages: [String]
+        if isPreSignup {
+            messages = [
+                "CLEANING UP DEMO DATA...",
+                "PREPARING FOR SIGNUP...",
+                "ALMOST READY..."
+            ]
+        } else {
+            messages = [
+                "CLEANING UP DEMO DATA...",
+                "SYNCING USER DATA...",
+                "LOADING YOUR PROJECTS...",
+                "PREPARING WORKSPACE...",
+                "ALMOST READY..."
+            ]
+        }
 
         for (index, message) in messages.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.8) {
@@ -616,6 +684,28 @@ struct TutorialLauncherView: View {
 
     /// Performs the actual tutorial cleanup (extracted from handleTutorialComplete)
     private func performTutorialCleanup() async {
+        // Send tutorial log (fire-and-forget)
+        await sendTutorialLog(skipped: false)
+
+        if isPreSignup {
+            // Pre-signup: only clean demo data + temp user, no Bubble sync
+            print("[TUTORIAL_LAUNCHER] Pre-signup cleanup: cleaning demo data and temp user...")
+            await cleanupDemoData()
+
+            // Clean up temporary demo user
+            if let manager = demoDataManager {
+                do {
+                    try manager.cleanupTemporaryDemoUser(dataController: dataController)
+                } catch {
+                    print("[TUTORIAL_LAUNCHER] Warning: Failed to cleanup temp user: \(error)")
+                }
+            }
+
+            print("[TUTORIAL_LAUNCHER] Pre-signup cleanup complete")
+            return
+        }
+
+        // Normal post-signup cleanup below
         // Mark tutorial as completed for the user
         guard let user = dataController.currentUser else {
             print("[TUTORIAL_LAUNCHER] ❌ ERROR: No current user found - cannot mark tutorial complete!")
@@ -674,6 +764,9 @@ struct TutorialLauncherView: View {
     /// Called when user taps continue on completion view (legacy - now uses startFinishing)
     private func handleTutorialComplete() {
         Task { @MainActor in
+            // Send tutorial log
+            await sendTutorialLog(skipped: false)
+
             // Mark tutorial as completed for the user
             guard let user = dataController.currentUser else {
                 print("[TUTORIAL_LAUNCHER] ❌ ERROR (legacy): No current user found!")

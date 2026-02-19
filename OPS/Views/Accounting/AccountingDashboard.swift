@@ -13,6 +13,8 @@ struct AccountingDashboard: View {
 
     @State private var invoices: [Invoice] = []
     @State private var isLoading = true
+    @State private var loadError: String? = nil
+    @State private var clientNames: [String: String] = [:]
 
     private var agingBuckets: [ARAgingBucket] {
         computeAgingBuckets(from: invoices)
@@ -36,6 +38,31 @@ struct AccountingDashboard: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(OPSStyle.Colors.background)
             .task { await loadData() }
+        } else if let error = loadError {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
+                Spacer()
+                Image(systemName: OPSStyle.Icons.alert)
+                    .font(.system(size: 32))
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                Text("COULD NOT LOAD DATA")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text(error)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .multilineTextAlignment(.center)
+                Button("TAP TO RETRY") {
+                    isLoading = true
+                    Task { await loadData() }
+                }
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                Spacer()
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(OPSStyle.Colors.background)
         } else {
             ScrollView {
                 VStack(spacing: OPSStyle.Layout.spacing4) {
@@ -203,14 +230,27 @@ struct AccountingDashboard: View {
             isLoading = false
             return
         }
+        loadError = nil
         let repo = AccountingRepository(companyId: companyId)
         do {
             let dtos = try await repo.fetchAllInvoices()
             invoices = dtos.map { $0.toModel() }
+            // Build client name lookup from SwiftData
+            buildClientNameLookup()
         } catch {
-            // Silently fail — dashboard shows empty state
+            loadError = error.localizedDescription
         }
         isLoading = false
+    }
+
+    private func buildClientNameLookup() {
+        guard let companyId = dataController.currentUser?.companyId else { return }
+        let clients = dataController.getAllClients(for: companyId)
+        var map: [String: String] = [:]
+        for client in clients {
+            map[client.id] = client.displayName
+        }
+        clientNames = map
     }
 
     // MARK: - Computations
@@ -276,6 +316,6 @@ struct AccountingDashboard: View {
         return clientTotals
             .sorted { $0.value > $1.value }
             .prefix(5)
-            .map { (name: $0.key, amount: $0.value) }
+            .map { (name: clientNames[$0.key] ?? "Unknown Client", amount: $0.value) }
     }
 }

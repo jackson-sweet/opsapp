@@ -16,6 +16,7 @@ struct ProductDTO: Codable, Identifiable {
     let costPrice: Double?
     let unit: String?
     let type: String?
+    let taxable: Bool?
     let taskTypeId: String?
     let isActive: Bool
     let createdAt: String
@@ -30,6 +31,7 @@ struct ProductDTO: Codable, Identifiable {
         case costPrice   = "cost_price"
         case unit
         case type
+        case taxable
         case taskTypeId  = "task_type_id"
         case isActive    = "is_active"
         case createdAt   = "created_at"
@@ -47,6 +49,7 @@ struct ProductDTO: Codable, Identifiable {
             createdAt: SupabaseDate.parse(createdAt) ?? Date()
         )
         prod.productDescription = description
+        prod.taxable = taxable ?? true
         prod.unitCost = costPrice
         prod.unit = unit
         prod.taskTypeId = taskTypeId
@@ -62,6 +65,7 @@ struct CreateProductDTO: Codable {
     let costPrice: Double?
     let unit: String?
     let type: String?
+    let taxable: Bool
 
     enum CodingKeys: String, CodingKey {
         case companyId   = "company_id"
@@ -71,6 +75,7 @@ struct CreateProductDTO: Codable {
         case costPrice   = "cost_price"
         case unit
         case type
+        case taxable
     }
 }
 
@@ -81,6 +86,7 @@ struct UpdateProductDTO: Codable {
     var costPrice: Double?
     var unit: String?
     var type: String?
+    var taxable: Bool?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -89,5 +95,6 @@ struct UpdateProductDTO: Codable {
         case costPrice  = "cost_price"
         case unit
         case type
+        case taxable
     }
 }

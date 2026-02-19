@@ -30,6 +30,16 @@ class OpportunityRepository {
         return response
     }
 
+    func fetchOne(_ opportunityId: String) async throws -> OpportunityDTO {
+        try await client
+            .from("opportunities")
+            .select()
+            .eq("id", value: opportunityId)
+            .single()
+            .execute()
+            .value
+    }
+
     func fetchActivities(for opportunityId: String) async throws -> [ActivityDTO] {
         let response: [ActivityDTO] = try await client
             .from("activities")

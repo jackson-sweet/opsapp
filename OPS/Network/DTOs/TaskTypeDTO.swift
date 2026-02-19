@@ -15,6 +15,9 @@ struct TaskTypeDTO: Codable {
     let display: String
     let isDefault: Bool?
 
+    // Pipeline integration
+    let defaultTeamMemberIds: [String]?  // Default crew user IDs for auto-generated tasks
+
     // Metadata
     let createdDate: String?
     let modifiedDate: String?
@@ -29,6 +32,7 @@ struct TaskTypeDTO: Codable {
         case color = "color"
         case display = "display"
         case isDefault = "isDefault"
+        case defaultTeamMemberIds = "defaultTeamMemberIds"
         case createdDate = "Created Date"  // Bubble default field
         case modifiedDate = "Modified Date"  // Bubble default field
         case deletedAt = "deletedAt"  // Soft delete timestamp
@@ -55,16 +59,18 @@ struct TaskTypeDTO: Codable {
         }
 
         self.isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault)
+        self.defaultTeamMemberIds = try container.decodeIfPresent([String].self, forKey: .defaultTeamMemberIds)
         self.createdDate = try container.decodeIfPresent(String.self, forKey: .createdDate)
         self.modifiedDate = try container.decodeIfPresent(String.self, forKey: .modifiedDate)
         self.deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
     }
 
-    init(id: String, color: String, display: String, isDefault: Bool?, createdDate: String?, modifiedDate: String?, deletedAt: String? = nil) {
+    init(id: String, color: String, display: String, isDefault: Bool?, defaultTeamMemberIds: [String]? = nil, createdDate: String?, modifiedDate: String?, deletedAt: String? = nil) {
         self.id = id
         self.color = color
         self.display = display
         self.isDefault = isDefault
+        self.defaultTeamMemberIds = defaultTeamMemberIds
         self.createdDate = createdDate
         self.modifiedDate = modifiedDate
         self.deletedAt = deletedAt
@@ -97,6 +103,11 @@ struct TaskTypeDTO: Codable {
 
         taskType.displayOrder = 0  // Display order field doesn't exist in Bubble
 
+        // Pipeline integration: store default team member IDs
+        if let ids = defaultTeamMemberIds, !ids.isEmpty {
+            taskType.defaultTeamMemberIdsString = ids.joined(separator: ",")
+        }
+
         // Parse deletedAt if present
         if let deletedAtString = deletedAt {
             let formatter = ISO8601DateFormatter()
@@ -108,11 +119,14 @@ struct TaskTypeDTO: Codable {
     
     /// Create DTO from SwiftData model
     static func from(_ taskType: TaskType) -> TaskTypeDTO {
+        let teamMemberIds = taskType.defaultTeamMemberIdsString.isEmpty ? nil :
+            taskType.defaultTeamMemberIdsString.components(separatedBy: ",")
         return TaskTypeDTO(
             id: taskType.id,
             color: taskType.color,
             display: taskType.display,
             isDefault: taskType.isDefault,
+            defaultTeamMemberIds: teamMemberIds,
             createdDate: nil,
             modifiedDate: nil,
             deletedAt: nil

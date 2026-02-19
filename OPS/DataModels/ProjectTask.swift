@@ -102,6 +102,8 @@ final class ProjectTask {
     var taskIndex: Int?  // Index for task ordering within project (based on startDate)
     var displayOrder: Int = 0
     var customTitle: String?  // Optional custom title for task (overrides taskType.display)
+    var sourceLineItemId: String?   // Supabase LineItem UUID this task was generated from
+    var sourceEstimateId: String?   // Supabase Estimate UUID this task was generated from
 
     // Store team member IDs as string (for compatibility with existing patterns)
     var teamMemberIdsString: String = ""

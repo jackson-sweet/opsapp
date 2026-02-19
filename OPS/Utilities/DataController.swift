@@ -529,6 +529,9 @@ class DataController: ObservableObject {
                 givenName: appleResult.givenName,
                 familyName: appleResult.familyName
             )
+
+            // Also authenticate with Supabase using the same Apple identity token
+            try? await SupabaseService.shared.signInWithApple(identityToken: appleResult.identityToken)
             
             let userDTO = loginResult.user
             
@@ -621,6 +624,9 @@ class DataController: ObservableObject {
                 givenName: googleUser.profile?.givenName,
                 familyName: googleUser.profile?.familyName
             )
+
+            // Also authenticate with Supabase using the same Google ID token
+            try? await SupabaseService.shared.signInWithGoogle(idToken: idToken)
             
             let userDTO = loginResult.user
             let companyDTO = loginResult.company
@@ -985,6 +991,9 @@ class DataController: ObservableObject {
 
         // Sign out from auth manager
         authManager.signOut()
+
+        // Sign out from Supabase
+        Task { await SupabaseService.shared.signOut() }
         
         // Clear PIN settings
         simplePINManager.removePIN()

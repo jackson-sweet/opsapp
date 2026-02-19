@@ -22,6 +22,7 @@ struct OPSApp: App {
     // Create the model container for SwiftData
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
+            // Bubble-backed models
             User.self,
             Project.self,
             Company.self,
@@ -32,7 +33,19 @@ struct OPSApp: App {
             TaskType.self,
             TaskStatusOption.self,
             CalendarEvent.self,
-            OpsContact.self
+            OpsContact.self,
+            // Supabase-backed models
+            Opportunity.self,
+            Activity.self,
+            FollowUp.self,
+            StageTransition.self,
+            Estimate.self,
+            EstimateLineItem.self,
+            Invoice.self,
+            InvoiceLineItem.self,
+            Payment.self,
+            Product.self,
+            SiteVisit.self
         ])
         
         let modelConfiguration = ModelConfiguration(

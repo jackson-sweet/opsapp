@@ -52,6 +52,7 @@ struct ProjectDTO: Codable {
         self.slug = try container.decodeIfPresent(String.self, forKey: .slug)
         self.tasks = try container.decodeIfPresent([BubbleReference].self, forKey: .tasks)
         self.deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
+        self.opportunityId = try container.decodeIfPresent(String.self, forKey: .opportunityId)
     }
     let company: BubbleReference?
     let completion: String?
@@ -72,9 +73,12 @@ struct ProjectDTO: Codable {
     let balance: Double?
     let slug: String?
 
+    // Pipeline integration
+    let opportunityId: String?  // Supabase Opportunity UUID
+
     // Soft delete support
     let deletedAt: String? // ISO 8601 date string
-    
+
     // Custom coding keys to match Bubble's field names exactly
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -98,6 +102,7 @@ struct ProjectDTO: Codable {
         case duration = "duration" // Duration in days for the project. type number.
         case tasks = "tasks" // List of tasks associated with this project, type list of Task
         case deletedAt = "deletedAt" // Soft delete timestamp
+        case opportunityId = "opportunityId" // Supabase Opportunity UUID for pipeline integration
     }
     
     /// Convert DTO to SwiftData model
@@ -151,6 +156,9 @@ struct ProjectDTO: Codable {
         // NOTE: Project teamMembers is computed locally from task team members
         // Do NOT store teamMembers from Bubble - it's a legacy field
         // Team members are computed via project.updateTeamMembersFromTasks()
+
+        // Pipeline integration
+        project.opportunityId = opportunityId
 
         // Parse deletedAt if present
         if let deletedAtString = deletedAt {

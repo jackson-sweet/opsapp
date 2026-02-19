@@ -56,11 +56,28 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
+    // Whether the current user has Pipeline access (admin/office crew only)
+    private var hasPipelineAccess: Bool {
+        let role = dataController.currentUser?.role
+        return role == .admin || role == .officeCrew
+    }
+
+    // Computed tab indices that adapt based on role
+    private var pipelineTabIndex: Int? { hasPipelineAccess ? 1 : nil }
+    private var jobBoardTabIndex: Int { hasPipelineAccess ? 2 : 1 }
+    private var scheduleTabIndex: Int { hasPipelineAccess ? 3 : 2 }
+    private var settingsTabIndex: Int { hasPipelineAccess ? 4 : 3 }
+
     // Dynamic tabs based on user role
     private var tabs: [TabItem] {
         var baseTabs: [TabItem] = [
             TabItem(iconName: "house.fill")
         ]
+
+        // Add Pipeline tab for admin/office crew only
+        if hasPipelineAccess {
+            baseTabs.append(TabItem(iconName: OPSStyle.Icons.pipelineChart))
+        }
 
         // Add Job Board tab for all users (admin, office crew, and field crew)
         baseTabs.append(TabItem(iconName: "briefcase.fill"))
@@ -105,17 +122,18 @@ struct MainTabView: View {
 
             // Content views with transition - each complete view slides as a unit
             ZStack {
-                // All users now have Job Board access
-                switch selectedTab {
-                case 0:
+                // Tab content — indices adapt based on role (Pipeline tab for admin/office only)
+                if selectedTab == 0 {
                     HomeView()
-                case 1:
+                } else if selectedTab == pipelineTabIndex {
+                    PipelinePlaceholderView()
+                } else if selectedTab == jobBoardTabIndex {
                     JobBoardView()
-                case 2:
+                } else if selectedTab == scheduleTabIndex {
                     ScheduleView()
-                case 3:
+                } else if selectedTab == settingsTabIndex {
                     SettingsView()
-                default:
+                } else {
                     HomeView()
                 }
             }
@@ -236,7 +254,7 @@ struct MainTabView: View {
         .onReceive(openScheduleObserver) { _ in
             print("[PUSH_NAVIGATION] Opening schedule view")
             withAnimation(.easeInOut(duration: 0.2)) {
-                selectedTab = 2 // Schedule tab
+                selectedTab = scheduleTabIndex
             }
         }
 
@@ -244,7 +262,7 @@ struct MainTabView: View {
         .onReceive(openJobBoardObserver) { _ in
             print("[PUSH_NAVIGATION] Opening job board")
             withAnimation(.easeInOut(duration: 0.2)) {
-                selectedTab = 1 // Job Board tab
+                selectedTab = jobBoardTabIndex
             }
         }
 
@@ -252,15 +270,14 @@ struct MainTabView: View {
         .onChange(of: selectedTab) { oldValue, newValue in
             previousTab = oldValue
 
-            // Track tab selection for analytics
+            // Track tab selection for analytics — use computed indices for role-adaptive mapping
             let tabName: TabName = {
-                switch newValue {
-                case 0: return .home
-                case 1: return .jobBoard
-                case 2: return .schedule
-                case 3: return .settings
-                default: return .home
-                }
+                if newValue == 0 { return .home }
+                if newValue == pipelineTabIndex { return .pipeline }
+                if newValue == jobBoardTabIndex { return .jobBoard }
+                if newValue == scheduleTabIndex { return .schedule }
+                if newValue == settingsTabIndex { return .settings }
+                return .home
             }()
             AnalyticsManager.shared.trackTabSelected(tabName: tabName)
         }

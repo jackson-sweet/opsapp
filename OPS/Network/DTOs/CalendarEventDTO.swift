@@ -21,6 +21,11 @@ struct CalendarEventDTO: Codable {
     let teamMembers: [String]?  // Array of User IDs
     let title: String?
 
+    // Pipeline integration
+    let eventType: String?          // "task", "siteVisit", or "other"
+    let opportunityId: String?      // Supabase Opportunity UUID
+    let siteVisitId: String?        // Supabase SiteVisit UUID
+
     // Metadata
     let createdDate: String?
     let modifiedDate: String?
@@ -40,6 +45,9 @@ struct CalendarEventDTO: Codable {
         case startDate = "startDate"
         case teamMembers = "teamMembers"
         case title = "title"
+        case eventType = "eventType"
+        case opportunityId = "opportunityId"
+        case siteVisitId = "siteVisitId"
         case createdDate = "Created Date"  // Bubble default field
         case modifiedDate = "Modified Date"  // Bubble default field
         case deletedAt = "deletedAt"  // Soft delete timestamp
@@ -144,6 +152,13 @@ struct CalendarEventDTO: Codable {
         
         event.taskId = taskId
         event.duration = Int(duration ?? 1)  // Convert Double to Int, defaulting to 1
+
+        // Pipeline integration
+        if let eventTypeStr = eventType {
+            event.eventType = CalendarEventType(rawValue: eventTypeStr) ?? .task
+        }
+        event.calendarOpportunityId = opportunityId
+        event.siteVisitId = siteVisitId
         
         if let teamMembers = teamMembers {
             event.setTeamMemberIds(teamMembers)
@@ -173,6 +188,9 @@ struct CalendarEventDTO: Codable {
             startDate: event.startDate.map { dateFormatter.string(from: $0) },
             teamMembers: event.getTeamMemberIds(),
             title: event.title,
+            eventType: event.eventType.rawValue,
+            opportunityId: event.calendarOpportunityId,
+            siteVisitId: event.siteVisitId,
             createdDate: nil,
             modifiedDate: nil,
             deletedAt: event.deletedAt.map { dateFormatter.string(from: $0) }

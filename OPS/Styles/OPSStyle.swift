@@ -128,6 +128,20 @@ enum OPSStyle {
         }
         
         // Utility
+        // Pipeline stage colors
+        static func pipelineStageColor(for stage: PipelineStage) -> Color {
+            switch stage {
+            case .newLead:     return Color(hex: "#BCBCBC")
+            case .qualifying:  return Color(hex: "#B5A381")
+            case .quoting:     return Color(hex: "#8195B5")
+            case .quoted:      return Color(hex: "#9DB582")
+            case .followUp:    return Color(hex: "#C4A868")
+            case .negotiation: return Color(hex: "#B58289")
+            case .won:         return Color("StatusSuccess")
+            case .lost:        return Color("StatusError")
+            }
+        }
+
         static func statusColor(for status: Status) -> Color {
             switch status {
             case .rfq:
@@ -443,6 +457,21 @@ enum OPSStyle {
         static let cameraFill = "camera.fill"
         static let clock = "clock"
         static let copy = "doc.on.doc"
+
+        // Pipeline & Financial (Feb 2026)
+        static let opportunity      = "arrow.up.right.circle.fill"
+        static let pipelineChart    = "chart.bar.doc.horizontal.fill"
+        static let estimateDoc      = "doc.text.fill"
+        static let invoiceReceipt   = "receipt"
+        static let paymentDollar    = "dollarsign.circle.fill"
+        static let siteVisitPin     = "mappin.circle.fill"
+        static let activityBubble   = "bubble.left.and.text.bubble.right.fill"
+        static let followUpAlarm    = "alarm.fill"
+        static let stageAdvance     = "arrow.forward.circle.fill"
+        static let dealWon          = "checkmark.seal.fill"
+        static let dealLost         = "xmark.seal.fill"
+        static let accountingChart  = "chart.bar.fill"
+        static let productTag       = "tag.fill"
     }
 }
 
@@ -587,4 +616,18 @@ struct BlurView: UIViewRepresentable {
 
     }
 
+}
+
+// MARK: - Non-Failable Color(hex:) Initializer
+// Used by pipelineStageColor and other places where hex values are compile-time constants
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let r = Double((int >> 16) & 0xFF) / 255.0
+        let g = Double((int >> 8) & 0xFF) / 255.0
+        let b = Double(int & 0xFF) / 255.0
+        self.init(red: r, green: g, blue: b)
+    }
 }

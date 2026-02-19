@@ -564,6 +564,7 @@ enum ScreenName: String {
 /// Tab names for analytics tracking
 enum TabName: String {
     case home = "home"
+    case pipeline = "pipeline"
     case jobBoard = "job_board"
     case schedule = "schedule"
     case settings = "settings"
@@ -571,9 +572,10 @@ enum TabName: String {
     var index: Int {
         switch self {
         case .home: return 0
-        case .jobBoard: return 1
-        case .schedule: return 2
-        case .settings: return 3
+        case .pipeline: return 1
+        case .jobBoard: return 2
+        case .schedule: return 3
+        case .settings: return 4
         }
     }
 }

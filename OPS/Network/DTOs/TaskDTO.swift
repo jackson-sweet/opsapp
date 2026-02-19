@@ -23,6 +23,10 @@ struct TaskDTO: Codable {
     let teamMembers: [String]?  // Array of User IDs
     let type: String?  // This is the Task Type ID in Bubble
 
+    // Pipeline integration
+    let sourceLineItemId: String?   // Supabase LineItem UUID this task was generated from
+    let sourceEstimateId: String?   // Supabase Estimate UUID this task was generated from
+
     // Metadata
     let createdDate: String?
     let modifiedDate: String?
@@ -44,6 +48,8 @@ struct TaskDTO: Codable {
         case taskNotes = "taskNotes"
         case teamMembers = "teamMembers"  // Changed from "Team Members" to "teamMembers"
         case type = "type"
+        case sourceLineItemId = "sourceLineItemId"
+        case sourceEstimateId = "sourceEstimateId"
         case createdDate = "Created Date"  // Bubble default field
         case modifiedDate = "Modified Date"  // Bubble default field
         case deletedAt = "deletedAt"  // Soft delete timestamp
@@ -111,6 +117,10 @@ struct TaskDTO: Codable {
             print("[TASK_DTO] ⚠️ No team members for task \(id)")
         }
 
+        // Pipeline integration
+        task.sourceLineItemId = sourceLineItemId
+        task.sourceEstimateId = sourceEstimateId
+
         // Parse deletedAt if present
         if let deletedAtString = deletedAt {
             let formatter = ISO8601DateFormatter()
@@ -147,6 +157,8 @@ struct TaskDTO: Codable {
             taskNotes: task.taskNotes,
             teamMembers: task.getTeamMemberIds().isEmpty ? nil : task.getTeamMemberIds(),
             type: task.taskTypeId.isEmpty ? nil : task.taskTypeId,  // taskTypeId maps to 'type' in Bubble
+            sourceLineItemId: task.sourceLineItemId,
+            sourceEstimateId: task.sourceEstimateId,
             createdDate: nil,
             modifiedDate: nil,
             deletedAt: task.deletedAt.map { dateFormatter.string(from: $0) }

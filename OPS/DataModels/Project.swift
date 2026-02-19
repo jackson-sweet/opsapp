@@ -24,6 +24,7 @@ final class Project: Identifiable {
     var companyId: String
     var clientId: String? // Store the client's Bubble ID
     var allDay: Bool
+    var opportunityId: String?  // Supabase Opportunity UUID — links this project to its pipeline deal
     
     // Relationship to Client object
     @Relationship(deleteRule: .nullify)

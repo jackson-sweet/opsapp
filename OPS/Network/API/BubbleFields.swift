@@ -209,6 +209,20 @@ struct BubbleFields {
         static let eventType = "eventType"
     }
     
+    // MARK: - New Fields (Feb 2026 — Pipeline/Financial integration)
+    struct PipelineFields {
+        // Project
+        static let opportunityId          = "opportunityId"
+        // Task
+        static let sourceLineItemId       = "sourceLineItemId"
+        static let sourceEstimateId       = "sourceEstimateId"
+        // CalendarEvent
+        static let calendarOpportunityId  = "opportunityId"
+        static let siteVisitId            = "siteVisitId"
+        // TaskType
+        static let defaultTeamMemberIds   = "defaultTeamMemberIds"
+    }
+
     /// Task Status values
     /// NOTE: Display values remain unchanged (capitalized)
     struct TaskStatus {

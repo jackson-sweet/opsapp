@@ -19,6 +19,7 @@ final class TaskType: Identifiable {
     var isDefault: Bool
     var companyId: String
     var displayOrder: Int = 0
+    var defaultTeamMemberIdsString: String = ""  // Default crew user IDs for auto-generated tasks
     
     // MARK: - Relationships
     @Relationship(deleteRule: .nullify, inverse: \ProjectTask.taskType)

@@ -15,6 +15,7 @@ struct InvoiceDTO: Codable, Identifiable {
     let projectId: String?
     let clientId: String?
     let invoiceNumber: String
+    let title: String?
     let status: String
     let subtotal: Double
     let taxRate: Double?
@@ -37,6 +38,7 @@ struct InvoiceDTO: Codable, Identifiable {
         case projectId      = "project_id"
         case clientId       = "client_id"
         case invoiceNumber  = "invoice_number"
+        case title
         case status
         case subtotal
         case taxRate        = "tax_rate"
@@ -67,6 +69,7 @@ struct InvoiceDTO: Codable, Identifiable {
         inv.total = total
         inv.amountPaid = amountPaid
         inv.balanceDue = balanceDue
+        inv.title = title
         inv.estimateId = estimateId
         inv.opportunityId = opportunityId
         inv.projectId = projectId
@@ -83,6 +86,8 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
     let description: String
     let quantity: Double
     let unitPrice: Double
+    let unit: String?
+    let type: String?
     let total: Double
     let sortOrder: Int
 
@@ -93,6 +98,8 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
         case description
         case quantity
         case unitPrice  = "unit_price"
+        case unit
+        case type
         case total
         case sortOrder  = "sort_order"
     }
@@ -102,11 +109,13 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
             id: id,
             invoiceId: invoiceId,
             name: description,
+            type: type.flatMap { LineItemType(rawValue: $0) } ?? .labor,
             quantity: quantity,
             unitPrice: unitPrice,
             displayOrder: sortOrder
         )
         item.lineTotal = total
+        item.unit = unit
         return item
     }
 }

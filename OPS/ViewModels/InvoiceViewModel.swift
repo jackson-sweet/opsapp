@@ -122,14 +122,12 @@ class InvoiceViewModel: ObservableObject {
     private func refreshInvoice(_ invoiceId: String) async {
         guard let repo = repository else { return }
         do {
-            let allDTOs = try await repo.fetchAll()
-            if let dto = allDTOs.first(where: { $0.id == invoiceId }),
-               let idx = invoices.firstIndex(where: { $0.id == invoiceId }) {
-                let refreshed = dto.toModel()
-                lineItemDTOs[invoiceId] = dto.lineItems
-                paymentDTOs[invoiceId] = dto.payments
-                invoices[idx] = refreshed
+            let dto = try await repo.fetchOne(invoiceId)
+            if let idx = invoices.firstIndex(where: { $0.id == invoiceId }) {
+                invoices[idx] = dto.toModel()
             }
+            lineItemDTOs[invoiceId] = dto.lineItems
+            paymentDTOs[invoiceId] = dto.payments
         } catch {
             // Silently fail on refresh
         }

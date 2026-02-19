@@ -27,6 +27,16 @@ class InvoiceRepository {
             .value
     }
 
+    func fetchOne(_ invoiceId: String) async throws -> InvoiceDTO {
+        try await client
+            .from("invoices")
+            .select("*, invoice_line_items(*), payments(*)")
+            .eq("id", value: invoiceId)
+            .single()
+            .execute()
+            .value
+    }
+
     func recordPayment(_ dto: CreatePaymentDTO) async throws -> PaymentDTO {
         // Insert only — DB trigger maintains invoice balance and status automatically.
         // NEVER update invoice.amount_paid or invoice.balance_due manually.

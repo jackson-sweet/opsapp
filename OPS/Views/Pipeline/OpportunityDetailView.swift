@@ -87,6 +87,14 @@ struct OpportunityDetailView: View {
                 await detailVM.loadDetails(for: opportunity.id)
             }
         }
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.error != nil },
+            set: { if !$0 { viewModel.error = nil } }
+        )) {
+            Button("OK") { viewModel.error = nil }
+        } message: {
+            Text(viewModel.error ?? "")
+        }
     }
 
     // MARK: - Header
@@ -117,7 +125,7 @@ struct OpportunityDetailView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                 if opportunity.isStale {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image(systemName: OPSStyle.Icons.stale)
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                 }

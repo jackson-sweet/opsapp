@@ -57,7 +57,7 @@ struct OpportunityCard: View {
                             if value.translation.width > swipeThreshold && !opportunity.stage.isTerminal {
                                 withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
                                 onAdvance()
-                            } else if value.translation.width < -swipeThreshold {
+                            } else if value.translation.width < -swipeThreshold && !opportunity.stage.isTerminal {
                                 withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
                                 onLost()
                             } else {
@@ -73,7 +73,7 @@ struct OpportunityCard: View {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack {
                     if opportunity.isStale {
-                        Image(systemName: "exclamationmark.triangle.fill")
+                        Image(systemName: OPSStyle.Icons.stale)
                             .font(.system(size: 14))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                     }

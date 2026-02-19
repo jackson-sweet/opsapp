@@ -472,6 +472,7 @@ enum OPSStyle {
         static let dealLost         = "xmark.seal.fill"
         static let accountingChart  = "chart.bar.fill"
         static let productTag       = "tag.fill"
+        static let stale            = "exclamationmark.triangle.fill"
     }
 }
 

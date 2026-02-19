@@ -78,6 +78,7 @@ class PipelineViewModel: ObservableObject {
         do {
             _ = try await repo.advanceStage(opportunityId: opportunity.id, to: .lost, lossReason: reason)
             opportunity.stage = .lost
+            opportunity.lossReason = reason
         } catch {
             self.error = error.localizedDescription
         }
@@ -108,6 +109,29 @@ class PipelineViewModel: ObservableObject {
             let created = try await repo.create(dto)
             opportunities.insert(created.toModel(), at: 0)
             selectedStage = .newLead
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func updateOpportunity(_ opportunity: Opportunity, contactName: String, contactEmail: String?, contactPhone: String?, jobDescription: String?, estimatedValue: Double?, source: String?) async {
+        guard let repo = repository else { return }
+        let dto = UpdateOpportunityDTO(
+            contactName: contactName,
+            contactEmail: contactEmail,
+            contactPhone: contactPhone,
+            jobDescription: jobDescription,
+            estimatedValue: estimatedValue,
+            source: source
+        )
+        do {
+            _ = try await repo.update(opportunity.id, fields: dto)
+            opportunity.contactName = contactName
+            opportunity.contactEmail = contactEmail
+            opportunity.contactPhone = contactPhone
+            opportunity.jobDescription = jobDescription
+            opportunity.estimatedValue = estimatedValue
+            opportunity.source = source
         } catch {
             self.error = error.localizedDescription
         }

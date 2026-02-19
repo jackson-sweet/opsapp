@@ -37,7 +37,7 @@ struct PipelineTabView: View {
                                     .frame(height: 2)
                                     .foregroundColor(
                                         selectedSection == section
-                                        ? OPSStyle.Colors.primaryText
+                                        ? OPSStyle.Colors.primaryAccent
                                         : Color.clear
                                     )
                             }

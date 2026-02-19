@@ -166,15 +166,18 @@ struct OpportunityFormSheet: View {
         let value = Double(estimatedValue)
 
         if let opp = editing {
-            // Update existing
-            opp.contactName = contactName
-            opp.contactEmail = contactEmail.isEmpty ? nil : contactEmail
-            opp.contactPhone = contactPhone.isEmpty ? nil : contactPhone
-            opp.jobDescription = jobDescription.isEmpty ? nil : jobDescription
-            opp.estimatedValue = value
-            opp.source = source.isEmpty ? nil : source
-            // TODO: persist update via repository
-            dismiss()
+            Task {
+                await viewModel.updateOpportunity(
+                    opp,
+                    contactName: contactName,
+                    contactEmail: contactEmail.isEmpty ? nil : contactEmail,
+                    contactPhone: contactPhone.isEmpty ? nil : contactPhone,
+                    jobDescription: jobDescription.isEmpty ? nil : jobDescription,
+                    estimatedValue: value,
+                    source: source.isEmpty ? nil : source
+                )
+                dismiss()
+            }
         } else {
             Task {
                 await viewModel.createOpportunity(

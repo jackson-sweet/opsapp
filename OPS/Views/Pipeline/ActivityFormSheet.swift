@@ -14,7 +14,7 @@ struct ActivityFormSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedType: ActivityType = .note
-    @State private var body = ""
+    @State private var noteBody = ""
     @State private var isSaving = false
 
     private let userTypes: [ActivityType] = [.note, .call, .email, .meeting, .siteVisit]
@@ -69,7 +69,7 @@ struct ActivityFormSheet: View {
 
                     // Notes
                     sectionHeader("NOTES")
-                    TextEditor(text: $body)
+                    TextEditor(text: $noteBody)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .scrollContentBackground(.hidden)
@@ -125,7 +125,7 @@ struct ActivityFormSheet: View {
                 opportunityId: opportunityId,
                 companyId: companyId,
                 type: selectedType,
-                body: body.isEmpty ? nil : body
+                body: noteBody.isEmpty ? nil : noteBody
             )
             dismiss()
         }

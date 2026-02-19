@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct OpportunityDetailView: View {
-    @ObservedObject var opportunity: Opportunity
+    var opportunity: Opportunity
     @ObservedObject var viewModel: PipelineViewModel
     @StateObject private var detailVM = OpportunityDetailViewModel()
     @EnvironmentObject private var dataController: DataController

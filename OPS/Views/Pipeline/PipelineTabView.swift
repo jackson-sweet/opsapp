@@ -63,7 +63,7 @@ struct PipelineTabView: View {
                     case .estimates:
                         EstimatesListView()
                     case .invoices:
-                        sectionPlaceholder(title: "INVOICES", icon: OPSStyle.Icons.invoiceReceipt)
+                        InvoicesListView()
                     case .accounting:
                         sectionPlaceholder(title: "ACCOUNTING", icon: OPSStyle.Icons.accountingChart)
                     }

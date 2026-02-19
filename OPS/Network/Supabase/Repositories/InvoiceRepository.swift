@@ -39,11 +39,15 @@ class InvoiceRepository {
             .value
     }
 
-    func voidInvoice(_ invoiceId: String) async throws {
+    func updateStatus(_ invoiceId: String, status: InvoiceStatus) async throws {
         try await client
             .from("invoices")
-            .update(["status": "void"])
+            .update(["status": status.rawValue])
             .eq("id", value: invoiceId)
             .execute()
+    }
+
+    func voidInvoice(_ invoiceId: String) async throws {
+        try await updateStatus(invoiceId, status: .void)
     }
 }

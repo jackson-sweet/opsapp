@@ -162,6 +162,26 @@ struct SettingsView: View {
             ])
         }
 
+        // Pipeline Management items (admin only)
+        if let user = dataController.currentUser, user.role == .admin {
+            items.append(contentsOf: [
+                SearchableSettingItem(
+                    title: "Products & Services",
+                    categoryTitle: "Pipeline Management",
+                    categoryIcon: OPSStyle.Icons.productTag,
+                    keywords: ["products", "services", "catalog", "pricing", "labor", "material"],
+                    destination: AnyView(ProductsListView())
+                ),
+                SearchableSettingItem(
+                    title: "Integrations",
+                    categoryTitle: "Pipeline Management",
+                    categoryIcon: OPSStyle.Icons.accountingChart,
+                    keywords: ["integrations", "quickbooks", "sage", "accounting", "sync", "connect"],
+                    destination: AnyView(IntegrationsSettingsView())
+                )
+            ])
+        }
+
         return items
     }
 
@@ -223,7 +243,42 @@ struct SettingsView: View {
                             categoryCard(for: category)
                         }
                     }
-                    
+
+                    // Admin-only: Pipeline management rows
+                    if let user = dataController.currentUser, user.role == .admin {
+                        VStack(spacing: 0) {
+                            Text("PIPELINE MANAGEMENT")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.bottom, 8)
+
+                            VStack(spacing: 1) {
+                                NavigationLink(destination: ProductsListView()) {
+                                    settingsRow(
+                                        icon: OPSStyle.Icons.productTag,
+                                        title: "Products & Services",
+                                        subtitle: "Manage your service catalog"
+                                    )
+                                }
+
+                                NavigationLink(destination: IntegrationsSettingsView()) {
+                                    settingsRow(
+                                        icon: OPSStyle.Icons.accountingChart,
+                                        title: "Integrations",
+                                        subtitle: "QuickBooks, Sage"
+                                    )
+                                }
+                            }
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            )
+                        }
+                    }
+
                     Spacer(minLength: 20)
                 }
                 .padding(.horizontal, 20)
@@ -317,6 +372,33 @@ struct SettingsView: View {
     
     // MARK: - Helper Views and Functions
     
+    // Compact settings row for Pipeline management section
+    private func settingsRow(icon: String, title: String, subtitle: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .frame(width: 28, alignment: .center)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text(subtitle)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+
+            Spacer()
+
+            Image(systemName: OPSStyle.Icons.forward)
+                .font(.system(size: 14))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+    }
+
     // Convenience function for SettingsCategory
     private func categoryCard(for category: SettingsCategory) -> some View {
         CategoryCard(

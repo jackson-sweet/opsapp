@@ -138,6 +138,17 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
     /// Browse job board
     case jobBoardBrowse
 
+    // MARK: - Pipeline Phases (Admin/Office Crew only)
+
+    /// Pipeline overview — introduces the Pipeline tab
+    case pipelineOverview
+
+    /// Estimates overview — building quotes on-site
+    case estimatesOverview
+
+    /// Invoices overview — converting estimates to invoices
+    case invoicesOverview
+
     // MARK: - Completion
 
     /// Tutorial complete
@@ -213,6 +224,14 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         case .jobBoardBrowse:
             return "SWIPE LEFT OR RIGHT"
 
+        // Pipeline Phases
+        case .pipelineOverview:
+            return "YOUR PIPELINE"
+        case .estimatesOverview:
+            return "BUILD ESTIMATES ON-SITE"
+        case .invoicesOverview:
+            return "ESTIMATES TO INVOICES"
+
         case .completed:
             return ""  // No tooltip - completion view handles its own messaging
         }
@@ -276,6 +295,14 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
             return "This marks the job finished. Your crew lead will see it's complete."
         case .jobBoardBrowse:
             return "Jobs are grouped by status: To Do, In Progress, Complete."
+
+        // Pipeline Phases
+        case .pipelineOverview:
+            return "Here's where you manage leads from first contact to closed deal. Drag cards between stages as deals progress."
+        case .estimatesOverview:
+            return "Build a quote on-site and send it to your client in minutes. Add line items from your product catalog or create custom ones."
+        case .invoicesOverview:
+            return "Convert approved estimates to invoices with one tap — no re-entry. Record payments and track what's outstanding."
 
         default:
             return nil
@@ -365,9 +392,12 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
     /// Whether this phase should show Continue button immediately (no delay)
     var showsContinueButtonImmediately: Bool {
         switch self {
-        case .jobBoardBrowse,  // Shows Continue button right away
-             .calendarWeek,    // Continue button instead of scroll detection
-             .calendarMonth:   // Continue button instead of pinch detection
+        case .jobBoardBrowse,      // Shows Continue button right away
+             .calendarWeek,        // Continue button instead of scroll detection
+             .calendarMonth,       // Continue button instead of pinch detection
+             .pipelineOverview,    // Pipeline intro — Continue to next
+             .estimatesOverview,   // Estimates intro — Continue to next
+             .invoicesOverview:    // Invoices intro — Continue to next
             return true
         default:
             return false
@@ -402,6 +432,7 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
              .homeOverview, .projectStarted,
              .jobBoardBrowse,
              .calendarWeek, .calendarMonth,  // These show Continue button
+             .pipelineOverview, .estimatesOverview, .invoicesOverview,  // Pipeline Continue buttons
              .addNote, .addPhoto: // These show Continue button
             return false
         case .projectListSwipe, .tutorialSummary:
@@ -462,6 +493,12 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         case .calendarMonthPrompt:
             return .calendarMonth
         case .calendarMonth:
+            return .pipelineOverview  // Transition to pipeline phases
+        case .pipelineOverview:
+            return .estimatesOverview
+        case .estimatesOverview:
+            return .invoicesOverview
+        case .invoicesOverview:
             return .tutorialSummary  // Final summary before completion
         case .tutorialSummary:
             return .completed

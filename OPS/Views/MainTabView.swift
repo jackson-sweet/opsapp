@@ -126,7 +126,7 @@ struct MainTabView: View {
                 if selectedTab == 0 {
                     HomeView()
                 } else if selectedTab == pipelineTabIndex {
-                    PipelinePlaceholderView()
+                    PipelineTabView()
                 } else if selectedTab == jobBoardTabIndex {
                     JobBoardView()
                 } else if selectedTab == scheduleTabIndex {

@@ -86,6 +86,17 @@ enum FollowUpType: String, Codable, CaseIterable {
     case quoteFollowUp   = "quote_follow_up"
     case invoiceFollowUp = "invoice_follow_up"
     case custom          = "custom"
+
+    var icon: String {
+        switch self {
+        case .call:            return "phone.fill"
+        case .email:           return "envelope.fill"
+        case .meeting:         return "person.2.fill"
+        case .quoteFollowUp:   return "doc.text.fill"
+        case .invoiceFollowUp: return "receipt"
+        case .custom:          return "bell.fill"
+        }
+    }
 }
 
 enum FollowUpStatus: String, Codable {

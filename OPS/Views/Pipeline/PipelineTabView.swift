@@ -65,7 +65,7 @@ struct PipelineTabView: View {
                     case .invoices:
                         InvoicesListView()
                     case .accounting:
-                        sectionPlaceholder(title: "ACCOUNTING", icon: OPSStyle.Icons.accountingChart)
+                        AccountingDashboard()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -73,23 +73,5 @@ struct PipelineTabView: View {
             }
             .background(OPSStyle.Colors.background.ignoresSafeArea())
         }
-    }
-
-    private func sectionPlaceholder(title: String, icon: String) -> some View {
-        VStack(spacing: OPSStyle.Layout.spacing4) {
-            Spacer()
-            Image(systemName: icon)
-                .font(.system(size: 48))
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text(title)
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            Text("Coming in Sprint 3+")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(OPSStyle.Colors.background)
     }
 }

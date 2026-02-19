@@ -335,6 +335,12 @@ struct ProjectDetailsView: View {
                             tutorialMode: tutorialMode
                         ))
 
+                    // Opportunity badge (Pipeline link)
+                    if let oppId = project.opportunityId, !oppId.isEmpty {
+                        OpportunityBadgeView(opportunityId: oppId)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    }
+
                     // projectInfoSection handles its own internal dimming
                     projectInfoSection
 

@@ -134,6 +134,21 @@ struct TaskDetailsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal)
 
+                        // Source attribution (visible to all roles)
+                        if let _ = task.sourceEstimateId {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
+                                Image(systemName: OPSStyle.Icons.estimateDoc)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .font(.system(size: 14))
+                                Text("[AUTO-GENERATED FROM ESTIMATE]")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                Spacer()
+                            }
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+                        }
+
                         // Location map - matching ProjectDetailsView style
                         locationSection
                         

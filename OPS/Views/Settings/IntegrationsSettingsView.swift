@@ -119,7 +119,7 @@ struct IntegrationsSettingsView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(isConnected ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 14)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(isConnected ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent, lineWidth: 1)

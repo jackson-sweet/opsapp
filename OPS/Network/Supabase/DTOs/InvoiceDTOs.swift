@@ -24,6 +24,8 @@ struct InvoiceDTO: Codable, Identifiable {
     let amountPaid: Double
     let balanceDue: Double
     let dueDate: String?
+    let sentAt: String?
+    let paidAt: String?
     let notes: String?
     let createdAt: String
     let updatedAt: String
@@ -47,6 +49,8 @@ struct InvoiceDTO: Codable, Identifiable {
         case amountPaid     = "amount_paid"
         case balanceDue     = "balance_due"
         case dueDate        = "due_date"
+        case sentAt         = "sent_at"
+        case paidAt         = "paid_at"
         case notes
         case createdAt      = "created_at"
         case updatedAt      = "updated_at"
@@ -75,6 +79,8 @@ struct InvoiceDTO: Codable, Identifiable {
         inv.projectId = projectId
         inv.clientId = clientId
         if let dd = dueDate { inv.dueDate = SupabaseDate.parse(dd) }
+        if let sa = sentAt { inv.sentAt = SupabaseDate.parse(sa) }
+        if let pa = paidAt { inv.paidAt = SupabaseDate.parse(pa) }
         return inv
     }
 }

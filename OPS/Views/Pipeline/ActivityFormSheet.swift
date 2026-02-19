@@ -127,7 +127,8 @@ struct ActivityFormSheet: View {
                 type: selectedType,
                 body: noteBody.isEmpty ? nil : noteBody
             )
-            dismiss()
+            isSaving = false
+            if detailVM.error == nil { dismiss() }
         }
     }
 }

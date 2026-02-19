@@ -121,8 +121,8 @@ struct OpportunityCard: View {
             .font(OPSStyle.Typography.smallCaption)
             .fontWeight(.medium)
             .foregroundColor(color)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, OPSStyle.Layout.spacing2 + 2)
+            .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
             .background(color.opacity(0.15))
             .overlay(
                 Capsule().stroke(color, lineWidth: 1)

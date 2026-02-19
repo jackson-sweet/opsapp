@@ -100,6 +100,11 @@ struct MainTabView: View {
         return selectedTab == (tabCount - 1)
     }
 
+    // Check if currently on Pipeline tab (has its own FAB)
+    private var isPipelineTab: Bool {
+        pipelineTabIndex != nil && selectedTab == pipelineTabIndex
+    }
+
     private var slideTransition: AnyTransition {
         if selectedTab > previousTab {
             return .asymmetric(
@@ -176,8 +181,8 @@ struct MainTabView: View {
             // Use opacity and allowsHitTesting instead of conditional rendering to prevent sheet dismissal
             FloatingActionMenu()
                 .environmentObject(dataController)
-                .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects ? 1 : 0)
-                .allowsHitTesting(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects)
+                .opacity(!isSettingsTab && !isPipelineTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects ? 1 : 0)
+                .allowsHitTesting(!isSettingsTab && !isPipelineTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects)
                 .animation(.easeInOut(duration: 0.2), value: isSettingsTab)
                 .animation(.easeInOut(duration: 0.2), value: dataController.isPerformingInitialSync)
                 .animation(.easeInOut(duration: 0.2), value: appState.isLoadingProjects)

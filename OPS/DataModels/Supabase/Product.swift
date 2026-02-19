@@ -9,7 +9,7 @@ import SwiftData
 import Foundation
 
 @Model
-class Product {
+class Product: Identifiable {
     @Attribute(.unique) var id: String
     var companyId: String
     var name: String

@@ -126,7 +126,7 @@ struct PipelineView: View {
             Spacer()
             Image(systemName: viewModel.opportunities.isEmpty
                   ? OPSStyle.Icons.pipelineChart
-                  : "line.3.horizontal.decrease.circle")
+                  : OPSStyle.Icons.filter)
                 .font(.system(size: 44))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text(viewModel.opportunities.isEmpty ? "NO LEADS YET" : "NO DEALS IN THIS STAGE")

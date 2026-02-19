@@ -9,7 +9,7 @@ import SwiftData
 import Foundation
 
 @Model
-class Invoice {
+class Invoice: Identifiable {
     @Attribute(.unique) var id: String
     var companyId: String
     var invoiceNumber: String

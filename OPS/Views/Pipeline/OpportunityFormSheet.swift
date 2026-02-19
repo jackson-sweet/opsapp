@@ -176,7 +176,8 @@ struct OpportunityFormSheet: View {
                     estimatedValue: value,
                     source: source.isEmpty ? nil : source
                 )
-                dismiss()
+                isSaving = false
+                if viewModel.error == nil { dismiss() }
             }
         } else {
             Task {
@@ -189,7 +190,8 @@ struct OpportunityFormSheet: View {
                     source: source.isEmpty ? nil : source,
                     companyId: companyId
                 )
-                dismiss()
+                isSaving = false
+                if viewModel.error == nil { dismiss() }
             }
         }
     }

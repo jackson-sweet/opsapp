@@ -9,7 +9,7 @@ import SwiftData
 import Foundation
 
 @Model
-class StageTransition {
+class StageTransition: Identifiable {
     @Attribute(.unique) var id: String
     var opportunityId: String
     var fromStage: PipelineStage

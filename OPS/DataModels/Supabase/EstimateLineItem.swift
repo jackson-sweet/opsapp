@@ -9,7 +9,7 @@ import SwiftData
 import Foundation
 
 @Model
-class EstimateLineItem {
+class EstimateLineItem: Identifiable {
     @Attribute(.unique) var id: String
     var estimateId: String
     var productId: String?

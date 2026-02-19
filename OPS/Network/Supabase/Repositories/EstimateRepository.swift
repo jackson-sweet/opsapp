@@ -27,6 +27,24 @@ class EstimateRepository {
             .value
     }
 
+    func fetchOne(_ estimateId: String) async throws -> EstimateDTO {
+        try await client
+            .from("estimates")
+            .select("*, estimate_line_items(*)")
+            .eq("id", value: estimateId)
+            .single()
+            .execute()
+            .value
+    }
+
+    func updateTitle(_ estimateId: String, title: String) async throws {
+        try await client
+            .from("estimates")
+            .update(["title": title])
+            .eq("id", value: estimateId)
+            .execute()
+    }
+
     func create(_ dto: CreateEstimateDTO) async throws -> EstimateDTO {
         try await client
             .from("estimates")

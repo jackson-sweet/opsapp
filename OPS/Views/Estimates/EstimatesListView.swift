@@ -12,6 +12,7 @@ struct EstimatesListView: View {
     @EnvironmentObject private var dataController: DataController
     @State private var showNewEstimateSheet = false
     @State private var selectedEstimate: Estimate? = nil
+    @State private var searchText = ""
     @State private var showConvertConfirm = false
     @State private var estimateToConvert: Estimate? = nil
 
@@ -103,6 +104,32 @@ struct EstimatesListView: View {
 
     private var searchAndFilter: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
+            // Search field
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                TextField("Search estimates...", text: $searchText)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .onChange(of: searchText) { _, newValue in
+                        viewModel.searchText = newValue
+                    }
+                if !searchText.isEmpty {
+                    Button { searchText = ""; viewModel.searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+            }
+            .padding(OPSStyle.Layout.spacing2)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+
             // Filter chips
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {

@@ -243,6 +243,7 @@ struct LineItemEditSheet: View {
     private func save() {
         isSaving = true
         Task {
+            defer { isSaving = false }
             if let item = editing {
                 await viewModel.updateLineItem(
                     id: item.id,
@@ -263,7 +264,6 @@ struct LineItemEditSheet: View {
                     productId: productId
                 )
             }
-            isSaving = false
             if viewModel.error == nil { dismiss() }
         }
     }

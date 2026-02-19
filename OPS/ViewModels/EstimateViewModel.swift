@@ -140,6 +140,18 @@ class EstimateViewModel: ObservableObject {
         }
     }
 
+    func updateTitle(estimateId: String, title: String) async {
+        guard let repo = repository else { return }
+        do {
+            try await repo.updateTitle(estimateId, title: title)
+            if let idx = estimates.firstIndex(where: { $0.id == estimateId }) {
+                estimates[idx].title = title
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     func sendEstimate(_ estimate: Estimate) async {
         await updateStatus(estimate, to: .sent)
     }
@@ -175,13 +187,11 @@ class EstimateViewModel: ObservableObject {
     private func refreshEstimate(_ estimateId: String) async {
         guard let repo = repository else { return }
         do {
-            let allDTOs = try await repo.fetchAll()
-            if let dto = allDTOs.first(where: { $0.id == estimateId }),
-               let idx = estimates.firstIndex(where: { $0.id == estimateId }) {
-                let refreshed = dto.toModel()
-                lineItemDTOs[estimateId] = dto.lineItems
-                estimates[idx] = refreshed
+            let dto = try await repo.fetchOne(estimateId)
+            if let idx = estimates.firstIndex(where: { $0.id == estimateId }) {
+                estimates[idx] = dto.toModel()
             }
+            lineItemDTOs[estimateId] = dto.lineItems
         } catch {
             // Silently fail on refresh — estimate is still locally updated
         }

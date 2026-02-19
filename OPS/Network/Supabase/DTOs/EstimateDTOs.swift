@@ -10,6 +10,7 @@ import Foundation
 struct EstimateDTO: Codable, Identifiable {
     let id: String
     let companyId: String
+    let estimateNumber: String?
     let opportunityId: String?
     let projectId: String?
     let clientId: String?
@@ -31,6 +32,7 @@ struct EstimateDTO: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id
         case companyId       = "company_id"
+        case estimateNumber  = "estimate_number"
         case opportunityId   = "opportunity_id"
         case projectId       = "project_id"
         case clientId        = "client_id"
@@ -61,6 +63,7 @@ struct EstimateDTO: Codable, Identifiable {
             createdAt: SupabaseDate.parse(createdAt) ?? Date(),
             updatedAt: SupabaseDate.parse(updatedAt) ?? Date()
         )
+        est.estimateNumber = estimateNumber ?? ""
         est.title = title
         est.subtotal = subtotal
         est.taxAmount = taxAmount ?? 0
@@ -81,6 +84,7 @@ struct EstimateLineItemDTO: Codable, Identifiable {
     let description: String
     let quantity: Double
     let unitPrice: Double
+    let unit: String?
     let total: Double
     let sortOrder: Int
     let isOptional: Bool?
@@ -94,6 +98,7 @@ struct EstimateLineItemDTO: Codable, Identifiable {
         case description
         case quantity
         case unitPrice   = "unit_price"
+        case unit
         case total
         case sortOrder   = "sort_order"
         case isOptional  = "is_optional"
@@ -112,6 +117,7 @@ struct EstimateLineItemDTO: Codable, Identifiable {
             displayOrder: sortOrder
         )
         item.productId = productId
+        item.unit = unit
         item.optional = isOptional ?? false
         item.lineTotal = total
         item.taskTypeId = taskTypeId

@@ -348,9 +348,11 @@ struct EstimateFormSheet: View {
     private func saveDraft() {
         isSaving = true
         Task {
-            // Title update would be a repository call — for now just dismiss
-            isSaving = false
-            dismiss()
+            defer { isSaving = false }
+            if let est = estimate, !title.isEmpty {
+                await viewModel.updateTitle(estimateId: est.id, title: title)
+            }
+            if viewModel.error == nil { dismiss() }
         }
     }
 }

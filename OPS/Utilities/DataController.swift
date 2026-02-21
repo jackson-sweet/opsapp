@@ -51,6 +51,7 @@ class DataController: ObservableObject {
 
     // MARK: - Public Access
     var syncManager: CentralizedSyncManager!
+    var supabaseSyncManager: SupabaseSyncManager!
     var imageSyncManager: ImageSyncManager!
     @Published var simplePINManager = SimplePINManager()
     
@@ -176,13 +177,19 @@ class DataController: ObservableObject {
 
         print("[DATA_CONTROLLER] Initializing SyncManager...")
 
-        // Initialize the centralized sync manager
+        // Initialize the centralized sync manager (Bubble)
         self.syncManager = CentralizedSyncManager(
             modelContext: modelContext,
             apiService: apiService,
             connectivityMonitor: connectivityMonitor
         )
-        
+
+        // Initialize the Supabase sync manager (dual-run alongside Bubble)
+        self.supabaseSyncManager = SupabaseSyncManager(
+            modelContext: modelContext,
+            connectivityMonitor: connectivityMonitor
+        )
+
         // Initialize the image sync manager
         self.imageSyncManager = ImageSyncManager(
             modelContext: modelContext,

@@ -563,50 +563,81 @@ class OnboardingManager: ObservableObject {
             // First update user profile
             try await updateUserProfile()
 
-            // Create company via OnboardingService
-            let response = try await onboardingService.updateCompany(
-                companyId: state.companyData.companyId, // nil for new, ID for update
+            // Generate a unique company code
+            let newCompanyCode = generateCompanyCode()
+            let now = ISO8601DateFormatter().string(from: Date())
+            let trialEnd = ISO8601DateFormatter().string(from: Calendar.current.date(byAdding: .day, value: 14, to: Date())!)
+
+            // Insert company into Supabase
+            let companyRepo = CompanyRepository()
+            let payload = NewCompanyPayload(
                 name: state.companyData.name,
-                email: state.companyData.email,
+                email: state.companyData.email.isEmpty ? nil : state.companyData.email,
                 phone: state.companyData.phone.isEmpty ? nil : state.companyData.phone,
-                industry: state.companyData.industry,
-                size: state.companyData.size,
-                age: state.companyData.age,
-                address: state.companyData.address,
-                userId: userId,
-                firstName: state.userData.firstName,
-                lastName: state.userData.lastName,
-                userPhone: state.userData.phone
+                address: state.companyData.address.isEmpty ? nil : state.companyData.address,
+                company_code: newCompanyCode,
+                admin_ids: [userId],
+                account_holder_id: userId,
+                industries: state.companyData.industry.isEmpty ? nil : [state.companyData.industry],
+                company_size: state.companyData.size.isEmpty ? nil : state.companyData.size,
+                company_age: state.companyData.age.isEmpty ? nil : state.companyData.age,
+                subscription_status: "trialing",
+                trial_start_date: now,
+                trial_end_date: trialEnd,
+                max_seats: 5,
+                created_at: now,
+                updated_at: now
             )
+            let createdCompany = try await companyRepo.insert(payload)
+            let companyId = createdCompany.id
 
-            guard response.wasSuccessful,
-                  let company = response.extractedCompany,
-                  let companyId = company.extractedId else {
-                throw OnboardingManagerError.serverError("Company creation failed")
-            }
+            // Update user's company_id in Supabase
+            let userRepo = UserRepository(companyId: companyId)
+            try await userRepo.updateFields(userId: userId, fields: [
+                "company_id": .string(companyId),
+                "role": .string("admin"),
+                "is_company_admin": .bool(true)
+            ])
 
-            // Store company data
+            // Store company data in state
             state.companyData.companyId = companyId
-            state.companyData.companyCode = company.extractedCode ?? companyId
-            print("[ONBOARDING_MANAGER] Company created in Bubble:")
+            state.companyData.companyCode = newCompanyCode
+            print("[ONBOARDING_MANAGER] Company created in Supabase:")
             print("[ONBOARDING_MANAGER]   - companyId: \(companyId)")
-            print("[ONBOARDING_MANAGER]   - companyCode: \(state.companyData.companyCode ?? "unknown")")
+            print("[ONBOARDING_MANAGER]   - companyCode: \(newCompanyCode)")
 
             state.profileCompanyPhase = .success
             state.hasExistingCompany = true
             state.save()
 
-            // CRITICAL: Update local user's companyId before syncing company
-            // syncCompany() relies on currentUser?.companyId to fetch company data
+            // Store in UserDefaults
+            UserDefaults.standard.set(companyId, forKey: "company_id")
+            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+            UserDefaults.standard.set(state.companyData.name, forKey: "Company Name")
+
+            // Update local user's companyId before syncing
             if let currentUser = dataController.currentUser {
-                print("[ONBOARDING_MANAGER] DataController.currentUser exists:")
-                print("[ONBOARDING_MANAGER]   - id: \(currentUser.id)")
-                print("[ONBOARDING_MANAGER]   - companyId BEFORE: \(currentUser.companyId ?? "nil")")
                 currentUser.companyId = companyId
+                currentUser.role = .admin
+                try? dataController.modelContext?.save()
                 print("[ONBOARDING_MANAGER] ✅ Updated local user companyId to: \(companyId)")
-                print("[ONBOARDING_MANAGER]   - companyId AFTER: \(currentUser.companyId ?? "nil")")
             } else {
                 print("[ONBOARDING_MANAGER] ⚠️ DataController.currentUser is NIL! Cannot set companyId!")
+            }
+
+            // Create Company object in SwiftData
+            if let modelContext = dataController.modelContext {
+                let companyObject = Company(id: companyId, name: state.companyData.name)
+                companyObject.email = state.companyData.email
+                companyObject.phone = state.companyData.phone
+                companyObject.address = state.companyData.address
+                companyObject.subscriptionStatus = "trialing"
+                companyObject.trialStartDate = Date()
+                companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 14, to: Date())
+                companyObject.maxSeats = 5
+                modelContext.insert(companyObject)
+                try? modelContext.save()
+                print("[ONBOARDING_MANAGER] ✅ Company saved to SwiftData")
             }
 
             // Trigger sync to load company data
@@ -619,9 +650,9 @@ class OnboardingManager: ObservableObject {
             }
 
             print("[ONBOARDING_MANAGER] ========== CREATE COMPANY END ==========")
-            print("[ONBOARDING_MANAGER] Company created: \(companyId), code: \(state.companyData.companyCode ?? "unknown")")
+            print("[ONBOARDING_MANAGER] Company created: \(companyId), code: \(newCompanyCode)")
 
-            return state.companyData.companyCode ?? companyId
+            return newCompanyCode
 
         } catch {
             state.profileCompanyPhase = .form
@@ -647,27 +678,59 @@ class OnboardingManager: ObservableObject {
             // First update user profile
             try await updateUserProfile()
 
-            // Store user data in UserDefaults for join_company API
-            UserDefaults.standard.set(state.userData.firstName, forKey: "user_first_name")
-            UserDefaults.standard.set(state.userData.lastName, forKey: "user_last_name")
-            UserDefaults.standard.set(state.userData.phone, forKey: "user_phone_number")
+            // Look up company by code in Supabase
+            let companyRepo = CompanyRepository()
+            guard let companyDTO = try await companyRepo.fetchByCode(code) else {
+                throw OnboardingManagerError.invalidCompanyCode
+            }
 
-            // Join company via OnboardingService
-            let companyId = try await onboardingService.joinCompany(
-                code: code,
-                userId: userId,
-                dataController: dataController
-            )
+            let companyId = companyDTO.id
+
+            // Update user's company_id and role in Supabase
+            let userRepo = UserRepository(companyId: companyId)
+            try await userRepo.updateFields(userId: userId, fields: [
+                "company_id": .string(companyId),
+                "role": .string("field_crew"),
+                "is_company_admin": .bool(false)
+            ])
+
+            // Add user to company's seated_employee_ids
+            var seatIds = companyDTO.seatedEmployeeIds ?? []
+            if !seatIds.contains(userId) {
+                seatIds.append(userId)
+                try? await companyRepo.updateSeatedEmployees(companyId: companyId, userIds: seatIds)
+            }
 
             state.companyData.companyId = companyId
             state.companyData.companyCode = code
             state.hasExistingCompany = true
             state.save()
 
-            // CRITICAL: Update local user's companyId before syncing company
+            // Store in UserDefaults
+            UserDefaults.standard.set(companyId, forKey: "company_id")
+            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+            UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
+
+            // Update local user's companyId
             if let currentUser = dataController.currentUser {
                 currentUser.companyId = companyId
+                try? dataController.modelContext?.save()
                 print("[ONBOARDING_MANAGER] Updated local user companyId to: \(companyId)")
+            }
+
+            // Create Company object in SwiftData
+            if let modelContext = dataController.modelContext {
+                let compDesc = FetchDescriptor<Company>(
+                    predicate: #Predicate<Company> { $0.id == companyId }
+                )
+                if (try? modelContext.fetch(compDesc).first) == nil {
+                    let companyObject = Company(id: companyId, name: companyDTO.name)
+                    companyObject.email = companyDTO.email
+                    companyObject.phone = companyDTO.phone
+                    companyObject.address = companyDTO.address
+                    modelContext.insert(companyObject)
+                    try? modelContext.save()
+                }
             }
 
             // Trigger sync to load company data
@@ -680,13 +743,10 @@ class OnboardingManager: ObservableObject {
 
         } catch {
             state.profileJoinPhase = .form
-            if let signUpError = error as? SignUpError {
-                if case .companyJoinFailed = signUpError {
-                    throw OnboardingManagerError.invalidCompanyCode
-                }
-                throw OnboardingManagerError.serverError(signUpError.localizedDescription)
+            if let onboardingError = error as? OnboardingManagerError {
+                throw onboardingError
             }
-            throw error
+            throw OnboardingManagerError.serverError(error.localizedDescription)
         }
     }
 

@@ -482,7 +482,7 @@ class OnboardingManager: ObservableObject {
                 isActive: true,
                 deletedAt: nil
             )
-            try? await userRepo.upsert(userDTO)
+            try await userRepo.upsert(userDTO)
 
             // Store credentials - CRITICAL: Set both user_id AND currentUserId
             state.userData.email = email

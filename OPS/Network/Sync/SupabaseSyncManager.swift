@@ -12,6 +12,7 @@ import SwiftUI
 import Foundation
 import SwiftData
 import Combine
+import Supabase
 
 @MainActor
 class SupabaseSyncManager: ObservableObject {
@@ -762,6 +763,363 @@ class SupabaseSyncManager: ObservableObject {
         subClient.deletedAt = Date()
         try modelContext.save()
         print("[SUPABASE_DELETE] Sub-client deleted")
+    }
+
+    // MARK: - Project Write Operations
+
+    /// Update project dates and sync to Supabase
+    func updateProjectDates(projectId: String, startDate: Date?, endDate: Date?) async throws {
+        print("[SUPABASE_UPDATE] Updating project dates")
+
+        let predicate = #Predicate<Project> { $0.id == projectId }
+        let descriptor = FetchDescriptor<Project>(predicate: predicate)
+
+        guard let project = try modelContext.fetch(descriptor).first else {
+            throw SyncError.dataCorruption
+        }
+
+        project.startDate = startDate
+        project.endDate = endDate
+        project.needsSync = true
+        try modelContext.save()
+
+        if isConnected {
+            try await projectRepo?.updateDates(projectId, startDate: startDate, endDate: endDate)
+            project.needsSync = false
+            project.lastSyncedAt = Date()
+            try modelContext.save()
+            print("[SUPABASE_UPDATE] Project dates updated and synced")
+        }
+    }
+
+    /// Update project address and sync to Supabase
+    func updateProjectAddress(projectId: String, address: String) async throws {
+        print("[SUPABASE_UPDATE] Updating project address")
+
+        let predicate = #Predicate<Project> { $0.id == projectId }
+        let descriptor = FetchDescriptor<Project>(predicate: predicate)
+
+        guard let project = try modelContext.fetch(descriptor).first else {
+            throw SyncError.dataCorruption
+        }
+
+        project.address = address
+        project.needsSync = true
+        try modelContext.save()
+
+        if isConnected {
+            try await projectRepo?.updateAddress(projectId, address: address)
+            project.needsSync = false
+            project.lastSyncedAt = Date()
+            try modelContext.save()
+            print("[SUPABASE_UPDATE] Project address updated and synced")
+        }
+    }
+
+    /// Update project team members and sync to Supabase
+    func updateProjectTeamMembers(projectId: String, memberIds: [String]) async throws {
+        print("[SUPABASE_UPDATE] Updating project team members")
+
+        let predicate = #Predicate<Project> { $0.id == projectId }
+        let descriptor = FetchDescriptor<Project>(predicate: predicate)
+
+        guard let project = try modelContext.fetch(descriptor).first else {
+            throw SyncError.dataCorruption
+        }
+
+        project.setTeamMemberIds(memberIds)
+        project.needsSync = true
+        try modelContext.save()
+
+        if isConnected {
+            try await projectRepo?.updateTeamMembers(projectId, memberIds: memberIds)
+            project.needsSync = false
+            project.lastSyncedAt = Date()
+            try modelContext.save()
+            print("[SUPABASE_UPDATE] Project team members updated and synced")
+        }
+    }
+
+    /// Update project with generic fields and sync to Supabase
+    func updateProjectFields(projectId: String, fields: [String: AnyJSON]) async throws {
+        print("[SUPABASE_UPDATE] Updating project fields")
+
+        if isConnected {
+            try await projectRepo?.updateFields(projectId, fields: fields)
+            print("[SUPABASE_UPDATE] Project fields updated and synced")
+        }
+    }
+
+    // MARK: - Task Write Operations
+
+    /// Update task with generic fields and sync to Supabase
+    func updateTaskFields(taskId: String, fields: [String: AnyJSON]) async throws {
+        print("[SUPABASE_UPDATE] Updating task fields")
+
+        if isConnected {
+            try await taskRepo?.updateFields(taskId, fields: fields)
+            print("[SUPABASE_UPDATE] Task fields updated and synced")
+        }
+    }
+
+    /// Update task team members and sync to Supabase
+    func updateTaskTeamMembers(taskId: String, memberIds: [String]) async throws {
+        print("[SUPABASE_UPDATE] Updating task team members")
+
+        let predicate = #Predicate<ProjectTask> { $0.id == taskId }
+        let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
+
+        guard let task = try modelContext.fetch(descriptor).first else {
+            throw SyncError.dataCorruption
+        }
+
+        task.setTeamMemberIds(memberIds)
+        task.needsSync = true
+        try modelContext.save()
+
+        if isConnected {
+            try await taskRepo?.updateTeamMembers(taskId, memberIds: memberIds)
+            task.needsSync = false
+            task.lastSyncedAt = Date()
+            try modelContext.save()
+            print("[SUPABASE_UPDATE] Task team members updated and synced")
+        }
+    }
+
+    /// Create a new task on Supabase and locally, return the ID
+    func createTask(dto: SupabaseProjectTaskDTO) async throws -> String {
+        print("[SUPABASE_CREATE] Creating task")
+        guard let repo = taskRepo else {
+            throw NSError(domain: "SupabaseSyncManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Task repository not initialized"])
+        }
+
+        let created = try await repo.create(dto)
+        let model = created.toModel()
+        try upsertTask(model)
+
+        // Link to project
+        if let project = fetchProject(id: created.projectId) {
+            model.project = project
+            try modelContext.save()
+        }
+
+        print("[SUPABASE_CREATE] Task created: \(created.id)")
+        return created.id
+    }
+
+    /// Soft delete a task
+    func deleteTask(taskId: String) async throws {
+        print("[SUPABASE_DELETE] Deleting task \(taskId)")
+
+        let predicate = #Predicate<ProjectTask> { $0.id == taskId }
+        let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
+
+        if let task = try modelContext.fetch(descriptor).first {
+            task.deletedAt = Date()
+            try modelContext.save()
+        }
+
+        if isConnected {
+            try await taskRepo?.softDelete(taskId)
+            print("[SUPABASE_DELETE] Task deleted and synced")
+        }
+    }
+
+    // MARK: - CalendarEvent Write Operations
+
+    /// Create a new calendar event on Supabase and locally, return the ID
+    func createCalendarEvent(dto: SupabaseCalendarEventDTO) async throws -> String {
+        print("[SUPABASE_CREATE] Creating calendar event")
+        guard let repo = calendarRepo else {
+            throw NSError(domain: "SupabaseSyncManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Calendar repository not initialized"])
+        }
+
+        let created = try await repo.create(dto)
+        let model = created.toModel()
+        try upsertCalendarEvent(model)
+
+        // Link to project
+        if let projectId = created.projectId, let project = fetchProject(id: projectId) {
+            model.project = project
+            try modelContext.save()
+        }
+
+        print("[SUPABASE_CREATE] Calendar event created: \(created.id)")
+        return created.id
+    }
+
+    /// Soft delete a calendar event
+    func deleteCalendarEvent(eventId: String) async throws {
+        print("[SUPABASE_DELETE] Deleting calendar event \(eventId)")
+
+        let predicate = #Predicate<CalendarEvent> { $0.id == eventId }
+        let descriptor = FetchDescriptor<CalendarEvent>(predicate: predicate)
+
+        if let event = try modelContext.fetch(descriptor).first {
+            event.deletedAt = Date()
+            try modelContext.save()
+        }
+
+        if isConnected {
+            try await calendarRepo?.softDelete(eventId)
+            print("[SUPABASE_DELETE] Calendar event deleted and synced")
+        }
+    }
+
+    /// Update calendar event fields and sync to Supabase
+    func updateCalendarEvent(eventId: String, fields: [String: AnyJSON]) async throws {
+        print("[SUPABASE_UPDATE] Updating calendar event fields")
+
+        if isConnected {
+            try await calendarRepo?.update(eventId, fields: fields)
+            print("[SUPABASE_UPDATE] Calendar event fields updated and synced")
+        }
+    }
+
+    /// Update calendar event team members and sync to Supabase
+    func updateCalendarEventTeamMembers(eventId: String, memberIds: [String]) async throws {
+        print("[SUPABASE_UPDATE] Updating calendar event team members")
+
+        let predicate = #Predicate<CalendarEvent> { $0.id == eventId }
+        let descriptor = FetchDescriptor<CalendarEvent>(predicate: predicate)
+
+        if let event = try modelContext.fetch(descriptor).first {
+            event.setTeamMemberIds(memberIds)
+            try modelContext.save()
+        }
+
+        if isConnected {
+            try await calendarRepo?.updateTeamMembers(eventId, memberIds: memberIds)
+            print("[SUPABASE_UPDATE] Calendar event team members updated and synced")
+        }
+    }
+
+    // MARK: - User Write Operations
+
+    /// Update user with generic AnyJSON fields and sync to Supabase
+    func updateUserFields(userId: String, fields: [String: AnyJSON]) async throws {
+        print("[SUPABASE_UPDATE] Updating user fields")
+
+        if isConnected {
+            try await userRepo?.updateFields(userId: userId, fields: fields)
+            print("[SUPABASE_UPDATE] User fields updated and synced")
+        }
+    }
+
+    /// Soft delete a user
+    func deleteUser(userId: String) async throws {
+        print("[SUPABASE_DELETE] Deleting user \(userId)")
+
+        let predicate = #Predicate<User> { $0.id == userId }
+        let descriptor = FetchDescriptor<User>(predicate: predicate)
+
+        if let user = try modelContext.fetch(descriptor).first {
+            user.deletedAt = Date()
+            try modelContext.save()
+        }
+
+        if isConnected {
+            try await userRepo?.softDelete(userId)
+            print("[SUPABASE_DELETE] User deleted and synced")
+        }
+    }
+
+    /// Fetch a single user from Supabase and upsert locally
+    func fetchUser(id: String) async throws -> User? {
+        print("[SUPABASE_FETCH] Fetching user \(id)")
+        guard let repo = userRepo else { return nil }
+
+        let dto = try await repo.fetchOne(id)
+        let model = dto.toModel()
+        try upsertUser(model)
+
+        let descriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == id })
+        return try modelContext.fetch(descriptor).first
+    }
+
+    // MARK: - Company Write Operations
+
+    /// Update company with generic string fields and sync to Supabase
+    func updateCompanyFields(companyId: String, fields: [String: String]) async throws {
+        print("[SUPABASE_UPDATE] Updating company fields")
+
+        if isConnected {
+            try await companyRepo?.update(companyId: companyId, updates: fields)
+            print("[SUPABASE_UPDATE] Company fields updated and synced")
+        }
+    }
+
+    /// Update company seated employees and sync to Supabase
+    func updateCompanySeatedEmployees(companyId: String, userIds: [String]) async throws {
+        print("[SUPABASE_UPDATE] Updating company seated employees")
+
+        let predicate = #Predicate<Company> { $0.id == companyId }
+        let descriptor = FetchDescriptor<Company>(predicate: predicate)
+
+        if let company = try modelContext.fetch(descriptor).first {
+            company.seatedEmployeeIds = userIds
+            try modelContext.save()
+        }
+
+        if isConnected {
+            try await companyRepo?.updateSeatedEmployees(companyId: companyId, userIds: userIds)
+            print("[SUPABASE_UPDATE] Company seated employees updated and synced")
+        }
+    }
+
+    /// Fetch a single company from Supabase and upsert locally
+    func fetchCompany(id: String) async throws -> Company? {
+        print("[SUPABASE_FETCH] Fetching company \(id)")
+        guard let repo = companyRepo else { return nil }
+
+        let dto = try await repo.fetch(companyId: id)
+        let model = dto.toModel()
+        try upsertCompany(model)
+
+        let descriptor = FetchDescriptor<Company>(predicate: #Predicate { $0.id == id })
+        return try modelContext.fetch(descriptor).first
+    }
+
+    // MARK: - Client Write Operations
+
+    /// Soft delete a client
+    func deleteClient(clientId: String) async throws {
+        print("[SUPABASE_DELETE] Deleting client \(clientId)")
+
+        let predicate = #Predicate<Client> { $0.id == clientId }
+        let descriptor = FetchDescriptor<Client>(predicate: predicate)
+
+        if let client = try modelContext.fetch(descriptor).first {
+            client.deletedAt = Date()
+            try modelContext.save()
+        }
+
+        if isConnected {
+            try await clientRepo?.softDelete(clientId)
+            print("[SUPABASE_DELETE] Client deleted and synced")
+        }
+    }
+
+    /// Update client with generic fields
+    func updateClient(clientId: String, name: String, email: String?, phone: String?, address: String?) async throws {
+        print("[SUPABASE_UPDATE] Updating client")
+
+        let predicate = #Predicate<Client> { $0.id == clientId }
+        let descriptor = FetchDescriptor<Client>(predicate: predicate)
+
+        if let client = try modelContext.fetch(descriptor).first {
+            client.name = name
+            client.email = email
+            client.phoneNumber = phone
+            client.address = address
+            client.needsSync = true
+            try modelContext.save()
+        }
+
+        if isConnected {
+            try await clientRepo?.updateContact(clientId: clientId, name: name, email: email, phone: phone, address: address)
+            print("[SUPABASE_UPDATE] Client updated and synced")
+        }
     }
 
     // MARK: - SwiftData Upsert Helpers

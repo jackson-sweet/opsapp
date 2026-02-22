@@ -1184,7 +1184,7 @@ class OnboardingViewModel: ObservableObject {
                 industries: companyIndustry != nil ? [industry.rawValue] : nil,
                 company_size: size.rawValue,
                 company_age: age.rawValue,
-                subscription_status: "trialing",
+                subscription_status: "trial",
                 trial_start_date: now,
                 trial_end_date: trialEnd,
                 max_seats: 5,
@@ -1222,7 +1222,7 @@ class OnboardingViewModel: ObservableObject {
                     companyObject.companySize = size.rawValue
                     companyObject.companyAge = age.rawValue
                     companyObject.setIndustries([industry.rawValue])
-                    companyObject.subscriptionStatus = "trialing"
+                    companyObject.subscriptionStatus = "trial"
                     companyObject.trialStartDate = Date()
                     companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 14, to: Date())
                     companyObject.maxSeats = 5

@@ -610,7 +610,7 @@ class OnboardingManager: ObservableObject {
                 industries: state.companyData.industry.isEmpty ? nil : [state.companyData.industry],
                 company_size: state.companyData.size.isEmpty ? nil : state.companyData.size,
                 company_age: state.companyData.age.isEmpty ? nil : state.companyData.age,
-                subscription_status: "trialing",
+                subscription_status: "trial",
                 trial_start_date: now,
                 trial_end_date: trialEnd,
                 max_seats: 5,
@@ -660,7 +660,7 @@ class OnboardingManager: ObservableObject {
                 companyObject.email = state.companyData.email
                 companyObject.phone = state.companyData.phone
                 companyObject.address = state.companyData.address
-                companyObject.subscriptionStatus = "trialing"
+                companyObject.subscriptionStatus = "trial"
                 companyObject.trialStartDate = Date()
                 companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 14, to: Date())
                 companyObject.maxSeats = 5

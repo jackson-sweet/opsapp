@@ -9,36 +9,54 @@ import SwiftUI
 
 /// Status enum matching your Bubble Job Status exactly
 enum Status: String, Codable, CustomStringConvertible, CaseIterable {
-    case rfq = "RFQ"
-    case estimated = "Estimated"
-    case accepted = "Accepted"
-    case inProgress = "In Progress"
-    case completed = "Completed"
-    case closed = "Closed"
-    case archived = "Archived"
+    case rfq = "rfq"
+    case estimated = "estimated"
+    case accepted = "accepted"
+    case inProgress = "in_progress"
+    case completed = "completed"
+    case closed = "closed"
+    case archived = "archived"
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
 
-        if rawValue == "Pending" {
-            self = .rfq
-        } else if let status = Status(rawValue: rawValue) {
-            self = status
-        } else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Cannot initialize Status from invalid String value \(rawValue)"
-            )
+        // Handle legacy title-case values from Bubble
+        switch rawValue {
+        case "Pending": self = .rfq
+        case "RFQ": self = .rfq
+        case "Estimated": self = .estimated
+        case "Accepted": self = .accepted
+        case "In Progress": self = .inProgress
+        case "Completed": self = .completed
+        case "Closed": self = .closed
+        case "Archived": self = .archived
+        default:
+            if let status = Status(rawValue: rawValue) {
+                self = status
+            } else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Cannot initialize Status from invalid String value \(rawValue)"
+                )
+            }
         }
     }
 
     var displayName: String {
-        return self.rawValue
+        switch self {
+        case .rfq: return "RFQ"
+        case .estimated: return "Estimated"
+        case .accepted: return "Accepted"
+        case .inProgress: return "In Progress"
+        case .completed: return "Completed"
+        case .closed: return "Closed"
+        case .archived: return "Archived"
+        }
     }
 
     var description: String {
-        return self.rawValue
+        return displayName
     }
 
     var color: Color {

@@ -11,31 +11,40 @@ import SwiftUI
 
 /// Status enum for tasks
 enum TaskStatus: String, Codable, CaseIterable {
-    case booked = "Booked"
-    case inProgress = "In Progress"
-    case completed = "Completed"
-    case cancelled = "Cancelled"
+    case booked = "booked"
+    case inProgress = "in_progress"
+    case completed = "completed"
+    case cancelled = "cancelled"
 
-    // Custom decoder to handle migration from "Scheduled" to "Booked"
+    // Custom decoder to handle legacy title-case values
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
 
-        // Handle legacy "Scheduled" status by mapping to "Booked"
-        if rawValue == "Scheduled" {
-            self = .booked
-        } else if let status = TaskStatus(rawValue: rawValue) {
-            self = status
-        } else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Cannot initialize TaskStatus from invalid String value \(rawValue)"
-            )
+        switch rawValue {
+        case "Scheduled", "Booked": self = .booked
+        case "In Progress": self = .inProgress
+        case "Completed": self = .completed
+        case "Cancelled": self = .cancelled
+        default:
+            if let status = TaskStatus(rawValue: rawValue) {
+                self = status
+            } else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Cannot initialize TaskStatus from invalid String value \(rawValue)"
+                )
+            }
         }
     }
 
     var displayName: String {
-        return self.rawValue
+        switch self {
+        case .booked: return "Booked"
+        case .inProgress: return "In Progress"
+        case .completed: return "Completed"
+        case .cancelled: return "Cancelled"
+        }
     }
 
     var color: Color {

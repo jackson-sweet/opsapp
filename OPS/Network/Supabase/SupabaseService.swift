@@ -42,7 +42,7 @@ class SupabaseService: ObservableObject {
         do {
             let session = try await client.auth.session
             isAuthenticated = true
-            currentUserId = session.user.id.uuidString
+            currentUserId = session.user.id.uuidString.lowercased()
         } catch {
             isAuthenticated = false
             currentUserId = nil
@@ -59,7 +59,7 @@ class SupabaseService: ObservableObject {
             credentials: .init(provider: .google, idToken: idToken)
         )
         isAuthenticated = true
-        currentUserId = session.user.id.uuidString
+        currentUserId = session.user.id.uuidString.lowercased()
     }
 
     /// Authenticate with Supabase using an Apple identity token.
@@ -70,7 +70,7 @@ class SupabaseService: ObservableObject {
             credentials: .init(provider: .apple, idToken: identityToken)
         )
         isAuthenticated = true
-        currentUserId = session.user.id.uuidString
+        currentUserId = session.user.id.uuidString.lowercased()
     }
 
     // MARK: - Sign Out

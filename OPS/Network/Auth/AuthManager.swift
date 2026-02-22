@@ -488,7 +488,7 @@ class AuthManager {
         let session = try await SupabaseService.shared.client.auth
             .signIn(email: email, password: password)
 
-        let supabaseUserId = session.user.id.uuidString
+        let supabaseUserId = session.user.id.uuidString.lowercased()
 
         // Store in UserDefaults (same keys the app uses elsewhere)
         UserDefaults.standard.set(supabaseUserId, forKey: "currentUserId")
@@ -507,7 +507,7 @@ class AuthManager {
         let response = try await SupabaseService.shared.client.auth
             .signUp(email: email, password: password)
 
-        let supabaseUserId = response.user.id.uuidString
+        let supabaseUserId = response.user.id.uuidString.lowercased()
 
         UserDefaults.standard.set(supabaseUserId, forKey: "currentUserId")
         UserDefaults.standard.set(supabaseUserId, forKey: "user_id")

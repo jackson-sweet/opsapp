@@ -364,7 +364,7 @@ class DataController: ObservableObject {
         // Fall back to Supabase session restoration
         do {
             let session = try await SupabaseService.shared.client.auth.session
-            let supabaseUserId = session.user.id.uuidString
+            let supabaseUserId = session.user.id.uuidString.lowercased()
             let email = session.user.email ?? ""
 
             // Load user identifiers from Supabase users table
@@ -474,7 +474,7 @@ class DataController: ObservableObject {
 
             // Get session info from Supabase
             let session = try await SupabaseService.shared.client.auth.session
-            let supabaseUserId = session.user.id.uuidString
+            let supabaseUserId = session.user.id.uuidString.lowercased()
             let email = session.user.email ?? appleResult.email ?? ""
 
             // Store Apple user identifier for future logins
@@ -558,7 +558,7 @@ class DataController: ObservableObject {
 
             // Get session info from Supabase
             let session = try await SupabaseService.shared.client.auth.session
-            let supabaseUserId = session.user.id.uuidString
+            let supabaseUserId = session.user.id.uuidString.lowercased()
 
             // Look up existing user in Supabase users table by email
             try await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)

@@ -522,7 +522,7 @@ class AuthManager {
 
     /// After authenticating with Supabase, load the user row from the `users` table
     /// and persist critical identifiers (companyId) so repositories can be initialized.
-    private func loadUserFromSupabase(userId: String, email: String) async throws {
+    func loadUserFromSupabase(userId: String, email: String) async throws {
         // UserRepository needs a companyId but we don't have it yet.
         // Use an empty-string companyId to perform the email lookup
         // (fetchByEmail queries `users` table globally, not filtered by company).

@@ -36,6 +36,7 @@ struct SupabaseCompanyDTO: Codable, Identifiable {
     let trialEndDate: String?
     let hasPrioritySupport: Bool?
     let stripeCustomerId: String?
+    let companyCode: String?
     let createdAt: String?
     let deletedAt: String?
 
@@ -55,6 +56,7 @@ struct SupabaseCompanyDTO: Codable, Identifiable {
         case trialEndDate         = "trial_end_date"
         case hasPrioritySupport   = "has_priority_support"
         case stripeCustomerId     = "stripe_customer_id"
+        case companyCode          = "company_code"
         case createdAt            = "created_at"
         case deletedAt            = "deleted_at"
     }

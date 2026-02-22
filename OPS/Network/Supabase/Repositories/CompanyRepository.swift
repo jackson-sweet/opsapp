@@ -31,6 +31,31 @@ class CompanyRepository {
             .value
     }
 
+    /// Look up a company by its human-readable company_code (used in the join flow).
+    func fetchByCode(_ code: String) async throws -> SupabaseCompanyDTO? {
+        let results: [SupabaseCompanyDTO] = try await client
+            .from("companies")
+            .select()
+            .ilike("company_code", value: code)
+            .limit(1)
+            .execute()
+            .value
+        return results.first
+    }
+
+    // MARK: - Insert
+
+    /// Create a new company row and return the created record.
+    func insert(_ payload: NewCompanyPayload) async throws -> SupabaseCompanyDTO {
+        try await client
+            .from("companies")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     // MARK: - Update
 
     /// Applies a freeform set of string-valued field updates to a company record.
@@ -64,6 +89,36 @@ class CompanyRepository {
             .eq("id", value: companyId)
             .execute()
     }
+}
+
+// MARK: - Payloads
+
+/// Payload for inserting a new company into Supabase.
+struct NewCompanyPayload: Codable {
+    let name: String
+    let email: String?
+    let phone: String?
+    let address: String?
+    let company_code: String
+    let admin_ids: [String]
+    let account_holder_id: String
+    let industries: [String]?
+    let company_size: String?
+    let company_age: String?
+    let subscription_status: String
+    let trial_start_date: String
+    let trial_end_date: String
+    let max_seats: Int
+    let created_at: String
+    let updated_at: String
+}
+
+// MARK: - Code Generation
+
+/// Generate a short alphanumeric company code (8 chars, uppercase).
+func generateCompanyCode() -> String {
+    let chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no ambiguous chars (0/O, 1/I)
+    return String((0..<8).map { _ in chars.randomElement()! })
 }
 
 // MARK: - ISO8601 Helpers

@@ -258,9 +258,35 @@ class DataController: ObservableObject {
         }
     
     // MARK: - Authentication
+
+    /// Returns true if the string is a valid UUID format (Supabase uses UUIDs for all IDs)
+    private func isValidUUID(_ string: String) -> Bool {
+        UUID(uuidString: string) != nil
+    }
+
     @MainActor
     private func checkExistingAuth() async {
-        
+
+        // MIGRATION: Detect Bubble-format IDs and force re-login through Supabase Auth.
+        // Bubble IDs look like "1748465773440x642579687246238300", Supabase uses UUIDs.
+        // If we detect non-UUID IDs, clear stored credentials so the user re-authenticates
+        // via Supabase Auth, which will store proper UUID-format IDs.
+        let storedUserId = UserDefaults.standard.string(forKey: "user_id")
+        let storedCompanyId = UserDefaults.standard.string(forKey: "company_id")
+
+        let userIdNeedsMigration = storedUserId != nil && !isValidUUID(storedUserId!)
+        let companyIdNeedsMigration = storedCompanyId != nil && !isValidUUID(storedCompanyId!)
+
+        if userIdNeedsMigration || companyIdNeedsMigration {
+            print("[AUTH_MIGRATION] Detected Bubble-format IDs in UserDefaults — forcing re-login")
+            if let uid = storedUserId { print("[AUTH_MIGRATION]   user_id: \(uid)") }
+            if let cid = storedCompanyId { print("[AUTH_MIGRATION]   company_id: \(cid)") }
+
+            // Clear all stored IDs so the user goes through Supabase Auth login
+            clearAuthentication()
+            return
+        }
+
         // First check if we have a direct authentication flag from onboarding
         let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
         let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
@@ -335,99 +361,58 @@ class DataController: ObservableObject {
             return
         }
         
-        // Fall back to traditional authentication check if needed
-        // Check for stored credentials
-        if let userId = keychainManager.retrieveUserId(),
-           let _ = keychainManager.retrieveToken() {
-            
-            
-            // Validate token expiration
-            if let expiration = keychainManager.retrieveTokenExpiration(),
-               expiration > Date() {
-                
-                // Set the authentication flag in UserDefaults to maintain state across app restarts
-                UserDefaults.standard.set(true, forKey: "is_authenticated")
-                UserDefaults.standard.set(true, forKey: "onboarding_completed")
-                
-                // Store user ID in UserDefaults as well for backup
-                UserDefaults.standard.set(userId, forKey: "user_id")
-                UserDefaults.standard.set(userId, forKey: "currentUserId")
-                
-                do {
-                    if let context = modelContext {
-                        let descriptor = FetchDescriptor<User>(
-                            predicate: #Predicate<User> { $0.id == userId }
-                        )
-                        
-                        let users = try context.fetch(descriptor)
-                        
-                        if let user = users.first {
-                            self.currentUser = user
+        // Fall back to Supabase session restoration
+        do {
+            let session = try await SupabaseService.shared.client.auth.session
+            let supabaseUserId = session.user.id.uuidString
+            let email = session.user.email ?? ""
 
-                            // Link user to OneSignal for push notifications
-                            NotificationManager.shared.linkUserToOneSignal()
+            // Load user identifiers from Supabase users table
+            try? await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)
+            let userId = authManager.getUserId() ?? supabaseUserId
 
-                            // Configure OneSignal service for sending notifications
-                            Task {
-                                await OneSignalService.shared.configure()
-                            }
+            // Set authentication flags
+            UserDefaults.standard.set(true, forKey: "is_authenticated")
+            UserDefaults.standard.set(userId, forKey: "user_id")
+            UserDefaults.standard.set(userId, forKey: "currentUserId")
 
-                            // Only set isAuthenticated if user has completed onboarding
-                            if user.hasCompletedAppOnboarding {
-                                self.isAuthenticated = true
-                            } else {
-                                self.isAuthenticated = false
-                            }
+            // Try to find user in local SwiftData
+            if let context = modelContext {
+                let descriptor = FetchDescriptor<User>(
+                    predicate: #Predicate<User> { $0.id == userId }
+                )
+                let users = try context.fetch(descriptor)
 
-                            if let companyId = user.companyId {
-                                UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
-                                UserDefaults.standard.set(companyId, forKey: "company_id")
-                                
-                                // Fetch company details if we're connected
-                                if isConnected {
-                                    Task {
-                                        do {
-                                            // syncManager handles fetch, convert, and upsert
-                                            let _ = try await self.syncManager?.fetchCompany(id: companyId)
-                                        } catch {
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            initializeSyncManager()
-                            return
-                        }
+                if let user = users.first {
+                    self.currentUser = user
+
+                    NotificationManager.shared.linkUserToOneSignal()
+                    Task { await OneSignalService.shared.configure() }
+
+                    if user.hasCompletedAppOnboarding {
+                        self.isAuthenticated = true
+                        UserDefaults.standard.set(true, forKey: "onboarding_completed")
                     }
-                    
-                    if isConnected {
-                        try await fetchUserFromAPI(userId: userId)
-                    } else {
-                        // Even without internet, check onboarding status
-                        let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
-                        if onboardingCompleted {
-                            self.isAuthenticated = true
-                        } else {
-                            self.isAuthenticated = false
-                        }
-                        
-                        // Create a placeholder user
-                        let placeholderUser = User(id: userId, firstName: "User", lastName: "", role: .fieldCrew, companyId: "")
-                        self.currentUser = placeholderUser
-                        
-                        if let context = modelContext {
-                            context.insert(placeholderUser)
-                            try context.save()
-                            initializeSyncManager()
-                        }
+
+                    if let companyId = user.companyId {
+                        UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+                        UserDefaults.standard.set(companyId, forKey: "company_id")
                     }
-                } catch {
-                    clearAuthentication()
+
+                    initializeSyncManager()
+                    return
                 }
-            } else {
-                clearAuthentication()
             }
-        } else {
+
+            // No local user — try to fetch from API if connected
+            if isConnected {
+                try await fetchUserFromAPI(userId: userId)
+            } else {
+                let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
+                self.isAuthenticated = onboardingCompleted
+            }
+        } catch {
+            // No valid Supabase session — clear auth
             clearAuthentication()
         }
         
@@ -438,12 +423,8 @@ class DataController: ObservableObject {
     func login(username: String, password: String) async -> Bool {
         
         do {
-            // Sign in with the auth manager
-            let _ = try await authManager.signIn(username: username, password: password)
-            
-            // Store the username (only for re-authentication, not displayed to user)
-            keychainManager.storeUsername(username)
-            keychainManager.storePassword(password)
+            // Sign in via Supabase Auth (handles session, stores userId + companyId)
+            try await authManager.loginWithEmail(username, password: password)
             
             
             if let userId = authManager.getUserId() {
@@ -488,42 +469,35 @@ class DataController: ObservableObject {
     @MainActor
     func loginWithApple(appleResult: AppleSignInManager.AppleSignInResult) async -> Bool {
         do {
-            // Attempt Apple login with Bubble
-            let loginResult = try await authManager.signInWithApple(
-                identityToken: appleResult.identityToken,
-                userIdentifier: appleResult.userIdentifier,
-                email: appleResult.email,
-                givenName: appleResult.givenName,
-                familyName: appleResult.familyName
-            )
+            // Authenticate with Supabase using Apple identity token
+            try await SupabaseService.shared.signInWithApple(identityToken: appleResult.identityToken)
 
-            // Also authenticate with Supabase using the same Apple identity token
-            try? await SupabaseService.shared.signInWithApple(identityToken: appleResult.identityToken)
-            
-            let userDTO = loginResult.user
-            
-            
+            // Get session info from Supabase
+            let session = try await SupabaseService.shared.client.auth.session
+            let supabaseUserId = session.user.id.uuidString
+            let email = session.user.email ?? appleResult.email ?? ""
+
             // Store Apple user identifier for future logins
             UserDefaults.standard.set(appleResult.userIdentifier, forKey: "apple_user_identifier")
-            
+
+            // Look up existing user in Supabase users table by email
+            try await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)
+
+            // Use the user ID from users table (may differ from auth UUID for migrated users)
+            let userId = authManager.getUserId() ?? supabaseUserId
+
             // Set authentication flags
             UserDefaults.standard.set(true, forKey: "is_authenticated")
-            UserDefaults.standard.set(userDTO.id, forKey: "user_id")
-            UserDefaults.standard.set(userDTO.id, forKey: "currentUserId")
-            
-            // Store user type if available
-            if let userTypeString = userDTO.userType {
-                if userTypeString.lowercased() == "company" {
-                    UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
-                } else if userTypeString.lowercased() == "employee" {
-                    UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
-                }
-                UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+            UserDefaults.standard.set(userId, forKey: "user_id")
+            UserDefaults.standard.set(userId, forKey: "currentUserId")
+
+            // Try to fetch full user data - may fail for brand new users
+            do {
+                try await fetchUserFromAPI(userId: userId)
+            } catch {
+                print("[AUTH] User not found in users table — likely a new user, will need onboarding")
             }
-            
-            // Fetch and create/update user
-            try await fetchUserFromAPI(userId: userDTO.id)
-            
+
             // Check onboarding status
             if let user = currentUser {
                 let hasCompany = !(user.companyId ?? "").isEmpty
@@ -533,42 +507,39 @@ class DataController: ObservableObject {
                 // Determine if onboarding is needed (indicates new user)
                 let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding || !hasUserType
 
-                // Track analytics for Google Ads (Apple sign-in)
+                // Store user type if available
+                if let userTypeString = user.userType?.rawValue {
+                    if userTypeString.lowercased() == "company" {
+                        UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+                    } else if userTypeString.lowercased() == "employee" {
+                        UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
+                    }
+                    UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+                }
+
+                // Track analytics (Apple sign-in)
                 if needsOnboarding {
-                    // New user - track as sign-up
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .apple)
                 } else {
-                    // Returning user - track as login
                     AnalyticsManager.shared.trackLogin(userType: user.userType, method: .apple)
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
-                AnalyticsManager.shared.setUserId(userDTO.id)
+                AnalyticsManager.shared.setUserId(userId)
 
                 UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
 
                 if !needsOnboarding {
                     self.isAuthenticated = true
-                    // Projects will sync after company fetch in fetchUserFromAPI
-                } else {
-                    // Don't set isAuthenticated - let LoginView handle onboarding
                 }
 
                 return true
             }
 
-            return false
+            // No user found — new user, needs onboarding
+            UserDefaults.standard.set(false, forKey: "onboarding_completed")
+            return true
         } catch {
-
-            // Check for specific errors
-            if let authError = error as? AuthError {
-                switch authError {
-                case .invalidCredentials:
-                    // User doesn't exist yet - this is expected for new users
-                    print("Invalid Credentials")
-                default: break
-                }
-            }
-
+            print("[AUTH] Apple login failed: \(error)")
             return false
         }
     }
@@ -577,60 +548,37 @@ class DataController: ObservableObject {
     @MainActor
     func loginWithGoogle(googleUser: GIDGoogleUser) async -> Bool {
         guard let idToken = googleUser.idToken?.tokenString,
-              let email = googleUser.profile?.email,
-              let name = googleUser.profile?.name else {
+              let email = googleUser.profile?.email else {
             return false
         }
-        
-        do {
-            // Attempt Google login with Bubble
-            let loginResult = try await authManager.signInWithGoogle(
-                idToken: idToken,
-                email: email,
-                name: name,
-                givenName: googleUser.profile?.givenName,
-                familyName: googleUser.profile?.familyName
-            )
 
-            // Also authenticate with Supabase using the same Google ID token
-            try? await SupabaseService.shared.signInWithGoogle(idToken: idToken)
-            
-            let userDTO = loginResult.user
-            let companyDTO = loginResult.company
-            
-            
-            // Immediately set user type if available
-            if let userTypeString = userDTO.userType {
-                // Map Bubble's user type strings to our UserType enum
-                if userTypeString.lowercased() == "company" {
-                    UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
-                } else if userTypeString.lowercased() == "employee" {
-                    UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
-                }
-                // Also store the raw value as a backup
-                UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
-            }
-            
+        do {
+            // Authenticate with Supabase using Google ID token
+            try await SupabaseService.shared.signInWithGoogle(idToken: idToken)
+
+            // Get session info from Supabase
+            let session = try await SupabaseService.shared.client.auth.session
+            let supabaseUserId = session.user.id.uuidString
+
+            // Look up existing user in Supabase users table by email
+            try await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)
+
+            // Use the user ID from users table (may differ from auth UUID for migrated users)
+            let userId = authManager.getUserId() ?? supabaseUserId
+
             // Set authentication flags
             UserDefaults.standard.set(true, forKey: "is_authenticated")
-            // Don't automatically set onboarding_completed for Google login
-            // We need to check if they have a company first
-            UserDefaults.standard.set(userDTO.id, forKey: "user_id")
-            UserDefaults.standard.set(userDTO.id, forKey: "currentUserId")
-            
-            
-            // Fetch and create/update user using existing method
-            try await fetchUserFromAPI(userId: userDTO.id)
-            
-            // If company data was returned, check admin status
-            if let companyDTO = companyDTO {
-                if let adminIds = companyDTO.adminIds, adminIds.contains(userDTO.id), let user = currentUser {
-                    user.role = .admin
-                    try? modelContext?.save()
-                }
+            UserDefaults.standard.set(userId, forKey: "user_id")
+            UserDefaults.standard.set(userId, forKey: "currentUserId")
+
+            // Try to fetch full user data - may fail for brand new users
+            do {
+                try await fetchUserFromAPI(userId: userId)
+            } catch {
+                print("[AUTH] User not found in users table — likely a new user, will need onboarding")
             }
-            
-            // Now check if user has completed onboarding based on their data
+
+            // Check onboarding status
             if let user = currentUser {
                 let hasCompany = !(user.companyId ?? "").isEmpty
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
@@ -638,40 +586,39 @@ class DataController: ObservableObject {
                 // Determine if onboarding is needed (indicates new user)
                 let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding
 
-                // Track analytics for Google Ads (Google sign-in)
+                // Store user type if available
+                if let userTypeString = user.userType?.rawValue {
+                    if userTypeString.lowercased() == "company" {
+                        UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+                    } else if userTypeString.lowercased() == "employee" {
+                        UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
+                    }
+                    UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+                }
+
+                // Track analytics (Google sign-in)
                 if needsOnboarding {
-                    // New user - track as sign-up
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .google)
                 } else {
-                    // Returning user - track as login
                     AnalyticsManager.shared.trackLogin(userType: user.userType, method: .google)
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
-                AnalyticsManager.shared.setUserId(userDTO.id)
+                AnalyticsManager.shared.setUserId(userId)
 
                 UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
 
-                // Only set isAuthenticated if they've completed onboarding
-                // Otherwise, return true to indicate login succeeded but don't set isAuthenticated
                 if !needsOnboarding {
                     self.isAuthenticated = true
-                    // Projects sync already triggered in fetchUserFromAPI after company fetch
-                } else {
-                    // Onboarding is needed - sync will happen in fetchUserFromAPI
                 }
 
-                // Return true to indicate login was successful (even if onboarding is needed)
                 return true
             }
 
-            return false
-        } catch let error as AuthError {
-
-            // If it's invalid credentials, it means no account exists
-            if case .invalidCredentials = error {
-            }
-            return false
+            // No user found — new user, needs onboarding
+            UserDefaults.standard.set(false, forKey: "onboarding_completed")
+            return true
         } catch {
+            print("[AUTH] Google login failed: \(error)")
             return false
         }
     }
@@ -2146,18 +2093,14 @@ class DataController: ObservableObject {
         }
     }
     
-    /// Request a password reset email
+    /// Request a password reset email via Supabase Auth
     /// - Parameter email: The user's email address
     /// - Returns: Tuple with success flag and optional error message
     func requestPasswordReset(email: String) async -> (Bool, String?) {
         do {
-            let success = try await authManager.requestPasswordReset(email: email)
-            return (success, nil)
-        } catch let error as AuthError {
-            // Return user-friendly error message
-            return (false, error.localizedDescription)
+            try await authManager.resetPassword(email: email)
+            return (true, nil)
         } catch {
-            // Return generic error message
             return (false, "Failed to request password reset. Please try again.")
         }
     }

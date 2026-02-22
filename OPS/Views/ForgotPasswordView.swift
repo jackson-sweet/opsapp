@@ -182,8 +182,8 @@ struct ForgotPasswordView: View {
         Task {
             do {
                 let authManager = AuthManager()
-                _ = try await authManager.requestPasswordReset(email: email)
-                
+                try await authManager.resetPassword(email: email)
+
                 await MainActor.run {
                     isLoading = false
                     withAnimation {

@@ -449,17 +449,40 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER] Creating account for: \(email)")
 
         do {
-            // Sign up using OnboardingService
-            let response = try await onboardingService.signUpUser(
-                email: email,
-                password: password,
-                userType: flow.userType
-            )
+            // Sign up via Supabase Auth
+            let authManager = dataController.authManager
+            try await authManager.signUpWithEmail(email, password: password)
 
-            guard response.wasSuccessful, let userId = response.extractedUserId else {
-                let message = response.error_message ?? "Account creation failed"
-                throw OnboardingManagerError.serverError(message)
+            guard let userId = authManager.getUserId(), !userId.isEmpty else {
+                throw OnboardingManagerError.serverError("Account creation failed — no user ID returned")
             }
+
+            // Create a row in the Supabase users table
+            let userRepo = UserRepository(companyId: "")
+            let userDTO = SupabaseUserDTO(
+                id: userId,
+                bubbleId: nil,
+                companyId: nil,
+                firstName: "",
+                lastName: "",
+                email: email,
+                phone: nil,
+                homeAddress: nil,
+                profileImageUrl: nil,
+                userColor: nil,
+                role: nil,
+                userType: flow.userType.rawValue,
+                isCompanyAdmin: nil,
+                hasCompletedOnboarding: false,
+                hasCompletedTutorial: nil,
+                devPermission: nil,
+                latitude: nil,
+                longitude: nil,
+                locationName: nil,
+                isActive: true,
+                deletedAt: nil
+            )
+            try? await userRepo.upsert(userDTO)
 
             // Store credentials - CRITICAL: Set both user_id AND currentUserId
             state.userData.email = email
@@ -467,7 +490,7 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(email, forKey: "user_email")
             UserDefaults.standard.set(password, forKey: "user_password")
             UserDefaults.standard.set(userId, forKey: "user_id")
-            UserDefaults.standard.set(userId, forKey: "currentUserId") // Required for CentralizedSyncManager
+            UserDefaults.standard.set(userId, forKey: "currentUserId")
             UserDefaults.standard.set(flow.userType.rawValue, forKey: "selected_user_type")
 
             state.isAuthenticated = true
@@ -479,11 +502,17 @@ class OnboardingManager: ObservableObject {
             await createLocalUser(userId: userId, email: email, userType: flow.userType)
             print("[ONBOARDING_MANAGER] Local user created and DataController initialized")
 
-            // PATCH userType to Bubble (required by spec)
+            // PATCH userType to Supabase
             try await patchUserType(userId: userId, userType: flow.userType)
 
-        } catch let error as SignUpError {
-            throw OnboardingManagerError.serverError(error.localizedDescription)
+        } catch let error as OnboardingManagerError {
+            throw error
+        } catch {
+            let msg = error.localizedDescription
+            if msg.contains("already registered") || msg.contains("already been registered") {
+                throw OnboardingManagerError.serverError("An account with this email already exists. Please log in instead.")
+            }
+            throw OnboardingManagerError.serverError(msg)
         }
     }
 

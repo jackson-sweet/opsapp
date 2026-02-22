@@ -657,9 +657,9 @@ struct OrganizationDetailsView: View {
 
             try dataController.modelContext?.save()
 
-            // Update in Bubble if connected and there are field changes
+            // Update in Supabase if connected and there are field changes
             if dataController.isConnected && !fieldsToUpdate.isEmpty {
-                try await dataController.apiService.updateCompanyFields(
+                try await dataController.syncManager.updateCompanyFields(
                     companyId: company.id,
                     fields: fieldsToUpdate
                 )

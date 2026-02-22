@@ -9,6 +9,7 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 /// Main entry point for the interactive tutorial
 /// Handles demo data seeding, flow selection, and completion cleanup
@@ -633,19 +634,19 @@ struct TutorialLauncherView: View {
             print("[TUTORIAL_LAUNCHER] ❌ Error saving tutorial completion locally: \(error)")
         }
 
-        // Sync user to Bubble so backend knows tutorial is complete
-        let fieldName = BubbleFields.User.hasCompletedAppTutorial
-        print("[TUTORIAL_LAUNCHER] 🔄 Syncing to Bubble - field: '\(fieldName)', value: true, userId: \(user.id)")
+        // Sync user to Supabase so backend knows tutorial is complete
+        print("[TUTORIAL_LAUNCHER] 🔄 Syncing to Supabase - field: 'has_completed_tutorial', value: true, userId: \(user.id)")
 
         do {
-            try await dataController.apiService.updateUser(userId: user.id, fields: [
-                fieldName: true
-            ])
+            let fields: [String: AnyJSON] = [
+                "has_completed_tutorial": .bool(true)
+            ]
+            try await dataController.syncManager.updateUserFields(userId: user.id, fields: fields)
             user.needsSync = false
             try modelContext.save()
-            print("[TUTORIAL_LAUNCHER] ✅ Tutorial completion synced to Bubble successfully!")
+            print("[TUTORIAL_LAUNCHER] ✅ Tutorial completion synced to Supabase successfully!")
         } catch {
-            print("[TUTORIAL_LAUNCHER] ❌ FAILED to sync tutorial completion to Bubble!")
+            print("[TUTORIAL_LAUNCHER] ❌ FAILED to sync tutorial completion to Supabase!")
             print("[TUTORIAL_LAUNCHER] ❌ Error details: \(error)")
             print("[TUTORIAL_LAUNCHER] ❌ Error localized: \(error.localizedDescription)")
             // Keep needsSync = true so it syncs on next opportunity
@@ -691,19 +692,19 @@ struct TutorialLauncherView: View {
                 print("[TUTORIAL_LAUNCHER] ❌ (legacy) Error saving: \(error)")
             }
 
-            // Sync user to Bubble so backend knows tutorial is complete
-            let fieldName = BubbleFields.User.hasCompletedAppTutorial
-            print("[TUTORIAL_LAUNCHER] 🔄 (legacy) Syncing to Bubble - field: '\(fieldName)', userId: \(user.id)")
+            // Sync user to Supabase so backend knows tutorial is complete
+            print("[TUTORIAL_LAUNCHER] 🔄 (legacy) Syncing to Supabase - field: 'has_completed_tutorial', userId: \(user.id)")
 
             do {
-                try await dataController.apiService.updateUser(userId: user.id, fields: [
-                    fieldName: true
-                ])
+                let fields: [String: AnyJSON] = [
+                    "has_completed_tutorial": .bool(true)
+                ]
+                try await dataController.syncManager.updateUserFields(userId: user.id, fields: fields)
                 user.needsSync = false
                 try modelContext.save()
-                print("[TUTORIAL_LAUNCHER] ✅ (legacy) Tutorial completion synced to Bubble!")
+                print("[TUTORIAL_LAUNCHER] ✅ (legacy) Tutorial completion synced to Supabase!")
             } catch {
-                print("[TUTORIAL_LAUNCHER] ❌ (legacy) FAILED to sync to Bubble: \(error)")
+                print("[TUTORIAL_LAUNCHER] ❌ (legacy) FAILED to sync to Supabase: \(error)")
             }
 
             // Cleanup demo data first

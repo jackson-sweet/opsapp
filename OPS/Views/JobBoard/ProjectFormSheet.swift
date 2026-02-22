@@ -9,6 +9,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import Supabase
 
 struct ProjectFormSheet: View {
     enum Mode {
@@ -1648,24 +1649,17 @@ struct ProjectFormSheet: View {
         var savedOffline = false
 
         do {
-            print("[PROJECT_CREATE] Creating project in Bubble...")
-            let bubbleProjectId = try await Task.timeout(seconds: 5) {
-                try await dataController.apiService.createProject(project)
-            }
-            print("[PROJECT_CREATE] ✅ Project created in Bubble with ID: \(bubbleProjectId)")
-
-            // Update project ID BEFORE creating tasks
-            project.id = bubbleProjectId
-            project.needsSync = false
-            project.lastSyncedAt = Date()
+            // TODO: Implement syncManager.createProject() — for now, project is saved locally and marked for sync
+            print("[PROJECT_CREATE] Project saved locally with ID: \(project.id), marked for sync")
+            project.needsSync = true
 
             await MainActor.run {
                 try? modelContext.save()
             }
 
-            // Create tasks AFTER project is synced and has Bubble ID
+            // Create tasks with local project ID
             if !localTasks.isEmpty {
-                print("[PROJECT_CREATE] Creating \(localTasks.count) task(s) with project ID: \(bubbleProjectId)")
+                print("[PROJECT_CREATE] Creating \(localTasks.count) task(s) with project ID: \(project.id)")
                 for localTask in localTasks {
                     await createTask(for: project, localTask: localTask)
                 }
@@ -1686,7 +1680,7 @@ struct ProjectFormSheet: View {
                             try await OneSignalService.shared.notifyProjectAssignment(
                                 userId: userId,
                                 projectName: projectName,
-                                projectId: bubbleProjectId
+                                projectId: project.id
                             )
                         } catch {
                             print("[PROJECT_CREATE] ⚠️ Failed to send project notification to \(userId): \(error)")
@@ -1696,36 +1690,21 @@ struct ProjectFormSheet: View {
                 print("[PROJECT_CREATE] 📬 Project assignment notifications queued for \(projectOnlyMemberIds.count) team members")
             }
 
-            // Continue with linking and other operations in background
+            // Upload images in background (Supabase — clientId/companyId already on project)
             let capturedDataController = dataController
-            let capturedModelContext = modelContext
-            let capturedClientId = client.id
-            let capturedCompanyId = companyId
             let capturedImages = projectImages
 
-            Task.detached {
-                do {
-                    print("[PROJECT_CREATE] Linking project to client...")
-                    try await capturedDataController.apiService.linkProjectToClient(clientId: capturedClientId, projectId: bubbleProjectId)
-                    print("[PROJECT_CREATE] ✅ Project linked to client")
-
-                    print("[PROJECT_CREATE] Linking project to company...")
-                    try await capturedDataController.apiService.linkProjectToCompany(companyId: capturedCompanyId, projectId: bubbleProjectId)
-                    print("[PROJECT_CREATE] ✅ Project linked to company")
-
-                    if !capturedImages.isEmpty {
-                        print("[PROJECT_CREATE] Uploading \(capturedImages.count) project images...")
-                        let imageUrls = await capturedDataController.imageSyncManager.saveImages(capturedImages, for: project)
-                        print("[PROJECT_CREATE] ✅ Uploaded \(imageUrls.count) images")
-                    }
-                } catch {
-                    print("[PROJECT_CREATE] ⚠️ Background operation failed: \(error)")
-                    await MainActor.run {
-                        project.needsSync = true
-                        try? capturedModelContext.save()
-                    }
+            if !capturedImages.isEmpty {
+                Task.detached {
+                    print("[PROJECT_CREATE] Uploading \(capturedImages.count) project images...")
+                    let imageUrls = await capturedDataController.imageSyncManager.saveImages(capturedImages, for: project)
+                    print("[PROJECT_CREATE] ✅ Uploaded \(imageUrls.count) images")
                 }
             }
+
+            // Trigger background sync so project is pushed to Supabase
+            dataController.syncManager?.triggerBackgroundSync()
+
         } catch is CancellationError {
             savedOffline = true
             print("[PROJECT_CREATE] ⏱️ Network timeout - project saved offline")
@@ -1748,14 +1727,6 @@ struct ProjectFormSheet: View {
                     await createTask(for: project, localTask: localTask)
                 }
             }
-        } catch let error as APIError {
-            print("[PROJECT_CREATE] ❌ API error during project creation: \(error)")
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                showingError = true
-                isSaving = false
-            }
-            return project
         } catch {
             print("[PROJECT_CREATE] ❌ Unexpected error during project creation: \(error)")
             await MainActor.run {
@@ -1887,35 +1858,35 @@ struct ProjectFormSheet: View {
         // Update project status if needed (e.g., reopen completed/closed project)
         await dataController.updateProjectStatusForNewTask(project: project, taskStatus: localTask.status)
 
-        // Sync task to Bubble immediately
-        var bubbleTaskId = taskId
+        // Sync task to Supabase immediately
+        var remoteTaskId = taskId
         do {
-            print("[TASK_CREATE] 🔄 Syncing task to Bubble...")
-            let taskDTO = TaskDTO(
+            print("[TASK_CREATE] 🔄 Syncing task to Supabase...")
+            let supabaseTaskDTO = SupabaseProjectTaskDTO(
                 id: taskId,
-                calendarEventId: nil,  // Will be set after calendar event creation
+                bubbleId: nil,
                 companyId: companyId,
-                completionDate: nil,
                 projectId: project.id,
-                scheduledDate: nil,
+                taskTypeId: localTask.taskTypeId,
+                calendarEventId: nil,  // Will be set after calendar event creation
+                customTitle: localTask.customTitle,
+                taskNotes: nil,
                 status: localTask.status.rawValue,
                 taskColor: taskType.color,
-                taskIndex: nil,
-                taskNotes: nil,
-                teamMembers: task.teamMembers.map { $0.id },
-                type: localTask.taskTypeId,
-                createdDate: nil,
-                modifiedDate: nil,
+                displayOrder: nil,
+                teamMemberIds: task.teamMembers.map { $0.id },
+                sourceLineItemId: nil,
+                sourceEstimateId: nil,
                 deletedAt: nil
             )
 
-            let createdTask = try await dataController.apiService.createTask(taskDTO)
-            bubbleTaskId = createdTask.id
-            print("[TASK_CREATE] ✅ Task synced to Bubble with ID: \(bubbleTaskId)")
+            let createdTaskId = try await dataController.syncManager.createTask(dto: supabaseTaskDTO)
+            remoteTaskId = createdTaskId
+            print("[TASK_CREATE] ✅ Task synced to Supabase with ID: \(remoteTaskId)")
 
             // Update task with Bubble ID
             await MainActor.run {
-                task.id = bubbleTaskId
+                task.id = remoteTaskId
                 task.needsSync = false
                 task.lastSyncedAt = Date()
                 try? modelContext.save()
@@ -1937,7 +1908,7 @@ struct ProjectFormSheet: View {
                                 userId: userId,
                                 taskName: taskName,
                                 projectName: projectName,
-                                taskId: bubbleTaskId,
+                                taskId: remoteTaskId,
                                 projectId: project.id
                             )
                         } catch {
@@ -1975,7 +1946,7 @@ struct ProjectFormSheet: View {
             color: taskType.color
         )
 
-        calendarEvent.taskId = bubbleTaskId  // Use Bubble task ID, not local UUID
+        calendarEvent.taskId = remoteTaskId  // Use Bubble task ID, not local UUID
         calendarEvent.setTeamMemberIds(task.teamMembers.map { $0.id })
         calendarEvent.teamMembers = task.teamMembers
 
@@ -1988,50 +1959,48 @@ struct ProjectFormSheet: View {
             print("[TASK_CREATE] ✅ Calendar event created locally")
         }
 
-        // Sync calendar event to Bubble immediately
+        // Sync calendar event to Supabase immediately
         do {
-            print("[TASK_CREATE] 🔄 Syncing calendar event to Bubble...")
+            print("[TASK_CREATE] 🔄 Syncing calendar event to Supabase...")
             let formatter = ISO8601DateFormatter()
 
             // Calculate duration in days (only if dates exist)
-            let duration: Double
+            let duration: Int
             if let start = startDate, let end = endDate {
                 let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
-                duration = Double(daysDiff + 1)
+                duration = daysDiff + 1
             } else {
                 duration = 1  // Default duration for unscheduled tasks
             }
 
-            let calendarEventDTO = CalendarEventDTO(
+            let supabaseEventDTO = SupabaseCalendarEventDTO(
                 id: calendarEventId,
-                color: taskType.color,
+                bubbleId: nil,
                 companyId: companyId,
                 projectId: project.id,
-                taskId: bubbleTaskId,  // Use Bubble task ID, not local UUID
-                duration: duration,
-                endDate: endDate.map { formatter.string(from: $0) },
-                startDate: startDate.map { formatter.string(from: $0) },
-                teamMembers: task.teamMembers.map { $0.id },
                 title: eventTitle,
-                createdDate: nil,
-                modifiedDate: nil,
+                color: taskType.color,
+                startDate: startDate.map { formatter.string(from: $0) },
+                endDate: endDate.map { formatter.string(from: $0) },
+                duration: duration,
+                teamMemberIds: task.teamMembers.map { $0.id },
                 deletedAt: nil
             )
 
-            let createdEventDTO = try await dataController.apiService.createAndLinkCalendarEvent(calendarEventDTO)
-            print("[TASK_CREATE] ✅ Calendar event synced to Bubble with ID: \(createdEventDTO.id)")
+            let createdEventId = try await dataController.syncManager.createCalendarEvent(dto: supabaseEventDTO)
+            print("[TASK_CREATE] ✅ Calendar event synced to Supabase with ID: \(createdEventId)")
 
-            // CRITICAL: Update local calendar event ID to match Bubble's ID to prevent duplicates on sync
+            // CRITICAL: Update local calendar event ID to match Supabase's ID to prevent duplicates on sync
             await MainActor.run {
-                calendarEvent.id = createdEventDTO.id
-                task.calendarEventId = createdEventDTO.id
+                calendarEvent.id = createdEventId
+                task.calendarEventId = createdEventId
                 calendarEvent.needsSync = false
                 calendarEvent.lastSyncedAt = Date()
                 try? modelContext.save()
-                print("[TASK_CREATE] ✅ Local calendar event ID updated to Bubble ID: \(createdEventDTO.id)")
+                print("[TASK_CREATE] ✅ Local calendar event ID updated to Supabase ID: \(createdEventId)")
             }
         } catch {
-            print("[TASK_CREATE] ⚠️ Failed to sync calendar event to Bubble: \(error)")
+            print("[TASK_CREATE] ⚠️ Failed to sync calendar event to Supabase: \(error)")
             await MainActor.run {
                 calendarEvent.needsSync = true
                 try? modelContext.save()

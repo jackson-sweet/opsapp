@@ -15,7 +15,6 @@ import Network
 class ImageSyncManager: ObservableObject {
     // Dependencies
     private let modelContext: ModelContext?
-    private let apiService: APIService
     private let connectivityMonitor: ConnectivityMonitor
     private let s3Service = S3UploadService.shared
     private let presignedURLService = PresignedURLUploadService.shared
@@ -34,9 +33,8 @@ class ImageSyncManager: ObservableObject {
     @Published var syncingProjectId: String? = nil
     
     /// Initialize the ImageSyncManager with required dependencies
-    init(modelContext: ModelContext?, apiService: APIService, connectivityMonitor: ConnectivityMonitor) {
+    init(modelContext: ModelContext?, connectivityMonitor: ConnectivityMonitor) {
         self.modelContext = modelContext
-        self.apiService = apiService
         self.connectivityMonitor = connectivityMonitor
         
         // Clean up UserDefaults bloat first

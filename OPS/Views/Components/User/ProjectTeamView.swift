@@ -326,10 +326,19 @@ struct ProjectTeamView: View {
 
         Task {
             do {
-                let userDTOs = try await dataController.apiService.fetchCompanyUsers(companyId: companyId)
-                let teamMembers = userDTOs.map { TeamMember.fromUserDTO($0) }
+                // Sync team members from Supabase, then query locally
+                try await dataController.syncManager.syncCompanyTeamMembers(companyId: companyId)
+
                 await MainActor.run {
-                    self.availableMembers = teamMembers
+                    // Query local SwiftData for all users in the company
+                    let descriptor = FetchDescriptor<User>(
+                        predicate: #Predicate<User> { user in
+                            user.companyId == companyId && user.isActive == true
+                        }
+                    )
+                    if let users = try? dataController.modelContext?.fetch(descriptor) {
+                        self.availableMembers = users.map { TeamMember.fromUser($0) }
+                    }
                 }
             } catch {
                 print("Error loading available members: \(error)")
@@ -355,18 +364,13 @@ struct ProjectTeamView: View {
                 print("[TEAM_UPDATE] Updating project team members...")
                 print("[TEAM_UPDATE] Selected member IDs: \(Array(selectedMemberIds))")
 
-                let updates = [BubbleFields.Project.teamMembers: Array(selectedMemberIds)]
-                let bodyData = try JSONSerialization.data(withJSONObject: updates)
-
-                // Try with EmptyResponse since Bubble might return empty for this field update
-                let _: EmptyResponse = try await dataController.apiService.executeRequest(
-                    endpoint: "api/1.1/obj/Project/\(project.id)",
-                    method: "PATCH",
-                    body: bodyData,
-                    requiresAuth: true
+                // Update team members via Supabase
+                try await dataController.syncManager.updateProjectTeamMembers(
+                    projectId: project.id,
+                    memberIds: Array(selectedMemberIds)
                 )
 
-                print("[TEAM_UPDATE] ✅ Team updated in Bubble")
+                print("[TEAM_UPDATE] ✅ Team updated in Supabase")
 
                 await MainActor.run {
                     project.setTeamMemberIds(Array(selectedMemberIds))

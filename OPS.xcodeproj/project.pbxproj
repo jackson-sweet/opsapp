@@ -25,6 +25,12 @@
 		E598F3D42E78F599000D6F65 /* StripePaymentsUI in Frameworks */ = {isa = PBXBuildFile; productRef = E598F3D32E78F599000D6F65 /* StripePaymentsUI */; };
 		E5AF196F2E02308000CD46A1 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E5AF196E2E02308000CD46A1 /* GoogleSignIn */; };
 		E5AF19712E02308000CD46A1 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E5AF19702E02308000CD46A1 /* GoogleSignInSwift */; };
+		E5C6904B2F4A7E7A0068CE31 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = E5C6904A2F4A7E7A0068CE31 /* Auth */; };
+		E5C6904D2F4A7E7A0068CE31 /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = E5C6904C2F4A7E7A0068CE31 /* Functions */; };
+		E5C6904F2F4A7E7A0068CE31 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = E5C6904E2F4A7E7A0068CE31 /* PostgREST */; };
+		E5C690512F4A7E7A0068CE31 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = E5C690502F4A7E7A0068CE31 /* Realtime */; };
+		E5C690532F4A7E7A0068CE31 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = E5C690522F4A7E7A0068CE31 /* Storage */; };
+		E5C690552F4A7E7A0068CE31 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E5C690542F4A7E7A0068CE31 /* Supabase */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -91,19 +97,25 @@
 				E5AF196F2E02308000CD46A1 /* GoogleSignIn in Frameworks */,
 				E56B446B2ED55AAC005DED59 /* FirebaseAnalytics in Frameworks */,
 				E56A013A2EE75DE2008DACCF /* OneSignalLocation in Frameworks */,
+				E5C6904B2F4A7E7A0068CE31 /* Auth in Frameworks */,
 				E598F3C62E78F599000D6F65 /* StripeApplePay in Frameworks */,
 				E56B446F2ED55AAC005DED59 /* FirebaseCore in Frameworks */,
 				E598F3D42E78F599000D6F65 /* StripePaymentsUI in Frameworks */,
+				E5C6904F2F4A7E7A0068CE31 /* PostgREST in Frameworks */,
 				E5AF19712E02308000CD46A1 /* GoogleSignInSwift in Frameworks */,
+				E5C6904D2F4A7E7A0068CE31 /* Functions in Frameworks */,
 				E56B446D2ED55AAC005DED59 /* FirebaseAnalyticsCore in Frameworks */,
 				E598F3CC2E78F599000D6F65 /* StripeFinancialConnections in Frameworks */,
 				E56A01382EE75DE2008DACCF /* OneSignalInAppMessages in Frameworks */,
 				E598F3C82E78F599000D6F65 /* StripeCardScan in Frameworks */,
 				E56A01342EE75DE2008DACCF /* OneSignalExtension in Frameworks */,
 				E598F3CA2E78F599000D6F65 /* StripeConnect in Frameworks */,
+				E5C690532F4A7E7A0068CE31 /* Storage in Frameworks */,
 				E598F3C42E78F599000D6F65 /* Stripe in Frameworks */,
+				E5C690552F4A7E7A0068CE31 /* Supabase in Frameworks */,
 				E598F3D02E78F599000D6F65 /* StripePaymentSheet in Frameworks */,
 				E598F3CE2E78F599000D6F65 /* StripeIdentity in Frameworks */,
+				E5C690512F4A7E7A0068CE31 /* Realtime in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -190,6 +202,12 @@
 				E56A01352EE75DE2008DACCF /* OneSignalFramework */,
 				E56A01372EE75DE2008DACCF /* OneSignalInAppMessages */,
 				E56A01392EE75DE2008DACCF /* OneSignalLocation */,
+				E5C6904A2F4A7E7A0068CE31 /* Auth */,
+				E5C6904C2F4A7E7A0068CE31 /* Functions */,
+				E5C6904E2F4A7E7A0068CE31 /* PostgREST */,
+				E5C690502F4A7E7A0068CE31 /* Realtime */,
+				E5C690522F4A7E7A0068CE31 /* Storage */,
+				E5C690542F4A7E7A0068CE31 /* Supabase */,
 			);
 			productName = OPS;
 			productReference = E595DC042DB6CF8F00B1413F /* OPS.app */;
@@ -278,6 +296,7 @@
 				E598F3C22E78F599000D6F65 /* XCRemoteSwiftPackageReference "stripe-ios" */,
 				E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				E56A01322EE75DE2008DACCF /* XCRemoteSwiftPackageReference "OneSignal-iOS-SDK" */,
+				E5C690492F4A7E7A0068CE31 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E595DC052DB6CF8F00B1413F /* Products */;
@@ -730,6 +749,14 @@
 				minimumVersion = 8.0.0;
 			};
 		};
+		E5C690492F4A7E7A0068CE31 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -822,6 +849,36 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E5AF196C2E022E7500CD46A1 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		E5C6904A2F4A7E7A0068CE31 /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5C690492F4A7E7A0068CE31 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+		E5C6904C2F4A7E7A0068CE31 /* Functions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5C690492F4A7E7A0068CE31 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Functions;
+		};
+		E5C6904E2F4A7E7A0068CE31 /* PostgREST */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5C690492F4A7E7A0068CE31 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = PostgREST;
+		};
+		E5C690502F4A7E7A0068CE31 /* Realtime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5C690492F4A7E7A0068CE31 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Realtime;
+		};
+		E5C690522F4A7E7A0068CE31 /* Storage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5C690492F4A7E7A0068CE31 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Storage;
+		};
+		E5C690542F4A7E7A0068CE31 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5C690492F4A7E7A0068CE31 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

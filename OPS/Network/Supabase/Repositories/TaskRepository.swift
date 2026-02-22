@@ -61,6 +61,18 @@ class TaskRepository {
             .value
     }
 
+    // MARK: - Create
+
+    func create(_ dto: SupabaseProjectTaskDTO) async throws -> SupabaseProjectTaskDTO {
+        try await client
+            .from("project_tasks")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     // MARK: - Upsert
 
     func upsert(_ dto: SupabaseProjectTaskDTO) async throws {
@@ -92,6 +104,29 @@ class TaskRepository {
             let updated_at: String
         }
         let payload = NotesUpdate(task_notes: notes, updated_at: isoNow())
+        try await client
+            .from("project_tasks")
+            .update(payload)
+            .eq("id", value: taskId)
+            .execute()
+    }
+
+    func updateFields(_ taskId: String, fields: [String: AnyJSON]) async throws {
+        var payload = fields
+        payload["updated_at"] = .string(isoNow())
+        try await client
+            .from("project_tasks")
+            .update(payload)
+            .eq("id", value: taskId)
+            .execute()
+    }
+
+    func updateTeamMembers(_ taskId: String, memberIds: [String]) async throws {
+        struct TeamUpdate: Codable {
+            let team_member_ids: [String]
+            let updated_at: String
+        }
+        let payload = TeamUpdate(team_member_ids: memberIds, updated_at: isoNow())
         try await client
             .from("project_tasks")
             .update(payload)

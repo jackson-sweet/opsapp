@@ -200,14 +200,11 @@ struct DeveloperDashboard: View {
                     CalendarEventsDebugView()
                         .environmentObject(dataController)
                 case .relinkCalendarEvents:
-                    RelinkCalendarEventsView()
-                        .environmentObject(dataController)
+                    Text("Removed (Bubble-only)")
                 case .relinkTasksToProjects:
-                    RelinkTasksToProjectsView()
-                        .environmentObject(dataController)
+                    Text("Removed (Bubble-only)")
                 case .apiCalls:
-                    APICallsDebugView()
-                        .environmentObject(dataController)
+                    Text("Removed (Bubble-only)")
                 case .clearData:
                     ClearDataView()
                         .environmentObject(dataController)

@@ -11,6 +11,7 @@ import Combine
 import SwiftData
 import CoreLocation
 import UserNotifications
+import Supabase
 
 class OnboardingViewModel: ObservableObject {
     // Reference to DataController for database operations
@@ -1599,8 +1600,10 @@ class OnboardingViewModel: ObservableObject {
             if let userId = UserDefaults.standard.string(forKey: "user_id"),
                let dataController = dataController {
                 do {
-                    let updateData = ["hasCompletedAppOnboarding": true]
-                    try await dataController.apiService.updateUser(id: userId, userData: updateData)
+                    let fields: [String: AnyJSON] = [
+                        "has_completed_onboarding": .bool(true)
+                    ]
+                    try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
 
                     // Update the local user model
                     await MainActor.run {

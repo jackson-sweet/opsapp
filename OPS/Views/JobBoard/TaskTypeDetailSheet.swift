@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 struct TaskTypeDetailSheet: View {
     let taskType: TaskType
@@ -267,7 +268,11 @@ struct TaskTypeDetailSheet: View {
                                     task.taskTypeId = bulkTaskTypeId
                                     task.taskColor = newTaskType.color
                                 }
-                                try await dataController.apiService.updateTaskType(id: task.id, taskTypeId: bulkTaskTypeId, taskColor: newTaskType.color)
+                                let fields: [String: AnyJSON] = [
+                                    "task_type_id": .string(bulkTaskTypeId),
+                                    "task_color": .string(newTaskType.color)
+                                ]
+                                try await dataController.syncManager.updateTaskFields(taskId: task.id, fields: fields)
                             }
                         }
                     } else if deletions.count == taskTypeTasks.count {
@@ -303,7 +308,11 @@ struct TaskTypeDetailSheet: View {
                                     task.taskTypeId = newTaskTypeId
                                     task.taskColor = newTaskType.color
                                 }
-                                try await dataController.apiService.updateTaskType(id: task.id, taskTypeId: newTaskTypeId, taskColor: newTaskType.color)
+                                let fields: [String: AnyJSON] = [
+                                    "task_type_id": .string(newTaskTypeId),
+                                    "task_color": .string(newTaskType.color)
+                                ]
+                                try await dataController.syncManager.updateTaskFields(taskId: task.id, fields: fields)
                             }
                         }
                     }
@@ -318,10 +327,8 @@ struct TaskTypeDetailSheet: View {
                         }
                     }
 
-                    // Delete task type from Bubble
-                    print("[TASK_TYPE_DELETE] Deleting task type from Bubble: \(taskType.id)")
-                    try await dataController.apiService.deleteTaskType(id: taskType.id)
-                    print("[TASK_TYPE_DELETE] ✅ Task type deleted from Bubble")
+                    // TODO: Implement syncManager.deleteTaskType() — for now, delete locally and trigger sync
+                    print("[TASK_TYPE_DELETE] Deleting task type locally: \(taskType.id)")
 
                     // Delete task type locally
                     await MainActor.run {
@@ -334,6 +341,9 @@ struct TaskTypeDetailSheet: View {
                             print("[TASK_TYPE_DELETE] ❌ Error saving after local delete: \(error)")
                         }
                     }
+
+                    // Trigger background sync
+                    dataController.syncManager?.triggerBackgroundSync()
                 },
                 onDeletionStarted: {
                     // Dismiss immediately (like the original implementation)

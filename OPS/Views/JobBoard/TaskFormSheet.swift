@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 struct TaskFormSheet: View {
     enum Mode {
@@ -1166,42 +1167,63 @@ struct TaskFormSheet: View {
 
             do {
                 try await Task.timeout(seconds: 5) {
-                    print("[TASK_FORM] 🔵 Creating task on Bubble...")
-                    let taskDTO = TaskDTO.from(task)
-                    let createdTask = try await dataController.apiService.createTask(taskDTO)
-                    print("[TASK_FORM] ✅ Task created on Bubble with ID: \(createdTask.id)")
+                    print("[TASK_FORM] 🔵 Creating task on Supabase...")
+                    let supabaseTaskDTO = SupabaseProjectTaskDTO(
+                        id: task.id,
+                        bubbleId: nil,
+                        companyId: task.companyId,
+                        projectId: task.projectId,
+                        taskTypeId: task.taskTypeId,
+                        calendarEventId: task.calendarEventId,
+                        customTitle: task.customTitle,
+                        taskNotes: task.taskNotes,
+                        status: task.status.rawValue,
+                        taskColor: task.taskColor,
+                        displayOrder: task.displayOrder,
+                        teamMemberIds: task.getTeamMemberIds(),
+                        sourceLineItemId: nil,
+                        sourceEstimateId: nil,
+                        deletedAt: nil
+                    )
+                    let createdTaskId = try await dataController.syncManager.createTask(dto: supabaseTaskDTO)
+                    print("[TASK_FORM] ✅ Task created on Supabase with ID: \(createdTaskId)")
 
-                    task.id = createdTask.id
+                    task.id = createdTaskId
                     task.needsSync = false
                     task.lastSyncedAt = Date()
 
                     if let calendarEvent = task.calendarEvent {
-                        print("[TASK_FORM] 📅 Creating calendar event on Bubble...")
+                        print("[TASK_FORM] 📅 Creating calendar event on Supabase...")
                         let dateFormatter = ISO8601DateFormatter()
-                        // Task-only scheduling migration: type parameter removed
-                        let eventDTO = CalendarEventDTO(
+
+                        let duration: Int
+                        if let start = calendarEvent.startDate, let end = calendarEvent.endDate {
+                            let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+                            duration = daysDiff + 1
+                        } else {
+                            duration = calendarEvent.duration
+                        }
+
+                        let eventDTO = SupabaseCalendarEventDTO(
                             id: calendarEvent.id,
-                            color: calendarEvent.color,
+                            bubbleId: nil,
                             companyId: calendarEvent.companyId,
                             projectId: calendarEvent.projectId,
-                            taskId: createdTask.id,
-                            duration: Double(calendarEvent.duration),
-                            endDate: calendarEvent.endDate.map { dateFormatter.string(from: $0) },
-                            startDate: calendarEvent.startDate.map { dateFormatter.string(from: $0) },
-                            teamMembers: calendarEvent.getTeamMemberIds(),
                             title: calendarEvent.title,
-                            createdDate: nil,
-                            modifiedDate: nil,
+                            color: calendarEvent.color,
+                            startDate: calendarEvent.startDate.map { dateFormatter.string(from: $0) },
+                            endDate: calendarEvent.endDate.map { dateFormatter.string(from: $0) },
+                            duration: duration,
+                            teamMemberIds: calendarEvent.getTeamMemberIds(),
                             deletedAt: nil
                         )
 
-                        // Create and link calendar event (automatically links to task based on type)
-                        let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
-                        calendarEvent.id = createdEvent.id
-                        task.calendarEventId = createdEvent.id
+                        let createdEventId = try await dataController.syncManager.createCalendarEvent(dto: eventDTO)
+                        calendarEvent.id = createdEventId
+                        task.calendarEventId = createdEventId
                         calendarEvent.needsSync = false
                         calendarEvent.lastSyncedAt = Date()
-                        print("[TASK_FORM] ✅ Calendar event created and linked with ID: \(createdEvent.id)")
+                        print("[TASK_FORM] ✅ Calendar event created with ID: \(createdEventId)")
                     }
 
                     try modelContext.save()
@@ -1210,8 +1232,8 @@ struct TaskFormSheet: View {
                     if let project = task.project {
                         print("[TASK_FORM] 📅 Project dates automatically computed from tasks...")
 
-                        print("[TASK_FORM] 🔄 Syncing project dates to Bubble...")
-                        try await dataController.apiService.updateProjectDates(
+                        print("[TASK_FORM] 🔄 Syncing project dates to Supabase...")
+                        try await dataController.syncManager.updateProjectDates(
                             projectId: project.id,
                             startDate: project.startDate,
                             endDate: project.endDate
@@ -1225,11 +1247,11 @@ struct TaskFormSheet: View {
                         }
 
                         let teamMemberIds = project.getTeamMemberIds()
-                        print("[TASK_FORM] 🔄 Syncing project team members to Bubble...")
+                        print("[TASK_FORM] 🔄 Syncing project team members to Supabase...")
                         print("[TASK_FORM] Team member IDs: \(teamMemberIds)")
-                        try await dataController.apiService.updateProjectTeamMembers(
+                        try await dataController.syncManager.updateProjectTeamMembers(
                             projectId: project.id,
-                            teamMemberIds: teamMemberIds
+                            memberIds: teamMemberIds
                         )
                         print("[TASK_FORM] ✅ Project team members update complete")
 
@@ -1246,15 +1268,6 @@ struct TaskFormSheet: View {
                 // Network-related errors (no connection, timeout, etc.)
                 savedOffline = true
                 print("[TASK_FORM] ❌ Network error - task saved offline: \(error)")
-            } catch let error as APIError {
-                // API errors (validation, limits, server errors) - show actual error message
-                print("[TASK_FORM] ❌ API error during task creation: \(error)")
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    showingError = true
-                    isSaving = false
-                }
-                return
             } catch {
                 // Other unexpected errors
                 print("[TASK_FORM] ❌ Unexpected error during task creation: \(error)")

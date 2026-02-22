@@ -107,6 +107,16 @@ class UserRepository {
             .execute()
     }
 
+    func updateFields(userId: String, fields: [String: AnyJSON]) async throws {
+        var payload = fields
+        payload["updated_at"] = .string(isoNow())
+        try await client
+            .from("users")
+            .update(payload)
+            .eq("id", value: userId)
+            .execute()
+    }
+
     // MARK: - Soft Delete
 
     func softDelete(_ id: String) async throws {

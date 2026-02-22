@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import MapKit
+import Supabase
 
 struct TaskDetailsView: View {
     @State var task: ProjectTask
@@ -521,10 +522,19 @@ struct TaskDetailsView: View {
 
         Task {
             do {
-                let userDTOs = try await dataController.apiService.fetchCompanyUsers(companyId: companyId)
-                let teamMembers = userDTOs.map { TeamMember.fromUserDTO($0) }
+                // Sync team members from Supabase, then query locally
+                try await dataController.syncManager.syncCompanyTeamMembers(companyId: companyId)
+
                 await MainActor.run {
-                    self.allTeamMembers = teamMembers
+                    // Query local SwiftData for all users in the company
+                    let descriptor = FetchDescriptor<User>(
+                        predicate: #Predicate<User> { user in
+                            user.companyId == companyId && user.isActive == true
+                        }
+                    )
+                    if let users = try? dataController.modelContext?.fetch(descriptor) {
+                        self.allTeamMembers = users.map { TeamMember.fromUser($0) }
+                    }
                 }
             } catch {
                 print("[TASK_TEAM] Error loading available members: \(error)")
@@ -934,22 +944,22 @@ struct TaskDetailsView: View {
             // Notify calendar views to refresh
             dataController.calendarEventsDidChange.toggle()
 
-            // Sync to Bubble
+            // Sync to Supabase
             Task {
                 do {
-                    // STEP 1: Clear calendar event dates in Bubble
-                    print("📡 Clearing calendar event dates in Bubble...")
-                    let updates: [String: Any] = [
-                        BubbleFields.CalendarEvent.startDate: NSNull(),
-                        BubbleFields.CalendarEvent.endDate: NSNull(),
-                        BubbleFields.CalendarEvent.duration: 0
+                    // STEP 1: Clear calendar event dates in Supabase
+                    print("📡 Clearing calendar event dates in Supabase...")
+                    let updates: [String: AnyJSON] = [
+                        "start_date": .null,
+                        "end_date": .null,
+                        "duration": .integer(0)
                     ]
 
-                    try await dataController.apiService.updateCalendarEvent(
-                        id: calendarEventId,
-                        updates: updates
+                    try await dataController.syncManager.updateCalendarEvent(
+                        eventId: calendarEventId,
+                        fields: updates
                     )
-                    print("✅ Calendar event dates cleared in Bubble")
+                    print("✅ Calendar event dates cleared in Supabase")
 
                     // STEP 2: Recalculate parent project dates
                     if let projId = projectId {
@@ -962,31 +972,30 @@ struct TaskDetailsView: View {
 
                             print("📅 New project dates: \(earliestStart?.description ?? "nil") to \(latestEnd?.description ?? "nil")")
 
-                            // Update in Bubble
+                            // Update in Supabase
                             if let start = earliestStart, let end = latestEnd {
-                                try await dataController.apiService.updateProjectDates(
+                                try await dataController.syncManager.updateProjectDates(
                                     projectId: projId,
                                     startDate: start,
                                     endDate: end
                                 )
-                                print("✅ Project dates updated in Bubble")
+                                print("✅ Project dates updated in Supabase")
                             }
                         } else {
                             // No tasks have dates - clear project dates
                             print("🗑️ No scheduled tasks - clearing project dates")
 
-                            // Clear in Bubble
-                            try await dataController.apiService.updateProjectDates(
+                            // Clear in Supabase
+                            try await dataController.syncManager.updateProjectDates(
                                 projectId: projId,
                                 startDate: nil,
-                                endDate: nil,
-                                clearDates: true
+                                endDate: nil
                             )
                             print("✅ Project dates cleared")
                         }
                     }
                 } catch {
-                    print("❌ Failed to clear dates in Bubble: \(error)")
+                    print("❌ Failed to clear dates in Supabase: \(error)")
                 }
             }
         } catch {
@@ -1007,45 +1016,45 @@ struct TaskDetailsView: View {
             if isNewEvent {
                 print("📅 Creating new calendar event on server for task")
 
-                // Get company's default project color
-                let company = dataController.getCompany(id: task.companyId)
-                let projectColor = company?.defaultProjectColor ?? "#9CA3AF"
-
                 // Get task type display name for the title
                 let taskTypeName = task.taskType?.display ?? "Task"
                 let taskTitle = "\(taskTypeName) - \(project.title)"
 
-                let eventDTO = CalendarEventDTO(
+                let eventDTO = SupabaseCalendarEventDTO(
                     id: calendarEvent.id,
-                    color: task.taskColor,
+                    bubbleId: nil,
                     companyId: task.companyId,
                     projectId: task.projectId,
-                    taskId: task.id,
-                    duration: Double(calendarEvent.duration),
-                    endDate: calendarEvent.endDate.map { formatter.string(from: $0) } ?? "",
-                    startDate: calendarEvent.startDate.map { formatter.string(from: $0) } ?? "",
-                    teamMembers: task.getTeamMemberIds(),
                     title: taskTitle,
-                    createdDate: nil,
-                    modifiedDate: nil,
+                    color: task.taskColor,
+                    startDate: calendarEvent.startDate.map { formatter.string(from: $0) },
+                    endDate: calendarEvent.endDate.map { formatter.string(from: $0) },
+                    duration: calendarEvent.duration,
+                    teamMemberIds: task.getTeamMemberIds(),
                     deletedAt: nil
                 )
 
-                let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
-                print("✅ Task calendar event created on server with ID: \(createdEvent.id)")
+                let eventId = try await dataController.syncManager.createCalendarEvent(dto: eventDTO)
+                print("✅ Task calendar event created on server with ID: \(eventId)")
+
+                // Link task to calendar event
+                try await dataController.syncManager.updateTaskFields(
+                    taskId: task.id,
+                    fields: ["calendar_event_id": .string(eventId)]
+                )
             } else {
                 print("📅 Updating existing calendar event on server")
 
                 let startDateString = calendarEvent.startDate.map { formatter.string(from: $0) } ?? ""
                 let endDateString = calendarEvent.endDate.map { formatter.string(from: $0) } ?? ""
 
-                let updates: [String: Any] = [
-                    BubbleFields.CalendarEvent.startDate: startDateString,
-                    BubbleFields.CalendarEvent.endDate: endDateString,
-                    BubbleFields.CalendarEvent.duration: calendarEvent.duration
+                let updates: [String: AnyJSON] = [
+                    "start_date": .string(startDateString),
+                    "end_date": .string(endDateString),
+                    "duration": .integer(calendarEvent.duration)
                 ]
 
-                try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
+                try await dataController.syncManager.updateCalendarEvent(eventId: calendarEvent.id, fields: updates)
                 print("✅ Task calendar event updated on server")
             }
 

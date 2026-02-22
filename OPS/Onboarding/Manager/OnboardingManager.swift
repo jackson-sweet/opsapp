@@ -9,6 +9,7 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import Supabase
 
 @MainActor
 class OnboardingManager: ObservableObject {
@@ -30,7 +31,6 @@ class OnboardingManager: ObservableObject {
 
     private let dataController: DataController
     private let onboardingService: OnboardingService
-    private let apiService: APIService
 
     // MARK: - Callbacks
 
@@ -41,7 +41,6 @@ class OnboardingManager: ObservableObject {
     init(dataController: DataController) {
         self.dataController = dataController
         self.onboardingService = OnboardingService()
-        self.apiService = APIService(authManager: dataController.authManager)
 
         // Load saved state or create initial
         if let savedState = OnboardingState.load() {
@@ -521,12 +520,14 @@ class OnboardingManager: ObservableObject {
         state.save()
     }
 
-    /// PATCH userType to Bubble
+    /// PATCH userType to Supabase
     private func patchUserType(userId: String, userType: UserType) async throws {
         print("[ONBOARDING_MANAGER] PATCHing userType '\(userType.rawValue)' for user \(userId)")
 
-        let fields: [String: Any] = ["userType": userType.rawValue]
-        try await apiService.updateUser(userId: userId, fields: fields)
+        let fields: [String: AnyJSON] = [
+            "user_type": .string(userType.rawValue)
+        ]
+        try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
 
         print("[ONBOARDING_MANAGER] userType PATCHed successfully")
     }
@@ -689,7 +690,7 @@ class OnboardingManager: ObservableObject {
         }
     }
 
-    /// Update user profile to Bubble
+    /// Update user profile to Supabase
     private func updateUserProfile() async throws {
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
             throw OnboardingManagerError.noUserId
@@ -697,16 +698,16 @@ class OnboardingManager: ObservableObject {
 
         print("[ONBOARDING_MANAGER] Updating user profile for: \(userId)")
 
-        var fields: [String: Any] = [
-            "nameFirst": state.userData.firstName,
-            "nameLast": state.userData.lastName
+        var fields: [String: AnyJSON] = [
+            "first_name": .string(state.userData.firstName),
+            "last_name": .string(state.userData.lastName)
         ]
 
         if !state.userData.phone.isEmpty {
-            fields["phone"] = state.userData.phone
+            fields["phone"] = .string(state.userData.phone)
         }
 
-        try await apiService.updateUser(userId: userId, fields: fields)
+        try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
 
         print("[ONBOARDING_MANAGER] User profile updated")
     }
@@ -836,7 +837,7 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER] ✅ Credentials stored to UserDefaults")
     }
 
-    /// PATCH hasCompletedAppOnboarding to Bubble
+    /// PATCH hasCompletedAppOnboarding to Supabase
     private func markOnboardingComplete() async {
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
             print("[ONBOARDING_MANAGER] No user ID for completion patch")
@@ -844,9 +845,11 @@ class OnboardingManager: ObservableObject {
         }
 
         do {
-            let fields: [String: Any] = ["hasCompletedAppOnboarding": true]
-            try await apiService.updateUser(userId: userId, fields: fields)
-            print("[ONBOARDING_MANAGER] hasCompletedAppOnboarding PATCHed to true")
+            let fields: [String: AnyJSON] = [
+                "has_completed_onboarding": .bool(true)
+            ]
+            try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+            print("[ONBOARDING_MANAGER] has_completed_onboarding PATCHed to true")
         } catch {
             print("[ONBOARDING_MANAGER] Failed to patch completion: \(error)")
             // Non-fatal, continue anyway

@@ -406,38 +406,20 @@ struct TaskTypeSheet: View {
 
         Task {
             do {
-                // Create task type on Bubble API first to get the real ID
-                let tempTaskType = TaskTypeDTO(
-                    id: UUID().uuidString,
-                    color: taskTypeColorHex,
-                    display: taskTypeName,
-                    isDefault: false,
-                    createdDate: nil,
-                    modifiedDate: nil
-                )
+                // TODO: Implement syncManager.createTaskType() — for now, save locally and trigger sync
+                let newTaskTypeId = UUID().uuidString
 
-                print("[TASK_TYPE_SHEET] 📤 Sending to Bubble API...")
-                let createdTaskType = try await dataController.apiService.createTaskType(tempTaskType)
-                print("[TASK_TYPE_SHEET] ✅ Bubble created task type with ID: \(createdTaskType.id)")
-
-                // Link task type to company
-                print("[TASK_TYPE_SHEET] 🔗 Linking task type to company...")
-                try await dataController.apiService.linkTaskTypeToCompany(
-                    companyId: companyId,
-                    taskTypeId: createdTaskType.id
-                )
-                print("[TASK_TYPE_SHEET] ✅ Task type linked to company")
-
-                // Now create locally with the Bubble ID
+                // Create locally with generated ID
                 await MainActor.run {
                     let newTaskType = TaskType(
-                        id: createdTaskType.id,
+                        id: newTaskTypeId,
                         display: taskTypeName,
                         color: taskTypeColorHex,
                         companyId: companyId,
                         isDefault: false,
                         icon: taskTypeIcon
                     )
+                    newTaskType.needsSync = true
 
                     print("[TASK_TYPE_SHEET] 💾 Saving to local database...")
                     modelContext.insert(newTaskType)
@@ -445,7 +427,10 @@ struct TaskTypeSheet: View {
                     do {
                         try modelContext.save()
                         print("[TASK_TYPE_SHEET] ✅ Local save successful")
-                        print("[TASK_TYPE_SHEET] 🎉 Task type created: \(createdTaskType.id)")
+                        print("[TASK_TYPE_SHEET] 🎉 Task type created: \(newTaskTypeId)")
+
+                        // Trigger background sync
+                        dataController.syncManager?.triggerBackgroundSync()
 
                         // Success haptic feedback
                         let generator = UINotificationFeedbackGenerator()

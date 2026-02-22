@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 enum JobBoardCardType {
     case project(Project)
@@ -194,51 +195,20 @@ struct UniversalJobBoardCard: View {
                             if let newClient = availableClients.first(where: { $0.id == bulkClientId }) {
                                 print("🔄 Bulk reassigning \(clientProjects.count) projects to client: \(newClient.name) (\(bulkClientId))")
 
-                                var projectIds: [String] = []
                                 for project in clientProjects {
                                     print("  📋 Updating project: \(project.title) (\(project.id))")
-                                    let updates = ["Client": bulkClientId]
-                                    let bodyData = try JSONSerialization.data(withJSONObject: updates)
-                                    let _: EmptyResponse = try await dataController.apiService.executeRequest(
-                                        endpoint: "api/1.1/obj/Project/\(project.id)",
-                                        method: "PATCH",
-                                        body: bodyData,
-                                        requiresAuth: false
+                                    // In Supabase, update client_id field on the project
+                                    try await dataController.syncManager.updateProjectFields(
+                                        projectId: project.id,
+                                        fields: ["client_id": .string(bulkClientId)]
                                     )
                                     print("  ✅ Project \(project.title) updated successfully")
-                                    projectIds.append(project.id)
                                     project.client = newClient
                                     project.clientId = newClient.id
                                     project.needsSync = false
                                     project.lastSyncedAt = Date()
                                 }
 
-                                print("🔄 Fetching current state of client \(newClient.name) from Bubble")
-                                let clientDTO: ClientDTO = try await dataController.apiService.executeRequest(
-                                    endpoint: "api/1.1/obj/Client/\(bulkClientId)",
-                                    method: "GET",
-                                    body: nil,
-                                    requiresAuth: false
-                                )
-                                let currentProjectsList = clientDTO.projectsList ?? []
-                                print("  Current projects in Bubble: \(currentProjectsList.count)")
-
-                                var updatedProjectsList = currentProjectsList
-                                for projectId in projectIds where !updatedProjectsList.contains(projectId) {
-                                    updatedProjectsList.append(projectId)
-                                }
-                                print("  Updated projects list count: \(updatedProjectsList.count)")
-
-                                print("🔄 Updating client \(newClient.name) Projects List")
-                                let clientUpdates = ["Projects List": updatedProjectsList]
-                                let clientBodyData = try JSONSerialization.data(withJSONObject: clientUpdates)
-                                let _: EmptyResponse = try await dataController.apiService.executeRequest(
-                                    endpoint: "api/1.1/obj/Client/\(bulkClientId)",
-                                    method: "PATCH",
-                                    body: clientBodyData,
-                                    requiresAuth: false
-                                )
-                                print("✅ Client \(newClient.name) updated with new projects list")
                                 print("✅ All \(clientProjects.count) projects reassigned")
                             }
                         } else if deletions.count == clientProjects.count {
@@ -246,70 +216,29 @@ struct UniversalJobBoardCard: View {
                                 try await dataController.deleteProject(project)
                             }
                         } else {
-                            var clientProjectMap: [String: [String]] = [:]
-
                             for project in clientProjects {
                                 if deletions.contains(project.id) {
                                     try await dataController.deleteProject(project)
                                 } else if let newClientId = reassignments[project.id],
                                    let newClient = availableClients.first(where: { $0.id == newClientId }) {
                                     print("  📋 Individual: Updating project \(project.title) to client \(newClient.name)")
-                                    let updates = ["Client": newClientId]
-                                    let bodyData = try JSONSerialization.data(withJSONObject: updates)
-                                    let _: EmptyResponse = try await dataController.apiService.executeRequest(
-                                        endpoint: "api/1.1/obj/Project/\(project.id)",
-                                        method: "PATCH",
-                                        body: bodyData,
-                                        requiresAuth: false
+                                    // In Supabase, update client_id field on the project
+                                    try await dataController.syncManager.updateProjectFields(
+                                        projectId: project.id,
+                                        fields: ["client_id": .string(newClientId)]
                                     )
                                     print("  ✅ Project \(project.title) updated successfully")
                                     project.client = newClient
                                     project.clientId = newClient.id
                                     project.needsSync = false
                                     project.lastSyncedAt = Date()
-
-                                    if clientProjectMap[newClientId] == nil {
-                                        clientProjectMap[newClientId] = []
-                                    }
-                                    clientProjectMap[newClientId]?.append(project.id)
-                                }
-                            }
-
-                            for (clientId, projectIds) in clientProjectMap {
-                                if let targetClient = availableClients.first(where: { $0.id == clientId }) {
-                                    print("🔄 Fetching current state of client \(targetClient.name) from Bubble")
-                                    let clientDTO: ClientDTO = try await dataController.apiService.executeRequest(
-                                        endpoint: "api/1.1/obj/Client/\(clientId)",
-                                        method: "GET",
-                                        body: nil,
-                                        requiresAuth: false
-                                    )
-                                    let currentProjectsList = clientDTO.projectsList ?? []
-                                    print("  Current projects in Bubble: \(currentProjectsList.count)")
-
-                                    var updatedProjectsList = currentProjectsList
-                                    for projectId in projectIds where !updatedProjectsList.contains(projectId) {
-                                        updatedProjectsList.append(projectId)
-                                    }
-                                    print("  Updated projects list count: \(updatedProjectsList.count)")
-
-                                    print("🔄 Updating client \(targetClient.name) Projects List")
-                                    let clientUpdates = ["Projects List": updatedProjectsList]
-                                    let clientBodyData = try JSONSerialization.data(withJSONObject: clientUpdates)
-                                    let _: EmptyResponse = try await dataController.apiService.executeRequest(
-                                        endpoint: "api/1.1/obj/Client/\(clientId)",
-                                        method: "PATCH",
-                                        body: clientBodyData,
-                                        requiresAuth: false
-                                    )
-                                    print("✅ Client \(targetClient.name) updated with new projects list")
                                 }
                             }
                         }
 
                         try modelContext.save()
                         try await dataController.deleteClient(client)
-                        print("🔄 Triggering sync to refresh client/project relationships from Bubble")
+                        print("🔄 Triggering sync to refresh client/project relationships")
                         try? await dataController.syncManager.manualFullSync()
                         print("✅ Sync completed")
                     }
@@ -1136,27 +1065,27 @@ struct UniversalJobBoardCard: View {
                             print("🗑️ [JOB_BOARD] Clearing task calendar event dates")
 
                             if let calendarEvent = task.calendarEvent {
-                                try await dataController.performSyncedOperation(
-                                    item: calendarEvent,
-                                    operationName: "CLEAR_TASK_CALENDAR_EVENT",
-                                    itemDescription: "Clearing task calendar event \(calendarEvent.id) dates",
-                                    localUpdate: {
-                                        calendarEvent.startDate = nil
-                                        calendarEvent.endDate = nil
-                                        calendarEvent.duration = 0
-                                        calendarEvent.needsSync = true
-                                    },
-                                    syncToAPI: {
-                                        let updates: [String: Any] = [
-                                            BubbleFields.CalendarEvent.startDate: NSNull(),
-                                            BubbleFields.CalendarEvent.endDate: NSNull(),
-                                            BubbleFields.CalendarEvent.duration: 0
-                                        ]
-                                        try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
-                                        calendarEvent.needsSync = false
-                                        calendarEvent.lastSyncedAt = Date()
-                                    }
-                                )
+                                // Update locally
+                                await MainActor.run {
+                                    calendarEvent.startDate = nil
+                                    calendarEvent.endDate = nil
+                                    calendarEvent.duration = 0
+                                    calendarEvent.needsSync = true
+                                    try? dataController.modelContext?.save()
+                                }
+
+                                // Sync to Supabase
+                                let fields: [String: AnyJSON] = [
+                                    "start_date": .null,
+                                    "end_date": .null,
+                                    "duration": .integer(0)
+                                ]
+                                try await dataController.syncManager.updateCalendarEvent(eventId: calendarEvent.id, fields: fields)
+                                await MainActor.run {
+                                    calendarEvent.needsSync = false
+                                    calendarEvent.lastSyncedAt = Date()
+                                    try? dataController.modelContext?.save()
+                                }
 
                                 // Update parent project dates if necessary
                                 if let project = task.project {

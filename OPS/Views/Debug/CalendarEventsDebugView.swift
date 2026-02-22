@@ -244,30 +244,11 @@ struct CalendarEventsDebugView: View {
                     return
                 }
                 
-                // Fetch from API
-                let apiEvents = try await dataController.apiService.fetchCompanyCalendarEvents(companyId: companyId)
-                
+                // Sync calendar events via Supabase
+                try await dataController.syncManager.syncCalendarEvents()
+
                 await MainActor.run {
-                    // Convert and save
-                    var syncedCount = 0
-                    for dto in apiEvents {
-                        if let event = dto.toModel() {
-                            // Check if exists
-                            let existing = events.first { $0.id == event.id }
-                            if existing == nil {
-                                modelContext.insert(event)
-                                syncedCount += 1
-                            }
-                        }
-                    }
-                    
-                    do {
-                        try modelContext.save()
-                        errorMessage = "Synced \(syncedCount) new events from API"
-                    } catch {
-                        errorMessage = "Failed to save events: \(error.localizedDescription)"
-                    }
-                    
+                    errorMessage = "Synced calendar events from Supabase"
                     fetchEvents()
                 }
             } catch {
@@ -760,21 +741,22 @@ struct EventSearchSheet: View {
                 }
             }
 
-            // Search Bubble API
-            do {
-                let bubbleDTO = try await dataController.apiService.fetchCalendarEvent(id: eventId)
-                await MainActor.run {
-                    bubbleEventDTO = bubbleDTO
-                }
-            } catch {
-                await MainActor.run {
-                    if errorMessage == nil {
-                        errorMessage = "Bubble API error: \(error.localizedDescription)"
-                    } else {
-                        errorMessage = (errorMessage ?? "") + "\nBubble API error: \(error.localizedDescription)"
-                    }
+            // TODO: Replace with Supabase query for calendar event by ID
+            // The old Bubble API fetchCalendarEvent(id:) no longer exists.
+            // For now, only local search is available in debug view.
+
+            await MainActor.run {
+                isSearching = false
+            }
+        }
+    }
+}  errorMessage = "Local search error: \(error.localizedDescription)"
                 }
             }
+
+            // TODO: Replace with Supabase query for calendar event by ID
+            // The old Bubble API fetchCalendarEvent(id:) no longer exists.
+            // For now, only local search is available in debug view.
 
             await MainActor.run {
                 isSearching = false

@@ -701,40 +701,26 @@ struct JobBoardDashboard: View {
             return
         }
 
-        // Check connectivity and sync accordingly
-        if dataController.isConnected {
-            // Sync to backend immediately
-            Task {
-                do {
-                    try await dataController.apiService.updateProject(
-                        id: project.id,
-                        updates: ["status": newStatus.rawValue]
-                    )
-                    await MainActor.run {
-                        project.needsSync = false
-                        project.lastSyncedAt = Date()
-                    }
-                    print("[ARCHIVE_DEBUG] ✅ Project status synced to backend: \(newStatus.rawValue)")
-                } catch {
-                    await MainActor.run {
-                        project.needsSync = true
-                        // Trigger background sync to queue for later
-                        dataController.syncManager?.triggerBackgroundSync()
-                    }
-                    print("[ARCHIVE_DEBUG] ❌ Failed to sync project status to backend: \(error)")
+        // Sync to backend
+        Task {
+            do {
+                try await dataController.syncManager.updateProjectStatus(
+                    projectId: project.id,
+                    status: newStatus
+                )
+                await MainActor.run {
+                    project.needsSync = false
+                    project.lastSyncedAt = Date()
                 }
+                print("[ARCHIVE_DEBUG] ✅ Project status synced to backend: \(newStatus.rawValue)")
+            } catch {
+                await MainActor.run {
+                    project.needsSync = true
+                    // Trigger background sync to queue for later
+                    dataController.syncManager?.triggerBackgroundSync()
+                }
+                print("[ARCHIVE_DEBUG] ❌ Failed to sync project status to backend: \(error)")
             }
-        } else {
-            // Offline - queue for background sync
-            print("[ARCHIVE_DEBUG] 📴 Offline - queueing status change for background sync")
-            dataController.syncManager?.triggerBackgroundSync()
-
-            // Show offline feedback
-            NotificationCenter.default.post(
-                name: NSNotification.Name("ShowSuccessMessage"),
-                object: nil,
-                userInfo: ["message": "Saved locally. Will sync when connection improves."]
-            )
         }
     }
 

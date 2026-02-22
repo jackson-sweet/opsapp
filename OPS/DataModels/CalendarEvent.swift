@@ -37,7 +37,7 @@ final class CalendarEvent {
     var teamMembers: [User] = []
 
     // Pipeline-related fields
-    var eventType: CalendarEventType = .task
+    var eventType: CalendarEventType?
     var calendarOpportunityId: String?  // Supabase Opportunity UUID
     var siteVisitId: String?            // Supabase SiteVisit UUID
 

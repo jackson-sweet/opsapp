@@ -495,7 +495,7 @@ class NotificationManager: NSObject, ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
-            BubbleFields.User.deviceToken: token
+            "device_token": token
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

@@ -9,6 +9,7 @@ import SwiftUI
 import UIKit
 import MapKit
 import CoreLocation
+import Supabase
 // Import team member components
 
 struct ProjectDetailsView: View {
@@ -1962,9 +1963,11 @@ struct ProjectDetailsView: View {
                 project.needsSync = true
                 try dataController.modelContext?.save()
 
-                // Sync to API
-                let updates = ["title": editedTitle]
-                try await dataController.apiService.updateProject(id: project.id, updates: updates)
+                // Sync to Supabase
+                try await dataController.syncManager.updateProjectFields(
+                    projectId: project.id,
+                    fields: ["title": .string(editedTitle)]
+                )
 
                 await MainActor.run {
                     project.needsSync = false

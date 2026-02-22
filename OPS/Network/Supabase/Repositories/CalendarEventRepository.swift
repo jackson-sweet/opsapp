@@ -55,12 +55,49 @@ class CalendarEventRepository {
         return response
     }
 
+    // MARK: - Create
+
+    func create(_ dto: SupabaseCalendarEventDTO) async throws -> SupabaseCalendarEventDTO {
+        try await client
+            .from("calendar_events")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     // MARK: - Upsert
 
     func upsert(_ dto: SupabaseCalendarEventDTO) async throws {
         try await client
             .from("calendar_events")
             .upsert(dto)
+            .execute()
+    }
+
+    // MARK: - Update
+
+    func update(_ id: String, fields: [String: AnyJSON]) async throws {
+        var payload = fields
+        payload["updated_at"] = .string(isoNow())
+        try await client
+            .from("calendar_events")
+            .update(payload)
+            .eq("id", value: id)
+            .execute()
+    }
+
+    func updateTeamMembers(_ id: String, memberIds: [String]) async throws {
+        struct TeamUpdate: Codable {
+            let team_member_ids: [String]
+            let updated_at: String
+        }
+        let payload = TeamUpdate(team_member_ids: memberIds, updated_at: isoNow())
+        try await client
+            .from("calendar_events")
+            .update(payload)
+            .eq("id", value: id)
             .execute()
     }
 

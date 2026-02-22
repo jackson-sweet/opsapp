@@ -84,6 +84,60 @@ class ProjectRepository {
             .execute()
     }
 
+    func updateDates(_ projectId: String, startDate: Date?, endDate: Date?) async throws {
+        struct DatesUpdate: Codable {
+            let start_date: String?
+            let end_date: String?
+            let updated_at: String
+        }
+        let payload = DatesUpdate(
+            start_date: startDate.map { isoString($0) },
+            end_date: endDate.map { isoString($0) },
+            updated_at: isoNow()
+        )
+        try await client
+            .from("projects")
+            .update(payload)
+            .eq("id", value: projectId)
+            .execute()
+    }
+
+    func updateAddress(_ projectId: String, address: String) async throws {
+        struct AddressUpdate: Codable {
+            let address: String
+            let updated_at: String
+        }
+        let payload = AddressUpdate(address: address, updated_at: isoNow())
+        try await client
+            .from("projects")
+            .update(payload)
+            .eq("id", value: projectId)
+            .execute()
+    }
+
+    func updateTeamMembers(_ projectId: String, memberIds: [String]) async throws {
+        struct TeamUpdate: Codable {
+            let team_member_ids: [String]
+            let updated_at: String
+        }
+        let payload = TeamUpdate(team_member_ids: memberIds, updated_at: isoNow())
+        try await client
+            .from("projects")
+            .update(payload)
+            .eq("id", value: projectId)
+            .execute()
+    }
+
+    func updateFields(_ projectId: String, fields: [String: AnyJSON]) async throws {
+        var payload = fields
+        payload["updated_at"] = .string(isoNow())
+        try await client
+            .from("projects")
+            .update(payload)
+            .eq("id", value: projectId)
+            .execute()
+    }
+
     // MARK: - Soft Delete
 
     func softDelete(_ projectId: String) async throws {

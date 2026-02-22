@@ -131,12 +131,12 @@ enum OPSStyle {
         // Pipeline stage colors
         static func pipelineStageColor(for stage: PipelineStage) -> Color {
             switch stage {
-            case .newLead:     return Color(hex: "#BCBCBC")
-            case .qualifying:  return Color(hex: "#B5A381")
-            case .quoting:     return Color(hex: "#8195B5")
-            case .quoted:      return Color(hex: "#9DB582")
-            case .followUp:    return Color(hex: "#C4A868")
-            case .negotiation: return Color(hex: "#B58289")
+            case .newLead:     return Color(hex: "#BCBCBC") ?? Color.gray
+            case .qualifying:  return Color(hex: "#B5A381") ?? Color.gray
+            case .quoting:     return Color(hex: "#8195B5") ?? Color.gray
+            case .quoted:      return Color(hex: "#9DB582") ?? Color.gray
+            case .followUp:    return Color(hex: "#C4A868") ?? Color.gray
+            case .negotiation: return Color(hex: "#B58289") ?? Color.gray
             case .won:         return Color("StatusSuccess")
             case .lost:        return Color("StatusError")
             }
@@ -619,16 +619,3 @@ struct BlurView: UIViewRepresentable {
 
 }
 
-// MARK: - Non-Failable Color(hex:) Initializer
-// Used by pipelineStageColor and other places where hex values are compile-time constants
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let r = Double((int >> 16) & 0xFF) / 255.0
-        let g = Double((int >> 8) & 0xFF) / 255.0
-        let b = Double(int & 0xFF) / 255.0
-        self.init(red: r, green: g, blue: b)
-    }
-}

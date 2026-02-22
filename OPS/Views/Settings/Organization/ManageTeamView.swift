@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Supabase
 
 struct ManageTeamView: View {
     @EnvironmentObject private var dataController: DataController
@@ -422,9 +423,9 @@ struct ManageTeamView: View {
         }
 
         do {
-            try await dataController.apiService.updateUser(
-                id: member.id,
-                userData: [BubbleFields.User.employeeType: employeeTypeValue]
+            try await dataController.syncManager.updateUserFields(
+                userId: member.id,
+                fields: ["employee_type": .string(employeeTypeValue)]
             )
 
             // Update local model
@@ -448,8 +449,8 @@ struct ManageTeamView: View {
         errorMessage = nil
 
         do {
-            // Call terminate_employee endpoint to properly remove from company
-            try await dataController.apiService.terminateEmployee(userId: member.id)
+            // Delete user from Supabase
+            try await dataController.syncManager.deleteUser(userId: member.id)
 
             // Remove from local list
             await MainActor.run {

@@ -314,30 +314,25 @@ struct HomeView: View {
         if project.status != .inProgress {
             Task {
                 do {
-                    // Use the new API endpoint to start the project
-                    let updatedStatus = try await dataController.apiService.startProject(id: project.id)
-                    
-                    
+                    try await dataController.syncManager.updateProjectStatus(
+                        projectId: project.id,
+                        status: .inProgress,
+                        forceSync: true
+                    )
+
                     // Update local status immediately for UI consistency
                     await MainActor.run {
                         project.status = .inProgress
                         project.needsSync = false
                         project.lastSyncedAt = Date()
-                        
+
                         // Save to model context
                         if let modelContext = dataController.modelContext {
                             try? modelContext.save()
                         }
                     }
                 } catch {
-                    // If API call fails, fall back to local update via SyncManager
-                    Task {
-                        try? await dataController.syncManager.updateProjectStatus(
-                            projectId: project.id,
-                            status: .inProgress,
-                            forceSync: true
-                        )
-                    }
+                    print("[START_PROJECT] Failed to update project status: \(error)")
                 }
             }
         }

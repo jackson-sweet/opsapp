@@ -72,6 +72,19 @@ final class TeamMember {
         )
     }
     
+    /// Create a TeamMember from a User model
+    static func fromUser(_ user: User) -> TeamMember {
+        return TeamMember(
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role.displayName,
+            avatarURL: user.profileImageURL,
+            email: user.email,
+            phone: user.phone
+        )
+    }
+
     /// Full name computed property
     var fullName: String {
         return "\(firstName) \(lastName)"

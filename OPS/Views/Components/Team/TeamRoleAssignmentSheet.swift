@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 struct TeamRoleAssignmentSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -193,11 +194,16 @@ struct TeamRoleAssignmentSheet: View {
                     user.needsSync = true
                 }
 
-                // Update via API
-                let roleString = BubbleFields.EmployeeType.fromSwiftEnum(role)
-                try await dataController.apiService.updateUser(
-                    id: userId,
-                    userData: ["employeeType": roleString]
+                // Update via Supabase
+                let roleString: String
+                switch role {
+                case .fieldCrew: roleString = "Field Crew"
+                case .officeCrew: roleString = "Office Crew"
+                case .admin: roleString = "Admin"
+                }
+                try await dataController.syncManager.updateUserFields(
+                    userId: userId,
+                    fields: ["employee_type": .string(roleString)]
                 )
 
                 successCount += 1
@@ -215,9 +221,7 @@ struct TeamRoleAssignmentSheet: View {
         }
 
         // Re-sync team members to update TeamMember objects
-        if let company = dataController.getCompany(id: companyId) {
-            await dataController.syncManager?.syncCompanyTeamMembers(company)
-        }
+        try? await dataController.syncManager.syncCompanyTeamMembers(companyId: companyId)
 
         isSaving = false
 
@@ -318,16 +322,16 @@ struct TeamMemberRoleRow: View {
     }
 }
 
-// Helper extension for converting Swift enum back to Bubble string
-extension BubbleFields.EmployeeType {
-    static func fromSwiftEnum(_ role: UserRole) -> String {
-        switch role {
+// Helper extension for converting Swift enum to Supabase string
+extension UserRole {
+    var supabaseEmployeeType: String {
+        switch self {
         case .fieldCrew:
-            return BubbleFields.EmployeeType.fieldCrew
+            return "Field Crew"
         case .officeCrew:
-            return BubbleFields.EmployeeType.officeCrew
+            return "Office Crew"
         case .admin:
-            return BubbleFields.EmployeeType.admin
+            return "Admin"
         }
     }
 }

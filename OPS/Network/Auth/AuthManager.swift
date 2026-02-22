@@ -11,13 +11,13 @@ import Supabase
 
 /// Structure to hold Google login response with user and company
 struct GoogleLoginResult {
-    let user: UserDTO
-    let company: CompanyDTO?
+    let user: SupabaseUserDTO
+    let company: SupabaseCompanyDTO?
 }
 
 /// Structure to hold Apple login response with user data
 struct AppleLoginResult {
-    let user: UserDTO
+    let user: SupabaseUserDTO
 }
 
 /// Handles all authentication with the Bubble backend
@@ -260,7 +260,7 @@ class AuthManager {
             }
             
             struct AppleLoginData: Codable {
-                let user: UserDTO
+                let user: SupabaseUserDTO
             }
             
             do {
@@ -369,8 +369,8 @@ class AuthManager {
                     let response: ResponseData?
                     
                     struct ResponseData: Decodable {
-                        let user: UserDTO?
-                        let company: CompanyDTO?
+                        let user: SupabaseUserDTO?
+                        let company: SupabaseCompanyDTO?
                     }
                 }
                 
@@ -397,8 +397,8 @@ class AuthManager {
                 
                 // Try direct format with user and company at root level
                 struct DirectGoogleLoginResponse: Decodable {
-                    let user: UserDTO
-                    let company: CompanyDTO?
+                    let user: SupabaseUserDTO
+                    let company: SupabaseCompanyDTO?
                 }
                 
                 if let directResponse = try? decoder.decode(DirectGoogleLoginResponse.self, from: data) {

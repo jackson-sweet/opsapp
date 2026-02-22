@@ -632,7 +632,7 @@ struct OrganizationDetailsView: View {
             }
 
             // Build fields to update
-            var fieldsToUpdate: [String: Any] = [:]
+            var fieldsToUpdate: [String: String] = [:]
 
             if hasFieldChanged(editedPhone, company.phone) {
                 let newValue = editedPhone.trimmingCharacters(in: .whitespacesAndNewlines)

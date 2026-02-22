@@ -39,39 +39,6 @@ final class TeamMember {
         self.lastUpdated = Date()
     }
     
-    /// Create a TeamMember from a UserDTO
-    static func fromUserDTO(_ dto: UserDTO, isAdmin: Bool = false) -> TeamMember {
-        // First try to get the email from the authentication object, then from the direct email field
-        let email = dto.authentication?.email?.email ?? dto.email
-        
-        // Determine role - check if user is admin first, then userType, then employeeType
-        let role: String
-        if isAdmin {
-            role = "Admin"
-        } else if dto.userType == "Admin" {
-            role = "Admin"
-        } else if let employeeType = dto.employeeType {
-            role = employeeType
-        } else {
-            role = "Unassigned"
-        }
-        
-        // Debug: Log phone data
-        if let phone = dto.phone, !phone.isEmpty {
-        } else {
-        }
-        
-        return TeamMember(
-            id: dto.id,
-            firstName: dto.nameFirst ?? "",
-            lastName: dto.nameLast ?? "",
-            role: role,
-            avatarURL: dto.avatar,
-            email: email,
-            phone: dto.phone
-        )
-    }
-    
     /// Create a TeamMember from a User model
     static func fromUser(_ user: User) -> TeamMember {
         return TeamMember(

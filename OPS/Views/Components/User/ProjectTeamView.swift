@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 /// Compact team member view for projects with navigation to details
 struct ProjectTeamView: View {

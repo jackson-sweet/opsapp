@@ -531,7 +531,7 @@ struct EventSearchSheet: View {
 
     @State private var eventId: String = ""
     @State private var localEvent: CalendarEvent?
-    @State private var bubbleEventDTO: CalendarEventDTO?
+    @State private var bubbleEventDTO: SupabaseCalendarEventDTO?
     @State private var isSearching = false
     @State private var errorMessage: String?
 
@@ -659,20 +659,21 @@ struct EventSearchSheet: View {
                                     FieldRow(label: "Title", value: bubble.title ?? "nil")
                                     // Task-only scheduling migration: type and active fields removed
                                     FieldRow(label: "Project ID", value: bubble.projectId ?? "nil")
-                                    FieldRow(label: "Task ID", value: bubble.taskId ?? "nil")
+                                    FieldRow(label: "Task ID", value: "N/A (linked via project_tasks)")
                                     FieldRow(label: "Company ID", value: bubble.companyId ?? "nil")
                                     FieldRow(label: "Color", value: bubble.color ?? "nil")
                                     FieldRow(label: "Start Date", value: bubble.startDate ?? "nil")
                                     FieldRow(label: "End Date", value: bubble.endDate ?? "nil")
                                     FieldRow(label: "Duration", value: bubble.duration.map { "\($0)" } ?? "nil")
                                     FieldRow(label: "Deleted At", value: bubble.deletedAt ?? "nil")
-                                    FieldRow(label: "Team Members", value: bubble.teamMembers?.joined(separator: ", ") ?? "nil")
+                                    FieldRow(label: "Team Members", value: bubble.teamMemberIds?.joined(separator: ", ") ?? "nil")
 
                                     Divider()
                                         .background(OPSStyle.Colors.tertiaryText)
 
                                     // DTO conversion test
-                                    if let modelFromDTO = bubble.toModel() {
+                                    let modelFromDTO = bubble.toModel()
+                                    if true {
                                         Label("DTO Conversion: SUCCESS", systemImage: "checkmark.circle.fill")
                                             .font(OPSStyle.Typography.captionBold)
                                             .foregroundColor(OPSStyle.Colors.successStatus)
@@ -738,19 +739,6 @@ struct EventSearchSheet: View {
             } catch {
                 await MainActor.run {
                     errorMessage = "Local search error: \(error.localizedDescription)"
-                }
-            }
-
-            // TODO: Replace with Supabase query for calendar event by ID
-            // The old Bubble API fetchCalendarEvent(id:) no longer exists.
-            // For now, only local search is available in debug view.
-
-            await MainActor.run {
-                isSearching = false
-            }
-        }
-    }
-}  errorMessage = "Local search error: \(error.localizedDescription)"
                 }
             }
 

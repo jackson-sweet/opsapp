@@ -2,119 +2,134 @@
 //  AppMessageService.swift
 //  OPS
 //
-//  Service for fetching app messages from Bubble
+//  Service for fetching app messages
 //  Used to display update notices, maintenance alerts, and announcements on app launch
 //
 
 import Foundation
 
-class AppMessageService {
-    private let baseURL: URL
+// MARK: - App Message DTO
 
-    init(baseURL: URL = AppConfiguration.bubbleBaseURL) {
-        self.baseURL = baseURL
+struct AppMessageDTO: Codable, Identifiable {
+    let id: String
+    let active: Bool?
+    let title: String?
+    let body: String?
+    let messageType: String?
+    let dismissable: Bool?
+    let targetUserTypes: [String]?
+    let appStoreUrl: String?
+    let createdDate: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case active
+        case title
+        case body
+        case messageType
+        case dismissable
+        case targetUserTypes
+        case appStoreUrl
+        case createdDate = "Created Date"
     }
 
-    /// Fetches the active app message from Bubble
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(String.self, forKey: .id)
+        active = try container.decodeIfPresent(Bool.self, forKey: .active)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        body = try container.decodeIfPresent(String.self, forKey: .body)
+        messageType = try container.decodeIfPresent(String.self, forKey: .messageType)
+        dismissable = try container.decodeIfPresent(Bool.self, forKey: .dismissable)
+        targetUserTypes = try container.decodeIfPresent([String].self, forKey: .targetUserTypes)
+        appStoreUrl = try container.decodeIfPresent(String.self, forKey: .appStoreUrl)
+
+        if let dateString = try container.decodeIfPresent(String.self, forKey: .createdDate) {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            createdDate = formatter.date(from: dateString)
+        } else {
+            createdDate = nil
+        }
+    }
+}
+
+// MARK: - Message Type Enum
+
+enum AppMessageType: String {
+    case mandatoryUpdate = "mandatory_update"
+    case optionalUpdate = "optional_update"
+    case maintenance = "maintenance"
+    case announcement = "announcement"
+    case info = "info"
+
+    var iconName: String {
+        switch self {
+        case .mandatoryUpdate:
+            return "exclamationmark.triangle"
+        case .optionalUpdate:
+            return "arrow.down.circle"
+        case .maintenance:
+            return "wrench"
+        case .announcement:
+            return "megaphone"
+        case .info:
+            return "info.circle"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .mandatoryUpdate:
+            return "Required Update"
+        case .optionalUpdate:
+            return "Update Available"
+        case .maintenance:
+            return "Maintenance"
+        case .announcement:
+            return "Announcement"
+        case .info:
+            return "Notice"
+        }
+    }
+}
+
+// MARK: - Response Wrapper
+
+struct AppMessageResponse: Codable {
+    let response: AppMessageResponseData
+}
+
+struct AppMessageResponseData: Codable {
+    let results: [AppMessageDTO]
+    let remaining: Int?
+    let count: Int?
+}
+
+// MARK: - App Message Service
+
+class AppMessageService {
+
+    /// Fetches the active app message
     /// Returns nil if no active message exists or if the fetch fails
-    /// If multiple active messages exist, returns the most recent by Created Date
+    /// TODO: Migrate to Supabase app_messages table when available
     func fetchActiveMessage() async -> AppMessageDTO? {
-        // Build URL with constraint for active = true
-        let endpoint = baseURL.appendingPathComponent("api/1.1/obj/AppMessage")
-
-        var urlComponents = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)
-
-        // Constraint: active = true, sorted by Created Date descending
-        let constraints: [[String: Any]] = [
-            [
-                "key": "active",
-                "constraint_type": "equals",
-                "value": true
-            ]
-        ]
-
-        do {
-            let constraintsData = try JSONSerialization.data(withJSONObject: constraints)
-            let constraintsString = String(data: constraintsData, encoding: .utf8) ?? "[]"
-
-            urlComponents?.queryItems = [
-                URLQueryItem(name: "constraints", value: constraintsString),
-                URLQueryItem(name: "sort_field", value: "Created Date"),
-                URLQueryItem(name: "descending", value: "true"),
-                URLQueryItem(name: "limit", value: "1")
-            ]
-        } catch {
-            print("[APP_MESSAGE] Failed to encode constraints: \(error)")
-            return nil
-        }
-
-        guard let url = urlComponents?.url else {
-            print("[APP_MESSAGE] Failed to construct URL")
-            return nil
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // No authorization needed - AppMessage is a public table
-        request.timeoutInterval = 10 // Don't block app launch too long
-
-        print("[APP_MESSAGE] Fetching active message from: \(url.absoluteString)")
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                print("[APP_MESSAGE] Invalid response type")
-                return nil
-            }
-
-            print("[APP_MESSAGE] Response status: \(httpResponse.statusCode)")
-
-            // Print raw JSON for debugging
-            if let rawJSON = String(data: data, encoding: .utf8) {
-                print("[APP_MESSAGE] Raw JSON response:")
-                print(rawJSON)
-            }
-
-            guard (200...299).contains(httpResponse.statusCode) else {
-                print("[APP_MESSAGE] Non-success status code: \(httpResponse.statusCode)")
-                return nil
-            }
-
-            let decoder = JSONDecoder()
-            let messageResponse = try decoder.decode(AppMessageResponse.self, from: data)
-
-            if let message = messageResponse.response.results.first {
-                print("[APP_MESSAGE] Found active message: \(message.title ?? "No title")")
-                print("[APP_MESSAGE]   - Type: \(message.messageType ?? "unknown")")
-                print("[APP_MESSAGE]   - Dismissable: \(message.dismissable ?? true)")
-                print("[APP_MESSAGE]   - Target users: \(message.targetUserTypes ?? [])")
-                return message
-            } else {
-                print("[APP_MESSAGE] No active messages found")
-                return nil
-            }
-
-        } catch {
-            print("[APP_MESSAGE] Failed to fetch message: \(error)")
-            return nil
-        }
+        // Bubble endpoint removed — return nil until Supabase table is set up
+        print("[APP_MESSAGE] App messages not yet migrated to Supabase")
+        return nil
     }
 
     /// Checks if a message should be shown to the current user based on their role
     func shouldShowMessage(_ message: AppMessageDTO, forUserRole role: UserRole?) -> Bool {
-        // If no target user types specified, show to all
         guard let targetTypes = message.targetUserTypes, !targetTypes.isEmpty else {
             return true
         }
 
-        // If no user role (not logged in), show messages that target all or have no restrictions
         guard let role = role else {
             return targetTypes.isEmpty
         }
 
-        // Map UserRole to the strings used in Bubble
         let roleString: String
         switch role {
         case .admin:

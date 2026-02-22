@@ -358,14 +358,16 @@ struct TaskRow: View {
 
             await MainActor.run {
                 // Create local CalendarEvent model
-                let calendarEvent = CalendarEvent(id: eventId)
-                calendarEvent.startDate = startDate
-                calendarEvent.endDate = endDate
+                let calendarEvent = CalendarEvent(
+                    id: eventId,
+                    projectId: task.projectId,
+                    companyId: task.companyId,
+                    title: task.taskType?.display ?? "Task",
+                    startDate: startDate,
+                    endDate: endDate,
+                    color: task.taskColor ?? "#59779F"
+                )
                 calendarEvent.duration = duration
-                calendarEvent.companyId = task.companyId
-                calendarEvent.projectId = task.projectId
-                calendarEvent.title = task.taskType?.display ?? "Task"
-                calendarEvent.color = task.taskColor
                 calendarEvent.needsSync = false
                 calendarEvent.lastSyncedAt = Date()
                 dataController.modelContext?.insert(calendarEvent)

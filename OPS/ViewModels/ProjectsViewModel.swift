@@ -17,7 +17,7 @@ import Combine
 
 /// ViewModel for handling Project-related operations
 class ProjectsViewModel: ObservableObject {
-    private let syncManager: CentralizedSyncManager
+    private let syncManager: SupabaseSyncManager
 
     @Published var projects: [Project] = []
     @Published var isLoading = false
@@ -33,7 +33,7 @@ class ProjectsViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
 
-    init(syncManager: CentralizedSyncManager) {
+    init(syncManager: SupabaseSyncManager) {
         self.syncManager = syncManager
     }
     

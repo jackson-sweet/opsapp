@@ -14,6 +14,18 @@ import SwiftData
 import Combine
 import Supabase
 
+// MARK: - Sync Error
+
+enum SyncError: Error {
+    case notConnected
+    case alreadySyncing
+    case missingUserId
+    case missingCompanyId
+    case apiError(Error)
+    case dataCorruption
+    case unauthorized
+}
+
 @MainActor
 class SupabaseSyncManager: ObservableObject {
 
@@ -1057,7 +1069,7 @@ class SupabaseSyncManager: ObservableObject {
         let descriptor = FetchDescriptor<Company>(predicate: predicate)
 
         if let company = try modelContext.fetch(descriptor).first {
-            company.seatedEmployeeIds = userIds
+            company.seatedEmployeeIds = userIds.joined(separator: ",")
             try modelContext.save()
         }
 

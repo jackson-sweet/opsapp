@@ -432,12 +432,6 @@ struct LoginView: View {
                     errorMessage = authError.localizedDescription
                     showError = true
                 }
-            } catch let apiError as APIError {
-                await MainActor.run {
-                    isLoggingIn = false
-                    errorMessage = apiError.localizedDescription
-                    showError = true
-                }
             } catch {
                 await MainActor.run {
                     isLoggingIn = false

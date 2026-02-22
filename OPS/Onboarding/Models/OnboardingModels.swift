@@ -88,7 +88,7 @@ struct CompanyData: Codable {
 struct JoinCompanyResponse: Codable {
     let company_joined: Bool? // TRUE or FALSE
     let user_id: String? // Always returned
-    let company: CompanyDTO? // Full company object if successful
+    let company: SupabaseCompanyDTO? // Full company object if successful
     let error_message: String?
     let response: JoinCompanyResponseData? // Additional response data that might be nested
 
@@ -139,7 +139,7 @@ struct JoinCompanyResponse: Codable {
     var extractedCompanyData: (id: String, name: String)? {
         // Get from company DTO object first
         if let company = company, !company.id.isEmpty {
-            let companyName = company.companyName ?? "Your Company"
+            let companyName = company.name
             return (company.id, companyName)
         }
         

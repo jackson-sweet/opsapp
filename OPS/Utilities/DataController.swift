@@ -622,21 +622,12 @@ class DataController: ObservableObject {
             // Fetch and create/update user using existing method
             try await fetchUserFromAPI(userId: userDTO.id)
             
-            // If company data was returned, save it in the local database
+            // If company data was returned, check admin status
             if let companyDTO = companyDTO {
-                
-                // Check if user is admin from the login response
-                if let adminRefs = companyDTO.admin {
-                    let adminIds = adminRefs.compactMap { $0.stringValue }
-                    
-                    if adminIds.contains(userDTO.id), let user = currentUser {
-                        user.role = .admin
-                        try? modelContext?.save()
-                    }
+                if let adminIds = companyDTO.adminIds, adminIds.contains(userDTO.id), let user = currentUser {
+                    user.role = .admin
+                    try? modelContext?.save()
                 }
-                // We already fetched company data in fetchUserFromAPI, so we don't need to save it again
-                // The fetchCompanyData method was already called and handled the company save
-            } else {
             }
             
             // Now check if user has completed onboarding based on their data

@@ -89,13 +89,18 @@ extension Font {
         return Font.custom("Mohave-Medium", size: 12)
     }
     
-    /// Small button text - Mohave Medium (14pt)
+    /// Small button text - Kosugi Regular (12pt) — ALL CAPS via .textCase(.uppercase)
     public static var smallButton: Font {
-        return Font.custom("Mohave-Medium", size: 14)
+        return Font.custom("Kosugi-Regular", size: 12)
     }
-    
-    /// Button text - Mohave SemiBold (16pt)
+
+    /// Button text - Kosugi Regular (14pt) — ALL CAPS via .textCase(.uppercase)
     public static var button: Font {
-        return Font.custom("Mohave-Regular", size: 16)
+        return Font.custom("Kosugi-Regular", size: 14)
+    }
+
+    /// Section label - Kosugi Regular (12pt) — ALL CAPS, tracked
+    public static var sectionLabel: Font {
+        return Font.custom("Kosugi-Regular", size: 12)
     }
 }

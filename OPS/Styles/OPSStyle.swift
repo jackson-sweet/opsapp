@@ -30,46 +30,34 @@ enum OPSStyle {
     // MARK: - Colors
     enum Colors {
         // Brand colors
-        static let primaryAccent = Color("AccentPrimary") // Orange (#FF7733)
-        static let secondaryAccent = Color("AccentSecondary") // Blue for secondary actions
+        static let primaryAccent = Color("AccentPrimary") // Blue-gray (#597794)
+        static let secondaryAccent = Color("AccentSecondary") // DEPRECATED — matches primaryAccent now. Remove after active-state migration.
         
         // Background colors
-        static let background = Color("Background") // Main background (black)
-        static let darkBackground = Color("DarkBackground") // Darker background (#090C15)
-        static let cardBackground = Color("CardBackground") // Card background (dark gray)
-        static let cardBackgroundDark = Color("CardBackgroundDark") // Darker card background (#1F293D)
-        static let statusBackground = Color("StatusBackground") // Status badge background
+        static let background = Color("Background") // Main background (#0A0A0A)
+        static let darkBackground = Color("DarkBackground") // Darker background (#0A0A0A)
+        static let cardBackground = Color("CardBackground") // Card background (#141414)
+        static let cardBackgroundDark = Color("CardBackgroundDark") // Darker card background (#0D0D0D)
 
         // Border colors
-        static let cardBorder = Color.white.opacity(0.2) // Standard card border (consolidated from 0.1, 0.15, 0.2 variations)
-        static let cardBorderSubtle = Color.white.opacity(0.05) // Subtle card border for less prominent cards
-        static let inputFieldBorder = Color.white.opacity(0.2) // Input fields, text editors, form controls, avatar circles
-        static let buttonBorder = Color.white.opacity(0.4) // Secondary action buttons
+        static let cardBorder = Color.white.opacity(0.10) // Standard card border (consolidated from 0.1, 0.15, 0.2 variations)
+        static let cardBorderSubtle = Color.white.opacity(0.08) // Subtle card border for less prominent cards
+        static let inputFieldBorder = Color.white.opacity(0.10) // Input fields, text editors, form controls, avatar circles
+        static let buttonBorder = Color.white.opacity(0.15) // Secondary action buttons
         static let darkBorder = Color.black.opacity(0.5) // Dark borders; used by GracePeriodBanner
         
         // Text colors
         static let primaryText = Color("TextPrimary") // White
-        static let secondaryText = Color("TextSecondary") // Light gray (#AAAAAA)
-        static let tertiaryText = Color("TextTertiary") // Darker gray (#777777)
-        static let inactiveText = Color("TextInactive") // Dark gray
-        
+        static let secondaryText = Color("TextSecondary") // Light gray (#999999)
+        static let tertiaryText = Color("TextTertiary") // Darker gray (#666666)
+
         // Status colors
         static let successStatus = Color("StatusSuccess") // Green (#34C759)
         static let warningStatus = Color("StatusWarning") // Yellow/Orange
         static let errorStatus = Color("StatusError") // Red (#FF3B30)
         static let inactiveStatus = Color("StatusInactive") // Gray (#8E8E93)
 
-        // Status text colors (for foreground, not background)
-        // Reuse existing status asset colors for text as well
-        static let errorText = Color("StatusError")     // Same as errorStatus - works for both bg and text
-        static let successText = Color("StatusSuccess") // Same as successStatus - works for both bg and text
-        static let warningText = Color("StatusWarning") // Same as warningStatus - works for both bg and text
-
-        // Status background colors (for banner/alert backgrounds)
-        static let warningBackground = Color("StatusWarning").opacity(0.1) // Warning banner backgrounds
-
         // UI state colors
-        static let disabledText = Color("TextTertiary") // Reuse tertiaryText for disabled state
         static let placeholderText = Color(red: 0.6, green: 0.6, blue: 0.6)  // #999999 (medium gray)
 
         // Button-specific colors
@@ -79,22 +67,19 @@ enum OPSStyle {
         // Overlays & Loading
         static let modalOverlay = Color.black.opacity(0.5)  // Modal and loading overlay backgrounds
         static let imageOverlay = Color.black.opacity(0.7)  // Photo/image overlays (for thumbnails, photo grids)
+        static let overlayMedium = Color.black.opacity(0.6)   // Medium overlay (tooltips, dimming)
+        static let overlayStrong = Color.black.opacity(0.7)    // Strong overlay (popups, menus)
+        static let overlayHeavy = Color.black.opacity(0.85)    // Heavy overlay (full-screen dimming)
         static let avatarOverlay = Color.black.opacity(0.3) // Avatar badge overlays
         static let loadingSpinner = Color("TextPrimary")    // Loading spinner/ProgressView tint (white)
-
-        // Calendar-specific
-        static let todayHighlight = Color("AccentPrimary").opacity(0.5)  // Today's date background in calendar
 
         // UI State Indicators
         static let pageIndicatorInactive = Color.white.opacity(0.5) // Inactive page indicator dots in carousels
         static let pinDotNeutral = Color.white.opacity(0.3) // PIN entry neutral/inactive state; also used by TacticalLoadingBar empty color
         static let pinDotActive = Color.white.opacity(0.8)  // PIN entry active state; also used by TacticalLoadingBar fill color
 
-        // Shadows
-        static let shadowColor = Color.black.opacity(0.15)  // Standard shadow (consolidated from 0.15, 0.3, 0.5 variations)
-
         // Separators & Subtle Backgrounds
-        static let separator = Color.white.opacity(0.15)  // For divider lines
+        static let separator = Color.white.opacity(0.10)  // For divider lines
         static let subtleBackground = Color.white.opacity(0.1) // Subtle row backgrounds within cards (consolidated from 0.05, 0.1 variations)
         
         // Gradients
@@ -120,11 +105,6 @@ enum OPSStyle {
             static let primaryAccent = Colors.primaryAccent
             static let secondaryAccent = Colors.secondaryAccent
             
-            // Status colors (keep the same)
-            static let successStatus = Colors.successStatus
-            static let warningStatus = Colors.warningStatus
-            static let errorStatus = Colors.errorStatus
-            static let inactiveStatus = Colors.inactiveStatus
         }
         
         // Utility
@@ -191,9 +171,9 @@ enum OPSStyle {
         // Button text
         static let button = Font.button
         static let smallButton = Font.smallButton
-        static let smallButtonBold = Font.smallButton.weight(.bold)
+        static let sectionLabel = Font.sectionLabel
     }
-    
+
     // MARK: - Layout
     enum Layout {
         // Standard spacing
@@ -202,14 +182,8 @@ enum OPSStyle {
         static let spacing3 = 16.0
         static let spacing4 = 24.0
         static let spacing5 = 32.0
-
-        // Content padding
-        static let contentPadding = EdgeInsets(
-            top: spacing3,
-            leading: spacing3,
-            bottom: spacing3,
-            trailing: spacing3
-        )
+        static let spacing2_5: CGFloat = 12.0  // Between spacing2 (8) and spacing3 (16)
+        static let spacing3_5: CGFloat = 20.0  // Between spacing3 (16) and spacing4 (24)
 
         // Touch targets - Minimum 44×44 as per Apple HIG, but we go larger for field use
         static let touchTargetMin = 44.0
@@ -217,26 +191,36 @@ enum OPSStyle {
         static let touchTargetLarge = 64.0
 
         // Corner radius variants
-        static let cornerRadius = 5.0       // Standard corner radius
-        static let buttonRadius = 5.0       // Button corner radius
-        static let smallCornerRadius = 2.5  // For badges, small UI elements
-        static let cardCornerRadius = 8.0   // For larger cards
-        static let largeCornerRadius = 12.0 // For modals, sheets
+        static let cornerRadius = 3.0       // Standard corner radius
+        static let buttonRadius = 3.0       // Button corner radius
+        static let smallCornerRadius = 2.0  // For badges, small UI elements
+        static let cardCornerRadius = 4.0   // For larger cards
+        static let largeCornerRadius = 4.0 // For modals, sheets
+
+        // Icon sizes
+        enum IconSize {
+            static let xs: CGFloat = 12.0   // Tiny indicators
+            static let sm: CGFloat = 16.0   // Inline icons, captions
+            static let md: CGFloat = 20.0   // Standard icons
+            static let lg: CGFloat = 24.0   // Section header icons
+            static let xl: CGFloat = 32.0   // Action icons, prominent UI
+        }
+
+        // Border widths
+        enum Border {
+            static let standard: CGFloat = 1.0
+            static let thick: CGFloat = 2.0
+        }
+
+        // Dot/indicator sizes
+        enum Indicator {
+            static let dotSM: CGFloat = 6.0
+            static let dotMD: CGFloat = 8.0
+        }
 
         // Opacity presets
         enum Opacity {
             static let subtle = 0.1   // Disabled, very light overlays
-            static let light = 0.3    // Light overlays
-            static let medium = 0.5   // Medium overlays
-            static let strong = 0.7   // Strong overlays
-            static let heavy = 0.9    // Almost opaque
-        }
-
-        // Shadow presets
-        enum Shadow {
-            static let card = (color: Color.black.opacity(0.1), radius: 4.0, x: 0.0, y: 2.0)
-            static let elevated = (color: Color.black.opacity(0.2), radius: 8.0, x: 0.0, y: 4.0)
-            static let floating = (color: Color.black.opacity(0.3), radius: 12.0, x: 0.0, y: 6.0)
         }
 
         // Gradient presets
@@ -295,7 +279,7 @@ enum OPSStyle {
             static let dropdownCornerRadius = OPSStyle.Layout.cornerRadius
             static let dropdownBorderColor = OPSStyle.Colors.cardBorder
             static let dropdownBorderWidth: CGFloat = 1
-            static let dropdownShadowColor = OPSStyle.Colors.shadowColor
+            static let dropdownShadowColor = Color.black.opacity(0.15)
             static let dropdownShadowRadius: CGFloat = 8
             static let dropdownShadowOffset = CGSize(width: 0, height: 4)
             static let dropdownTopPadding: CGFloat = 4
@@ -325,7 +309,10 @@ enum OPSStyle {
     // MARK: - Animation
     enum Animation {
         static let standard = SwiftUI.Animation.easeInOut(duration: 0.3)
-        static let quick = SwiftUI.Animation.easeOut(duration: 0.15)
+        static let fast = SwiftUI.Animation.easeInOut(duration: 0.2)
+        static let faster = SwiftUI.Animation.easeOut(duration: 0.15)
+        static let spring = SwiftUI.Animation.spring(response: 0.3, dampingFraction: 0.7)
+        static let springFast = SwiftUI.Animation.spring(response: 0.2, dampingFraction: 0.7)
     }
 
     // MARK: - Icons
@@ -340,13 +327,10 @@ enum OPSStyle {
         static let taskType = "tag.fill"                    // THE icon for Task Types
         static let client = "person.circle.fill"            // THE icon for Clients
         static let subClient = "person.2.fill"              // THE icon for Sub-clients
-        static let teamMember = "person.fill"               // THE icon for Team Members
         static let crew = "person.3.fill"                   // THE icon for Crews/Teams
 
         // Scheduling & Time
         static let schedule = "calendar.badge.clock"        // THE icon for Scheduling
-        static let deadline = "calendar.badge.exclamationmark" // THE icon for Deadlines
-        static let duration = "clock.fill"                  // THE icon for Duration/Time
 
         // Location & Site
         static let jobSite = "location.fill"                // THE icon for Job Sites
@@ -356,31 +340,22 @@ enum OPSStyle {
         static let notes = "note.text"                      // THE icon for Notes
         static let description = "text.alignleft"           // THE icon for Description
         static let photos = "photo.on.rectangle"            // THE icon for Photos
-        static let documents = "doc.text.fill"              // THE icon for Documents
 
         // Actions
         static let add = "plus.circle.fill"                 // THE icon for Add/Create
-        static let edit = "pencil.circle.fill"              // THE icon for Edit
         static let delete = "trash.fill"                    // THE icon for Delete
         static let sync = "arrow.triangle.2.circlepath"     // THE icon for Sync
-        static let share = "square.and.arrow.up"            // THE icon for Share
         static let filter = "line.horizontal.3.decrease.circle" // THE icon for Filter
-        static let sort = "arrow.up.arrow.down.circle"      // THE icon for Sort
         static let addContact = "person.crop.circle.badge.plus" // THE icon for Add from Contacts
         static let addProject = "folder.badge.plus"         // THE icon for Create Project
 
         // Status & State
         static let complete = "checkmark.circle.fill"       // THE icon for Complete
-        static let incomplete = "circle"                    // THE icon for Incomplete
-        static let inProgress = "clock.arrow.circlepath"    // THE icon for In Progress (if needed)
         static let alert = "exclamationmark.triangle.fill"  // THE icon for Alerts/Warnings
-        static let error = "xmark.octagon.fill"             // THE icon for Errors
         static let info = "info.circle.fill"                // THE icon for Information
 
         // System
-        static let settings = "gearshape.fill"              // THE icon for Settings
         static let search = "magnifyingglass"               // THE icon for Search
-        static let menu = "line.3.horizontal"               // THE icon for Menu
         static let close = "xmark"                          // THE icon for Close/Dismiss
         static let back = "chevron.left"                    // THE icon for Back navigation
         static let forward = "chevron.right"                // THE icon for Forward navigation
@@ -390,14 +365,10 @@ enum OPSStyle {
         // Example: Replace `OPSStyle.Icons.calendar` with `OPSStyle.Icons.schedule`
 
         static let calendar = "calendar"
-        static let calendarFill = "calendar.fill"
         static let calendarBadgeCheckmark = "calendar.badge.checkmark"
         static let person = "person"
-        static let personFill = "person.fill"
         static let personTwo = "person.2"
         static let personTwoFill = "person.2.fill"
-        static let personCircle = "person.circle"
-        static let personCircleFill = "person.circle.fill"
         static let location = "location"
         static let locationFill = "location.fill"
         static let phone = "phone"
@@ -414,7 +385,6 @@ enum OPSStyle {
         static let checkmarkCircleFill = "checkmark.circle.fill"
         static let circle = "circle"
         static let square = "square"
-        static let squareFill = "square.fill"
         static let xmark = "xmark"
         static let xmarkCircle = "xmark.circle"
         static let xmarkCircleFill = "xmark.circle.fill"
@@ -430,31 +400,14 @@ enum OPSStyle {
         static let minusCircleFill = "minus.circle.fill"
         static let exclamationmarkTriangle = "exclamationmark.triangle"
         static let exclamationmarkTriangleFill = "exclamationmark.triangle.fill"
-        static let gearshape = "gearshape"
-        static let gearshapeFill = "gearshape.fill"
-        static let house = "house"
-        static let houseFill = "house.fill"
         static let map = "map"
-        static let mapFill = "map.fill"
-        static let ellipsis = "ellipsis"
-        static let ellipsisCircle = "ellipsis.circle"
-        static let ellipsisCircleFill = "ellipsis.circle.fill"
-        static let listBullet = "list.bullet"
         static let trash = "trash"
-        static let trashFill = "trash.fill"
         static let pencil = "pencil"
         static let pencilCircle = "pencil.circle"
-        static let pencilCircleFill = "pencil.circle.fill"
         static let arrowClockwise = "arrow.clockwise"
-        static let arrowCounterclockwise = "arrow.counterclockwise"
-        static let magnifyingglass = "magnifyingglass"
-        static let magnifyingglassCircle = "magnifyingglass.circle"
-        static let magnifyingglassCircleFill = "magnifyingglass.circle.fill"
         static let bellFill = "bell.fill"
         static let photo = "photo"
         static let photoFill = "photo.fill"
-        static let camera = "camera"
-        static let cameraFill = "camera.fill"
         static let clock = "clock"
         static let copy = "doc.on.doc"
 
@@ -463,12 +416,7 @@ enum OPSStyle {
         static let pipelineChart    = "chart.bar.doc.horizontal.fill"
         static let estimateDoc      = "doc.text.fill"
         static let invoiceReceipt   = "receipt"
-        static let paymentDollar    = "dollarsign.circle.fill"
-        static let siteVisitPin     = "mappin.circle.fill"
-        static let activityBubble   = "bubble.left.and.text.bubble.right.fill"
-        static let followUpAlarm    = "alarm.fill"
         static let stageAdvance     = "arrow.forward.circle.fill"
-        static let dealWon          = "checkmark.seal.fill"
         static let dealLost         = "xmark.seal.fill"
         static let accountingChart  = "chart.bar.fill"
         static let productTag       = "tag.fill"

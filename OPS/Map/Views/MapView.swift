@@ -253,7 +253,6 @@ struct ProjectMarker: View {
             Circle()
                 .fill(OPSStyle.Colors.cardBackground)
                 .frame(width: markerSize + 8, height: markerSize + 8)
-                .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
             
             // Icon
             Image(systemName: iconForStatus(project.status))

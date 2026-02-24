@@ -111,7 +111,7 @@ struct ClientListView: View {
                         }
                     }) {
                         Text(letter)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(
                                 sectionTitles.contains(letter)
                                 ? OPSStyle.Colors.primaryAccent

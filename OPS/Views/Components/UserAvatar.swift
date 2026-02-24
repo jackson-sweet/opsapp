@@ -139,7 +139,7 @@ struct UserAvatar: View {
             } else {
                 // Default avatar with initials - no background, just border
                 Circle()
-                    .stroke(backgroundColor, lineWidth: 2)
+                    .stroke(backgroundColor, lineWidth: OPSStyle.Layout.Border.thick)
                     .frame(width: size, height: size)
                     .overlay(
                         Text(initials)

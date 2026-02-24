@@ -31,9 +31,8 @@ struct OldProjectMarkerPopup: View {
         }
         .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .fill(OPSStyle.Colors.cardBackground)
-                .shadow(radius: 4)
         )
     }
 }
@@ -98,7 +97,7 @@ struct ProjectMapAnnotation: View {
         } else if isSelected {
             return OPSStyle.Colors.primaryAccent     // Selected projects use primaryAccent
         } else {
-            return Color.white                      // Default is white as requested
+            return OPSStyle.Colors.primaryText       // Default is white as requested
         }
     }
     
@@ -153,7 +152,6 @@ struct ProjectMapAnnotation: View {
             Image(systemName: markerSymbol)
                 .font(.system(size: markerSize, weight: .semibold))
                 .foregroundColor(markerColor)
-                .shadow(color: OPSStyle.Colors.shadowColor, radius: 2, x: 0, y: 2)
         }
         // Use an extremely large hit area for better touch recognition
         .contentShape(Rectangle())

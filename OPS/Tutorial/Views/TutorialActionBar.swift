@@ -35,10 +35,10 @@ struct TutorialActionBar: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(Color.white.opacity(0.1))
-                    .cornerRadius(10)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                            .stroke(Color.white.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .disabled(isBackDisabled)
@@ -60,10 +60,10 @@ struct TutorialActionBar: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(isContinueDisabled ? Color.white.opacity(0.1) : Color.white)
-                .cornerRadius(10)
+                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(isContinueDisabled ? Color.white.opacity(0.2) : Color.clear, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                        .stroke(isContinueDisabled ? Color.white.opacity(0.2) : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .disabled(isContinueDisabled)
@@ -76,10 +76,10 @@ struct TutorialActionBar: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(Color.white.opacity(0.1))
-                    .cornerRadius(10)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                            .stroke(Color.white.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
         }

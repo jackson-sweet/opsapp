@@ -123,7 +123,7 @@ struct InvoiceCard: View {
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .stroke(
-                        invoice.isOverdue ? OPSStyle.Colors.errorStatus.opacity(0.4) : Color.white.opacity(0.1),
+                        invoice.isOverdue ? OPSStyle.Colors.errorStatus.opacity(0.4) : OPSStyle.Colors.cardBorder,
                         lineWidth: 1
                     )
             )

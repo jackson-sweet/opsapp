@@ -24,12 +24,12 @@ struct TaskTestView: View {
             Text("Test Status")
                 .font(.headline)
             Text(statusMessage)
-                .font(.caption)
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(.secondary)
         }
         .padding()
         .background(Color.gray.opacity(0.1))
-        .cornerRadius(8)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
     }
 
     private var testActionsSection: some View {
@@ -114,10 +114,10 @@ struct TaskTestView: View {
                 Text("Has Tasks: \(project.hasTasks ? "Yes" : "No")")
                 Text("Task Count: \(project.tasks.count)")
             }
-            .font(.caption)
+            .font(OPSStyle.Typography.caption)
             .padding()
             .background(Color.blue.opacity(0.1))
-            .cornerRadius(8)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         }
         .padding(.horizontal)
     }
@@ -141,7 +141,7 @@ struct TaskTestView: View {
                 }
                 .padding(8)
                 .background(Color.gray.opacity(0.1))
-                .cornerRadius(6)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
         }
         .padding(.horizontal)
@@ -156,7 +156,7 @@ struct TaskTestView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(task.displayTitle)
-                            .font(.caption)
+                            .font(OPSStyle.Typography.caption)
                             .bold()
                         Spacer()
                         Text(task.status.displayName)
@@ -165,7 +165,7 @@ struct TaskTestView: View {
                             .padding(.vertical, 2)
                             .background(statusColor(for: task.status))
                             .foregroundColor(.white)
-                            .cornerRadius(4)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                     Text("Color: \(task.effectiveColor)")
                         .font(.caption2)
@@ -178,7 +178,7 @@ struct TaskTestView: View {
                 }
                 .padding(8)
                 .background(Color.gray.opacity(0.1))
-                .cornerRadius(6)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
         }
         .padding(.horizontal)

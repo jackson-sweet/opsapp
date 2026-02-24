@@ -35,8 +35,7 @@ struct MiniMapView: View {
                             // Use SF Symbols marker - clean version without background, with white color
                             Image(systemName: "pin")
                                 .font(.system(size: 28, weight: .semibold))
-                                .foregroundColor(Color.white)
-                                .shadow(color: OPSStyle.Colors.shadowColor, radius: 3, x: 0, y: 2)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                     }
                     .mapStyle(mapStyle())
@@ -78,7 +77,6 @@ struct MiniMapView: View {
                             .padding(8)
                             .background(OPSStyle.Colors.primaryAccent)
                             .clipShape(Circle())
-                            .shadow(color: OPSStyle.Colors.shadowColor, radius: 3, x: 1, y: 1)
                             .padding(12)
                     }
                 }
@@ -86,7 +84,6 @@ struct MiniMapView: View {
         }
         .frame(height: 180)
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-        .shadow(color: OPSStyle.Colors.shadowColor, radius: 4, x: 0, y: 2)
     }
     
     // Helper to create region

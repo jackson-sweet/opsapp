@@ -167,7 +167,7 @@ struct LocationPermissionPhase: View {
                     // Ripple circles animation
                     ForEach(0..<3, id: \.self) { index in
                         Circle()
-                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.2), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
                             .frame(width: 100 + CGFloat(index * 50), height: 100 + CGFloat(index * 50))
                     }
                     
@@ -215,7 +215,7 @@ struct LocationPermissionPhase: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
+                    .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             
@@ -255,7 +255,7 @@ struct LocationPermissionPhase: View {
                 .frame(height: 56)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .disabled(isRequestingLocation)
@@ -345,7 +345,7 @@ struct NotificationPermissionPhase: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
+                    .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             
@@ -391,7 +391,7 @@ struct NotificationPermissionPhase: View {
                 .frame(height: 56)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .disabled(isRequestingNotifications)

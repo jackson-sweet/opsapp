@@ -21,7 +21,7 @@ struct ContactDetailSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             // Handle bar
-            RoundedRectangle(cornerRadius: 2.5)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                 .fill(OPSStyle.Colors.secondaryText.opacity(0.5))
                 .frame(width: 36, height: 5)
                 .padding(.top, 8)

@@ -184,7 +184,7 @@ private struct FlowButton: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isSelected ? Color.clear : OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        .stroke(isSelected ? Color.clear : OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }

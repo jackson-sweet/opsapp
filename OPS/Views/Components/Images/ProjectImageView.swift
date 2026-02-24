@@ -50,9 +50,8 @@ struct ProjectImageView: View {
                                 .font(.system(size: 16))
                                 .foregroundColor(.white)
                                 .padding(4)
-                                .background(Color.red)
+                                .background(OPSStyle.Colors.errorStatus)
                                 .clipShape(Circle())
-                                .shadow(color: OPSStyle.Colors.shadowColor, radius: 2, x: 0, y: 1)
                                 .padding(6)
                         }
                         

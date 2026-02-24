@@ -467,7 +467,7 @@ private struct PulsingActionHighlight: View {
     @State private var isVisible = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
             .stroke(
                 TutorialHighlightStyle.color,
                 lineWidth: TutorialHighlightStyle.lineWidth
@@ -530,7 +530,7 @@ struct ReceiptScannerView: View {
                     }
                     .padding(24)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(12)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
                     

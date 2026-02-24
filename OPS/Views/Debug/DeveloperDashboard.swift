@@ -95,8 +95,8 @@ struct DeveloperDashboard: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                     }

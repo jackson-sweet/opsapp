@@ -554,14 +554,14 @@ struct PhasedAnimationPreview: View {
                     VStack(spacing: 16) {
                         VStack(alignment: .leading, spacing: 8) {
                             PhasedLabel("FIRST NAME", index: 0, coordinator: coordinator)
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.cardBackgroundDark)
                                 .frame(height: 56)
                         }
 
                         VStack(alignment: .leading, spacing: 8) {
                             PhasedLabel("LAST NAME", index: 1, coordinator: coordinator)
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.cardBackgroundDark)
                                 .frame(height: 56)
                         }

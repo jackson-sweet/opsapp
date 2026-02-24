@@ -107,7 +107,6 @@ struct CompanyAddressView: View {
                                             .fill(Color.white)
                                             .frame(width: 8, height: 8)
                                     }
-                                    .shadow(color: OPSStyle.Colors.shadowColor, radius: 4, x: 0, y: 2)
                                 }
                             }
                             .frame(height: 200)
@@ -144,7 +143,6 @@ struct CompanyAddressView: View {
             .background(
                 Rectangle()
                     .fill(Color("Background"))
-                    .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: -4)
             )
             }
         }

@@ -189,7 +189,7 @@ struct TaskSelectorBar: View {
                     }) {
                         HStack(spacing: 12) {
                             Circle()
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 .frame(width: 10, height: 10)
 
                             Text("NO TASK SELECTED")

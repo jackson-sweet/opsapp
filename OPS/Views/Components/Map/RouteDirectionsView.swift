@@ -177,7 +177,6 @@ struct RouteDirectionsView: View {
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .fill(OPSStyle.Colors.cardBackground.opacity(0.95))
-                .shadow(color: OPSStyle.Colors.shadowColor, radius: 8, x: 0, y: 4)
         )
     }
 }

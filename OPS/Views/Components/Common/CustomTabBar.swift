@@ -89,7 +89,7 @@ struct CustomTabBar: View {
 
             // Black overlay during tutorial drag step
             if isDisabledForTutorial {
-                Color.black.opacity(0.85)
+                OPSStyle.Colors.overlayHeavy
                     .frame(height: 100)
                     .allowsHitTesting(true) // Blocks taps
             }

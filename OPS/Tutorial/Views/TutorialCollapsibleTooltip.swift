@@ -96,17 +96,14 @@ struct TutorialCollapsibleTooltip: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, isExpanded ? 14 : 10)
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                         .fill(OPSStyle.Colors.cardBackgroundDark)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(accentColor.opacity(0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                        .stroke(accentColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 // Dark glow effect - multiple shadows for stronger presence
-                .shadow(color: Color.black.opacity(0.8), radius: 20, x: 0, y: 0)
-                .shadow(color: Color.black.opacity(0.6), radius: 40, x: 0, y: 8)
-                .shadow(color: Color.black.opacity(0.4), radius: 60, x: 0, y: 12)
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
@@ -220,14 +217,14 @@ struct TutorialCollapsibleTooltip_Previews: PreviewProvider {
                         }
                         .padding()
                         .background(OPSStyle.Colors.primaryAccent)
-                        .cornerRadius(8)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
 
                         Button("Long text") {
                             currentText = "Now drag the project card from 'Accepted' to 'In Progress' to update its status."
                         }
                         .padding()
                         .background(OPSStyle.Colors.primaryAccent)
-                        .cornerRadius(8)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                     .foregroundColor(.white)
                     .padding(.bottom, 40)

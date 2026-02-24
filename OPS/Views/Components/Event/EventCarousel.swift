@@ -121,7 +121,7 @@ struct EventCardView: View {
         if let color = Color(hex: task.effectiveColor) {
             return color
         }
-        return Color.gray.opacity(0.6)
+        return OPSStyle.Colors.inactiveStatus
     }
     
     var body: some View {
@@ -192,11 +192,11 @@ struct EventCardView: View {
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
                                         .background(
-                                            RoundedRectangle(cornerRadius: 4)
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                                 .fill(displayColor.opacity(0.1))
                                                 .overlay(
-                                                    RoundedRectangle(cornerRadius: 4)
-                                                        .stroke(displayColor.opacity(0.3), lineWidth: 1)
+                                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                                        .stroke(displayColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                                 )
                                         )
                                 } else {
@@ -206,11 +206,11 @@ struct EventCardView: View {
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
                                         .background(
-                                            RoundedRectangle(cornerRadius: 4)
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                                 .fill(displayColor.opacity(0.1))
                                                 .overlay(
-                                                    RoundedRectangle(cornerRadius: 4)
-                                                        .stroke(displayColor.opacity(0.3), lineWidth: 1)
+                                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                                        .stroke(displayColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                                 )
                                         )
                                 }
@@ -240,7 +240,7 @@ struct EventCardView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isActiveProject ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: 2)
+                    .stroke(isActiveProject ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: OPSStyle.Layout.Border.thick)
             )
             .tutorialHighlight(for: .tapProject, cornerRadius: OPSStyle.Layout.cornerRadius)
 
@@ -264,7 +264,7 @@ struct EventCardView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.statusColor(for: .completed))
                         )
                         .padding(8)
@@ -286,7 +286,7 @@ struct EventCardView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.inactiveStatus)
                         )
                         .padding(8)

@@ -148,7 +148,7 @@ struct ContactDetailView: View {
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: 1)
+                                                .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
                                         )
                                     } else {
                                         // Sub-client rows
@@ -225,7 +225,7 @@ struct ContactDetailView: View {
                                     .background(Color.clear)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1.5)
+                                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                             .padding(.horizontal)
@@ -562,7 +562,7 @@ struct ContactDetailView: View {
                 }
                 .overlay(
                     Circle()
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick)
                 )
             }
             .padding(.vertical, 14)
@@ -571,7 +571,7 @@ struct ContactDetailView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -602,7 +602,7 @@ struct ContactDetailView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
                     )
                 }
             }
@@ -629,7 +629,7 @@ struct ContactDetailView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
                     )
                 }
             }
@@ -655,7 +655,7 @@ struct ContactDetailView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
                     )
                 }
             }
@@ -707,7 +707,7 @@ struct ContactDetailView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -731,7 +731,7 @@ struct ContactDetailView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                 }
@@ -786,7 +786,7 @@ struct ContactDetailView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     } else {
                         HStack(spacing: 12) {
@@ -808,7 +808,7 @@ struct ContactDetailView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                 }
@@ -852,7 +852,7 @@ struct ContactDetailView: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                             }
                             .buttonStyle(PlainButtonStyle())
@@ -876,7 +876,7 @@ struct ContactDetailView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                     }
@@ -907,7 +907,7 @@ struct ContactDetailView: View {
                             .background(Color.clear)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1.5)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                         
@@ -947,7 +947,7 @@ struct ContactDetailView: View {
                             .background(Color.clear)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1.5)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                     }
@@ -1007,12 +1007,12 @@ struct ContactDetailView: View {
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 4)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                             .fill(project.status.color.opacity(0.1))
                                     )
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(project.status.color.opacity(0.3), lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .stroke(project.status.color.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                     )
 
                                 // Chevron

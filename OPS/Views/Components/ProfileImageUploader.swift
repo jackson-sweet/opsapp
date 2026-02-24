@@ -149,7 +149,7 @@ struct ProfileImageUploader: View {
                 .fill(config.backgroundColor.opacity(0.3))
                 .overlay(
                     Circle()
-                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.pinDotNeutral, lineWidth: OPSStyle.Layout.Border.standard)
                 )
 
             // Image or placeholder
@@ -211,7 +211,7 @@ struct ProfileImageUploader: View {
                 .fill(config.backgroundColor.opacity(0.3))
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.pinDotNeutral, lineWidth: OPSStyle.Layout.Border.standard)
                 )
 
             // Image or placeholder

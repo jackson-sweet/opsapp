@@ -41,7 +41,7 @@ struct CompanyTeamListView: View {
                     .padding(.vertical, 8)
                     .padding(.horizontal, 16)
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
@@ -56,7 +56,7 @@ struct CompanyTeamListView: View {
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
     }
 }
 
@@ -111,7 +111,7 @@ struct CompanyTeamMemberRow: View {
         }
         .padding(8)
         .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(8)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
     }
     
     private func openEmail(_ email: String) {

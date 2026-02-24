@@ -244,7 +244,7 @@ struct CertificationsSettingsView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(cert.statusColor)
-                    .cornerRadius(12)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
             }
             
             // Issuer

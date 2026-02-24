@@ -176,7 +176,7 @@ struct SubClientEditSheet: View {
                             .padding(.vertical, 16)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
                             )
                         }
                         .padding(.horizontal)
@@ -394,7 +394,7 @@ struct SubClientEditSheet: View {
                     )
                     .overlay(
                         Circle()
-                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick)
                     )
             }
             .padding(.vertical, 14)
@@ -403,7 +403,7 @@ struct SubClientEditSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }

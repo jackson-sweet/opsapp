@@ -342,7 +342,7 @@ struct InventoryView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(sortMode == .threshold ? OPSStyle.Colors.warningStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(sortMode == .threshold ? OPSStyle.Colors.warningStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -448,7 +448,7 @@ struct InventoryView: View {
                                 .padding(.vertical, OPSStyle.Layout.spacing2)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                             }
 
@@ -778,7 +778,7 @@ struct InventoryView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -799,7 +799,7 @@ struct InventoryView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBorder : Color.clear, lineWidth: 1)
+                                    .stroke(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBorder : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                         .disabled(selectedItemIds.isEmpty)
@@ -819,7 +819,7 @@ struct InventoryView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBorder : OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
+                                    .stroke(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBorder : OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                         .disabled(selectedItemIds.isEmpty)
@@ -839,7 +839,7 @@ struct InventoryView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBorder : OPSStyle.Colors.errorStatus.opacity(0.5), lineWidth: 1)
+                                    .stroke(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBorder : OPSStyle.Colors.errorStatus.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                         .disabled(selectedItemIds.isEmpty)
@@ -856,7 +856,7 @@ struct InventoryView: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -900,7 +900,7 @@ struct InventoryView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -937,7 +937,7 @@ struct InventoryView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.top, OPSStyle.Layout.spacing3)
@@ -981,7 +981,7 @@ struct InventoryView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
 
                             Button(action: {
@@ -999,7 +999,7 @@ struct InventoryView: View {
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty ? OPSStyle.Colors.cardBorder : Color.clear, lineWidth: 1)
+                                            .stroke(selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty ? OPSStyle.Colors.cardBorder : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                             .buttonStyle(PlainButtonStyle())
@@ -1046,7 +1046,7 @@ struct InventoryView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }

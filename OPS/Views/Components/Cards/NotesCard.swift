@@ -32,7 +32,7 @@ struct NotesCard: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .scrollContentBackground(.hidden)
                         .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(8)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .frame(minHeight: 100)
 
                     HStack {

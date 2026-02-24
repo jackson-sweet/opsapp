@@ -95,7 +95,7 @@ struct CompanyContactView: View {
                             .padding(.vertical, 12)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color("AccentPrimary"), lineWidth: 1)
+                                    .stroke(Color("AccentPrimary"), lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             
                         }
@@ -119,7 +119,7 @@ struct CompanyContactView: View {
                             .padding(.vertical, 12)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color("AccentPrimary"), lineWidth: 1)
+                                    .stroke(Color("AccentPrimary"), lineWidth: OPSStyle.Layout.Border.standard)
                             )
 
                         }
@@ -195,7 +195,6 @@ struct CompanyContactView: View {
             .background(
                 Rectangle()
                     .fill(Color("Background"))
-                    .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: -4)
             )
             } // End of main VStack
         }

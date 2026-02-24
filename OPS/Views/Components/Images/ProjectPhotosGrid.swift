@@ -32,7 +32,7 @@ struct ProjectPhotosGrid: View {
         NavigationView {
             ZStack {
                 // Black background for optimal photo viewing
-                Color.black.edgesIgnoringSafeArea(.all)
+                OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 0) {
                     let photos = project.getProjectImages()
@@ -106,7 +106,7 @@ struct ProjectPhotosGrid: View {
                         .frame(height: 56)
                         .frame(maxWidth: .infinity)
                         .background(OPSStyle.Colors.primaryAccent)
-                        .cornerRadius(16)
+                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)
                     }
@@ -201,7 +201,7 @@ struct ProjectPhotosGrid: View {
                 .foregroundColor(.white)
 
             Text("Add photos to document this project")
-                .font(.body)
+                .font(OPSStyle.Typography.body)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -218,7 +218,7 @@ struct ProjectPhotosGrid: View {
                 .frame(height: 56)
                 .frame(width: 220)
                 .background(OPSStyle.Colors.primaryAccent)
-                .cornerRadius(16)
+                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 .padding(.bottom, 40)
             }
         }
@@ -241,7 +241,7 @@ struct PhotoThumbnail: View {
     
     var body: some View {
         ZStack {
-            Color.gray.opacity(0.2)
+            OPSStyle.Colors.cardBorder
             
             if let image = image {
                 Image(uiImage: image)
@@ -259,9 +259,8 @@ struct PhotoThumbnail: View {
                                 .font(.system(size: 12))
                                 .foregroundColor(.white)
                                 .padding(2)
-                                .background(Color.red)
+                                .background(OPSStyle.Colors.errorStatus)
                                 .clipShape(Circle())
-                                .shadow(color: OPSStyle.Colors.shadowColor, radius: 1, x: 0, y: 1)
                                 .padding(4)
                         }
                         
@@ -414,7 +413,7 @@ struct BasicPhotoViewer: View {
             }
         }
         .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
-        .background(Color.black)
+        .background(OPSStyle.Colors.background)
         .edgesIgnoringSafeArea(.all)
         .statusBar(hidden: true)
         .overlay(
@@ -440,7 +439,7 @@ struct SinglePhotoView: View {
     
     var body: some View {
         ZStack {
-            Color.black
+            OPSStyle.Colors.background
             
             if let image = image {
                 Image(uiImage: image)

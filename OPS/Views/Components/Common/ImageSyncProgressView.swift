@@ -31,12 +31,12 @@ struct ImageSyncProgressView: View {
                         GeometryReader { geometry in
                             ZStack(alignment: .leading) {
                                 // Background
-                                RoundedRectangle(cornerRadius: 2)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                                     .fill(OPSStyle.Colors.separator)
                                     .frame(height: 4)
                                 
                                 // Progress
-                                RoundedRectangle(cornerRadius: 2)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                                     .fill(syncManager.hasError ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
                                     .frame(width: geometry.size.width * syncManager.progress, height: 4)
                                     .animation(.easeInOut(duration: 0.3), value: syncManager.progress)
@@ -80,7 +80,7 @@ struct ImageSyncProgressView: View {
                             HStack {
                                 Image(systemName: upload.isComplete ? "checkmark.circle.fill" : 
                                                upload.hasError ? "xmark.circle.fill" : "circle")
-                                    .font(.system(size: 14))
+                                    .font(OPSStyle.Typography.caption)
                                     .foregroundColor(upload.isComplete ? OPSStyle.Colors.successStatus :
                                                    upload.hasError ? OPSStyle.Colors.errorStatus :
                                                    OPSStyle.Colors.secondaryText)

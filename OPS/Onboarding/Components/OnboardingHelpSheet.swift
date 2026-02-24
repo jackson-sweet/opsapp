@@ -34,7 +34,7 @@ struct OnboardingHelpSheet: View {
     var body: some View {
         VStack(spacing: 24) {
             // Drag indicator
-            RoundedRectangle(cornerRadius: 3)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .fill(OPSStyle.Colors.tertiaryText)
                 .frame(width: 40, height: 5)
                 .padding(.top, 12)
@@ -73,7 +73,7 @@ struct OnboardingHelpSheet: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
                             )
                     }
                 }

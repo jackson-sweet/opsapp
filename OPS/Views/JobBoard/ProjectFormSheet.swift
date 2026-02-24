@@ -537,7 +537,7 @@ struct ProjectFormSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                             }
                         }
@@ -651,7 +651,7 @@ struct ProjectFormSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -740,7 +740,7 @@ struct ProjectFormSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
         }
@@ -1152,7 +1152,7 @@ struct ProjectFormSheet: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
                                 addTaskButtonHighlight.isHighlighted ? addTaskButtonHighlight.borderColor : OPSStyle.Colors.primaryAccent.opacity(0.3),
-                                style: addTaskButtonHighlight.isHighlighted ? StrokeStyle(lineWidth: 2) : StrokeStyle(lineWidth: 2, dash: [5])
+                                style: addTaskButtonHighlight.isHighlighted ? StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick) : StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [5])
                             )
                             .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
                     )
@@ -1223,7 +1223,7 @@ struct ProjectFormSheet: View {
                                             )
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                    .stroke(OPSStyle.Colors.pinDotNeutral, lineWidth: 1)
+                                                    .stroke(OPSStyle.Colors.pinDotNeutral, lineWidth: OPSStyle.Layout.Border.standard)
                                             )
                                     }
                                     .padding(6)
@@ -1241,7 +1241,7 @@ struct ProjectFormSheet: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(style: StrokeStyle(lineWidth: 2, dash: [5]))
+                                    .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [5]))
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.5))
                             )
                         }
@@ -1262,7 +1262,7 @@ struct ProjectFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(style: StrokeStyle(lineWidth: 2, dash: [5]))
+                            .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [5]))
                             .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.3))
                     )
                 }
@@ -1368,7 +1368,7 @@ struct ProjectFormSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .overlay(
                 // Badge stack - right side
@@ -1380,12 +1380,12 @@ struct ProjectFormSheet: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(selectedStatus.color.opacity(0.1))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(selectedStatus.color, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(selectedStatus.color, lineWidth: OPSStyle.Layout.Border.standard)
                         )
 
                     Spacer()
@@ -1398,12 +1398,12 @@ struct ProjectFormSheet: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(OPSStyle.Colors.cardBackground)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                             )
 
                         Spacer()
@@ -1417,12 +1417,12 @@ struct ProjectFormSheet: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     } else if !localTasks.isEmpty {
                         Color.clear.frame(height: 0)

@@ -191,7 +191,6 @@ struct ProjectMarkerAlternative: View {
             Circle()
                 .fill(OPSStyle.Colors.cardBackground)
                 .frame(width: markerSize + 8, height: markerSize + 8)
-                .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
             
             // Icon
             Image(systemName: iconForStatus(project.status))
@@ -228,7 +227,7 @@ struct ProjectSelectionSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             // Drag indicator
-            RoundedRectangle(cornerRadius: 2.5)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                 .fill(Color.gray.opacity(0.4))
                 .frame(width: 40, height: 5)
                 .padding(.top, 8)

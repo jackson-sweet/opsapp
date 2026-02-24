@@ -46,7 +46,7 @@ struct ProjectNotificationPreferences: View {
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
     }
 }
 
@@ -103,7 +103,7 @@ struct AdvanceNoticePreferences: View {
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
     }
     
     private func reminderDaySelector(dayBinding: Binding<Int>, label: String) -> some View {
@@ -131,7 +131,7 @@ struct AdvanceNoticePreferences: View {
                     .padding(.vertical, 6)
                     .background(OPSStyle.Colors.cardBackground.opacity(0.6))
                     .foregroundColor(.white)
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 
                 Image(systemName: OPSStyle.Icons.chevronDown)
                     .font(OPSStyle.Typography.smallCaption)
@@ -185,6 +185,6 @@ struct NotificationToggleItem: View {
         )
     }
     .padding()
-    .background(Color.black)
+    .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)
 }

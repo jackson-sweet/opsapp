@@ -145,7 +145,7 @@ struct ProfileSettingsView: View {
                                     )
                                     .overlay(
                                         Circle()
-                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick)
                                     )
                                 }
                                 .padding(.vertical, 14)
@@ -154,7 +154,7 @@ struct ProfileSettingsView: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                             }
                             .padding(.horizontal, 20)
@@ -324,7 +324,7 @@ struct ProfileSettingsView: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                         .padding(.horizontal, 20)
@@ -491,7 +491,7 @@ struct ProfileSettingsView: View {
                                     .stroke(deleteConfirmationText.lowercased() == "confirm delete" ?
                                             OPSStyle.Colors.errorStatus :
                                                 OPSStyle.Colors.tertiaryText.opacity(0.3),
-                                            lineWidth: 1)
+                                            lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
                     .padding(.horizontal, 20)

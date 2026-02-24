@@ -27,7 +27,7 @@ struct TutorialSwipeIndicator: View {
             ZStack {
                 // Glow effect behind the target
                 if targetFrame != .zero {
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                         .fill(Color.white.opacity(glowOpacity * 0.15))
                         .frame(width: targetFrame.width + 16, height: targetFrame.height + 16)
                         .position(x: targetFrame.midX, y: targetFrame.midY)
@@ -41,7 +41,7 @@ struct TutorialSwipeIndicator: View {
                 // Shimmer gradient overlay (slide-to-unlock style)
                 shimmerGradient
                     .mask(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .frame(width: targetFrame.width, height: targetFrame.height)
                             .position(x: targetFrame.midX, y: targetFrame.midY)
                     )
@@ -283,7 +283,7 @@ struct TutorialSwipeIndicator_Previews: PreviewProvider {
 
             VStack(spacing: 40) {
                 // Target card
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                     .fill(OPSStyle.Colors.cardBackgroundDark)
                     .frame(width: 200, height: 80)
                     .overlay(

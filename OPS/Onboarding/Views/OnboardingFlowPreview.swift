@@ -74,7 +74,7 @@ struct OnboardingFlowPreview: View {
                                 // Step indicator
                                 HStack {
                                     Text("Step \(index + 1)")
-                                        .font(.caption)
+                                        .font(OPSStyle.Typography.caption)
                                         .foregroundColor(.secondary)
                                     Text(screen.name)
                                         .font(.headline)
@@ -164,7 +164,7 @@ struct DeviceFrame<Content: View>: View {
                 .frame(width: deviceWidth * scale, height: deviceHeight * scale)
                 .overlay(
                     RoundedRectangle(cornerRadius: 40 * scale)
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                        .stroke(Color.gray.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                 )
             
             // Screen area
@@ -179,7 +179,6 @@ struct DeviceFrame<Content: View>: View {
                         .frame(width: (deviceWidth - 20) * scale, height: (deviceHeight - 20) * scale)
                 )
         }
-        .shadow(radius: 10)
     }
 }
 

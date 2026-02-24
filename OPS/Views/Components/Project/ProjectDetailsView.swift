@@ -209,7 +209,7 @@ struct ProjectDetailsView: View {
                 // Show placeholder during deletion to avoid accessing deleted project
                 // CRITICAL: No modifiers that access project properties can be outside this if/else
                 ZStack {
-                    Color.black.edgesIgnoringSafeArea(.all)
+                    OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                 }
@@ -392,13 +392,13 @@ struct ProjectDetailsView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .fill(.ultraThinMaterial)
                 .environment(\.colorScheme, .dark)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -410,22 +410,22 @@ struct ProjectDetailsView: View {
             // Completed badge above marker
             if isTaskCompleted {
                 Text("COMPLETED")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(Color("StatusCompleted"))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(
-                        RoundedRectangle(cornerRadius: 3)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .fill(Color("StatusCompleted").opacity(0.15))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 3)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(Color("StatusCompleted"), lineWidth: 0.5)
                     )
             }
 
             MapMarkerBadge(
-                fillColor: Color.black.opacity(0.85),
+                fillColor: OPSStyle.Colors.overlayHeavy,
                 strokeColor: isTaskCompleted ? Color("StatusCompleted").opacity(0.5) : OPSStyle.Colors.primaryText,
                 strokeWidth: 1
             ) {
@@ -444,7 +444,6 @@ struct ProjectDetailsView: View {
                 }
             }
         }
-        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
     }
 
     /// Content area with gradient behind it
@@ -581,12 +580,12 @@ struct ProjectDetailsView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .fill(project.status.color.opacity(0.1))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(project.status.color, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(project.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .overlay(alignment: .topTrailing) {
@@ -598,9 +597,9 @@ struct ProjectDetailsView: View {
         .padding(.bottom, 16)
         .background {
             ZStack {
-                Color.black
+                OPSStyle.Colors.background
                 Rectangle().fill(.ultraThinMaterial)
-                Color.black.opacity(0.5)
+                OPSStyle.Colors.modalOverlay
             }
             .environment(\.colorScheme, .dark)
         }
@@ -612,8 +611,8 @@ struct ProjectDetailsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.white)
-        .foregroundColor(Color.black)
+        .background(OPSStyle.Colors.primaryText)
+        .foregroundColor(OPSStyle.Colors.invertedText)
         .cornerRadius(OPSStyle.Layout.buttonRadius)
         .font(OPSStyle.Typography.bodyBold)
     }
@@ -648,12 +647,12 @@ struct ProjectDetailsView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(task.status.color.opacity(0.1))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(task.status.color, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(task.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
                 }
@@ -707,19 +706,19 @@ struct ProjectDetailsView: View {
                                     UserAvatar(user: member, size: 22)
                                         .overlay(
                                             Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: 1)
+                                                .stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.standard)
                                         )
                                 }
                                 if taskTeamMembers.count > 4 {
                                     Text("+\(taskTeamMembers.count - 4)")
-                                        .font(.system(size: 10, weight: .medium))
+                                        .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                         .frame(width: 22, height: 22)
                                         .background(OPSStyle.Colors.cardBackgroundDark)
                                         .clipShape(Circle())
                                         .overlay(
                                             Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: 1)
+                                                .stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.standard)
                                         )
                                 }
                             }
@@ -759,7 +758,7 @@ struct ProjectDetailsView: View {
                             .frame(height: 36)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                    .stroke(buttonColor, lineWidth: 1)
+                                    .stroke(buttonColor, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -776,7 +775,7 @@ struct ProjectDetailsView: View {
                                 .frame(width: 60, height: 36)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                        .stroke(OPSStyle.Colors.secondaryText.opacity(0.5), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.secondaryText.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -900,7 +899,7 @@ struct ProjectDetailsView: View {
 
             // Divider
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
                 .padding(.horizontal)
 
@@ -968,8 +967,8 @@ struct ProjectDetailsView: View {
                     // Add button first
                     Button(action: { showingImagePicker = true }) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4]))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
                             Image(systemName: "plus")
                                 .font(.system(size: 24))
@@ -981,7 +980,7 @@ struct ProjectDetailsView: View {
                     ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                         photoThumbnailView(url: url, index: index)
                             .aspectRatio(1, contentMode: .fit)
-                            .cornerRadius(8)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                 }
                 .padding(.horizontal)
@@ -992,8 +991,8 @@ struct ProjectDetailsView: View {
                         // Add button first
                         Button(action: { showingImagePicker = true }) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4]))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
                                 Image(systemName: "plus")
                                     .font(.system(size: 20))
@@ -1005,7 +1004,7 @@ struct ProjectDetailsView: View {
                         ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                             photoThumbnailView(url: url, index: index)
                                 .frame(width: 80, height: 80)
-                                .cornerRadius(8)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
                     }
                     .padding(.horizontal)
@@ -1158,7 +1157,7 @@ struct ProjectDetailsView: View {
                         .padding(12)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                         )
 
                     // Cancel/Save buttons
@@ -1268,7 +1267,7 @@ struct ProjectDetailsView: View {
                     .padding(12)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(taskColor, lineWidth: 1)
+                            .stroke(taskColor, lineWidth: OPSStyle.Layout.Border.standard)
                     )
 
                     // Cancel/Save buttons
@@ -1387,7 +1386,7 @@ struct ProjectDetailsView: View {
                     // Divider between tasks
                     if task.id != sortedTasks.last?.id {
                         Rectangle()
-                            .fill(Color.white.opacity(0.05))
+                            .fill(OPSStyle.Colors.cardBorderSubtle)
                             .frame(height: 1)
                             .padding(.leading, 20)
                     }
@@ -1396,7 +1395,7 @@ struct ProjectDetailsView: View {
                 // Add task row (admin/office only)
                 if canEditProjectSettings() {
                     Rectangle()
-                        .fill(Color.white.opacity(0.05))
+                        .fill(OPSStyle.Colors.cardBorderSubtle)
                         .frame(height: 1)
                         .padding(.leading, 20)
 
@@ -1404,7 +1403,7 @@ struct ProjectDetailsView: View {
                         HStack(spacing: 0) {
                             // Dashed left border
                             Rectangle()
-                                .stroke(style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
+                                .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [4, 4]))
                                 .fill(OPSStyle.Colors.primaryAccent.opacity(0.5))
                                 .frame(width: 4)
 
@@ -1466,12 +1465,12 @@ struct ProjectDetailsView: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(OPSStyle.Colors.secondaryText.opacity(0.1))
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(OPSStyle.Colors.secondaryText, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .stroke(OPSStyle.Colors.secondaryText, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
 
@@ -1482,12 +1481,12 @@ struct ProjectDetailsView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(task.status.color.opacity(0.1))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(task.status.color, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(task.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
 
@@ -1531,19 +1530,19 @@ struct ProjectDetailsView: View {
                                     UserAvatar(user: member, size: 20)
                                         .overlay(
                                             Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: 1)
+                                                .stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.standard)
                                         )
                                 }
                                 if taskTeamMembers.count > 3 {
                                     Text("+\(taskTeamMembers.count - 3)")
-                                        .font(.system(size: 10, weight: .medium))
+                                        .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                         .frame(width: 20, height: 20)
                                         .background(OPSStyle.Colors.cardBackgroundDark)
                                         .clipShape(Circle())
                                         .overlay(
                                             Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: 1)
+                                                .stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.standard)
                                         )
                                 }
                             }
@@ -1582,7 +1581,7 @@ struct ProjectDetailsView: View {
 
             // Divider
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
                 .padding(.horizontal)
 
@@ -1591,7 +1590,7 @@ struct ProjectDetailsView: View {
 
             // Divider
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
                 .padding(.horizontal)
 
@@ -1600,7 +1599,7 @@ struct ProjectDetailsView: View {
 
             // Divider
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
                 .padding(.horizontal)
 
@@ -1609,7 +1608,7 @@ struct ProjectDetailsView: View {
 
             // Divider
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
                 .padding(.horizontal)
 
@@ -1843,7 +1842,7 @@ struct ProjectDetailsView: View {
                             .padding(12)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                             )
 
                         // Cancel/Save buttons
@@ -1948,7 +1947,7 @@ struct ProjectDetailsView: View {
                     .padding(.vertical, 10)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(Color("StatusCompleted"), lineWidth: 1)
+                            .stroke(Color("StatusCompleted"), lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -1971,7 +1970,7 @@ struct ProjectDetailsView: View {
                     .padding(.vertical, 10)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -2891,7 +2890,7 @@ struct ProjectDetailsView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.cardBackgroundDark)
                         )
                         .padding(.top, 4)
@@ -3197,7 +3196,7 @@ struct ProjectDetailsView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .buttonStyle(PlainButtonStyle())
@@ -3281,7 +3280,7 @@ struct ProjectDetailsView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -3303,7 +3302,7 @@ struct ProjectDetailsView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }
@@ -3662,7 +3661,7 @@ struct ProjectDetailsView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal)
         }
@@ -3789,9 +3788,9 @@ struct ProjectDetailsView: View {
             }) {
                 ZStack {
                     // Dashed border outline to look like a photo placeholder
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .stroke(
-                            style: StrokeStyle(lineWidth: 2, dash: [6, 4])
+                            style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4])
                         )
                         .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
 
@@ -3808,7 +3807,7 @@ struct ProjectDetailsView: View {
                 }
                 .frame(width: 110, height: 110)
                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                .cornerRadius(8)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
             .disabled(processingImages)
 
@@ -3863,9 +3862,9 @@ struct ProjectDetailsView: View {
         }) {
             ZStack {
                 // Dashed border outline to look like a photo placeholder
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .stroke(
-                        style: StrokeStyle(lineWidth: 2, dash: [6, 4])
+                        style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4])
                     )
                     .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
 
@@ -3882,7 +3881,7 @@ struct ProjectDetailsView: View {
             }
             .frame(width: 110, height: 110)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-            .cornerRadius(8)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         }
         .disabled(processingImages)
     }
@@ -3891,8 +3890,7 @@ struct ProjectDetailsView: View {
     private func photoThumbnailView(url: String, index: Int) -> some View {
         PhotoThumbnail(url: url, project: project)
             .frame(width: 110, height: 110)
-            .cornerRadius(8)
-            .shadow(color: Color.black, radius: 4, x: 0, y: 2)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .contentShape(Rectangle())
             .onTapGesture { [index] in  // Explicitly capture index
                 print("DEBUG: Photo tapped at index \(index)")
@@ -3947,7 +3945,6 @@ struct ProjectDetailsView: View {
             .padding(.vertical, 12)
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .shadow(color: Color.black, radius: 5, x: 0, y: 2)
             
             Spacer().frame(height: 300)
         }
@@ -4147,7 +4144,7 @@ struct ProjectDetailsView: View {
                     .background(Color.clear)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(buttonColor, lineWidth: 1)
+                            .stroke(buttonColor, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -4246,7 +4243,7 @@ struct ProjectDetailsView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -4284,7 +4281,7 @@ struct ProjectDetailsView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.inputFieldBorder.opacity(0.3), lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.inputFieldBorder.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -4429,7 +4426,7 @@ struct ProjectDetailsView: View {
                 .background(Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(closedColor, lineWidth: 1)
+                        .stroke(closedColor, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .padding(.horizontal)
@@ -4448,7 +4445,7 @@ struct ProjectDetailsView: View {
                 .background(Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .padding(.horizontal)
@@ -4479,7 +4476,7 @@ struct ProjectDetailsView: View {
             .background(Color.clear)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.5), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .padding(.horizontal)
@@ -5177,7 +5174,7 @@ private struct TaskStatusChip: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .strokeBorder(status.color, lineWidth: 1)
+                        .strokeBorder(status.color, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .buttonStyle(PlainButtonStyle())
@@ -5328,7 +5325,6 @@ struct AddressEditorSheet: View {
                         .fill(OPSStyle.Colors.primaryAccent)
                         .frame(width: 6, height: 6)
                 }
-                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
             }
             .navigationTitle("EDIT ADDRESS")
             .navigationBarTitleDisplayMode(.inline)
@@ -5501,7 +5497,7 @@ struct FullScreenPhotoViewer: View {
     var body: some View {
         ZStack {
             // Background
-            Color.black.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
             
             // Photo gallery with swipe
             TabView(selection: $currentIndex) {
@@ -5521,18 +5517,18 @@ struct FullScreenPhotoViewer: View {
                             .font(.system(size: 22, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(12)
-                            .background(Color.black)
+                            .background(OPSStyle.Colors.background)
                             .clipShape(Circle())
                     }
                     
                     Spacer()
                     
                     Text("\(currentIndex + 1) of \(photos.count)")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(.white)
                         .padding(8)
-                        .background(Color.black)
-                        .cornerRadius(20)
+                        .background(OPSStyle.Colors.background)
+                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 48)
@@ -5556,7 +5552,7 @@ struct ZoomablePhotoView: View {
 
     var body: some View {
         ZStack {
-            Color.black
+            OPSStyle.Colors.background
 
             if let image = image {
                 // Use UIKit-based scroll view for proper pinch-to-zoom at touch location

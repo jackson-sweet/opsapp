@@ -73,7 +73,7 @@ struct ProductsListView: View {
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, OPSStyle.Layout.spacing2)
@@ -89,7 +89,7 @@ struct ProductsListView: View {
                     .padding(.vertical, OPSStyle.Layout.spacing2)
                 }
 
-                Divider().background(Color.white.opacity(0.15))
+                Divider().background(OPSStyle.Colors.separator)
 
                 // Content
                 if isLoading {
@@ -124,7 +124,6 @@ struct ProductsListView: View {
                     .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
                     .background(OPSStyle.Colors.primaryAccent)
                     .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
             }
             .padding(OPSStyle.Layout.spacing3)
             .accessibilityLabel("New Product")
@@ -209,7 +208,7 @@ struct ProductsListView: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -223,7 +222,7 @@ struct ProductsListView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing1 + 2)
             .padding(.vertical, 2)
             .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
-            .cornerRadius(4)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
     }
 
     private func filterChip(_ filter: ProductFilter) -> some View {
@@ -245,7 +244,7 @@ struct ProductsListView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .stroke(
-                            selectedFilter == filter ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1),
+                            selectedFilter == filter ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
                             lineWidth: 1
                         )
                 )

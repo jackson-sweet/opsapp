@@ -459,7 +459,6 @@ private struct TutorialTabBar: View {
         .animation(.easeInOut(duration: 0.3), value: shouldGreyOut)
         .background(
             OPSStyle.Colors.cardBackgroundDark
-                .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: -2)
         )
     }
 }

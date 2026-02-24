@@ -23,7 +23,7 @@ struct TaskCompletionChecklistSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                Color.black.edgesIgnoringSafeArea(.all)
+                OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
                 VStack(spacing: 0) {
                     ScrollView {
@@ -84,7 +84,7 @@ struct TaskCompletionChecklistSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -118,7 +118,7 @@ struct TaskCompletionChecklistSheet: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .stroke(taskStates[task.id] == true ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1.5)
+                        .stroke(taskStates[task.id] == true ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         .frame(width: 20, height: 20)
 
                     if taskStates[task.id] == true {
@@ -168,12 +168,12 @@ struct TaskCompletionChecklistSheet: View {
                     .background(Color.clear)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(allTasksComplete ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(allTasksComplete ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .disabled(!allTasksComplete)
             .padding()
-            .background(Color.black)
+            .background(OPSStyle.Colors.background)
         }
     }
 

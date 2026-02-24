@@ -615,7 +615,7 @@ struct GoogleSignInButton: View {
             .background(Color.clear)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.tertiaryText, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.tertiaryText, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -642,7 +642,7 @@ struct AppleSignInButton: View {
             .background(Color.clear)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.tertiaryText, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.tertiaryText, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -673,7 +673,7 @@ struct LoginSuccessView: View {
                     ZStack {
                         // Background circle with subtle accent
                         Circle()
-                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 2)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.thick)
                             .frame(width: 56, height: 56)
                             .scaleEffect(showCheckmark ? 1 : 0.8)
                         
@@ -733,7 +733,7 @@ struct LoginSuccessView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, 60)
             .scaleEffect(showCheckmark ? 1 : 0.95)

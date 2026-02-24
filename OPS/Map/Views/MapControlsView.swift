@@ -43,7 +43,6 @@ struct MapControlsView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                     }
-                    .shadow(color: .black.opacity(0.2), radius: 3, x: 0, y: 2)
                 }
                 
                 // Recenter on user button
@@ -66,7 +65,6 @@ struct MapControlsView: View {
                             .foregroundColor(locationButtonColor)
                     }
                 }
-                .shadow(color: .black.opacity(0.2), radius: 3, x: 0, y: 2)
                 
                     if coordinator.isNavigating {
                         // Map orientation toggle button
@@ -89,7 +87,6 @@ struct MapControlsView: View {
                                     .foregroundColor(orientationButtonColor)
                             }
                         }
-                        .shadow(color: .black.opacity(0.2), radius: 3, x: 0, y: 2)
                     }
 
                 }

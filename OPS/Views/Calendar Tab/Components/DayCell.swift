@@ -56,11 +56,11 @@ struct DayCell: View {
             }
             .frame(width: 56, height: 76)
             .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
             .overlay(
                 // Minimal rectangle border for selected day
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.white : Color.clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(isSelected ? OPSStyle.Colors.primaryText : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                     .foregroundStyle(isSelected ? OPSStyle.Colors.cardBackground : Color.clear)
             )
         }

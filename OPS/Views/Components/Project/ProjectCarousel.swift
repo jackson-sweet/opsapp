@@ -216,7 +216,7 @@ struct ProjectCardView: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
                                 .background(OPSStyle.Colors.statusColor(for: .completed))
-                                .cornerRadius(3)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                                 .padding([.bottom, .trailing], 8)
                         }
@@ -240,7 +240,7 @@ struct ProjectCardView: View {
                             .padding()
                             .frame(width: 362, height: 85)
                             .background(OPSStyle.Colors.imageOverlay)
-                            .foregroundColor(Color.red)
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 } else {
@@ -263,7 +263,7 @@ struct ProjectCardView: View {
                     .font(OPSStyle.Typography.cardBody)
                     .padding(8)
                     .background(OPSStyle.Colors.imageOverlay)
-                    .foregroundColor(Color.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .position(x: 362/2, y: 85-20)
             }

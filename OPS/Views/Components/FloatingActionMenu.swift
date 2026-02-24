@@ -168,16 +168,15 @@ struct FloatingActionMenu: View {
                                     .frame(width: 64, height: 64)
                                     .background {
                                         if isFABDisabledInTutorial {
-                                            Circle().fill(Color.black.opacity(0.8))
+                                            Circle().fill(OPSStyle.Colors.overlayStrong)
                                         } else {
                                             Circle().fill(.ultraThinMaterial.opacity(0.8))
                                         }
                                     }
                                     .clipShape(Circle())
-                                    .shadow(color: OPSStyle.Colors.background.opacity(0.4), radius: 8, x: 0, y: 4)
                                     .overlay {
                                         Circle()
-                                            .stroke(isFABDisabledInTutorial ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText, lineWidth: 2)
+                                            .stroke(isFABDisabledInTutorial ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText, lineWidth: OPSStyle.Layout.Border.thick)
                                     }
                             }
                             .allowsHitTesting(!isFABDisabledInTutorial)

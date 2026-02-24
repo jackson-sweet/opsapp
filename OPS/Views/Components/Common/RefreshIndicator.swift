@@ -26,7 +26,7 @@ struct RefreshIndicator: View {
                                 .trim(from: 0, to: 0.7)
                                 .stroke(
                                     OPSStyle.Colors.primaryText,
-                                    style: StrokeStyle(lineWidth: 2, lineCap: .square)
+                                    style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, lineCap: .square)
                                 )
                                 .frame(width: 40, height: 40)
                                 .rotationEffect(.degrees(rotation))

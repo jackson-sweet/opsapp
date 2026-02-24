@@ -49,7 +49,7 @@ struct DayEventsSheet: View {
                 // Card with project count - showing total count (new + ongoing)
                 ZStack {
                     // Project count card with softer edges
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                         .fill(OPSStyle.Colors.cardBackgroundDark)
                         .frame(width: 60, height: 60)
 

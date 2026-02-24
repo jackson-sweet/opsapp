@@ -207,7 +207,7 @@ struct IndustryPhaseView: View {
                     .padding(.vertical, 16)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .fill(OPSStyle.Colors.cardBackground)
@@ -279,7 +279,7 @@ struct SizePhaseView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             } else {
                                 Circle()
-                                    .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                     .frame(width: 20, height: 20)
                             }
                         }
@@ -290,7 +290,7 @@ struct SizePhaseView: View {
                                 .fill(selectedSize == size ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackground)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(selectedSize == size ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                        .stroke(selectedSize == size ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         )
                     }
@@ -362,7 +362,7 @@ struct AgePhaseView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             } else {
                                 Circle()
-                                    .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.secondaryText.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                     .frame(width: 20, height: 20)
                             }
                         }
@@ -373,7 +373,7 @@ struct AgePhaseView: View {
                                 .fill(selectedAge == age ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackground)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(selectedAge == age ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                        .stroke(selectedAge == age ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         )
                     }
@@ -449,7 +449,7 @@ struct IndustryPickerView: View {
                         .fill(OPSStyle.Colors.cardBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)

@@ -48,7 +48,7 @@ struct OnboardingProgressIndicator: View {
     var body: some View {
         HStack(spacing: 4) {
             ForEach(1..<totalSteps+1, id: \.self) { step in
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                     .fill(step <= currentStep.rawValue ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.3))
                     .frame(height: 4)
             }
@@ -188,7 +188,7 @@ struct StandardContinueButton: View {
             .frame(height: 56)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isDisabled ? Color.gray : OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                    .stroke(isDisabled ? Color.gray : OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .disabled(isDisabled || isLoading)
@@ -356,7 +356,7 @@ struct OnboardingNavigationButtons: View {
                 VStack(spacing: 4) {
                     Text(String(describing: step))
                         .foregroundColor(.white)
-                        .font(.caption)
+                        .font(OPSStyle.Typography.caption)
                     
                     OnboardingProgressIndicator(currentStep: step)
                 }

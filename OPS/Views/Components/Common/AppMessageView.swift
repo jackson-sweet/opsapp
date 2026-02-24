@@ -76,7 +76,7 @@ struct AppMessageView: View {
 
                     // Divider
                     Rectangle()
-                        .fill(Color.white.opacity(0.1))
+                        .fill(OPSStyle.Colors.cardBorder)
                         .frame(height: 1)
 
                     // Body - left aligned
@@ -105,7 +105,7 @@ struct AppMessageView: View {
                     VStack(spacing: 0) {
                         // Divider above button
                         Rectangle()
-                            .fill(Color.white.opacity(0.06))
+                            .fill(OPSStyle.Colors.cardBorderSubtle)
                             .frame(height: 1)
                             .padding(.top, 8)
                             .padding(.bottom, 20)
@@ -123,7 +123,7 @@ struct AppMessageView: View {
                                     .background(Color.clear)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.separator, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                         } else if hasAppStoreUrl {
@@ -139,7 +139,7 @@ struct AppMessageView: View {
                                     .background(Color.clear)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.separator, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                         } else {
@@ -159,7 +159,7 @@ struct AppMessageView: View {
                         .fill(OPSStyle.Colors.cardBackgroundDark)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)

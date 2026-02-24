@@ -420,11 +420,11 @@ struct TutorialLauncherView: View {
                     ForEach(Array(finishingMessages.enumerated()), id: \.offset) { index, line in
                         HStack(spacing: 8) {
                             Text(">")
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
 
                             Text(line)
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         .opacity(index == finishingMessages.count - 1 ? 1.0 : 0.5)

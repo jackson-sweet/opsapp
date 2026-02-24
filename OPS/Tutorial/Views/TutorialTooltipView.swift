@@ -149,7 +149,7 @@ struct TutorialTooltipCard: View {
                         .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.95))
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 )
                 .padding(.horizontal, 20)

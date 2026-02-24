@@ -177,7 +177,7 @@ struct TutorialInlineSheet_Previews: PreviewProvider {
                     }
                     .padding()
                     .background(OPSStyle.Colors.primaryAccent)
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
 
                 // Inline sheet - always in view hierarchy, animates in/out
@@ -194,7 +194,7 @@ struct TutorialInlineSheet_Previews: PreviewProvider {
                         }
                         .padding()
                         .background(OPSStyle.Colors.primaryAccent)
-                        .cornerRadius(8)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .padding(.bottom, 40)
                     }
                     .padding()

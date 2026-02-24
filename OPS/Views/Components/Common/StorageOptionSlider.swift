@@ -35,7 +35,7 @@ struct StorageOptionSlider: View {
                         .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
                     
                     Text(storageOptions[selectedStorageIndex].description)
-                        .font(.caption)
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                         .lineLimit(2)
                         
@@ -58,7 +58,7 @@ struct StorageOptionSlider: View {
                         
                         /*
                         Text(storageOptions[index].value)
-                            .font(.caption)
+                            .font(OPSStyle.Typography.caption)
                             .foregroundColor(index == selectedStorageIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                             .multilineTextAlignment(.center)
                             //.frame(width: 60)
@@ -93,7 +93,7 @@ struct StorageOptionSlider: View {
                                     .frame(width: 8, height: 8)
                                     .overlay(
                                         Circle()
-                                            .stroke(index <= selectedStorageIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 2)
+                                            .stroke(index <= selectedStorageIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: OPSStyle.Layout.Border.thick)
                                     )
                                     .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
                                     .onTapGesture {

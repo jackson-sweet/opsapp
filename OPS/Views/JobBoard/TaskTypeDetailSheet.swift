@@ -151,7 +151,7 @@ struct TaskTypeDetailSheet: View {
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.errorStatus.opacity(0.3), lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.errorStatus.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                                 }
                             }

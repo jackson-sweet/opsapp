@@ -227,12 +227,12 @@ struct TaskTypeCard: View {
                     
                     if taskType.isDefault {
                         Text("DEFAULT")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(OPSStyle.Colors.primaryAccent)
-                            .cornerRadius(4)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                 }
             }
@@ -314,7 +314,7 @@ struct AddTaskTypeSheet: View {
                                             .frame(width: 40, height: 40)
                                             .overlay(
                                                 Circle()
-                                                    .stroke(color == hexColor ? Color.white : Color.clear, lineWidth: 2)
+                                                    .stroke(color == hexColor ? Color.white : Color.clear, lineWidth: OPSStyle.Layout.Border.thick)
                                             )
                                     }
                                 }
@@ -337,7 +337,7 @@ struct AddTaskTypeSheet: View {
                                             .foregroundColor(icon == iconName ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
                                             .frame(width: 40, height: 40)
                                             .background(
-                                                RoundedRectangle(cornerRadius: 8)
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                                     .fill(icon == iconName ? OPSStyle.Colors.cardBackground : OPSStyle.Colors.cardBackgroundDark)
                                             )
                                     }

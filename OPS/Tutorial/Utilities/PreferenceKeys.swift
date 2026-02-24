@@ -206,19 +206,19 @@ struct PreferenceKeysDemo: View {
                 }
                 .padding()
                 .background(OPSStyle.Colors.primaryAccent)
-                .cornerRadius(8)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .tutorialTargetFrame()
             }
 
             // Show captured frame
             if targetFrame != .zero {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.green, lineWidth: 2)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(Color.green, lineWidth: OPSStyle.Layout.Border.thick)
                     .frame(width: targetFrame.width, height: targetFrame.height)
                     .position(x: targetFrame.midX, y: targetFrame.midY)
 
                 Text("Frame: \(Int(targetFrame.minX)), \(Int(targetFrame.minY))")
-                    .font(.caption)
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(.green)
                     .position(x: targetFrame.midX, y: targetFrame.maxY + 20)
             }

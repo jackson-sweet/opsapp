@@ -42,7 +42,7 @@ struct PaymentRecordSheet: View {
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -58,7 +58,7 @@ struct PaymentRecordSheet: View {
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -86,7 +86,7 @@ struct PaymentRecordSheet: View {
                             .buttonStyle(PlainButtonStyle())
 
                             if m != PaymentMethod.allCases.last {
-                                Divider().background(Color.white.opacity(0.1))
+                                Divider().background(OPSStyle.Colors.cardBorder)
                             }
                         }
                     }
@@ -94,7 +94,7 @@ struct PaymentRecordSheet: View {
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -109,7 +109,7 @@ struct PaymentRecordSheet: View {
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
 

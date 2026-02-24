@@ -159,10 +159,10 @@ struct SecuritySettingsView: View {
                                 .disableAutocorrection(true)
                                 .padding()
                                 .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(12)
+                                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                             
                             // Show developer mode button when secret phrase is entered
@@ -192,8 +192,8 @@ struct SecuritySettingsView: View {
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 12)
                                             .background(
-                                                RoundedRectangle(cornerRadius: 8)
-                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                             )
                                         }
                                         .padding(.top, 8)
@@ -226,7 +226,7 @@ struct SecuritySettingsView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 16)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(12)
+                                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                             }
                             
                             Button(action: {
@@ -238,7 +238,7 @@ struct SecuritySettingsView: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
                                         .background(OPSStyle.Colors.primaryAccent)
-                                        .cornerRadius(12)
+                                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                                 } else {
                                     Text("Send Reset Link")
                                         .font(OPSStyle.Typography.button)
@@ -246,7 +246,7 @@ struct SecuritySettingsView: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
                                         .background(OPSStyle.Colors.primaryAccent)
-                                        .cornerRadius(12)
+                                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                                 }
                             }
                             .disabled(!isEmailValid || passwordResetInProgress)
@@ -283,7 +283,7 @@ struct SecuritySettingsView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(OPSStyle.Colors.primaryAccent)
-                                .cornerRadius(12)
+                                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 40)

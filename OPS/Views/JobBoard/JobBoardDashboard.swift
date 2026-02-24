@@ -183,9 +183,8 @@ struct JobBoardDashboard: View {
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
                         .background(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                                 .fill(OPSStyle.Colors.errorStatus)
-                                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                         )
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .padding(.bottom, 180)
@@ -208,9 +207,8 @@ struct JobBoardDashboard: View {
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
                         .background(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                                 .fill(OPSStyle.Colors.primaryAccent)
-                                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                         )
                         .transition(.scale.combined(with: .opacity))
                         .padding(.top, 100)
@@ -435,11 +433,11 @@ struct JobBoardDashboard: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.black.opacity(0.85))
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                .fill(OPSStyle.Colors.overlayHeavy)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(emphasisPressHold ? OPSStyle.Colors.warningStatus : Color.clear, lineWidth: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                        .stroke(emphasisPressHold ? OPSStyle.Colors.warningStatus : Color.clear, lineWidth: OPSStyle.Layout.Border.thick)
                 )
         )
         .scaleEffect(emphasisPressHold ? 1.05 : 1.0)
@@ -467,20 +465,20 @@ struct JobBoardDashboard: View {
                 HStack(spacing: 12) {
                     Image(systemName: "archivebox.fill")
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Color.gray.opacity(isActive ? 1.0 : 0.6))
+                        .foregroundColor(OPSStyle.Colors.inactiveStatus.opacity(isActive ? 1.0 : 0.6))
 
                     Text("ARCHIVE")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(Color.gray.opacity(isActive ? 1.0 : 0.6))
+                        .foregroundColor(OPSStyle.Colors.inactiveStatus.opacity(isActive ? 1.0 : 0.6))
                 }
                 .padding(.horizontal, 50)
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(Color.black)
+                        .fill(OPSStyle.Colors.background)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(Color.gray.opacity(isActive ? 0.8 : 0.3), lineWidth: 2)
+                                .stroke(OPSStyle.Colors.inactiveStatus.opacity(isActive ? 0.8 : 0.3), lineWidth: OPSStyle.Layout.Border.thick)
                         )
                 )
 
@@ -1012,16 +1010,16 @@ struct DirectionalDragCard: View {
             Spacer()
         }
         .background(OPSStyle.Colors.background)
-        .cornerRadius(6)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(OPSStyle.Colors.cardBorderSubtle, lineWidth: 1)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .strokeBorder(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .overlay(
             Group {
                 if shouldShowTutorialHighlight {
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(TutorialHighlightStyle.color, lineWidth: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .strokeBorder(TutorialHighlightStyle.color, lineWidth: OPSStyle.Layout.Border.thick)
                         .opacity(tutorialHighlightPulse ? TutorialHighlightStyle.pulseOpacity.max : TutorialHighlightStyle.pulseOpacity.min)
                         .animation(
                             .easeInOut(duration: TutorialHighlightStyle.pulseDuration)
@@ -1245,15 +1243,14 @@ struct DraggingCardOverlay: View {
                 .padding(12)
             }
             .background(OPSStyle.Colors.background)
-            .cornerRadius(6)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(OPSStyle.Colors.cardBorderSubtle, lineWidth: 1)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .strokeBorder(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .frame(width: 256)
             .fixedSize(horizontal: false, vertical: true)
             .scaleEffect(0.98)
-            .shadow(color: OPSStyle.Colors.shadowColor, radius: 12, x: 0, y: 4)
             .position(x: dragLocation.x, y: dragLocation.y - 120)
             .transition(dropTransition)
             .allowsHitTesting(false)

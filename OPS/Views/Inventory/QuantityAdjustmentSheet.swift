@@ -230,7 +230,7 @@ struct QuantityAdjustmentSheet: View {
                             .padding(.vertical, 2)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
                 }
@@ -299,7 +299,7 @@ struct QuantityAdjustmentSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(color, lineWidth: 1.5)
+                        .stroke(color, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .buttonStyle(PlainButtonStyle())

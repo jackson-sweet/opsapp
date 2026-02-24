@@ -258,12 +258,12 @@ struct SpreadsheetImportSheet: View {
                     Rectangle()
                         .fill(OPSStyle.Colors.cardBorder)
                         .frame(height: 4)
-                        .cornerRadius(2)
+                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
 
                     Rectangle()
                         .fill(OPSStyle.Colors.primaryText)
                         .frame(width: geometry.size.width * progressFraction, height: 4)
-                        .cornerRadius(2)
+                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                 }
             }
             .frame(height: 4)
@@ -327,7 +327,7 @@ struct SpreadsheetImportSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
                 }

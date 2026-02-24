@@ -58,10 +58,10 @@ struct ReportIssueView: View {
                                     .foregroundColor(.white)
                                     .padding()
                                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                    .cornerRadius(12)
+                                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                             .padding(.horizontal, 20)
@@ -82,13 +82,13 @@ struct ReportIssueView: View {
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(.white)
                                             .background(Color.clear)
-                                            .cornerRadius(12)
+                                            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                                     }
                                     .frame(height: 150)
                                     .padding(12)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                                     
                                     

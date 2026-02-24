@@ -77,11 +77,11 @@ struct ProjectDetailsCard: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(taskColor.opacity(0.1))
                                         .overlay(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .stroke(taskColor.opacity(0.3), lineWidth: 1)
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                                .stroke(taskColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                         )
                                 )
                         }
@@ -177,7 +177,7 @@ struct ProjectDetailsCard: View {
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.secondaryText, lineWidth: 2)
+                            .stroke(OPSStyle.Colors.secondaryText, lineWidth: OPSStyle.Layout.Border.thick)
                     )
                     .onTapGesture { 
                         showFullDetails = true 
@@ -208,7 +208,6 @@ struct ProjectDetailsCard: View {
             }
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius, corners: [.topLeft, .topRight])
-        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: -5)
         .sheet(isPresented: $showFullDetails) {
             ProjectDetailsView(project: project)
         }

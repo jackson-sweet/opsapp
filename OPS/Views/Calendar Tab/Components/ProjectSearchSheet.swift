@@ -253,7 +253,7 @@ struct ProjectSearchSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .frame(maxWidth: .infinity)
             
@@ -275,7 +275,7 @@ struct ProjectSearchSheet: View {
                         
                         if activeFilterCount > 0 {
                             Text("\(activeFilterCount)")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(.white)
                                 .padding(2)
                                 .background(OPSStyle.Colors.primaryAccent)
@@ -291,7 +291,7 @@ struct ProjectSearchSheet: View {
                         .fill(showFilters ? OPSStyle.Colors.cardBackground : Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(hasActiveFilters ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.clear, lineWidth: 1)
+                                .stroke(hasActiveFilters ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 )
             }
@@ -339,7 +339,7 @@ struct ProjectSearchSheet: View {
                                     .fill(OPSStyle.Colors.cardBackgroundDark)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             )
                         }
@@ -378,12 +378,12 @@ struct ProjectSearchSheet: View {
                 HStack {
                     // Checkbox
                     ZStack {
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: OPSStyle.Layout.Border.thick)
                             .frame(width: 20, height: 20)
                         
                         if searchInTasks {
-                            RoundedRectangle(cornerRadius: 2)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                                 .fill(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 14, height: 14)
                             
@@ -406,7 +406,7 @@ struct ProjectSearchSheet: View {
                         .fill(searchInTasks ? OPSStyle.Colors.cardBackgroundDark.opacity(0.8) : OPSStyle.Colors.cardBackgroundDark)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent.opacity(0.2) : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent.opacity(0.2) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 )
             }
@@ -477,7 +477,7 @@ struct ProjectSearchSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .padding(.horizontal)
@@ -543,7 +543,7 @@ struct ProjectSearchSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .padding(.horizontal)
@@ -610,7 +610,7 @@ struct ProjectSearchSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .padding(.horizontal)
@@ -837,7 +837,7 @@ struct ProjectSearchRow: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal)
         }
@@ -872,7 +872,7 @@ struct FilterChip: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isSelected ? color.opacity(0.3) : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? color.opacity(0.3) : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }

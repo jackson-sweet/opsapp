@@ -130,12 +130,12 @@ struct CalendarEventCard: View {
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 4)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                             .fill(badgeColor.opacity(0.1))
                                     )
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(badgeColor.opacity(0.3), lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .stroke(badgeColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                         }
@@ -156,12 +156,12 @@ struct CalendarEventCard: View {
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Color.gray.opacity(0.1))
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .fill(OPSStyle.Colors.subtleBackground)
                                     )
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .stroke(OPSStyle.Colors.pinDotNeutral, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                         }
@@ -173,7 +173,6 @@ struct CalendarEventCard: View {
             .background(cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .contentShape(Rectangle()) // Make entire card tappable
-            .shadow(color: Color.black, radius: 2, x: 0, y: 1)
 
             // Completed overlay - grey out and show badge
             if task.status == .completed {
@@ -189,7 +188,7 @@ struct CalendarEventCard: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.statusColor(for: .completed))
                         )
                         .padding(8)
@@ -210,7 +209,7 @@ struct CalendarEventCard: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.inactiveStatus)
                         )
                         .padding(8)

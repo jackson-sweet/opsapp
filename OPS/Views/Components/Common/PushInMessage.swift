@@ -177,7 +177,6 @@ struct PushInMessage: View {
                 .foregroundColor(OPSStyle.Colors.cardBorder),
             alignment: .bottom
         )
-        .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, x: 0, y: 4)
         .offset(y: dragOffset)
         .gesture(
             DragGesture()

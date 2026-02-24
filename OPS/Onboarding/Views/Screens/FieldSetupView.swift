@@ -179,7 +179,7 @@ struct SettingsSection<Content: View>: View {
         .background(viewModel.shouldUseLightTheme ? Color.white : OPSStyle.Colors.cardBackground)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: 1)
+                .stroke(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }

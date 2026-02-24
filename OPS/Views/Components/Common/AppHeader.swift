@@ -89,9 +89,8 @@ struct AppHeader: View {
                         UserAvatar(user: user, size: 44)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white, lineWidth: 2)
+                                    .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
                             )
-                            .shadow(radius: 2)
                     } else {
                         // Fallback if no user
                         UserAvatar(
@@ -102,9 +101,8 @@ struct AppHeader: View {
                         )
                         .overlay(
                             Circle()
-                                .stroke(Color.white, lineWidth: 2)
+                                .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
                         )
-                        .shadow(radius: 2)
                     }
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -162,7 +160,7 @@ struct AppHeader: View {
                                     // Show filter count badge if filters are active
                                     if hasActiveFilters && filterCount > 0 {
                                         Text("\(filterCount)")
-                                            .font(.system(size: 10, weight: .bold))
+                                            .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(.white)
                                             .padding(4)
                                             .background(OPSStyle.Colors.primaryAccent)
@@ -332,7 +330,7 @@ struct AppHeader: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(12)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 }
                 .frame(height: 44)
                 
@@ -352,7 +350,7 @@ struct AppHeader: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(12)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

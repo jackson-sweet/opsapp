@@ -166,7 +166,7 @@ struct BulkQuantityAdjustmentSheet: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -211,7 +211,7 @@ struct BulkQuantityAdjustmentSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(color, lineWidth: 1.5)
+                        .stroke(color, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .buttonStyle(PlainButtonStyle())

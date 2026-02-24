@@ -49,7 +49,7 @@ struct ProjectTeamView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .sheet(isPresented: $showingTeamPicker) {
             ProjectTeamChangeSheet(project: project)
@@ -279,7 +279,7 @@ struct ProjectTeamView: View {
                 .frame(width: 40, height: 40)
                 .overlay(
                     Text(member.initials)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(OPSStyle.Typography.bodyEmphasis)
                         .foregroundColor(.white)
                 )
 
@@ -460,7 +460,7 @@ struct FullTeamListView: View {
                             }
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(12)
+                            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 selectedTeamMember = member

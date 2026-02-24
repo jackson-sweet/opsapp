@@ -42,7 +42,7 @@ struct UnassignedRolesOverlay: View {
     var body: some View {
         ZStack {
             // Pure black background
-            Color.black.opacity(0.95)
+            OPSStyle.Colors.overlayHeavy
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -245,7 +245,7 @@ struct UnassignedRolesOverlay: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isSelected ? OPSStyle.Colors.primaryText.opacity(0.2) : OPSStyle.Colors.tertiaryText.opacity(0.2), lineWidth: 1)
+                    .stroke(isSelected ? OPSStyle.Colors.primaryText.opacity(0.2) : OPSStyle.Colors.tertiaryText.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -273,7 +273,7 @@ struct UnassignedRolesOverlay: View {
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(allRolesAssigned ? Color.white : Color.white.opacity(0.3))
+                .background(allRolesAssigned ? OPSStyle.Colors.primaryText : OPSStyle.Colors.pinDotNeutral)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .disabled(!allRolesAssigned || isSaving)

@@ -54,7 +54,7 @@ struct OrganizationTeamView: View {
                     .padding(.vertical, 8)
                     .padding(.horizontal, 16)
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
@@ -152,7 +152,7 @@ struct OrganizationFullTeamView: View {
                     }
                     .padding()
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(10)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .padding(.horizontal)
                     .padding(.top, 8)
                     
@@ -187,7 +187,7 @@ struct OrganizationFullTeamView: View {
                                 .padding(.vertical, 10)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .foregroundColor(.white)
-                                .cornerRadius(8)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                             
                             Spacer()
@@ -252,7 +252,7 @@ struct TeamMemberCard: View {
         .frame(minWidth: 110, minHeight: 130)
         .padding()
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
     }
 }
 

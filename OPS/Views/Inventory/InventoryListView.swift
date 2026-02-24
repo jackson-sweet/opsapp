@@ -256,7 +256,7 @@ struct InventoryItemCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Inventory.ThresholdBadge.cornerRadius)
-                    .stroke(thresholdStatus.color, lineWidth: 1)
+                    .stroke(thresholdStatus.color, lineWidth: OPSStyle.Layout.Border.standard)
             )
     }
 
@@ -316,7 +316,7 @@ struct InventoryTagBadge: View {
         .cornerRadius(size.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: size.cornerRadius)
-                .stroke(OPSStyle.Inventory.TagBadge.borderColor, lineWidth: 1)
+                .stroke(OPSStyle.Inventory.TagBadge.borderColor, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -349,7 +349,7 @@ struct InventoryTagActionBadge: View {
             .cornerRadius(size.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: size.cornerRadius)
-                    .stroke(OPSStyle.Inventory.TagBadge.borderColor, lineWidth: 1)
+                    .stroke(OPSStyle.Inventory.TagBadge.borderColor, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -380,7 +380,7 @@ struct InventoryPendingTagBadge: View {
             .cornerRadius(size.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: size.cornerRadius)
-                    .stroke(OPSStyle.Inventory.TagBadge.borderColor, lineWidth: 1)
+                    .stroke(OPSStyle.Inventory.TagBadge.borderColor, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

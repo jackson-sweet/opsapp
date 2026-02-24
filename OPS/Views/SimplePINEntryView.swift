@@ -254,11 +254,11 @@ struct PINDigitBox: View {
     
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                 .stroke(borderColor, lineWidth: borderWidth)
                 .frame(width: 56, height: 64)
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                         .fill(OPSStyle.Colors.cardBackgroundDark.opacity(isActive ? 0.5 : 0.3))
                 )
                 .animation(.easeInOut(duration: 0.2), value: validationState)

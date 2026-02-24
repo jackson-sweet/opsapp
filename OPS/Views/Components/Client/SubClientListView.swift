@@ -47,8 +47,8 @@ struct SubClientListView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                 }
@@ -72,7 +72,7 @@ struct SubClientListView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             } else {
                 // Sub-client list
@@ -219,8 +219,8 @@ struct SubClientRow: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                     .transition(.scale.combined(with: .opacity))
@@ -282,7 +282,7 @@ struct SubClientRow: View {
                                     .background(Color.clear)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white, lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                         }
@@ -352,7 +352,7 @@ struct SubClientRow: View {
                                         .background(Color.clear)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(Color.white, lineWidth: 1)
+                                                .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.standard)
                                         )
                                 }
                                 
@@ -365,7 +365,7 @@ struct SubClientRow: View {
                                         .background(Color.clear)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(Color.white, lineWidth: 1)
+                                                .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.standard)
                                         )
                                 }
                             }
@@ -441,7 +441,7 @@ struct SubClientRow: View {
                                     .background(Color.clear)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white, lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                         }
@@ -466,7 +466,7 @@ struct SubClientRow: View {
                             .background(Color.clear)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1.5)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                         
@@ -512,7 +512,7 @@ struct SubClientRow: View {
                             .background(Color.clear)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1.5)
+                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                     }
@@ -529,7 +529,7 @@ struct SubClientRow: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .animation(.easeInOut(duration: 0.3), value: isExpanded)
         .sheet(isPresented: $showingCreateContact) {

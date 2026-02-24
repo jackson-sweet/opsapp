@@ -42,7 +42,7 @@ struct NavigationBanner: View {
                                     .padding(.vertical, 6)
                                     .background(OPSStyle.Colors.errorStatus)
                                     .foregroundColor(.white)
-                                    .cornerRadius(5)
+                                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                         }
                     }
@@ -59,7 +59,6 @@ struct NavigationBanner: View {
             .background(OPSStyle.Colors.cardBackground)
         }
         .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .shadow(color: Color.black, radius: 4, x: 0, y: 2)
     }
     
     /// Determines which arrow icon to show based on the instruction
@@ -122,7 +121,7 @@ struct NavigationBanner_Previews: PreviewProvider {
             NavigationBanner(instruction: "You have arrived at your destination", distance: "0m", isLastStep: true)
         }
         .padding()
-        .background(Color.black)
+        .background(OPSStyle.Colors.background)
         .previewLayout(.sizeThatFits)
     }
 }

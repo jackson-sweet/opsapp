@@ -314,7 +314,7 @@ struct HomeContentView: View {
         .background(
             // Custom background with blur effect
             BlurView(style: .dark)
-                .cornerRadius(5)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal, 20) // Match carousel horizontal padding
@@ -504,7 +504,6 @@ struct HomeContentView: View {
                         }
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
-                    .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
                     .padding(.horizontal, 40)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))

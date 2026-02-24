@@ -134,7 +134,7 @@ struct CopyFromProjectSheet: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
                 .padding()
@@ -272,7 +272,7 @@ struct CopyFromProjectSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .overlay(
             // Status badge
@@ -283,12 +283,12 @@ struct CopyFromProjectSheet: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .fill(project.status.color.opacity(0.1))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(project.status.color, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(project.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                     )
 
                 Spacer()

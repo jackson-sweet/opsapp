@@ -123,7 +123,7 @@ struct CreateDefaultInventoryUnitsView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .padding(.horizontal, 16)
 
@@ -223,10 +223,10 @@ struct UnitChip: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(8)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }

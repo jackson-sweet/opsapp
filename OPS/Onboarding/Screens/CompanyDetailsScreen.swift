@@ -107,7 +107,7 @@ struct CompanyDetailsScreen: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
 
@@ -123,7 +123,7 @@ struct CompanyDetailsScreen: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                                 .onAppear {
                                     // Auto-focus the text field when "Other" is selected

@@ -303,7 +303,7 @@ struct SignupGoogleButton: View {
             .background(Color.clear)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.5), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .disabled(isLoading)
@@ -335,7 +335,7 @@ struct SignupAppleButton: View {
             .background(Color.clear)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.5), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .disabled(isLoading)

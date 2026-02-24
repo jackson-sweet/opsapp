@@ -153,7 +153,7 @@ struct OrganizationDetailsView: View {
                                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                                 .overlay(
                                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                                 )
                                             }
                                         }
@@ -168,7 +168,7 @@ struct OrganizationDetailsView: View {
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                             )
                                     }
                                 }
@@ -327,7 +327,7 @@ struct OrganizationDetailsView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -347,7 +347,7 @@ struct OrganizationDetailsView: View {
                             .clipShape(Circle())
                             .overlay(
                                 Circle()
-                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick)
                             )
                     } else if let data = company?.logoData, let uiImage = UIImage(data: data) {
                         Image(uiImage: uiImage)
@@ -357,7 +357,7 @@ struct OrganizationDetailsView: View {
                             .clipShape(Circle())
                             .overlay(
                                 Circle()
-                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick)
                             )
                     } else if let urlString = company?.logoURL,
                               !urlString.isEmpty,
@@ -372,7 +372,7 @@ struct OrganizationDetailsView: View {
                                     .clipShape(Circle())
                                     .overlay(
                                         Circle()
-                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick)
                                     )
                             default:
                                 logoPlaceholder
@@ -417,7 +417,7 @@ struct OrganizationDetailsView: View {
             )
             .overlay(
                 Circle()
-                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick)
             )
     }
 
@@ -478,7 +478,7 @@ struct OrganizationDetailsView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
         }
@@ -501,7 +501,7 @@ struct OrganizationDetailsView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .disabled(isSaving)
@@ -524,7 +524,7 @@ struct OrganizationDetailsView: View {
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color.white)
+                .background(OPSStyle.Colors.primaryText)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .disabled(isSaving)

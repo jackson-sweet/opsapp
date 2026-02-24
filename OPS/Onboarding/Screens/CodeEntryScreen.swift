@@ -237,7 +237,7 @@ struct ExpandingBracketInput: View {
             HStack(spacing: 0) {
                 // Left bracket
                 Text("[")
-                    .font(.system(size: 22, weight: .medium, design: .monospaced))
+                    .font(OPSStyle.Typography.subtitle)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                 Spacer()
@@ -248,12 +248,12 @@ struct ExpandingBracketInput: View {
                     // Placeholder
                     if text.isEmpty && !isFocused {
                         Text(placeholder)
-                            .font(.system(size: 18, weight: .medium, design: .monospaced))
+                            .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(OPSStyle.Colors.placeholderText)
                     }
 
                     TextField("", text: $text)
-                        .font(.system(size: 18, weight: .medium, design: .monospaced))
+                        .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
@@ -267,7 +267,7 @@ struct ExpandingBracketInput: View {
 
                 // Right bracket
                 Text("]")
-                    .font(.system(size: 22, weight: .medium, design: .monospaced))
+                    .font(OPSStyle.Typography.subtitle)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .frame(height: 56)

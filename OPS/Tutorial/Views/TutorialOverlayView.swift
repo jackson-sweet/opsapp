@@ -87,7 +87,7 @@ struct TutorialHighlightBorder: View {
     var body: some View {
         if cutoutFrame != .zero {
             RoundedRectangle(cornerRadius: cornerRadius)
-                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
                 .frame(
                     width: cutoutFrame.width + padding * 2,
                     height: cutoutFrame.height + padding * 2
@@ -158,7 +158,7 @@ struct TutorialOverlayView_Previews: PreviewProvider {
                 }
                 .padding()
                 .background(OPSStyle.Colors.primaryAccent)
-                .cornerRadius(8)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(OPSStyle.Colors.background)

@@ -298,7 +298,7 @@ struct ImportPreviewView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -314,7 +314,7 @@ struct ImportPreviewView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBorder : Color.clear, lineWidth: 1)
+                                .stroke(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBorder : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
                 .disabled(selectedItemIds.isEmpty)
@@ -348,7 +348,7 @@ struct ImportPreviewView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -387,7 +387,7 @@ struct ImportPreviewView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, OPSStyle.Layout.spacing3)
@@ -429,7 +429,7 @@ struct ImportPreviewView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
@@ -605,10 +605,10 @@ struct ImportPreviewView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(12)
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(4)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
 
@@ -624,10 +624,10 @@ struct ImportPreviewView: View {
                             .keyboardType(.decimalPad)
                             .padding(12)
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(4)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
 
@@ -655,10 +655,10 @@ struct ImportPreviewView: View {
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(4)
+                                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                                 }
                             }
@@ -671,10 +671,10 @@ struct ImportPreviewView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(10)
                                 .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(4)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                                 .onSubmit { addEditTag() }
 
@@ -684,10 +684,10 @@ struct ImportPreviewView: View {
                                     .foregroundColor(editNewTag.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
                                     .frame(width: 36, height: 36)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(4)
+                                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                             .disabled(editNewTag.isEmpty)
@@ -785,10 +785,10 @@ struct ImportPreviewView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(4)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .buttonStyle(PlainButtonStyle())
@@ -803,10 +803,10 @@ struct ImportPreviewView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 32, height: 32)
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(4)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .buttonStyle(PlainButtonStyle())
@@ -818,10 +818,10 @@ struct ImportPreviewView: View {
                     .foregroundColor(OPSStyle.Colors.errorStatus.opacity(0.7))
                     .frame(width: 32, height: 32)
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(4)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .buttonStyle(PlainButtonStyle())

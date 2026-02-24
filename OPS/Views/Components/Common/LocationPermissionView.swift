@@ -132,7 +132,6 @@ struct LocationPermissionView: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .fill(OPSStyle.Colors.cardBackground)
             )
-            .shadow(radius: 20)
             .padding(24)
         }
     }

@@ -51,7 +51,7 @@ struct TaskDetailsView: View {
     var body: some View {
         ZStack {
             // Background gradient
-            Color.black
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
             
             // Main content
@@ -67,12 +67,12 @@ struct TaskDetailsView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(task.status.color.opacity(0.1))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(task.status.color, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(task.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
 
                         Spacer()
@@ -83,8 +83,8 @@ struct TaskDetailsView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Color.white)
-                        .foregroundColor(Color.black)
+                        .background(OPSStyle.Colors.primaryText)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
                         .font(OPSStyle.Typography.bodyBold)
                     }
@@ -117,7 +117,7 @@ struct TaskDetailsView: View {
                 .background(.ultraThinMaterial)
                 .background(task.status == .completed ?
                            OPSStyle.Colors.cardBackgroundDark :
-                           Color.black)
+                           OPSStyle.Colors.background)
                 
                 // Color stripe at bottom of header
                 Rectangle()
@@ -379,7 +379,7 @@ struct TaskDetailsView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .buttonStyle(PlainButtonStyle())
@@ -464,7 +464,7 @@ struct TaskDetailsView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .buttonStyle(PlainButtonStyle())
@@ -680,7 +680,7 @@ struct TaskDetailsView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .strokeBorder(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: 1)
+                        .strokeBorder(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .padding(.horizontal)
@@ -738,7 +738,7 @@ struct TaskDetailsView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -776,7 +776,7 @@ struct TaskDetailsView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.inputFieldBorder.opacity(0.3), lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.inputFieldBorder.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -801,7 +801,7 @@ struct TaskDetailsView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.errorStatus.opacity(0.3), lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.errorStatus.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .padding(.top, 8)
@@ -1342,7 +1342,7 @@ private struct StatusChip: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .strokeBorder(status.color, lineWidth: 1)
+                        .strokeBorder(status.color, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .buttonStyle(PlainButtonStyle())

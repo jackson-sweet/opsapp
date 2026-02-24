@@ -153,7 +153,7 @@ struct OpportunityDetailView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing2 + 2)
             .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
             .background(color.opacity(0.15))
-            .overlay(Capsule().stroke(color, lineWidth: 1))
+            .overlay(Capsule().stroke(color, lineWidth: OPSStyle.Layout.Border.standard))
             .clipShape(Capsule())
     }
 
@@ -290,7 +290,7 @@ struct OpportunityDetailView: View {
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, OPSStyle.Layout.spacing3)
@@ -322,7 +322,7 @@ struct OpportunityDetailView: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
@@ -357,7 +357,6 @@ struct OpportunityDetailView: View {
                 .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
                 .background(OPSStyle.Colors.primaryAccent)
                 .clipShape(Circle())
-                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
         }
         .padding(OPSStyle.Layout.spacing3)
         .accessibilityLabel("Log Activity")

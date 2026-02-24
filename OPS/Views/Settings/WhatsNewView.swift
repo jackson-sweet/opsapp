@@ -40,12 +40,12 @@ struct WhatsNewView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             
                             Text("We're always working to make OPS better for our crews.")
-                                .font(.body)
+                                .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                             
                             Text("Here's what's coming next:".uppercased())
-                                .font(.body)
+                                .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                             
@@ -79,11 +79,11 @@ struct WhatsNewView: View {
                         // Feedback section
                         VStack(alignment: .leading, spacing: 16) {
                             Text("Have a Feature Request?")
-                                .font(.subtitle)
+                                .font(OPSStyle.Typography.subtitle)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                             
                             Text("We build OPS based on feedback from actual field crews. Your input shapes our roadmap.")
-                                .font(.body)
+                                .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                             
@@ -94,7 +94,7 @@ struct WhatsNewView: View {
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     
                                     Text("Send Feature Request")
-                                        .font(.bodyBold)
+                                        .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     
                                     Spacer()
@@ -107,7 +107,7 @@ struct WhatsNewView: View {
                                 .background(Color.clear)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
@@ -217,7 +217,7 @@ struct FeatureCategorySection: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(4)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     
                     // Expand/collapse chevron
                     Image(systemName: OPSStyle.Icons.chevronRight)
@@ -296,7 +296,7 @@ struct FeatureCard: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(statusColor.opacity(0.2))
-                        .cornerRadius(4)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
                 
                 HStack {
@@ -321,9 +321,9 @@ struct FeatureCard: View {
                         .background(
                             hasVoted ? OPSStyle.Colors.successStatus.opacity(0.2) : OPSStyle.Colors.primaryAccent.opacity(0.2)
                         )
-                        .cornerRadius(6)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .stroke(
                                     hasVoted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent,
                                     lineWidth: 1

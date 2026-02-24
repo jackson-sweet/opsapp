@@ -263,7 +263,7 @@ struct TaskTypeSheet: View {
                     .foregroundColor(taskTypeColor)
                     .frame(width: 56, height: 56)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .fill(taskTypeColor.opacity(0.2))
                     )
 
@@ -284,7 +284,7 @@ struct TaskTypeSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -303,7 +303,7 @@ struct TaskTypeSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }
@@ -527,10 +527,10 @@ struct IconOption: View {
                     .opacity(isInUse && !isSelected ? 0.3 : 1.0)
                     .frame(width: 44, height: 44)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .fill(isSelected ? color.opacity(0.1) : OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .stroke(
                                         isSelected ? color.opacity(0.3) : (isInUse && !isSelected ? Color.white : OPSStyle.Colors.cardBorder),
                                         lineWidth: isInUse && !isSelected ? 2 : 1

@@ -250,7 +250,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
             .padding(.horizontal, 20)
@@ -463,7 +463,7 @@ private struct MultiSelectFilterSection<T: Hashable>: View {
                             let indicator = getColorIndicator(option)
                             switch indicator {
                             case .rectangle(let color):
-                                RoundedRectangle(cornerRadius: 3)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .fill(color)
                                     .frame(width: 2, height: 12)
                             case .circle(let color):
@@ -812,7 +812,7 @@ private struct FilterSectionContainer<Content: View>: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
             .padding(.horizontal, 20)

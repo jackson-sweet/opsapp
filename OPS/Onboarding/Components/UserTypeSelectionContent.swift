@@ -186,7 +186,7 @@ struct UserTypeSelectionContent: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                .stroke(Color.white.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 

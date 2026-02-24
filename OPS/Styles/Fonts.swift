@@ -103,4 +103,26 @@ extension Font {
     public static var sectionLabel: Font {
         return Font.custom("Kosugi-Regular", size: 12)
     }
+
+    // MARK: - Additional Sizes
+
+    /// Heading text - Mohave Medium (20pt)
+    public static var heading: Font {
+        return Font.custom("Mohave-Medium", size: 20)
+    }
+
+    /// Large heading text - Mohave SemiBold (24pt)
+    public static var headingLarge: Font {
+        return Font.custom("Mohave-SemiBold", size: 24)
+    }
+
+    /// Display large - Mohave Bold (48pt)
+    public static var displayLarge: Font {
+        return Font.custom("Mohave-Bold", size: 48)
+    }
+
+    /// Display extra large - Mohave Bold (60pt)
+    public static var displayXL: Font {
+        return Font.custom("Mohave-Bold", size: 60)
+    }
 }

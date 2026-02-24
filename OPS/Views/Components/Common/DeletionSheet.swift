@@ -283,7 +283,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                 .background(Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(bulkDeleteAll ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.errorStatus, lineWidth: 1.5)
+                        .stroke(bulkDeleteAll ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }

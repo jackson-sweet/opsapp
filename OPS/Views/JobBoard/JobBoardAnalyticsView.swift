@@ -108,7 +108,7 @@ struct TimeFrameSelector: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -206,7 +206,7 @@ struct MetricCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(color.opacity(0.2), lineWidth: 1)
+                .stroke(color.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -251,7 +251,7 @@ struct ProjectStatusChart: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -282,10 +282,10 @@ struct StatusBar: View {
 
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .fill(OPSStyle.Colors.cardBackground)
 
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .fill(status.color)
                         .frame(width: geometry.size.width * percentage)
                 }
@@ -380,7 +380,7 @@ struct TaskCompletionTrend: View {
                                 }
 
                                 Text(item.date)
-                                    .font(.system(size: 8))
+                                    .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     .rotationEffect(.degrees(-45))
                             }
@@ -395,7 +395,7 @@ struct TaskCompletionTrend: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -414,7 +414,7 @@ struct BarView: View {
         GeometryReader { geometry in
             VStack {
                 Spacer()
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                     .fill(color)
                     .frame(height: geometry.size.height * heightPercentage)
             }
@@ -478,7 +478,7 @@ struct ClientDistributionCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -550,7 +550,7 @@ struct TeamPerformanceCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -591,10 +591,10 @@ struct RevenueAnalysisCard: View {
                 // Progress bar
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .fill(OPSStyle.Colors.cardBackground)
 
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .fill(OPSStyle.Colors.successStatus)
                             .frame(width: geometry.size.width * 0.65)
                     }
@@ -612,7 +612,7 @@ struct RevenueAnalysisCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }

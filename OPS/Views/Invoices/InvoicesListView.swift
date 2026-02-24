@@ -53,12 +53,12 @@ struct InvoicesListView: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             Divider()
-                .background(Color.white.opacity(0.15))
+                .background(OPSStyle.Colors.separator)
                 .padding(.top, OPSStyle.Layout.spacing2)
 
             // Content
@@ -153,7 +153,7 @@ struct InvoicesListView: View {
                         .stroke(
                             viewModel.selectedFilter == filter
                             ? OPSStyle.Colors.primaryAccent
-                            : Color.white.opacity(0.1),
+                            : OPSStyle.Colors.cardBorder,
                             lineWidth: 1
                         )
                 )

@@ -55,7 +55,7 @@ struct ProjectSummaryCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .onAppear {
             calculateTravelTime()
@@ -75,7 +75,6 @@ struct ProjectSummaryCard: View {
                         Image(systemName: "mappin.and.ellipse")
                             .font(.system(size: 28, weight: .semibold))
                             .foregroundColor(.white)
-                            .shadow(color: Color.black.opacity(0.5), radius: 3, x: 0, y: 2)
                     }
                 }
                 .mapStyle(.standard(elevation: .flat))

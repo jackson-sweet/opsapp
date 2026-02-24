@@ -26,7 +26,7 @@ struct ImagePickerView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius))
                     .padding()
             }
             
@@ -43,7 +43,7 @@ struct ImagePickerView: View {
                 .padding()
                 .background(OPSStyle.Colors.primaryAccent)
                 .foregroundColor(.white)
-                .cornerRadius(10)
+                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 .padding(.horizontal)
             }
             
@@ -55,9 +55,9 @@ struct ImagePickerView: View {
                 Text("Use This Photo")
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(selectedImage != nil ? OPSStyle.Colors.primaryAccent : Color.gray)
+                    .background(selectedImage != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inactiveStatus)
                     .foregroundColor(.white)
-                    .cornerRadius(10)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .padding(.horizontal)
             }
             .disabled(selectedImage == nil)
@@ -70,10 +70,10 @@ struct ImagePickerView: View {
                     .padding()
                     .background(Color.clear)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .cornerRadius(10)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal)
             }

@@ -20,7 +20,7 @@ struct SegmentedBorderModifier: ViewModifier {
                     if isSelected {
                         // White border for selected state
                         RoundedRectangle(cornerRadius: cornerRadius)
-                            .stroke(Color.white, lineWidth: 2)
+                            .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
                     } else if !tasks.isEmpty {
                         // Segmented border for tasks
                         SegmentedBorderView(tasks: tasks, cornerRadius: cornerRadius)
@@ -47,7 +47,7 @@ struct SegmentedBorderView: View {
             if let color = Color(hex: task.effectiveColor) {
                 colorMap[colorKey] = color
             } else {
-                colorMap[colorKey] = Color.gray.opacity(0.6)
+                colorMap[colorKey] = OPSStyle.Colors.inactiveStatus
             }
         }
 
@@ -67,7 +67,7 @@ struct SegmentedBorderView: View {
                 } else if taskColorSegments.count == 1 {
                     // Single color border - same thickness as multi-segment
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(taskColorSegments[0].color, lineWidth: 2)
+                        .stroke(taskColorSegments[0].color, lineWidth: OPSStyle.Layout.Border.thick)
                 } else {
                     // Multiple colors - create segmented border
                     SegmentedRoundedRectangle(

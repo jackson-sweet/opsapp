@@ -33,7 +33,7 @@ struct UserProfileCard: View {
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(16)
+        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         .padding(.horizontal, 20)
     }
 }

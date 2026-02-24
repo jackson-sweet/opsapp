@@ -43,8 +43,7 @@ struct DatePickerPopover: View {
             .padding(.bottom, 16)
         }
         .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(16)
-        .shadow(color: Color.black, radius: 10, x: 0, y: 5)
+        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         .frame(width: 320, height: mode == .week ? 440 : 360)
     }
     
@@ -114,7 +113,7 @@ struct DatePickerPopover: View {
                             )
                             .overlay(
                                 Circle()
-                                    .stroke(isSelected ? .white : Color.clear, lineWidth: 1)
+                                    .stroke(isSelected ? .white : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
                     .disabled(!isCurrentMonth)
@@ -133,10 +132,10 @@ struct DatePickerPopover: View {
                     .padding(.horizontal, 30)
                     .background(Color.clear)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                     )
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
             .padding(.top, 8)
         }
@@ -197,7 +196,7 @@ struct DatePickerPopover: View {
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(isSelected ? .white : OPSStyle.Colors.secondaryText, lineWidth: 1)
+                                    .stroke(isSelected ? .white : OPSStyle.Colors.secondaryText, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
                 }
@@ -216,7 +215,7 @@ struct DatePickerPopover: View {
                     .background(Color.clear)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }

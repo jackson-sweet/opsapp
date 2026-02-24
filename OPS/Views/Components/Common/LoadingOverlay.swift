@@ -9,7 +9,7 @@ struct LoadingOverlayModifier: ViewModifier {
             content
 
             if isPresented {
-                Color.black.opacity(0.6)
+                OPSStyle.Colors.overlayMedium
                     .ignoresSafeArea()
 
                 VStack(spacing: 20) {
@@ -33,7 +33,7 @@ struct LoadingOverlayModifier: ViewModifier {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
         }

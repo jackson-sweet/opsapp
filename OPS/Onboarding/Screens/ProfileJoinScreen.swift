@@ -200,7 +200,7 @@ struct ProfileJoinScreen: View {
         HStack {
             // Company icon
             ZStack {
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                     .fill(OPSStyle.Colors.primaryAccent.opacity(0.1))
                     .frame(width: 48, height: 48)
 
@@ -235,7 +235,7 @@ struct ProfileJoinScreen: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 

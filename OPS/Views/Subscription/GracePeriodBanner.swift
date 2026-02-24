@@ -44,8 +44,8 @@ struct GracePeriodBanner: View {
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .stroke(OPSStyle.Colors.darkBorder, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                                        .stroke(OPSStyle.Colors.darkBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                     }

@@ -594,12 +594,12 @@ struct TaskFormSheet: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(selectedStatus.color.opacity(0.1))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(selectedStatus.color, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(selectedStatus.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         
                         Spacer()
@@ -612,12 +612,12 @@ struct TaskFormSheet: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                         
@@ -632,7 +632,7 @@ struct TaskFormSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -707,9 +707,8 @@ struct TaskFormSheet: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
-                        .shadow(color: OPSStyle.Colors.shadowColor, radius: 8, x: 0, y: 4)
                         .padding(.top, 4)
                     }
                 }
@@ -870,7 +869,7 @@ struct TaskFormSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
         }

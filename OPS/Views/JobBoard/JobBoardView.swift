@@ -213,9 +213,8 @@ struct FloatingActionItem: View {
                     .clipShape(Circle())
                     .overlay(
                         Circle()
-                            .stroke(OPSStyle.Colors.secondaryText, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.secondaryText, lineWidth: OPSStyle.Layout.Border.standard)
                     )
-                    .shadow(color: OPSStyle.Colors.shadowColor, radius: 4, x: 0, y: 2)
                 
             }
            
@@ -736,7 +735,7 @@ struct JobBoardTasksView: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(hasActiveFilters ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(hasActiveFilters ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
         }
@@ -1075,7 +1074,7 @@ struct TaskFilterBadge: View {
                 .fill(OPSStyle.Colors.cardBackgroundDark)
                 .overlay(
                     Capsule()
-                        .stroke(color.opacity(0.3), lineWidth: 1)
+                        .stroke(color.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                 )
         )
     }

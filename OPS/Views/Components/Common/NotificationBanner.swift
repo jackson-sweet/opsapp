@@ -31,9 +31,9 @@ struct NotificationBanner: View {
         var iconColor: Color {
             switch self {
             case .success:
-                return Color.green
+                return OPSStyle.Colors.successStatus
             case .error:
-                return Color.red
+                return OPSStyle.Colors.errorStatus
             case .info:
                 return OPSStyle.Colors.primaryAccent
             }
@@ -68,7 +68,7 @@ struct NotificationBanner: View {
                     .foregroundColor(type.iconColor)
                 
                 Text(message)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(OPSStyle.Typography.cardSubtitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
                 
@@ -82,7 +82,6 @@ struct NotificationBanner: View {
                     .overlay(type.backgroundColor.opacity(0.85))
             )
         }
-        .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, x: 0, y: 5)
         .transition(.asymmetric(
             insertion: .move(edge: .top),
             removal: .move(edge: .top)

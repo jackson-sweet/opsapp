@@ -38,7 +38,7 @@ struct ProjectImagesSection: View {
         .fullScreenCover(item: $selectedImageURL) { url in
             // Full screen image view
             ZStack(alignment: .topTrailing) {
-                Color.black.edgesIgnoringSafeArea(.all)
+                OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
                 
                 ProjectImageView(urlString: url, project: project, size: CGSize(width: UIScreen.main.bounds.width - 40, height: 400))
                     .scaledToFit()
@@ -86,7 +86,7 @@ struct ProjectImagesSection: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(Color.yellow.opacity(0.1))
+        .background(OPSStyle.Colors.warningStatus.opacity(0.1))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal)
     }

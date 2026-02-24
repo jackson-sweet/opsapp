@@ -67,7 +67,7 @@ struct ComingSoonView: View {
                         }
                         .padding(20)
                         .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(12)
+                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                         .padding(.horizontal, 32)
                         
                         // Update timeline
@@ -98,7 +98,7 @@ struct ComingSoonView: View {
                         }
                         .padding(20)
                         .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(12)
+                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                         .padding(.horizontal, 32)
                         
                         Spacer(minLength: 40)

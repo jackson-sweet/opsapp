@@ -144,7 +144,7 @@ struct ManageTeamView: View {
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                                     .padding(.horizontal, 20)
                                 }
@@ -168,7 +168,7 @@ struct ManageTeamView: View {
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                                 }
                                 .padding(.horizontal, 20)
@@ -269,7 +269,7 @@ struct ManageTeamView: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(OPSStyle.Colors.primaryAccent.opacity(0.2))
-                                .cornerRadius(4)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
 
                         if member.isCompanyAdmin {
@@ -279,7 +279,7 @@ struct ManageTeamView: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(OPSStyle.Colors.warningStatus.opacity(0.2))
-                                .cornerRadius(4)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
 
                         // Seated status badge
@@ -290,7 +290,7 @@ struct ManageTeamView: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(OPSStyle.Colors.successStatus.opacity(0.2))
-                                .cornerRadius(4)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         } else {
                             Text("NO SEAT")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -298,7 +298,7 @@ struct ManageTeamView: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(OPSStyle.Colors.errorStatus.opacity(0.2))
-                                .cornerRadius(4)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
                     }
 
@@ -605,7 +605,7 @@ struct TeamInviteSheet: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, 20)
 
@@ -890,7 +890,7 @@ struct EditTeamMemberSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(selectedRole == role ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(selectedRole == role ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

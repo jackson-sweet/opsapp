@@ -169,7 +169,7 @@ struct DataStorageSettingsView: View {
                                             Rectangle()
                                                 .fill(OPSStyle.Colors.cardBackground)
                                                 .frame(height: 8)
-                                                .cornerRadius(4)
+                                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                             
                                             // Usage
                                             Rectangle()
@@ -180,7 +180,7 @@ struct DataStorageSettingsView: View {
                                                       // For limited storage, show percent used
                                                       geometry.size.width * CGFloat(min(maxStorageSize == 0 ? 1.0 : estimatedStorageUsed / Double(maxStorageSize), 1.0)), 
                                                       height: 8)
-                                                .cornerRadius(4)
+                                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                         }
                                     }
                                     .frame(height: 8)

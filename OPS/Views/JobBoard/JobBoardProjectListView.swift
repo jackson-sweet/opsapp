@@ -335,15 +335,11 @@ struct JobBoardProjectListView: View {
             Image(systemName: "hand.draw.fill")
                 .font(.system(size: 32, weight: .medium))
                 .foregroundColor(emphasisSwipeInstruction ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
-                .shadow(color: .black, radius: 4, x: 0, y: 0)
-                .shadow(color: .black, radius: 8, x: 0, y: 0)
                 .scaleEffect(emphasisSwipeInstruction ? 1.3 : 1.0)
 
             Text("SWIPE THE CARD RIGHT TO CLOSE")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(emphasisSwipeInstruction ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
-                .shadow(color: .black, radius: 4, x: 0, y: 0)
-                .shadow(color: .black, radius: 8, x: 0, y: 0)
                 .scaleEffect(emphasisSwipeInstruction ? 1.1 : 1.0)
         }
         .scaleEffect(emphasisSwipeInstruction ? 1.05 : 1.0)
@@ -530,7 +526,7 @@ struct FilterBadge: View {
                 .fill(OPSStyle.Colors.cardBackgroundDark)
                 .overlay(
                     Capsule()
-                        .stroke(color.opacity(0.3), lineWidth: 1)
+                        .stroke(color.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                 )
         )
     }
@@ -686,7 +682,7 @@ struct SectionButton: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

@@ -293,11 +293,11 @@ struct UniversalJobBoardCard: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.black.opacity(0.85))
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .fill(OPSStyle.Colors.overlayHeavy)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(OPSStyle.Colors.errorStatus, lineWidth: 2)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.thick)
                             )
                     )
                     .transition(.scale.combined(with: .opacity))
@@ -376,12 +376,12 @@ struct UniversalJobBoardCard: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(project.status.color.opacity(0.1))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(project.status.color, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(project.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
 
                         Spacer()
@@ -393,12 +393,12 @@ struct UniversalJobBoardCard: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(OPSStyle.Colors.cardBackground)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(schedulingBadgeColor.opacity(0.3), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(schedulingBadgeColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                             )
 
                         Spacer()
@@ -411,12 +411,12 @@ struct UniversalJobBoardCard: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         } else {
                             // Empty spacer to maintain badge positioning when unscheduled badge isn't shown
@@ -589,7 +589,7 @@ struct UniversalJobBoardCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .overlay(
             Group {
@@ -601,12 +601,12 @@ struct UniversalJobBoardCard: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(task.status.color.opacity(0.1))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(task.status.color, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(task.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .padding(8)
@@ -618,12 +618,12 @@ struct UniversalJobBoardCard: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                                 .padding(8)
@@ -1267,9 +1267,9 @@ struct UniversalJobBoardCard: View {
             case .active:
                 return OPSStyle.Colors.primaryAccent
             case .completed:
-                return Color.green
+                return OPSStyle.Colors.successStatus
             case .cancelled:
-                return Color.gray
+                return OPSStyle.Colors.inactiveStatus
             }
         }
     }
@@ -1695,7 +1695,7 @@ struct RevealedStatusCard: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(statusColor, lineWidth: 1)
+                .stroke(statusColor, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -1721,12 +1721,12 @@ struct ClientProjectBadges: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(status.color.opacity(0.1))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(status.color, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(status.color, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
             }

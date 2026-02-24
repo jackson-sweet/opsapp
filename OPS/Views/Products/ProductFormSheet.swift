@@ -43,7 +43,7 @@ struct ProductFormSheet: View {
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -58,7 +58,7 @@ struct ProductFormSheet: View {
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -84,7 +84,7 @@ struct ProductFormSheet: View {
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                             .stroke(
-                                                type == t ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1),
+                                                type == t ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
                                                 lineWidth: 1
                                             )
                                     )
@@ -110,7 +110,7 @@ struct ProductFormSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
 
@@ -127,7 +127,7 @@ struct ProductFormSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
 
@@ -143,7 +143,7 @@ struct ProductFormSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                         .frame(width: 80)
@@ -165,7 +165,7 @@ struct ProductFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 

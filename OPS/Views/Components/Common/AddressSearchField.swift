@@ -98,12 +98,6 @@ struct AddressSearchField: View {
                             lineWidth: OPSStyle.Layout.SearchField.dropdownBorderWidth
                         )
                 )
-                .shadow(
-                    color: OPSStyle.Layout.SearchField.dropdownShadowColor,
-                    radius: OPSStyle.Layout.SearchField.dropdownShadowRadius,
-                    x: OPSStyle.Layout.SearchField.dropdownShadowOffset.width,
-                    y: OPSStyle.Layout.SearchField.dropdownShadowOffset.height
-                )
                 .padding(.top, OPSStyle.Layout.SearchField.dropdownTopPadding)
                 .transition(OPSStyle.Layout.SearchField.transition)
             }

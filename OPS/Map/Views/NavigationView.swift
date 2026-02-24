@@ -179,7 +179,7 @@ struct MapNavigationView: View {
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
                     )
                 }
                 
@@ -198,7 +198,7 @@ struct MapNavigationView: View {
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: 2)
+                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.thick)
                     )
                 }
                 
@@ -215,7 +215,6 @@ struct MapNavigationView: View {
             }
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius, corners: [.topLeft, .topRight])
-        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: -5)
         .sheet(isPresented: $showFullDirections) {
             DirectionsListView(steps: coordinator.navigationEngine.remainingSteps)
         }
@@ -323,7 +322,7 @@ struct DirectionRow: View {
                         .fill(isCurrent ? OPSStyle.Colors.primaryAccent : Color.clear)
                         .overlay(
                             Circle()
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
                         )
                 )
             

@@ -49,7 +49,7 @@ struct LineItemEditSheet: View {
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -75,7 +75,7 @@ struct LineItemEditSheet: View {
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                             .stroke(
-                                                type == t ? OPSStyle.Colors.primaryAccent : Color.white.opacity(0.1),
+                                                type == t ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
                                                 lineWidth: 1
                                             )
                                     )
@@ -101,7 +101,7 @@ struct LineItemEditSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
 
@@ -117,7 +117,7 @@ struct LineItemEditSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                         .frame(width: 80)
@@ -135,7 +135,7 @@ struct LineItemEditSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                     }
@@ -144,14 +144,14 @@ struct LineItemEditSheet: View {
                     // Toggles
                     VStack(spacing: 0) {
                         toggleRow("Optional?", isOn: $isOptional)
-                        Divider().background(Color.white.opacity(0.1))
+                        Divider().background(OPSStyle.Colors.cardBorder)
                         toggleRow("Taxable?", isOn: $isTaxable)
                     }
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 

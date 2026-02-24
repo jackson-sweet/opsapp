@@ -181,7 +181,7 @@ struct NotificationSettingsView: View {
                 
                 Image(systemName: notificationManager.isNotificationsEnabled ?
                       OPSStyle.Icons.bellFill : "bell.slash.fill")
-                    .font(.system(size: 24))
+                    .font(OPSStyle.Typography.headingLarge)
                     .foregroundColor(notificationManager.isNotificationsEnabled ? 
                                    OPSStyle.Colors.successStatus : 
                                    OPSStyle.Colors.errorStatus)
@@ -222,7 +222,7 @@ struct NotificationSettingsView: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(notificationManager.isNotificationsEnabled ? 
                                   OPSStyle.Colors.primaryText : Color.clear, 
-                                  lineWidth: 1)
+                                  lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
@@ -379,7 +379,7 @@ struct NotificationSettingsView: View {
                 .padding(.vertical, 16)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
+                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
                 )
             }
             .disabled(!notificationManager.isNotificationsEnabled)
@@ -546,7 +546,7 @@ struct NotificationSettingsView: View {
                                     .background(muteHours == hours ?
                                                 OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
                                     .foregroundColor(muteHours == hours ? .black : .white)
-                                    .cornerRadius(16)
+                                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                             }
                         }
                     }

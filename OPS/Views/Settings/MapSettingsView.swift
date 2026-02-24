@@ -232,7 +232,7 @@ struct MapSettingsView: View {
                 Image(systemName: locationManager.authorizationStatus == .authorizedAlways ||
                                   locationManager.authorizationStatus == .authorizedWhenInUse ?
                       OPSStyle.Icons.locationFill : "location.slash.fill")
-                    .font(.system(size: 24))
+                    .font(OPSStyle.Typography.headingLarge)
                     .foregroundColor(locationManager.authorizationStatus == .authorizedAlways || 
                                      locationManager.authorizationStatus == .authorizedWhenInUse ? 
                                    OPSStyle.Colors.successStatus : 
@@ -271,7 +271,7 @@ struct MapSettingsView: View {
                             .stroke(locationManager.authorizationStatus == .authorizedAlways || 
                                   locationManager.authorizationStatus == .authorizedWhenInUse ? 
                                   OPSStyle.Colors.primaryText : Color.clear, 
-                                  lineWidth: 1)
+                                  lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }

@@ -194,7 +194,7 @@ struct PlanSelectionView: View {
                             ZStack {
                                 // Background circle with subtle accent
                                 Circle()
-                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 2)
+                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.thick)
                                     .frame(width: 56, height: 56)
                                 
                                 // Inner checkmark
@@ -274,7 +274,7 @@ struct PlanSelectionView: View {
                                     .padding(.vertical, 10)
                                     .background(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                                 }
                             }
@@ -307,7 +307,7 @@ struct PlanSelectionView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .padding(.horizontal, 24)
                 .scaleEffect(isPollingSubscriptionStatus ? 1.0 : 0.95)
@@ -368,7 +368,7 @@ struct PlanSelectionView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -434,7 +434,7 @@ struct PlanSelectionView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -1310,7 +1310,7 @@ extension PlanSelectionView {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
+                .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
     
@@ -1434,7 +1434,7 @@ struct PlanCard: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(Color.white)
-                            .cornerRadius(4)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 12)

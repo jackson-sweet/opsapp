@@ -75,12 +75,12 @@ struct ProjectMarkerPopup: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(project.status.color.opacity(0.1))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(project.status.color, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(project.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                         )
 
                     // Task type badge
@@ -91,12 +91,12 @@ struct ProjectMarkerPopup: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(taskColor.opacity(0.1))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(taskColor, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(taskColor, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
 
@@ -130,8 +130,8 @@ struct ProjectMarkerPopup: View {
                         }
                         .padding(.vertical, 10)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                 }
@@ -139,7 +139,7 @@ struct ProjectMarkerPopup: View {
             .padding(14)
             .frame(width: 240)
             .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(8)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         }
         .contentShape(Rectangle())
         .onTapGesture { }

@@ -194,7 +194,7 @@ struct TaskDetailCard: View {
                     .padding(.vertical, 2)
                     .background(statusColor(for: task.status))
                     .foregroundColor(.white)
-                    .cornerRadius(4)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
             
             Divider()
@@ -278,7 +278,7 @@ struct TaskDetailSheet: View {
                                 }
                                 .padding()
                                 .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(8)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                         }
                         
@@ -293,7 +293,7 @@ struct TaskDetailSheet: View {
                                 }
                                 .padding()
                                 .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(8)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                         }
                         
@@ -314,7 +314,7 @@ struct TaskDetailSheet: View {
                                 }
                                 .padding()
                                 .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(8)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                         }
                     }

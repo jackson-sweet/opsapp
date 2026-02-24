@@ -322,7 +322,7 @@ struct ClientSheet: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                     }
@@ -432,7 +432,7 @@ struct ClientSheet: View {
                             .scaledToFill()
                             .frame(width: 80, height: 80)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2))
+                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick))
                     } else {
                         Circle()
                             .fill(OPSStyle.Colors.cardBackgroundDark)
@@ -442,7 +442,7 @@ struct ClientSheet: View {
                                     .font(.system(size: 32))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
-                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2))
+                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick))
                     }
                 }
             }
@@ -725,11 +725,11 @@ struct ClientSheet: View {
                             .scaledToFill()
                             .frame(width: 56, height: 56)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2))
+                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick))
                     } else if !name.isEmpty {
                         // Show initials if name exists but no image
                         Circle()
-                            .stroke(Color.white, lineWidth: 2)
+                            .stroke(Color.white, lineWidth: OPSStyle.Layout.Border.thick)
                             .frame(width: 56, height: 56)
                             .overlay(
                                 Text(String(name.prefix(1)).uppercased())
@@ -746,7 +746,7 @@ struct ClientSheet: View {
                                     .font(.system(size: 22))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
-                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 2))
+                            .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick))
                     }
                 }
             }
@@ -756,7 +756,7 @@ struct ClientSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -795,7 +795,7 @@ struct DuplicateWarning: View {
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .fill(Color.orange.opacity(0.1))
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                .stroke(Color.orange.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }

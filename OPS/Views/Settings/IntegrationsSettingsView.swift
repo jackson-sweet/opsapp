@@ -90,7 +90,7 @@ struct IntegrationsSettingsView: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: 40, height: 40)
                     .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
-                    .cornerRadius(10)
+                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name.uppercased())
@@ -122,7 +122,7 @@ struct IntegrationsSettingsView: View {
                     .padding(.vertical, 14)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(isConnected ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                            .stroke(isConnected ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
         }
@@ -132,7 +132,7 @@ struct IntegrationsSettingsView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 

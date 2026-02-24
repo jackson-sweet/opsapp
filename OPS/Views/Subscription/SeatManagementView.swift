@@ -484,7 +484,7 @@ struct TeamMemberRow: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(OPSStyle.Colors.warningStatus.opacity(0.2))
-                            .cornerRadius(4)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                     
                     if user.isCompanyAdmin {
@@ -494,7 +494,7 @@ struct TeamMemberRow: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(OPSStyle.Colors.warningStatus.opacity(0.2))
-                            .cornerRadius(4)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                 }
                 

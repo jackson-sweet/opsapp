@@ -56,11 +56,11 @@ struct CustomAlertModifier: ViewModifier {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 20)
                     .background(
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                             .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.95))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(config.color, lineWidth: 2)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                                    .stroke(config.color, lineWidth: OPSStyle.Layout.Border.thick)
                             )
                     )
                     .padding(.horizontal, 40)

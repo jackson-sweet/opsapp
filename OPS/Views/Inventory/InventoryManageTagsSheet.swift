@@ -193,10 +193,10 @@ struct InventoryManageTagsSheet: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(6)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -271,10 +271,10 @@ struct InventoryManageTagsSheet: View {
                 .foregroundColor(isDestructive ? OPSStyle.Colors.errorStatus.opacity(0.7) : OPSStyle.Colors.secondaryText)
                 .frame(width: 40, height: 40)
                 .background(OPSStyle.Colors.background)
-                .cornerRadius(6)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .buttonStyle(PlainButtonStyle())

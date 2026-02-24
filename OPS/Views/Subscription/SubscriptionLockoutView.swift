@@ -224,7 +224,7 @@ struct SubscriptionLockoutView: View {
                         .background(Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke((refreshError || refreshResultNegative) ? OPSStyle.Colors.errorStatus : (refreshComplete ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText), lineWidth: 1)
+                                .stroke((refreshError || refreshResultNegative) ? OPSStyle.Colors.errorStatus : (refreshComplete ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText), lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .opacity(refreshComplete && !refreshResultNegative ? 0 : 1)
                     }
@@ -363,7 +363,7 @@ struct SubscriptionLockoutView: View {
                 .background(Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(nonAdminRefreshButtonColor, lineWidth: 1)
+                        .stroke(nonAdminRefreshButtonColor, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .animation(.easeInOut(duration: 0.3), value: refreshComplete)
                 .animation(.easeInOut(duration: 0.3), value: refreshError)

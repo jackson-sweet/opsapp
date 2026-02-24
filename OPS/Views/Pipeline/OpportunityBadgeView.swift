@@ -40,7 +40,7 @@ struct OpportunityBadgeView: View {
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.secondaryAccent.opacity(0.3), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.secondaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())

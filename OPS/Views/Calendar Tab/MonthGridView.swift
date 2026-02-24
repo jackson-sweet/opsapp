@@ -684,7 +684,7 @@ struct MonthDayCell: View {
                 // Today's date with white circle background
                 ZStack {
                     Circle()
-                        .fill(Color.white)
+                        .fill(OPSStyle.Colors.primaryText)
                         .frame(width: 24, height: 24)
 
                     Text(DateHelper.dayString(from: date))
@@ -707,10 +707,10 @@ struct MonthDayCell: View {
         .frame(height: cellHeight, alignment: .top)
         .contentShape(Rectangle())
         .background(isToday ? OPSStyle.Colors.primaryAccent.opacity(0.5) : Color.clear)
-        .cornerRadius(4)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(isSelected ? Color.white : Color.clear, lineWidth: 1)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(isSelected ? OPSStyle.Colors.primaryText : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .onTapGesture {
             onTap()
@@ -911,7 +911,7 @@ struct EventBar: View {
         HStack(alignment: .center, spacing: 0) {
             if showText && (span.isSingleDay || span.isFirstSegment) {
                 Text(span.title)
-                    .font(.system(size: 10))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(eventColor)
                     .lineLimit(1)
                     .padding(.horizontal, 4)
@@ -927,7 +927,7 @@ struct EventBar: View {
             // Title: 2 lines max, fixed to top two rows
             if span.isFirstSegment || span.isSingleDay {
                 Text(span.title)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(eventColor)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -940,7 +940,7 @@ struct EventBar: View {
             // Task type subtitle: always on 3rd row (bottom)
             if let taskType = span.taskTypeDisplay, !taskType.isEmpty {
                 Text(taskType.uppercased())
-                    .font(.system(size: 9))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineLimit(1)
                     .padding(.horizontal, 4)
@@ -989,7 +989,7 @@ struct MoreEventsIndicatorView: View {
         }
         .frame(width: dayWidth, height: badgeHeight)
         .background(OPSStyle.Colors.secondaryText.opacity(0.1))
-        .cornerRadius(3)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal, 2)
     }
 }
@@ -1149,7 +1149,7 @@ struct EventDetailCard: View {
                 Rectangle()
                     .fill(eventColor)
                     .frame(width: 4)
-                    .cornerRadius(2)
+                    .cornerRadius(OPSStyle.Layout.smallCornerRadius)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(task.displayTitle)
@@ -1183,7 +1183,7 @@ struct EventDetailCard: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 

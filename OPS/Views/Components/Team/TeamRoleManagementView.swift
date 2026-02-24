@@ -105,7 +105,7 @@ struct TeamRoleManagementSheet: View {
                         }
                         .padding()
                         .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(10)
+                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                         .padding(.horizontal, 20)
                         .padding(.top, 12)
                         .padding(.bottom, 16)
@@ -156,7 +156,7 @@ struct TeamRoleManagementSheet: View {
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                             )
                                     }
                                     .disabled(isSaving)
@@ -371,7 +371,7 @@ struct TeamMemberRoleEditRow: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(hasChanged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(hasChanged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
         }
@@ -486,7 +486,7 @@ struct RolePickerSheet: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(currentRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(currentRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

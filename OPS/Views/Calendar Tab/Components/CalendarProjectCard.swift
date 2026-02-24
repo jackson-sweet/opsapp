@@ -50,7 +50,6 @@ struct CalendarProjectCard: View {
             .background(cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .contentShape(Rectangle()) // Make entire card tappable
-            .shadow(color: Color.black, radius: 2, x: 0, y: 1)
             .onTapGesture {
                 onTap()
             }

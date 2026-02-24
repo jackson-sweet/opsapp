@@ -160,7 +160,7 @@ struct UserTypeOption: View {
                           cardBackgroundColor.opacity(0.3))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(isSelected ? OPSStyle.Colors.secondaryText : Color.clear, lineWidth: 1)
+                            .stroke(isSelected ? OPSStyle.Colors.secondaryText : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
         }

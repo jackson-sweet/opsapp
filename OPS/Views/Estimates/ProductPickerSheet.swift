@@ -40,13 +40,13 @@ struct ProductPickerSheet: View {
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, OPSStyle.Layout.spacing2)
 
                 Divider()
-                    .background(Color.white.opacity(0.15))
+                    .background(OPSStyle.Colors.separator)
                     .padding(.top, OPSStyle.Layout.spacing2)
 
                 // Product list
@@ -77,7 +77,7 @@ struct ProductPickerSheet: View {
                                 .buttonStyle(PlainButtonStyle())
 
                                 if product.id != filteredProducts.last?.id {
-                                    Divider().background(Color.white.opacity(0.1))
+                                    Divider().background(OPSStyle.Colors.cardBorder)
                                 }
                             }
                         }

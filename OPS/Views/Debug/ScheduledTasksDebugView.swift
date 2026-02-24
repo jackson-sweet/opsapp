@@ -97,14 +97,14 @@ struct ScheduledTasksDebugView: View {
                     }
                     .padding(8)
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
 
                     Button(action: { showingTaskSearchSheet = true }) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .padding(8)
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(8)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                 }
                 .padding(.horizontal)
@@ -271,7 +271,7 @@ struct EventFilterChip: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(16)
+                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         }
     }
 }
@@ -313,7 +313,7 @@ struct ScheduledTaskDetailCard: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(6)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
 
             Divider()
@@ -385,7 +385,7 @@ struct ScheduledTaskDetailSheet: View {
                             }
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(8)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
 
                         // Project Info
@@ -408,7 +408,7 @@ struct ScheduledTaskDetailSheet: View {
                                 }
                                 .padding()
                                 .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(8)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                         }
 
@@ -431,7 +431,7 @@ struct ScheduledTaskDetailSheet: View {
                             }
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(8)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
 
                         // Team Members
@@ -451,7 +451,7 @@ struct ScheduledTaskDetailSheet: View {
                                 }
                                 .padding()
                                 .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(8)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                         }
                     }
@@ -516,7 +516,7 @@ struct TaskSearchSheet: View {
                                     .textInputAutocapitalization(.never)
                                     .padding(12)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(8)
+                                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
 
                                 if !taskId.isEmpty {
                                     Button(action: { taskId = "" }) {
@@ -536,7 +536,7 @@ struct TaskSearchSheet: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                                 .background(OPSStyle.Colors.primaryAccent)
-                                .cornerRadius(8)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                             .disabled(taskId.isEmpty || isSearching)
                         }
@@ -551,7 +551,7 @@ struct TaskSearchSheet: View {
                             }
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(8)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
 
                         if isSearching {
@@ -590,7 +590,7 @@ struct TaskSearchSheet: View {
                             }
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(8)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         } else if !isSearching && !taskId.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Label("LOCAL SWIFTDATA", systemImage: "cylinder.fill")
@@ -602,7 +602,7 @@ struct TaskSearchSheet: View {
                             }
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(8)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
                     }
                     .padding()

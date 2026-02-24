@@ -175,7 +175,7 @@ struct SchedulingTypeExplanationView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                     .padding(OPSStyle.Layout.spacing3)

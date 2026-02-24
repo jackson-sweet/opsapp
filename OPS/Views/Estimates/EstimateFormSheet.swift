@@ -63,7 +63,7 @@ struct EstimateFormSheet: View {
                             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
@@ -170,7 +170,7 @@ struct EstimateFormSheet: View {
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
@@ -185,7 +185,7 @@ struct EstimateFormSheet: View {
                         .buttonStyle(PlainButtonStyle())
 
                         if item.id != lineItems.last?.id {
-                            Divider().background(Color.white.opacity(0.1))
+                            Divider().background(OPSStyle.Colors.cardBorder)
                         }
                     }
                 }
@@ -193,7 +193,7 @@ struct EstimateFormSheet: View {
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
@@ -286,7 +286,6 @@ struct EstimateFormSheet: View {
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .background(
             OPSStyle.Colors.background
-                .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: -2)
         )
     }
 

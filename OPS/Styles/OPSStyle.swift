@@ -172,6 +172,14 @@ enum OPSStyle {
         static let button = Font.button
         static let smallButton = Font.smallButton
         static let sectionLabel = Font.sectionLabel
+
+        // Headings
+        static let heading = Font.heading
+        static let headingLarge = Font.headingLarge
+
+        // Display
+        static let displayLarge = Font.displayLarge
+        static let displayXL = Font.displayXL
     }
 
     // MARK: - Layout

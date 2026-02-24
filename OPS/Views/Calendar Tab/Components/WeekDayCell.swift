@@ -64,7 +64,7 @@ struct WeekDayCell: View {
 
                                 Text("\(newEventCount)")
                                     .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(Color.black)
+                                    .foregroundColor(OPSStyle.Colors.invertedText)
                             }
                             .padding(.top, 4)
                             .padding(.trailing, 2)
@@ -81,11 +81,11 @@ struct WeekDayCell: View {
                             Spacer()
                             ZStack {
                                 Circle()
-                                    .fill(Color.gray.opacity(0.3))
+                                    .fill(OPSStyle.Colors.pinDotNeutral)
                                     .frame(width: 14, height: 14)
                                 
                                 Text("\(ongoingEventCount)")
-                                    .font(.system(size: 9, weight: .medium))
+                                    .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             .padding(.bottom, 4)
@@ -101,7 +101,7 @@ struct WeekDayCell: View {
             .overlay(
                 // White border for selected day (outline only, no background)
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white, lineWidth: isSelected ? 1 : 0)
+                    .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 1 : 0)
             )
         }
         .disabled(false) // Always enabled in week view

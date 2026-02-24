@@ -92,7 +92,7 @@ struct ProjectListView: View {
                 // Card with project count - showing total count (new + ongoing)
                 ZStack {
                     // Project count card with softer edges
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                         .fill(OPSStyle.Colors.cardBackgroundDark)
                         .frame(width: 40, height: 40)
                     
@@ -117,7 +117,7 @@ struct ProjectListView: View {
         .overlay(
             // White border for first/selected project card
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         // Watch for calendar event changes and force refresh
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in

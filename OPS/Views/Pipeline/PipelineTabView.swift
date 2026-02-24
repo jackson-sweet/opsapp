@@ -51,7 +51,7 @@ struct PipelineTabView: View {
                 .overlay(
                     Rectangle()
                         .frame(height: 0.5)
-                        .foregroundColor(Color.white.opacity(0.15)),
+                        .foregroundColor(OPSStyle.Colors.separator),
                     alignment: .bottom
                 )
 

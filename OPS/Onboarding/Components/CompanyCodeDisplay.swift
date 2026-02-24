@@ -34,7 +34,7 @@ struct CompanyCodeDisplay: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Text(code)
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
@@ -50,7 +50,7 @@ struct CompanyCodeDisplay: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -95,13 +95,13 @@ struct CompanyCodeInput: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             TextField("", text: $code)
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .autocapitalization(.allCharacters)
                 .disableAutocorrection(true)
                 .placeholder(when: code.isEmpty) {
                     Text(placeholder)
-                        .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.placeholderText)
                 }
 
@@ -116,7 +116,7 @@ struct CompanyCodeInput: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }

@@ -130,10 +130,10 @@ struct ColumnMappingView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .background(OPSStyle.Colors.background)
-                .cornerRadius(4)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(isNameField ? OPSStyle.Colors.successStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(isNameField ? OPSStyle.Colors.successStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
         }
@@ -183,7 +183,7 @@ struct ColumnMappingView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(hasNameMapping ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(hasNameMapping ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .disabled(!hasNameMapping)

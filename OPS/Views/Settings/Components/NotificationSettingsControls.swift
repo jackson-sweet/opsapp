@@ -19,11 +19,11 @@ struct NotificationTimeWindow: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
                 
                 Text(description)
-                    .font(.system(size: 13))
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             
@@ -31,7 +31,7 @@ struct NotificationTimeWindow: View {
                 // Start time picker
                 HStack {
                     Text("From:")
-                        .font(.system(size: 14))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
                     Picker("", selection: $startHour) {
@@ -47,13 +47,13 @@ struct NotificationTimeWindow: View {
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
                     .background(OPSStyle.Colors.cardBackground.opacity(0.6))
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
                 
                 // End time picker
                 HStack {
                     Text("To:")
-                        .font(.system(size: 14))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
                     Picker("", selection: $endHour) {
@@ -69,19 +69,19 @@ struct NotificationTimeWindow: View {
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
                     .background(OPSStyle.Colors.cardBackground.opacity(0.6))
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
             }
             
             // Preview of selected time window
             Text("You will receive notifications between \(formatHour(startHour)) and \(formatHour(endHour))")
-                .font(.system(size: 13))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .padding(.top, 4)
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
     }
     
     private func formatHour(_ hour: Int) -> String {
@@ -127,7 +127,7 @@ struct NotificationPrioritySelector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Notification Priority")
-                .font(.system(size: 16, weight: .medium))
+                .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(.white)
             
             VStack(spacing: 12) {
@@ -152,11 +152,11 @@ struct NotificationPrioritySelector: View {
                             
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(priority.rawValue)
-                                    .font(.system(size: 16, weight: selectedPriority == priority ? .semibold : .regular))
+                                    .font(selectedPriority == priority ? OPSStyle.Typography.bodyEmphasis : OPSStyle.Typography.body)
                                     .foregroundColor(.white)
                                 
                                 Text(priority.description)
-                                    .font(.system(size: 13))
+                                    .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                     .lineLimit(2)
                             }
@@ -173,14 +173,14 @@ struct NotificationPrioritySelector: View {
                         .padding(12)
                         .background(selectedPriority == priority ? 
                                     OPSStyle.Colors.primaryAccent.opacity(0.15) : OPSStyle.Colors.cardBackground.opacity(0.3))
-                        .cornerRadius(8)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                 }
             }
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
     }
 }
 
@@ -196,11 +196,11 @@ struct TemporaryMuteControl: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Temporary Mute")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(.white)
                     
                     Text("Silence notifications for a specific period")
-                        .font(.system(size: 13))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 
@@ -225,7 +225,7 @@ struct TemporaryMuteControl: View {
                     // Mute duration options
                     HStack {
                         Text("Mute for:")
-                            .font(.system(size: 14))
+                            .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         
                         Spacer()
@@ -238,13 +238,13 @@ struct TemporaryMuteControl: View {
                                     muteEndTime = Calendar.current.date(byAdding: .hour, value: hours, to: Date())
                                 }) {
                                     Text("\(hours)h")
-                                        .font(.system(size: 14))
+                                        .font(OPSStyle.Typography.caption)
                                         .padding(.vertical, 6)
                                         .padding(.horizontal, 12)
                                         .background(muteHours == hours ? 
                                                     OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
                                         .foregroundColor(muteHours == hours ? .black : .white)
-                                        .cornerRadius(16)
+                                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                                 }
                             }
                         }
@@ -258,7 +258,7 @@ struct TemporaryMuteControl: View {
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             
                             Text("Notifications will resume at \(formatTime(endTime))")
-                                .font(.system(size: 14))
+                                .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
@@ -267,7 +267,7 @@ struct TemporaryMuteControl: View {
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(12)
+        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
     }
     
     private func formatTime(_ date: Date) -> String {

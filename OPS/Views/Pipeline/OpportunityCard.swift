@@ -109,7 +109,7 @@ struct OpportunityCard: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -125,7 +125,7 @@ struct OpportunityCard: View {
             .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
             .background(color.opacity(0.15))
             .overlay(
-                Capsule().stroke(color, lineWidth: 1)
+                Capsule().stroke(color, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .clipShape(Capsule())
     }

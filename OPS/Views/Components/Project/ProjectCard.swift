@@ -42,7 +42,7 @@ struct ProjectCard: View {
         .background(
             // Custom background with blur effect
             BlurView(style: .dark)
-                .cornerRadius(5)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .opacity(0.5)
                 .frame(width: 362, height: 85)
         )
@@ -65,7 +65,7 @@ struct ProjectCard: View {
                         .padding()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(OPSStyle.Colors.imageOverlay)
-                        .foregroundColor(Color.red)
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
             } else {

@@ -152,7 +152,7 @@ struct EstimateDetailView: View {
                     ForEach(lineItems) { item in
                         lineItemRow(item)
                         if item.id != lineItems.last?.id {
-                            Divider().background(Color.white.opacity(0.1))
+                            Divider().background(OPSStyle.Colors.cardBorder)
                         }
                     }
                 }
@@ -160,7 +160,7 @@ struct EstimateDetailView: View {
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
@@ -206,7 +206,7 @@ struct EstimateDetailView: View {
 
     private var totalsSection: some View {
         VStack(spacing: 0) {
-            Divider().background(Color.white.opacity(0.1))
+            Divider().background(OPSStyle.Colors.cardBorder)
 
             VStack(spacing: OPSStyle.Layout.spacing1) {
                 HStack {
@@ -248,7 +248,7 @@ struct EstimateDetailView: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing3)
@@ -290,7 +290,6 @@ struct EstimateDetailView: View {
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .background(
             OPSStyle.Colors.background
-                .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: -2)
         )
     }
 }

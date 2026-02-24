@@ -217,7 +217,7 @@ struct CalendarSchedulerSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(hasSelectedDates ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(hasSelectedDates ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, 20)
         .animation(.easeInOut(duration: 0.2), value: hasSelectedDates)
@@ -268,7 +268,7 @@ struct CalendarSchedulerSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, 20)
         .onChange(of: showOnlyTeamEvents) { _ in
@@ -307,7 +307,7 @@ struct CalendarSchedulerSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, 20)
         .onChange(of: showOnlyProjectTasks) { _ in
@@ -428,7 +428,7 @@ struct CalendarSchedulerSheet: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -454,7 +454,7 @@ struct CalendarSchedulerSheet: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
 
@@ -480,7 +480,7 @@ struct CalendarSchedulerSheet: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .strokeBorder(hasSelectedDates ? Color.clear : Color.white.opacity(0.1), lineWidth: 1)
+                                .strokeBorder(hasSelectedDates ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
                 .disabled(!hasSelectedDates)
@@ -835,7 +835,7 @@ private struct SchedulerDayCell: View {
                 // Background for today only
                 if isToday {
                     // Today: always has primaryAccent background
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .fill(OPSStyle.Colors.primaryAccent)
                 }
 
@@ -843,8 +843,8 @@ private struct SchedulerDayCell: View {
                 Group {
                     if isStartDate && isEndDate {
                         // Single date selection: fully rounded border
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
                     } else if isStartDate {
                         // Start date: rounded left corners only
                         UnevenRoundedRectangle(
@@ -853,7 +853,7 @@ private struct SchedulerDayCell: View {
                             bottomTrailingRadius: 0,
                             topTrailingRadius: 0
                         )
-                        .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: 2)
+                        .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
                     } else if isEndDate {
                         // End date: rounded right corners only
                         UnevenRoundedRectangle(
@@ -862,7 +862,7 @@ private struct SchedulerDayCell: View {
                             bottomTrailingRadius: 8,
                             topTrailingRadius: 8
                         )
-                        .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: 2)
+                        .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
                     } else if isInRange {
                         // Top and bottom borders only for intermediate dates
                         VStack(spacing: 0) {

@@ -255,7 +255,6 @@ struct LocationPermissionOverlay: View {
                 }
             )
             .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .shadow(color: .black.opacity(0.3), radius: 20)
             .padding(40)
         }
     }
@@ -286,6 +285,5 @@ struct ArrivalMessageOverlay: View {
             }
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .shadow(color: .black.opacity(0.3), radius: 20)
     }
 }

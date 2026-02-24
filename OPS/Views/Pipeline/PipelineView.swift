@@ -158,7 +158,6 @@ struct PipelineView: View {
                 .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
                 .background(OPSStyle.Colors.primaryAccent)
                 .clipShape(Circle())
-                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
         }
         .padding(OPSStyle.Layout.spacing3)
         .accessibilityLabel("New Lead")

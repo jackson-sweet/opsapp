@@ -246,10 +246,10 @@ struct TaskTypeRow: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
-                        .cornerRadius(4)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 } else {
                     Image(systemName: OPSStyle.Icons.chevronRight)

@@ -64,7 +64,7 @@ struct CalendarToggleView: View {
                 Group {
                     if isSegmentedControlDisabled {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(Color.black.opacity(0.7))
+                            .fill(OPSStyle.Colors.overlayStrong)
                             .allowsHitTesting(true)
                     }
                 }
@@ -76,7 +76,7 @@ struct CalendarToggleView: View {
                         HStack(spacing: 0) {
                             // Grey overlay on Week side (left half) - blocks interaction
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .fill(Color.black.opacity(0.5))
+                                .fill(OPSStyle.Colors.modalOverlay)
                                 .frame(width: geo.size.width / 2)
 
                             // Month side highlight (right half) - allows interaction
@@ -89,7 +89,7 @@ struct CalendarToggleView: View {
 
                                 // Pulsing border
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .strokeBorder(TutorialHighlightStyle.color, lineWidth: 3)
+                                    .strokeBorder(TutorialHighlightStyle.color, lineWidth: OPSStyle.Layout.Border.thick)
                                     .frame(width: geo.size.width / 2)
                                     .opacity(tutorialHighlightPulse ? TutorialHighlightStyle.pulseOpacity.max : TutorialHighlightStyle.pulseOpacity.min)
                                     .animation(
@@ -99,7 +99,6 @@ struct CalendarToggleView: View {
                                     )
                                     .allowsHitTesting(false)
                             }
-                            .shadow(color: TutorialHighlightStyle.color.opacity(0.5), radius: 6, x: 0, y: 0)
                             .allowsHitTesting(false)
                         }
                     }
@@ -124,7 +123,7 @@ struct CalendarToggleView: View {
                 showDatePicker = true
             }) {
                 Text(periodString)
-                    .font(.bodyBold) // Match the font used in SegmentedControl
+                    .font(OPSStyle.Typography.bodyBold) // Match the font used in SegmentedControl
                     .foregroundColor(.black)
                     .frame(width: 100) // Fixed width to accommodate "September" and week ranges
                     .padding(.vertical, 12) // Match the padding in SegmentedControl
@@ -136,7 +135,7 @@ struct CalendarToggleView: View {
                 Group {
                     if isWeekPickerDisabled {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(Color.black.opacity(0.7))
+                            .fill(OPSStyle.Colors.overlayStrong)
                             .allowsHitTesting(true)
                     }
                 }

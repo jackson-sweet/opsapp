@@ -92,7 +92,7 @@ struct AddressAutocompleteField: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    .stroke(isFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             
             // Search results
@@ -129,7 +129,6 @@ struct AddressAutocompleteField: View {
                 }
                 .background(OPSStyle.Colors.cardBackground)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
                 .padding(.top, 4)
             }
         }

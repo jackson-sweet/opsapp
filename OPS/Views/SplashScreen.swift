@@ -42,7 +42,7 @@ struct SplashScreen: View {
                             .foregroundColor(.white)
                         
                         Text("Built by trades, for trades.")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(.gray)
                     }
                     .opacity(textOpacity)

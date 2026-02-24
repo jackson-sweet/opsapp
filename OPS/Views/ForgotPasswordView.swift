@@ -147,7 +147,7 @@ struct ForgotPasswordView: View {
                             .frame(height: 56)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.pageIndicatorInactive, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.pageIndicatorInactive, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
                     .padding(.horizontal, 24)
@@ -156,12 +156,12 @@ struct ForgotPasswordView: View {
             }
             .frame(maxWidth: 400)
             .background(
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                     .fill(OPSStyle.Colors.cardBackground)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, 40)
         }

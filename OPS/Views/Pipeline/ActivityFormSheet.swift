@@ -56,7 +56,7 @@ struct ActivityFormSheet: View {
                                             .stroke(
                                                 selectedType == type
                                                 ? OPSStyle.Colors.primaryAccent
-                                                : Color.white.opacity(0.1),
+                                                : OPSStyle.Colors.cardBorder,
                                                 lineWidth: 1
                                             )
                                     )
@@ -79,7 +79,7 @@ struct ActivityFormSheet: View {
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }

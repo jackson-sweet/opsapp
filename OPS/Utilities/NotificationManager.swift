@@ -451,21 +451,20 @@ class NotificationManager: NSObject, ObservableObject {
         // Store device token in UserDefaults
         UserDefaults.standard.set(token, forKey: "apns_device_token")
 
-        // Sync to Bubble if token changed or first time
+        // Sync to Supabase if token changed or first time
         if token != previousToken {
-            print("[NOTIFICATIONS] Token changed, syncing to Bubble...")
+            print("[NOTIFICATIONS] Token changed, syncing to Supabase...")
             Task {
-                await syncDeviceTokenToBubble(token: token)
+                await syncDeviceTokenToSupabase(token: token)
             }
         } else {
             print("[NOTIFICATIONS] Token unchanged, skipping sync")
         }
     }
 
-    /// Sync the device token to the Bubble backend
+    /// Sync the device token to Supabase
     @MainActor
-    func syncDeviceTokenToBubble(token: String) async {
-        // Get current user ID from UserDefaults
+    func syncDeviceTokenToSupabase(token: String) async {
         guard let userId = UserDefaults.standard.string(forKey: "currentUserId") else {
             print("[NOTIFICATIONS] Cannot sync token - no user ID found")
             return
@@ -474,45 +473,14 @@ class NotificationManager: NSObject, ObservableObject {
         print("[NOTIFICATIONS] Syncing device token for user: \(userId)")
 
         do {
-            try await updateUserDeviceToken(userId: userId, token: token)
-            print("[NOTIFICATIONS] ✅ Device token synced to Bubble successfully")
+            try await SupabaseService.shared.client
+                .from("users")
+                .update(["device_token": token])
+                .eq("id", value: userId)
+                .execute()
+            print("[NOTIFICATIONS] Device token synced to Supabase successfully")
         } catch {
-            print("[NOTIFICATIONS] ❌ Failed to sync device token: \(error.localizedDescription)")
-            // Token will be re-synced on next app launch when token registration is called again
-        }
-    }
-
-    /// Update user's device token on Bubble backend
-    private func updateUserDeviceToken(userId: String, token: String) async throws {
-        let baseURL = "https://opsapp.co/api/1.1/obj/user/"
-
-        guard let url = URL(string: baseURL + userId) else {
-            throw NSError(domain: "NotificationManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            BubbleFields.User.deviceToken: token
-        ]
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw NSError(domain: "NotificationManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
-        }
-
-        print("[NOTIFICATIONS] Device token PATCH response: \(httpResponse.statusCode)")
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("[NOTIFICATIONS] Error response: \(responseString)")
-            }
-            throw NSError(domain: "NotificationManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP error \(httpResponse.statusCode)"])
+            print("[NOTIFICATIONS] Failed to sync device token: \(error.localizedDescription)")
         }
     }
     

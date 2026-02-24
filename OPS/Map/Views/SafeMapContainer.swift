@@ -9,7 +9,7 @@ import SwiftUI
 struct SafeMapContainer: View {
     let projects: [Project]
     let selectedIndex: Int
-    let selectedEvent: CalendarEvent?
+    let selectedTask: ProjectTask?
     let onProjectSelected: (Project) -> Void
     let onNavigationStarted: (Project) -> Void
     @ObservedObject var appState: AppState
@@ -23,7 +23,7 @@ struct SafeMapContainer: View {
                 MapContainer(
                     projects: projects,
                     selectedIndex: selectedIndex,
-                    selectedEvent: selectedEvent,
+                    selectedTask: selectedTask,
                     onProjectSelected: onProjectSelected,
                     onNavigationStarted: onNavigationStarted,
                     appState: appState,

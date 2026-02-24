@@ -8,7 +8,7 @@ import SwiftUI
 import SwiftData
 import CoreLocation
 
-/// Company model - matches your Bubble Company structure exactly
+/// Company model for OPS company data
 @Model
 final class Company {
     var id: String
@@ -16,7 +16,7 @@ final class Company {
     var logoURL: String?
     var logoData: Data?
     
-    // Additional fields to match your Bubble structure
+    // Additional company fields
     var externalId: String?
     var companyDescription: String?
     var address: String?
@@ -186,7 +186,7 @@ final class Company {
     }
     
     var daysRemainingInGracePeriod: Int? {
-        // Since Bubble handles grace period expiration with recurring workflows,
+        // Grace period expiration is handled server-side,
         // we'll show a static grace period message when status is "grace"
         guard subscriptionStatusEnum == .grace else { return nil }
         

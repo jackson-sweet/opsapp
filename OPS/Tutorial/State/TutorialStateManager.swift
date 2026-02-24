@@ -44,6 +44,9 @@ class TutorialStateManager: ObservableObject {
     /// Whether to show the Continue button (after auto-advance timer completes)
     @Published var showContinueButton: Bool = false
 
+    /// Current phase index (0-based position in flow)
+    @Published var phaseIndex: Int = 0
+
     // MARK: - Timing Properties
 
     /// When the tutorial started
@@ -52,15 +55,24 @@ class TutorialStateManager: ObservableObject {
     /// Total time to complete the tutorial (calculated on completion)
     @Published var completionTime: TimeInterval?
 
+    /// When the current phase started (for per-phase duration tracking)
+    var phaseStartTime: Date?
+
     // MARK: - Flow Configuration
 
     /// The type of tutorial flow (company creator or employee)
     let flowType: TutorialFlowType
 
-    // MARK: - Step Tracking
+    /// UUID generated per tutorial session for analytics grouping
+    let sessionId: String = UUID().uuidString
 
-    /// The highest phase reached during this tutorial session (for logging)
-    @Published var highestPhaseReached: TutorialPhase = .notStarted
+    // MARK: - Analytics
+
+    /// Accumulated per-phase analytics actions
+    var phaseActions: [(phase: TutorialPhase, action: String, durationMs: Int)] = []
+
+    /// Analytics service for recording phase events
+    private let analyticsService = TutorialAnalyticsService()
 
     // MARK: - Private Properties
 
@@ -90,17 +102,15 @@ class TutorialStateManager: ObservableObject {
         return Date().timeIntervalSince(start)
     }
 
-    /// Steps completed as "X/N" string for logging
-    var stepsCompletedString: String {
-        let allPhases = TutorialPhase.allPhases(for: flowType)
-        let total = allPhases.count
-        let stepIndex = highestPhaseReached.stepIndex(for: flowType) ?? 0
-        return "\(stepIndex)/\(total)"
+    /// Total number of phases in the current flow
+    var totalPhases: Int {
+        TutorialPhase.phaseOrder(for: flowType).count
     }
 
-    /// Human-readable descriptor of the last completed step
-    var lastCompletedStepDescriptor: String {
-        highestPhaseReached.stepDescriptor
+    /// Progress fraction for the progress bar (0.0 to 1.0)
+    var progressFraction: CGFloat {
+        guard totalPhases > 0 else { return 0 }
+        return CGFloat(phaseIndex) / CGFloat(totalPhases)
     }
 
     // MARK: - Initialization
@@ -115,6 +125,9 @@ class TutorialStateManager: ObservableObject {
     func start() {
         isActive = true
         startTime = Date()
+        phaseStartTime = Date()
+        phaseIndex = 0
+        phaseActions = []
         currentPhase = TutorialPhase.firstPhase(for: flowType)
         highestPhaseReached = currentPhase
         updateForCurrentPhase()
@@ -131,6 +144,9 @@ class TutorialStateManager: ObservableObject {
 
     /// Advances to the next phase
     func advancePhase() {
+        // Record "completed" action for current phase before advancing
+        recordPhaseAction("completed")
+
         // Cancel any pending auto-advance
         autoAdvanceTask?.cancel()
         autoAdvanceTask = nil
@@ -150,7 +166,7 @@ class TutorialStateManager: ObservableObject {
         }
 
         currentPhase = nextPhase
-        highestPhaseReached = nextPhase
+        updatePhaseIndex()
         updateForCurrentPhase()
 
         // Handle auto-advancing phases (truly auto-advance, no user action)
@@ -219,6 +235,9 @@ class TutorialStateManager: ObservableObject {
         showContinueButton = false
         startTime = nil
         completionTime = nil
+        phaseIndex = 0
+        phaseStartTime = nil
+        phaseActions = []
     }
 
     // MARK: - Cutout Management
@@ -242,6 +261,9 @@ class TutorialStateManager: ObservableObject {
 
     /// Updates state for the current phase
     private func updateForCurrentPhase() {
+        // Reset phase timing
+        phaseStartTime = Date()
+
         // Update tooltip (use flow-specific copy where applicable)
         tooltipText = currentPhase.tooltipText(for: flowType)
         tooltipDescription = currentPhase.tooltipDescription(for: flowType)
@@ -295,6 +317,124 @@ class TutorialStateManager: ObservableObject {
         showContinueButton = false
         TutorialHaptics.lightTap()
         advancePhase()
+    }
+
+    /// Navigate to previous phase using phase order array
+    func goBack() {
+        let order = TutorialPhase.phaseOrder(for: flowType)
+        guard phaseIndex > 0 else { return }
+
+        // Record "skipped" for current phase (going back means abandoning it)
+        recordPhaseAction("skipped")
+
+        // Cancel any pending auto-advance
+        autoAdvanceTask?.cancel()
+        autoAdvanceTask = nil
+        showContinueButton = false
+
+        let previousIndex = phaseIndex - 1
+        currentPhase = order[previousIndex]
+        phaseIndex = previousIndex
+        updateForCurrentPhase()
+
+        // Handle auto-advancing/continue phases
+        if currentPhase.autoAdvances {
+            scheduleAutoAdvance()
+        } else if currentPhase.showsContinueButtonAfterDelay {
+            scheduleContinueButton()
+        } else if currentPhase.showsContinueButtonImmediately {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                self.showContinueButton = true
+            }
+        }
+    }
+
+    /// Skip the current phase without completing the action
+    func skipPhase() {
+        recordPhaseAction("skipped")
+        TutorialHaptics.lightTap()
+
+        // Cancel any pending auto-advance
+        autoAdvanceTask?.cancel()
+        autoAdvanceTask = nil
+        showContinueButton = false
+
+        guard let nextPhase = currentPhase.next(for: flowType) else {
+            complete()
+            return
+        }
+
+        if nextPhase == .completed {
+            complete()
+            return
+        }
+
+        currentPhase = nextPhase
+        updatePhaseIndex()
+        updateForCurrentPhase()
+
+        if currentPhase.autoAdvances {
+            scheduleAutoAdvance()
+        } else if currentPhase.showsContinueButtonAfterDelay {
+            scheduleContinueButton()
+        } else if currentPhase.showsContinueButtonImmediately {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                self.showContinueButton = true
+            }
+        }
+    }
+
+    /// Record drop-off when tutorial is abandoned without completion
+    func recordDropOff() {
+        guard isActive, currentPhase != .completed, currentPhase != .notStarted else { return }
+        let durationMs = Int((phaseStartTime.map { Date().timeIntervalSince($0) } ?? 0) * 1000)
+        let totalElapsedMs = Int(elapsedTime * 1000)
+
+        Task {
+            await analyticsService.recordPhaseAction(
+                phase: "\(currentPhase)",
+                phaseIndex: phaseIndex,
+                action: "dropped_off",
+                durationMs: durationMs,
+                totalElapsedMs: totalElapsedMs,
+                flowType: flowType.rawValue,
+                sessionId: sessionId,
+                userId: nil
+            )
+        }
+    }
+
+    // MARK: - Private Analytics
+
+    /// Record an action for the current phase and send to analytics
+    private func recordPhaseAction(_ action: String) {
+        let durationMs = Int((phaseStartTime.map { Date().timeIntervalSince($0) } ?? 0) * 1000)
+        let totalElapsedMs = Int(elapsedTime * 1000)
+
+        phaseActions.append((phase: currentPhase, action: action, durationMs: durationMs))
+
+        Task {
+            await analyticsService.recordPhaseAction(
+                phase: "\(currentPhase)",
+                phaseIndex: phaseIndex,
+                action: action,
+                durationMs: durationMs,
+                totalElapsedMs: totalElapsedMs,
+                flowType: flowType.rawValue,
+                sessionId: sessionId,
+                userId: nil
+            )
+        }
+    }
+
+    /// Update phaseIndex from phase order array
+    private func updatePhaseIndex() {
+        let order = TutorialPhase.phaseOrder(for: flowType)
+        if let index = order.firstIndex(of: currentPhase) {
+            phaseIndex = index
+        }
     }
 }
 

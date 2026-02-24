@@ -17,17 +17,17 @@ class CalendarViewModel: ObservableObject {
     @Published var viewMode: CalendarViewMode = .week
     @Published var visibleMonth: Date = Date() // Track visible month in month grid view
     @Published var projectIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
-    @Published var calendarEventIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
-    
+    @Published var scheduledTaskIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
+
     // Computed properties to get fresh models
     var projectsForSelectedDate: [Project] {
         guard let dataController = dataController else { return [] }
         return projectIdsForSelectedDate.compactMap { dataController.getProject(id: $0) }
     }
-    
-    var calendarEventsForSelectedDate: [CalendarEvent] {
+
+    var scheduledTasksForSelectedDate: [ProjectTask] {
         guard let dataController = dataController else { return [] }
-        return calendarEventIdsForSelectedDate.compactMap { dataController.getCalendarEvent(id: $0) }
+        return scheduledTaskIdsForSelectedDate.compactMap { dataController.getTask(id: $0) }
     }
     @Published var isLoading = false
     @Published var userInitiatedDateSelection = false
@@ -200,24 +200,23 @@ class CalendarViewModel: ObservableObject {
     
     private var projectCountCache: [String: Int] = [:]
     
-    // Get calendar events for a specific date (for border display)
-    func calendarEvents(for date: Date) -> [CalendarEvent] {
-        // If it's the currently selected date, return cached events
+    // Get scheduled tasks for a specific date (for border display)
+    func scheduledTasks(for date: Date) -> [ProjectTask] {
+        // If it's the currently selected date, return cached tasks
         if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
-            return calendarEventsForSelectedDate
+            return scheduledTasksForSelectedDate
         }
-        
+
         // Otherwise fetch from DataController
         if let dataController = dataController {
-            var events = dataController.getCalendarEventsForCurrentUser(for: date)
-            
-            // Apply comprehensive filters
-            events = applyEventFilters(to: events)
+            var tasks = dataController.getScheduledTasksForCurrentUser(for: date)
 
-            // All events are now active by default (active property removed in task-only scheduling)
-            return events
+            // Apply comprehensive filters
+            tasks = applyTaskFilters(to: tasks)
+
+            return tasks
         }
-        
+
         return []
     }
     
@@ -227,7 +226,7 @@ class CalendarViewModel: ObservableObject {
 
         // If it's the currently selected date, we already have the data
         if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
-            return calendarEventsForSelectedDate.count
+            return scheduledTasksForSelectedDate.count
         }
 
         // Return from cache or 0 if not cached
@@ -283,60 +282,47 @@ class CalendarViewModel: ObservableObject {
         return count
     }
     
-    // Helper method to apply all filters to calendar events
-    func applyEventFilters(to events: [CalendarEvent]) -> [CalendarEvent] {
-        var filteredEvents = events
-        
-        // Apply team member filter
-        // Only check TASK team members - this shows events where the team member is actually assigned to the task
-        // NOT project team members (which would show all tasks from any project they're on)
-        if !selectedTeamMemberIds.isEmpty {
-            filteredEvents = filteredEvents.filter { event in
-                // Prefer task team members (more accurate than event's stored team members)
-                if let task = event.task {
-                    return task.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } ||
-                        task.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) }
-                }
+    // Helper method to apply all filters to scheduled tasks
+    func applyTaskFilters(to tasks: [ProjectTask]) -> [ProjectTask] {
+        var filteredTasks = tasks
 
-                // Fall back to event's stored team members if no linked task
-                return event.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } ||
-                    event.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) }
+        // Apply team member filter
+        if !selectedTeamMemberIds.isEmpty {
+            filteredTasks = filteredTasks.filter { task in
+                task.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } ||
+                    task.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) }
             }
         }
-        
+
         // Apply task type filter
         if !selectedTaskTypeIds.isEmpty {
-            filteredEvents = filteredEvents.filter { event in
-                // Check if event's task has a matching task type
-                if let taskTypeId = event.task?.taskTypeId {
-                    return selectedTaskTypeIds.contains(taskTypeId)
-                }
-                // For project events without tasks, include them if no task filter is applied
-                // or exclude them if a specific task type filter is active
-                return false
+            filteredTasks = filteredTasks.filter { task in
+                let taskTypeId = task.taskTypeId
+                return !taskTypeId.isEmpty && selectedTaskTypeIds.contains(taskTypeId)
             }
         }
-        
+
         // Apply client filter
         if !selectedClientIds.isEmpty {
-            filteredEvents = filteredEvents.filter { event in
-                if let clientId = event.project?.clientId {
+            filteredTasks = filteredTasks.filter { task in
+                if let clientId = task.project?.clientId {
                     return selectedClientIds.contains(clientId)
                 }
                 return false
             }
         }
 
+        // Apply status filter
         if !selectedStatuses.isEmpty {
-            filteredEvents = filteredEvents.filter { event in
-                if let projectStatus = event.project?.status {
+            filteredTasks = filteredTasks.filter { task in
+                if let projectStatus = task.project?.status {
                     return selectedStatuses.contains(projectStatus)
                 }
                 return false
             }
         }
 
-        return filteredEvents
+        return filteredTasks
     }
     
     var filterSummaryText: String {
@@ -372,22 +358,14 @@ class CalendarViewModel: ObservableObject {
 
         isLoading = true
 
-        // First run the diagnostic if we're looking for Aug 17 or Aug 19
-        let calendar = Calendar.current
-        if calendar.component(.month, from: date) == 8 &&
-            (calendar.component(.day, from: date) == 17 || calendar.component(.day, from: date) == 19) &&
-            calendar.component(.year, from: date) == 2025 {
-            dataController.diagnoseRailingsVinylProject()
-        }
-
-        // Get calendar events for the selected date
-        var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: date)
+        // Get scheduled tasks for the selected date
+        var scheduledTasks = dataController.getScheduledTasksForCurrentUser(for: date)
 
         // Apply comprehensive filters
-        calendarEvents = applyEventFilters(to: calendarEvents)
+        scheduledTasks = applyTaskFilters(to: scheduledTasks)
 
-        // Get unique projects from the calendar events
-        let projectIds = Set(calendarEvents.compactMap { $0.projectId })
+        // Get unique projects from the scheduled tasks
+        let projectIds = Set(scheduledTasks.compactMap { $0.projectId })
 
         var projects: [Project] = []
         for projectId in projectIds {
@@ -399,14 +377,14 @@ class CalendarViewModel: ObservableObject {
         // Force UI update - Store IDs instead of models to avoid invalidation
         DispatchQueue.main.async { [weak self] in
             self?.objectWillChange.send()
-            self?.calendarEventIdsForSelectedDate = calendarEvents.map { $0.id }
+            self?.scheduledTaskIdsForSelectedDate = scheduledTasks.map { $0.id }
             self?.projectIdsForSelectedDate = projects.map { $0.id }
             self?.isLoading = false
         }
 
-        // Update the cache for this date (based on calendar events now)
+        // Update the cache for this date (based on scheduled tasks)
         let dateKey = formatDateKey(date)
-        projectCountCache[dateKey] = calendarEvents.count
+        projectCountCache[dateKey] = scheduledTasks.count
     }
     
     // Refresh projects from the data source
@@ -420,7 +398,7 @@ class CalendarViewModel: ObservableObject {
         // Clear the cache to force fresh data
         projectCountCache.removeAll()
         
-        // Sync with Bubble backend to get latest project data
+        // Sync with backend to get latest project data
         await dataController.refreshProjectsFromBackend()
         
         // Reload projects for the current selected date with fresh data

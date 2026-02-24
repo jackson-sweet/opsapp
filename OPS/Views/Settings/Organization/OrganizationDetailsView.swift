@@ -253,7 +253,7 @@ struct OrganizationDetailsView: View {
     // MARK: - Company Code Section
 
     private var companyCodeSection: some View {
-        // Use company's externalId (companyID from Bubble) as the company code
+        // Use company's externalId as the company code
         let companyCode = company?.externalId ?? ""
 
         return VStack(alignment: .leading, spacing: 8) {
@@ -632,7 +632,7 @@ struct OrganizationDetailsView: View {
             }
 
             // Build fields to update
-            var fieldsToUpdate: [String: Any] = [:]
+            var fieldsToUpdate: [String: String] = [:]
 
             if hasFieldChanged(editedPhone, company.phone) {
                 let newValue = editedPhone.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -657,9 +657,9 @@ struct OrganizationDetailsView: View {
 
             try dataController.modelContext?.save()
 
-            // Update in Bubble if connected and there are field changes
+            // Update in Supabase if connected and there are field changes
             if dataController.isConnected && !fieldsToUpdate.isEmpty {
-                try await dataController.apiService.updateCompanyFields(
+                try await dataController.syncManager.updateCompanyFields(
                     companyId: company.id,
                     fields: fieldsToUpdate
                 )

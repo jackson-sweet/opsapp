@@ -9,10 +9,10 @@ import SwiftUI
 
 // View modifier for segmented border overlay
 struct SegmentedBorderModifier: ViewModifier {
-    let calendarEvents: [CalendarEvent]
+    let tasks: [ProjectTask]
     let isSelected: Bool
     let cornerRadius: CGFloat
-    
+
     func body(content: Content) -> some View {
         content
             .overlay(
@@ -21,38 +21,33 @@ struct SegmentedBorderModifier: ViewModifier {
                         // White border for selected state
                         RoundedRectangle(cornerRadius: cornerRadius)
                             .stroke(Color.white, lineWidth: 2)
-                    } else if !calendarEvents.isEmpty {
-                        // Segmented border for events
-                        SegmentedBorderView(events: calendarEvents, cornerRadius: cornerRadius)
+                    } else if !tasks.isEmpty {
+                        // Segmented border for tasks
+                        SegmentedBorderView(tasks: tasks, cornerRadius: cornerRadius)
                     }
                 }
             )
     }
 }
 
-// Segmented border view that calculates segments from events
+// Segmented border view that calculates segments from tasks
 struct SegmentedBorderView: View {
-    let events: [CalendarEvent]
+    let tasks: [ProjectTask]
     let cornerRadius: CGFloat
     @EnvironmentObject private var dataController: DataController
-    
+
     private var taskColorSegments: [(color: Color, count: Int)] {
-        // Task-only scheduling migration: All events are task events
         var colorCounts: [String: Int] = [:]
         var colorMap: [String: Color] = [:]
 
-        for event in events {
-            if let task = event.task {
-                // Use the task's effective color (from task type)
-                let colorKey = "task_\(task.effectiveColor)"
-                colorCounts[colorKey, default: 0] += 1
+        for task in tasks {
+            let colorKey = "task_\(task.effectiveColor)"
+            colorCounts[colorKey, default: 0] += 1
 
-                if let color = Color(hex: task.effectiveColor) {
-                    colorMap[colorKey] = color
-                } else {
-                    // Fallback for invalid task colors
-                    colorMap[colorKey] = Color.gray.opacity(0.6)
-                }
+            if let color = Color(hex: task.effectiveColor) {
+                colorMap[colorKey] = color
+            } else {
+                colorMap[colorKey] = Color.gray.opacity(0.6)
             }
         }
 
@@ -185,9 +180,9 @@ struct RoundedRectangleBorder: View {
 
 // Extension to make it easy to use
 extension View {
-    func segmentedEventBorder(events: [CalendarEvent], isSelected: Bool, cornerRadius: CGFloat = 8) -> some View {
+    func segmentedEventBorder(events: [ProjectTask], isSelected: Bool, cornerRadius: CGFloat = 8) -> some View {
         self.modifier(SegmentedBorderModifier(
-            calendarEvents: events,
+            tasks: events,
             isSelected: isSelected,
             cornerRadius: cornerRadius
         ))

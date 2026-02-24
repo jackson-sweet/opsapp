@@ -624,24 +624,17 @@ struct ClientSheet: View {
             tempClient.profileImageURL = imageURL
         }
 
-        // Create in Bubble API
-        print("[CLIENT_CREATE] Creating client in Bubble...")
-        let bubbleId = try await dataController.apiService.createClient(tempClient)
-        print("[CLIENT_CREATE] ✅ Client created in Bubble with ID: \(bubbleId)")
-
-        // Update local client with Bubble ID
-        tempClient.id = bubbleId
-        tempClient.needsSync = false
-        tempClient.lastSyncedAt = Date()
-
-        // Link client to company's Client list
-        print("[CLIENT_CREATE] Linking client to company...")
-        try await dataController.apiService.linkClientToCompany(companyId: companyId, clientId: bubbleId)
+        // TODO: Implement syncManager.createClient() — for now, save locally and trigger sync
+        print("[CLIENT_CREATE] Saving client locally, marked for sync...")
+        tempClient.needsSync = true
 
         // Save to data controller
         await MainActor.run {
             dataController.saveClient(tempClient)
         }
+
+        // Trigger background sync so the client is pushed to Supabase
+        dataController.syncManager?.triggerBackgroundSync()
 
         return tempClient
     }

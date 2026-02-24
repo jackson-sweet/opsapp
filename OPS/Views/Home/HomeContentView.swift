@@ -14,7 +14,7 @@ import CoreLocation
 /// Used to reduce expression complexity in HomeView
 struct HomeContentView: View {
     // Bindings - mapRegion removed, now handled internally by ProjectMapView
-    let todaysCalendarEvents: [CalendarEvent]
+    let todaysScheduledTasks: [ProjectTask]
     let todaysProjects: [Project] // Keep for map
     @Binding var selectedEventIndex: Int
     @Binding var showStartConfirmation: Bool
@@ -114,12 +114,12 @@ struct HomeContentView: View {
             SafeMapContainer(
                 projects: todaysProjects,
                 selectedIndex: todaysProjects.isEmpty ? 0 :
-                    (todaysCalendarEvents.indices.contains(selectedEventIndex) ?
-                        todaysProjects.firstIndex(where: { $0.id == todaysCalendarEvents[selectedEventIndex].projectId }) ?? 0 : 0),
-                selectedEvent: todaysCalendarEvents.indices.contains(selectedEventIndex) ? todaysCalendarEvents[selectedEventIndex] : nil,
+                    (todaysScheduledTasks.indices.contains(selectedEventIndex) ?
+                        todaysProjects.firstIndex(where: { $0.id == todaysScheduledTasks[selectedEventIndex].projectId }) ?? 0 : 0),
+                selectedTask: todaysScheduledTasks.indices.contains(selectedEventIndex) ? todaysScheduledTasks[selectedEventIndex] : nil,
                 onProjectSelected: { project in
                     // Find event index for this project
-                    if let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == project.id }) {
+                    if let index = todaysScheduledTasks.firstIndex(where: { $0.projectId == project.id }) {
                         selectedEventIndex = index
                         // Reset confirmation when selecting via map
                         showStartConfirmation = false
@@ -135,28 +135,25 @@ struct HomeContentView: View {
                     if project.status != .inProgress {
                         Task {
                             do {
-                                // Use the new API endpoint to start the project
-                                let updatedStatus = try await dataController.apiService.startProject(id: project.id)
-                                
+                                try await dataController.syncManager.updateProjectStatus(
+                                    projectId: project.id,
+                                    status: .inProgress,
+                                    forceSync: true
+                                )
+
                                 // Update local status immediately for UI consistency
                                 await MainActor.run {
                                     project.status = .inProgress
                                     project.needsSync = false
                                     project.lastSyncedAt = Date()
-                                    
+
                                     // Save to model context
                                     if let modelContext = dataController.modelContext {
                                         try? modelContext.save()
                                     }
                                 }
                             } catch {
-                                Task {
-                                    try? await dataController.syncManager.updateProjectStatus(
-                                        projectId: project.id,
-                                        status: .inProgress,
-                                        forceSync: true
-                                    )
-                                }
+                                print("[START_PROJECT] Failed to update project status: \(error)")
                             }
                         }
                     }
@@ -254,9 +251,9 @@ struct HomeContentView: View {
     private var projectCarouselView: some View {
         Group {
             if !appState.isInProjectMode {
-                if !todaysCalendarEvents.isEmpty {
+                if !todaysScheduledTasks.isEmpty {
                     EventCarousel(
-                        events: todaysCalendarEvents,
+                        tasks: todaysScheduledTasks,
                         selectedIndex: $selectedEventIndex,
                         showStartConfirmation: $showStartConfirmation,
                         isInProjectMode: appState.isInProjectMode,

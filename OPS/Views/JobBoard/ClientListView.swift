@@ -15,14 +15,23 @@ struct ClientListView: View {
     @State private var showingCreateClient = false
     @State private var lastDraggedLetter: String? = nil
 
+    init(searchText: String, companyId: String) {
+        self.searchText = searchText
+        _clients = Query(
+            filter: #Predicate<Client> { client in
+                client.companyId == companyId && client.deletedAt == nil
+            },
+            sort: [SortDescriptor(\Client.name)]
+        )
+    }
+
     private var sortedAndFilteredClients: [Client] {
-        let filtered = searchText.isEmpty ? clients : clients.filter { client in
+        guard !searchText.isEmpty else { return clients }
+        return clients.filter { client in
             client.name.localizedCaseInsensitiveContains(searchText) ||
             (client.email?.localizedCaseInsensitiveContains(searchText) ?? false) ||
             (client.phoneNumber?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
-
-        return filtered.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
     private var groupedClients: [String: [Client]] {

@@ -122,16 +122,16 @@ class DataHealthManager: ObservableObject {
         if user.companyId == nil || user.companyId?.isEmpty == true {
             print("[DATA_HEALTH] ⚠️ User has no company ID")
 
-            // Fetch user from API to see if they have a company in Bubble
+            // Fetch user from API to check company association
             if let apiUser = await fetchUserFromAPI(userId: userId) {
                 if let apiCompanyId = apiUser.companyId, !apiCompanyId.isEmpty {
-                    // User has company in Bubble but not locally - update local
+                    // User has company on server but not locally - update local
                     user.companyId = apiCompanyId
                     try? dataController.modelContext?.save()
                     print("[DATA_HEALTH] ✅ Updated user with company ID from API: \(apiCompanyId)")
                 } else {
-                    // User has no company in Bubble either - send to company join
-                    print("[DATA_HEALTH] ❌ User has no company in Bubble - return to onboarding")
+                    // User has no company on server either - send to company join
+                    print("[DATA_HEALTH] ❌ User has no company on server - return to onboarding")
                     currentHealthState = .missingCompanyId
                     return (.missingCompanyId, .returnToOnboarding(step: .companyCode))
                 }
@@ -241,70 +241,20 @@ class DataHealthManager: ObservableObject {
     }
 
     private func fetchUserFromAPI(userId: String) async -> User? {
-        print("[DATA_HEALTH] 🔄 Fetching user from API: \(userId)")
+        print("[DATA_HEALTH] 🔄 Fetching user from Supabase: \(userId)")
 
         do {
-            // Use the centralized Bubble API fetch method to get the user by ID
-            let constraints: [String: Any] = [
-                "key": "_id",
-                "constraint_type": "equals",
-                "value": userId
-            ]
-
-            let userDTOs: [UserDTO] = try await dataController.apiService.fetchBubbleObjects(
-                objectType: "User",
-                constraints: constraints,
-                limit: 1
-            )
-
-            guard let userDTO = userDTOs.first else {
-                print("[DATA_HEALTH] ⚠️ User not found in API: \(userId)")
+            // Use SupabaseSyncManager to fetch user by ID
+            guard let user = try await dataController.syncManager?.fetchUser(id: userId) else {
+                print("[DATA_HEALTH] ⚠️ User not found in Supabase: \(userId)")
                 return nil
             }
 
-            print("[DATA_HEALTH] ✅ Found user in API: \(userDTO.nameFirst ?? "") \(userDTO.nameLast ?? "")")
-
-            // Convert DTO to User model
-            let user = userDTO.toModel()
-
-            // Store/update user in SwiftData
-            if let modelContext = dataController.modelContext {
-                // Check if user already exists
-                let descriptor = FetchDescriptor<User>(
-                    predicate: #Predicate<User> { $0.id == userId }
-                )
-                let existingUsers = try? modelContext.fetch(descriptor)
-
-                if let existingUser = existingUsers?.first {
-                    // Update existing user with API data
-                    existingUser.firstName = user.firstName
-                    existingUser.lastName = user.lastName
-                    existingUser.email = user.email
-                    existingUser.phone = user.phone
-                    existingUser.companyId = user.companyId
-                    existingUser.role = user.role
-                    existingUser.profileImageURL = user.profileImageURL
-                    existingUser.userColor = user.userColor
-                    existingUser.devPermission = user.devPermission
-                    existingUser.hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
-                    existingUser.lastSyncedAt = Date()
-
-                    try? modelContext.save()
-                    print("[DATA_HEALTH] ✅ Updated existing user in SwiftData")
-                    return existingUser
-                } else {
-                    // Insert new user
-                    modelContext.insert(user)
-                    try? modelContext.save()
-                    print("[DATA_HEALTH] ✅ Inserted new user into SwiftData")
-                    return user
-                }
-            }
-
+            print("[DATA_HEALTH] ✅ Found user in Supabase: \(user.firstName) \(user.lastName)")
             return user
 
         } catch {
-            print("[DATA_HEALTH] ❌ Error fetching user from API: \(error.localizedDescription)")
+            print("[DATA_HEALTH] ❌ Error fetching user from Supabase: \(error.localizedDescription)")
             return nil
         }
     }

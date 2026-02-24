@@ -137,7 +137,7 @@ struct TaskStatusChangeSheet: View {
         Task {
             do {
                 // Use the centralized, reusable status update function
-                // This ensures ONLY the status field is updated in Bubble
+                // This ensures ONLY the status field is updated on the server
                 // and prevents duplicate task references in project.tasks
                 try await dataController.updateTaskStatus(task: task, to: selectedStatus)
 

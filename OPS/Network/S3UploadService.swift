@@ -473,7 +473,7 @@ enum S3Error: LocalizedError {
     case uploadFailed
     case deleteFailed
     case invalidURL
-    case bubbleAPIFailed
+    case apiSyncFailed
     case imageConversionFailed
     
     var errorDescription: String? {
@@ -484,7 +484,7 @@ enum S3Error: LocalizedError {
             return "Failed to delete image from S3"
         case .invalidURL:
             return "Invalid S3 URL"
-        case .bubbleAPIFailed:
+        case .apiSyncFailed:
             return "OPS Web App upload failed, but database succeeded"
         case .imageConversionFailed:
             return "Failed to convert image to JPEG format"

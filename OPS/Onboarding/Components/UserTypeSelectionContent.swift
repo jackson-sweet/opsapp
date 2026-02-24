@@ -278,7 +278,7 @@ struct UserTypeSelectionContent: View {
                             selectedType?.buttonText ?? "CONTINUE",
                             font: OPSStyle.Typography.bodyBold,
                             color: .black,
-                            typingSpeed: 30
+                            typingSpeed: 50
                         ) {
                             // Show arrow after text completes
                             withAnimation(.easeOut(duration: 0.3)) {

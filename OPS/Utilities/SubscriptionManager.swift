@@ -10,6 +10,11 @@ import SwiftUI
 import SwiftData
 import Combine
 
+extension Notification.Name {
+    static let paymentSuccessful = Notification.Name("paymentSuccessful")
+    static let paymentCancelled = Notification.Name("paymentCancelled")
+}
+
 /// Manages all subscription-related functionality including status checks,
 /// access control, seat management, and notification scheduling
 class SubscriptionManager: ObservableObject {
@@ -231,25 +236,25 @@ class SubscriptionManager: ObservableObject {
         subscriptionEnd = company.subscriptionEnd
         trialEndDate = company.trialEndDate
 
-        // DEFENSIVE FIX: If Bubble has expired trial still marked as "trial", update it to "expired"
+        // DEFENSIVE FIX: If backend has expired trial still marked as "trial", update it to "expired"
         if let status = company.subscriptionStatusEnum,
            status == .trial,
            let trialEnd = company.trialEndDate,
            trialEnd < Date() {
-            print("[SUBSCRIPTION] ⚠️ Detected expired trial with 'trial' status - updating Bubble to 'expired'")
+            print("[SUBSCRIPTION] ⚠️ Detected expired trial with 'trial' status - updating to 'expired'")
             print("[SUBSCRIPTION]    Trial ended: \(trialEnd.formatted())")
             print("[SUBSCRIPTION]    Current date: \(Date().formatted())")
 
-            // Update Bubble in background (don't block UI)
+            // Update Supabase in background (don't block UI)
             Task {
                 do {
-                    try await dataController.apiService.updateCompanyFields(
+                    try await dataController.syncManager.updateCompanyFields(
                         companyId: company.id,
-                        fields: ["subscriptionStatus": "expired"]
+                        fields: ["subscription_status": "expired"]
                     )
-                    print("[SUBSCRIPTION] ✅ Successfully updated Bubble: trial → expired")
+                    print("[SUBSCRIPTION] ✅ Successfully updated Supabase: trial → expired")
                 } catch {
-                    print("[SUBSCRIPTION] ❌ Failed to update Bubble status: \(error)")
+                    print("[SUBSCRIPTION] ❌ Failed to update Supabase status: \(error)")
                 }
             }
         }
@@ -311,10 +316,9 @@ class SubscriptionManager: ObservableObject {
             return true
 
         case .trial:
-            // DEFENSIVE CHECK: If Bubble hasn't expired the trial, do it in iOS
-            // This protects against Bubble workflow failures
+            // DEFENSIVE CHECK: If backend hasn't expired the trial, do it in iOS
             if let trialEndDate = company.trialEndDate, trialEndDate < Date() {
-                print("[AUTH] ⚠️ Trial expired but Bubble status still 'trial' - defensive check triggered")
+                print("[AUTH] ⚠️ Trial expired but status still 'trial' - defensive check triggered")
                 print("[AUTH]    Trial ended: \(trialEndDate.formatted())")
                 print("[AUTH]    Current date: \(Date().formatted())")
                 print("[AUTH] ❌ Access denied - trial expired (defensive check)")
@@ -397,31 +401,29 @@ class SubscriptionManager: ObservableObject {
             currentSeatedIds.append(userId)
         }
         
-        // Call API to update seated employees on Bubble
+        // Call Supabase to update seated employees
         do {
-            print("[SUBSCRIPTION] Calling API to update seated employees on Bubble")
-            let updatedCompanyDTO = try await dataController.apiService.updateCompanySeatedEmployees(
+            print("[SUBSCRIPTION] Calling Supabase to update seated employees")
+            try await dataController.syncManager.updateCompanySeatedEmployees(
                 companyId: company.id,
-                seatedEmployeeIds: currentSeatedIds
+                userIds: currentSeatedIds
             )
-            
-            print("[SUBSCRIPTION] API call successful, updating local company")
-            
-            // Update local company with the response from Bubble
-            company.setSeatedEmployeeIds(
-                updatedCompanyDTO.seatedEmployees?.compactMap { $0.stringValue } ?? []
-            )
-            
+
+            print("[SUBSCRIPTION] Supabase call successful, updating local company")
+
+            // Update local company with the new seated IDs
+            company.setSeatedEmployeeIds(currentSeatedIds)
+
             // Save local changes
             try dataController.modelContext?.save()
-            
+
             print("[SUBSCRIPTION] Seat added successfully for user: \(userId)")
-            
+
             // Trigger a full sync to ensure everything is up to date
             NotificationCenter.default.post(name: .companySynced, object: nil)
-            
+
         } catch {
-            print("❌ Failed to update seated employees on Bubble: \(error)")
+            print("❌ Failed to update seated employees on Supabase: \(error)")
             throw SubscriptionError.syncFailed
         }
         
@@ -452,31 +454,29 @@ class SubscriptionManager: ObservableObject {
         var currentSeatedIds = company.getSeatedEmployeeIds()
         currentSeatedIds.removeAll { $0 == userId }
         
-        // Call API to update seated employees on Bubble
+        // Call Supabase to update seated employees
         do {
-            print("[SUBSCRIPTION] Calling API to update seated employees on Bubble")
-            let updatedCompanyDTO = try await dataController.apiService.updateCompanySeatedEmployees(
+            print("[SUBSCRIPTION] Calling Supabase to update seated employees")
+            try await dataController.syncManager.updateCompanySeatedEmployees(
                 companyId: company.id,
-                seatedEmployeeIds: currentSeatedIds
+                userIds: currentSeatedIds
             )
-            
-            print("[SUBSCRIPTION] API call successful, updating local company")
-            
-            // Update local company with the response from Bubble
-            company.setSeatedEmployeeIds(
-                updatedCompanyDTO.seatedEmployees?.compactMap { $0.stringValue } ?? []
-            )
-            
+
+            print("[SUBSCRIPTION] Supabase call successful, updating local company")
+
+            // Update local company with the new seated IDs
+            company.setSeatedEmployeeIds(currentSeatedIds)
+
             // Save local changes
             try dataController.modelContext?.save()
-            
+
             print("[SUBSCRIPTION] Seat removed successfully for user: \(userId)")
             
             // Trigger a full sync to ensure everything is up to date
             NotificationCenter.default.post(name: .companySynced, object: nil)
             
         } catch {
-            print("❌ Failed to update seated employees on Bubble: \(error)")
+            print("❌ Failed to update seated employees: \(error)")
             throw SubscriptionError.syncFailed
         }
         

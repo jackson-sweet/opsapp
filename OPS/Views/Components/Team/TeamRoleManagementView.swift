@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Supabase
 
 struct TeamRoleManagementView: View {
     let company: Company
@@ -274,11 +275,16 @@ struct TeamRoleManagementSheet: View {
                     user.needsSync = true
                 }
 
-                // Update via API
-                let roleString = BubbleFields.EmployeeType.fromSwiftEnum(newRole)
-                try await dataController.apiService.updateUser(
-                    id: userId,
-                    userData: ["employeeType": roleString]
+                // Update via Supabase
+                let roleString: String
+                switch newRole {
+                case .fieldCrew: roleString = "Field Crew"
+                case .officeCrew: roleString = "Office Crew"
+                case .admin: roleString = "Admin"
+                }
+                try await dataController.syncManager.updateUserFields(
+                    userId: userId,
+                    fields: ["employee_type": .string(roleString)]
                 )
 
                 successCount += 1
@@ -296,7 +302,9 @@ struct TeamRoleManagementSheet: View {
         }
 
         // Re-sync team members to update TeamMember objects
-        await dataController.syncManager?.syncCompanyTeamMembers(company)
+        if let companyId = company.id as String? {
+            try? await dataController.syncManager.syncCompanyTeamMembers(companyId: companyId)
+        }
 
         isSaving = false
 

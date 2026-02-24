@@ -422,26 +422,26 @@ struct SeatManagementView: View {
         // Call API to update seats
         Task {
             do {
-                // Call the API to update seated employees
-                let updatedCompany = try await dataController.apiService.updateCompanySeatedEmployees(
+                // Call Supabase to update seated employees
+                try await dataController.syncManager.updateCompanySeatedEmployees(
                     companyId: company.id,
-                    seatedEmployeeIds: seatedIdsArray
+                    userIds: seatedIdsArray
                 )
-                
-                // Update local data with the response
+
+                // Update local data
                 await MainActor.run {
                     company.seatedEmployeeIds = seatedIdsString
-                    
+
                     // Save local changes
                     try? dataController.modelContext?.save()
-                    
+
                     isSaving = false
                     hasChanges = false
                 }
-                
+
                 // Update subscription manager's seated employees
                 await subscriptionManager.checkSubscriptionStatus()
-                
+
                 // Dismiss after everything is done
                 await MainActor.run {
                     dismiss()

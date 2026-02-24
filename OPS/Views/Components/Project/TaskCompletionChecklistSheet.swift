@@ -183,11 +183,9 @@ struct TaskCompletionChecklistSheet: View {
         Task {
             for task in incompleteTasks where taskStates[task.id] == true {
                 do {
-                    // Update calendar event end date first
+                    // Set end date on task directly
                     await MainActor.run {
-                        if let calendarEvent = task.calendarEvent {
-                            calendarEvent.endDate = Date()
-                        }
+                        task.endDate = Date()
                     }
 
                     // Use centralized status update function

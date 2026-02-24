@@ -23,7 +23,7 @@ struct HomeView: View {
     @State private var locationStatus: CLAuthorizationStatus = .notDetermined
     
     // No map region state needed - ProjectMapView manages internally
-    @State private var todaysCalendarEvents: [CalendarEvent] = []
+    @State private var todaysScheduledTasks: [ProjectTask] = []
     @State private var todaysProjects: [Project] = [] // Keep for map display
     @State private var selectedEventIndex = 0
     @State private var showStartConfirmation = false
@@ -42,7 +42,7 @@ struct HomeView: View {
     var body: some View {
         // Extract to smaller components to help compiler
         HomeContentView(
-            todaysCalendarEvents: todaysCalendarEvents,
+            todaysScheduledTasks: todaysScheduledTasks,
             todaysProjects: todaysProjects,
             selectedEventIndex: $selectedEventIndex,
             showStartConfirmation: $showStartConfirmation,
@@ -225,7 +225,7 @@ struct HomeView: View {
             if let projectId = notification.userInfo?["projectId"] as? String,
                let project = dataController.getProject(id: projectId) {
                 // Find and select the event for this project
-                if let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == projectId }) {
+                if let index = todaysScheduledTasks.firstIndex(where: { $0.projectId == projectId }) {
                     selectedEventIndex = index
                     // Start the project
                     startProject(project)
@@ -246,42 +246,42 @@ struct HomeView: View {
         Task {
             let today = Calendar.current.startOfDay(for: Date())
 
-            // Get calendar events for today
-            var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: today)
+            // Get scheduled tasks for today (tasks with dates spanning today)
+            var scheduledTasks = dataController.getScheduledTasksForCurrentUser(for: today)
 
-            // Tutorial mode only shows demo events/projects
+            // Tutorial mode only shows demo tasks/projects
             if tutorialMode {
-                calendarEvents = calendarEvents.filter { $0.id.hasPrefix("DEMO_") }
+                scheduledTasks = scheduledTasks.filter { $0.id.hasPrefix("DEMO_") }
             }
 
-            // Extract unique projects from calendar events
+            // Extract unique projects from scheduled tasks
             var uniqueProjects: [Project] = []
             var seenProjectIds = Set<String>()
 
-            for event in calendarEvents {
-                if !seenProjectIds.contains(event.projectId),
-                   let project = dataController.getProject(id: event.projectId) {
+            for task in scheduledTasks {
+                if !seenProjectIds.contains(task.projectId),
+                   let project = dataController.getProject(id: task.projectId) {
                     // In tutorial mode, only include demo projects
                     if tutorialMode && !project.id.hasPrefix("DEMO_") {
                         continue
                     }
-                    seenProjectIds.insert(event.projectId)
+                    seenProjectIds.insert(task.projectId)
                     uniqueProjects.append(project)
                 }
             }
 
             await MainActor.run {
-                self.todaysCalendarEvents = calendarEvents
+                self.todaysScheduledTasks = scheduledTasks
                 self.todaysProjects = uniqueProjects
-                
+
                 // No manual map region calculation needed - ProjectMapView handles all zoom automatically
-                
-                // Setup active event if needed
+
+                // Setup active task if needed
                 if let activeProjectID = appState.activeProjectID,
-                   let index = todaysCalendarEvents.firstIndex(where: { $0.projectId == activeProjectID }) {
+                   let index = todaysScheduledTasks.firstIndex(where: { $0.projectId == activeProjectID }) {
                     self.selectedEventIndex = index
                 }
-                
+
                 self.isLoading = false
             }
         }
@@ -314,30 +314,25 @@ struct HomeView: View {
         if project.status != .inProgress {
             Task {
                 do {
-                    // Use the new API endpoint to start the project
-                    let updatedStatus = try await dataController.apiService.startProject(id: project.id)
-                    
-                    
+                    try await dataController.syncManager.updateProjectStatus(
+                        projectId: project.id,
+                        status: .inProgress,
+                        forceSync: true
+                    )
+
                     // Update local status immediately for UI consistency
                     await MainActor.run {
                         project.status = .inProgress
                         project.needsSync = false
                         project.lastSyncedAt = Date()
-                        
+
                         // Save to model context
                         if let modelContext = dataController.modelContext {
                             try? modelContext.save()
                         }
                     }
                 } catch {
-                    // If API call fails, fall back to local update via SyncManager
-                    Task {
-                        try? await dataController.syncManager.updateProjectStatus(
-                            projectId: project.id,
-                            status: .inProgress,
-                            forceSync: true
-                        )
-                    }
+                    print("[START_PROJECT] Failed to update project status: \(error)")
                 }
             }
         }

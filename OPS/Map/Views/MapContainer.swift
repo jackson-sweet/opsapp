@@ -20,7 +20,7 @@ struct MapContainer: View {
     // Projects passed from parent
     let projects: [Project]
     let selectedIndex: Int
-    let selectedEvent: CalendarEvent?
+    let selectedTask: ProjectTask?
 
     // Callbacks
     let onProjectSelected: (Project) -> Void
@@ -28,14 +28,14 @@ struct MapContainer: View {
 
     init(projects: [Project],
          selectedIndex: Int,
-         selectedEvent: CalendarEvent?,
+         selectedTask: ProjectTask?,
          onProjectSelected: @escaping (Project) -> Void,
          onNavigationStarted: @escaping (Project) -> Void,
          appState: AppState,
          locationManager: LocationManager) {
         self.projects = projects
         self.selectedIndex = selectedIndex
-        self.selectedEvent = selectedEvent
+        self.selectedTask = selectedTask
         self.onProjectSelected = onProjectSelected
         self.onNavigationStarted = onNavigationStarted
         self.appState = appState
@@ -80,7 +80,7 @@ struct MapContainer: View {
                     
                     ProjectDetailsCard(
                         project: project,
-                        selectedEvent: selectedEvent,
+                        selectedTask: selectedTask,
                         coordinator: coordinator,
                         onStartProject: { project in
                             onNavigationStarted(project)

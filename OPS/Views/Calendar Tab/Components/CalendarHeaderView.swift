@@ -107,25 +107,19 @@ struct CalendarHeaderView: View {
         return formatter.string(from: viewModel.visibleMonth).uppercased()
     }
     
-    // Get calendar events for today specifically, not the selected date
+    // Get scheduled task count for today specifically, not the selected date
     private var todaysEventCount: Int {
-        // Get calendar events based on user role
-        var calendarEvents = dataController.getCalendarEventsForCurrentUser(for: today)
-        
+        // Get scheduled tasks based on user role
+        var tasks = dataController.getScheduledTasksForCurrentUser(for: today)
+
         // Apply team member filter if selected
         if let selectedMemberId = viewModel.selectedTeamMemberId {
-            calendarEvents = calendarEvents.filter { event in
-                // Check if member is in the event or its task
-                let hasInEvent = event.getTeamMemberIds().contains(selectedMemberId) ||
-                                event.teamMembers.contains(where: { $0.id == selectedMemberId })
-                
-                let hasInTask = event.task?.getTeamMemberIds().contains(selectedMemberId) == true ||
-                               event.task?.teamMembers.contains(where: { $0.id == selectedMemberId }) == true
-                
-                return hasInEvent || hasInTask
+            tasks = tasks.filter { task in
+                task.getTeamMemberIds().contains(selectedMemberId) ||
+                    task.teamMembers.contains(where: { $0.id == selectedMemberId })
             }
         }
-        
-        return calendarEvents.count
+
+        return tasks.count
     }
 }

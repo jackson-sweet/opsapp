@@ -272,17 +272,16 @@ extension AppMessageDTO {
         dismissable: Bool,
         appStoreUrl: String?
     ) -> AppMessageDTO {
-        // Create a mock DTO for previews
         let json: [String: Any] = [
-            "_id": "preview_\(UUID().uuidString)",
+            "id": "preview_\(UUID().uuidString)",
             "active": true,
             "title": title,
             "body": body,
-            "messageType": messageType,
+            "message_type": messageType,
             "dismissable": dismissable,
-            "appStoreUrl": appStoreUrl as Any,
-            "targetUserTypes": [],
-            "Created Date": "2025-01-01T00:00:00.000Z"
+            "app_store_url": appStoreUrl as Any,
+            "target_user_types": [],
+            "created_at": "2025-01-01T00:00:00.000Z"
         ]
 
         let data = try! JSONSerialization.data(withJSONObject: json)

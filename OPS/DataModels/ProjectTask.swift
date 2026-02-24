@@ -11,35 +11,40 @@ import SwiftUI
 
 /// Status enum for tasks - simplified 3-state system
 enum TaskStatus: String, Codable, CaseIterable {
-    case active = "Active"
-    case completed = "Completed"
-    case cancelled = "Cancelled"
+    case booked = "booked"
+    case inProgress = "in_progress"
+    case completed = "completed"
+    case cancelled = "cancelled"
 
-    // Custom decoder to handle migration from legacy statuses
+    // Custom decoder to handle legacy title-case values
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
 
-        // Handle legacy statuses by mapping to "Active"
         switch rawValue {
-        case "Scheduled", "Booked", "In Progress":
-            self = .active
-        case "Completed":
-            self = .completed
-        case "Cancelled":
-            self = .cancelled
+        case "Scheduled", "Booked": self = .booked
+        case "In Progress": self = .inProgress
+        case "Completed": self = .completed
+        case "Cancelled": self = .cancelled
         default:
             if let status = TaskStatus(rawValue: rawValue) {
                 self = status
             } else {
-                // Default unknown statuses to active
-                self = .active
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Cannot initialize TaskStatus from invalid String value \(rawValue)"
+                )
             }
         }
     }
 
     var displayName: String {
-        return self.rawValue
+        switch self {
+        case .booked: return "Booked"
+        case .inProgress: return "In Progress"
+        case .completed: return "Completed"
+        case .cancelled: return "Cancelled"
+        }
     }
 
     var color: Color {
@@ -115,7 +120,6 @@ final class ProjectTask {
     // MARK: - Properties
     var id: String
     var projectId: String
-    var calendarEventId: String?
     var companyId: String
     var status: TaskStatus
     var taskColor: String  // Hex color code
@@ -124,6 +128,13 @@ final class ProjectTask {
     var taskIndex: Int?  // Index for task ordering within project (based on startDate)
     var displayOrder: Int = 0
     var customTitle: String?  // Optional custom title for task (overrides taskType.display)
+    var sourceLineItemId: String?   // Supabase LineItem UUID this task was generated from
+    var sourceEstimateId: String?   // Supabase Estimate UUID this task was generated from
+
+    // MARK: - Scheduling (merged from CalendarEvent)
+    var startDate: Date?
+    var endDate: Date?
+    var duration: Int = 1  // Duration in days
 
     // Store team member IDs as string (for compatibility with existing patterns)
     var teamMemberIdsString: String = ""
@@ -131,9 +142,6 @@ final class ProjectTask {
     // MARK: - Relationships
     @Relationship(deleteRule: .nullify)
     var project: Project?
-    
-    @Relationship(deleteRule: .cascade)
-    var calendarEvent: CalendarEvent?
     
     @Relationship(deleteRule: .nullify)
     var taskType: TaskType?
@@ -164,7 +172,9 @@ final class ProjectTask {
         self.status = status
         self.taskColor = taskColor
         self.taskNotes = nil
-        self.calendarEventId = nil
+        self.startDate = nil
+        self.endDate = nil
+        self.duration = 1
         self.displayOrder = 0
         self.teamMemberIdsString = ""
         self.teamMembers = []
@@ -210,50 +220,56 @@ final class ProjectTask {
     }
     
     // MARK: - Computed Properties for Dates
-    
-    /// Get scheduled date from calendar event
-    var scheduledDate: Date? {
-        return calendarEvent?.startDate
-    }
-    
-    /// Get completion/end date from calendar event
-    var completionDate: Date? {
-        return calendarEvent?.endDate
-    }
-    
-    /// Check if task is overdue
+
+    var scheduledDate: Date? { startDate }
+    var completionDate: Date? { endDate }
+
     var isOverdue: Bool {
         guard status != .completed && status != .cancelled,
-              let endDate = completionDate else { return false }
-        return Date() > endDate
+              let end = endDate else { return false }
+        return Date() > end
     }
-    
-    /// Check if task is happening today
+
     var isToday: Bool {
-        guard let startDate = scheduledDate else { return false }
-        return Calendar.current.isDateInToday(startDate)
+        guard let start = startDate else { return false }
+        return Calendar.current.isDateInToday(start)
     }
-    
-    // MARK: - Calendar Event Date Synchronization
-    
-    /// Update calendar event dates when task needs rescheduling
-    func updateCalendarEventDates(startDate: Date, endDate: Date) {
-        guard let calendarEvent = calendarEvent else { return }
-        
-        // Update calendar event to match new task dates
-        calendarEvent.startDate = startDate
-        calendarEvent.endDate = endDate
-        calendarEvent.duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
+
+    /// Update scheduling dates
+    func updateDates(startDate: Date, endDate: Date) {
+        self.startDate = startDate
+        self.endDate = endDate
+        self.duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
     }
-    
-    /// Sync task metadata with calendar event
-    func syncWithCalendarEvent() {
-        guard let calendarEvent = calendarEvent else { return }
-        
-        // Update calendar event metadata
-        calendarEvent.title = displayTitle
-        calendarEvent.color = effectiveColor
-        calendarEvent.setTeamMemberIds(getTeamMemberIds())
-        calendarEvent.teamMembers = teamMembers
+
+    // MARK: - Scheduling Display Helpers (migrated from CalendarEvent)
+
+    var swiftUIColor: Color {
+        return Color(hex: effectiveColor) ?? Color.blue
     }
+
+    var isMultiDay: Bool {
+        guard let start = startDate, let end = endDate else { return false }
+        return !Calendar.current.isDate(start, inSameDayAs: end)
+    }
+
+    var spannedDates: [Date] {
+        guard let start = startDate, let end = endDate else { return [] }
+        let calendar = Calendar.current
+        if calendar.isDate(start, inSameDayAs: end) { return [start] }
+        var dates: [Date] = []
+        var currentDate = start
+        while currentDate <= end {
+            dates.append(currentDate)
+            currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
+        }
+        return dates
+    }
+
+    var calendarSubtitle: String {
+        if let project = project { return project.effectiveClientName }
+        return ""
+    }
+
+    var displayIcon: String? { taskType?.icon }
 }

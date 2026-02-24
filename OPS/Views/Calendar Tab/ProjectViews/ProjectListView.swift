@@ -18,16 +18,16 @@ struct ProjectListView: View {
     @State private var hasNotifiedTutorialScroll = false
     @State private var allowScrollDetection = false  // Delay scroll detection to avoid false triggers on layout
 
-    // Separate new and ongoing events
-    private var newEvents: [CalendarEvent] {
-        viewModel.calendarEventsForSelectedDate.filter { event in
-            Calendar.current.isDate(event.startDate ?? Date(), inSameDayAs: viewModel.selectedDate)
+    // Separate new and ongoing tasks
+    private var newTasks: [ProjectTask] {
+        viewModel.scheduledTasksForSelectedDate.filter { task in
+            Calendar.current.isDate(task.startDate ?? Date(), inSameDayAs: viewModel.selectedDate)
         }
     }
-    
-    private var ongoingEvents: [CalendarEvent] {
-        viewModel.calendarEventsForSelectedDate.filter { event in
-            let startDate = event.startDate ?? Date()
+
+    private var ongoingTasks: [ProjectTask] {
+        viewModel.scheduledTasksForSelectedDate.filter { task in
+            let startDate = task.startDate ?? Date()
             return !Calendar.current.isDate(startDate, inSameDayAs: viewModel.selectedDate)
         }
     }
@@ -36,7 +36,7 @@ struct ProjectListView: View {
         ZStack(alignment: .top) {
             
             // Only the content area should be in the ScrollView, not the header
-            if viewModel.calendarEventsForSelectedDate.isEmpty {
+            if viewModel.scheduledTasksForSelectedDate.isEmpty {
                 emptyStateView
                     .opacity(isAnimating ? 1 : 0)
                     .offset(y: isAnimating ? 0 : 20)
@@ -97,13 +97,13 @@ struct ProjectListView: View {
                         .frame(width: 40, height: 40)
                     
                     // Total event count number (new + ongoing)
-                    Text("\(viewModel.calendarEventsForSelectedDate.count)")
+                    Text("\(viewModel.scheduledTasksForSelectedDate.count)")
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(.white)
                 }
                 .frame(width: 40, height: 40)
                 .segmentedEventBorder(
-                    events: viewModel.calendarEventsForSelectedDate,  // Show border for all events
+                    events: viewModel.scheduledTasksForSelectedDate,  // Show border for all events
                     isSelected: false,
                     cornerRadius: 10
                 )
@@ -120,7 +120,7 @@ struct ProjectListView: View {
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
         // Watch for calendar event changes and force refresh
-        .onChange(of: dataController.calendarEventsDidChange) { _, _ in
+        .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
             // Use objectWillChange instead of forcing full view recreation
             viewModel.objectWillChange.send()
         }
@@ -167,51 +167,51 @@ struct ProjectListView: View {
     
     private var projectListView: some View {
         VStack(spacing: 16) {
-            
+
             Spacer(minLength: 90)
                 .frame(maxWidth: .infinity, maxHeight: 90)
-            
-            // New events section
-            ForEach(Array(newEvents.enumerated()), id: \.element.id) { index, event in
+
+            // New tasks section
+            ForEach(Array(newTasks.enumerated()), id: \.element.id) { index, task in
                 CalendarEventCard(
-                    event: event,
+                    task: task,
                     isFirst: index == 0,
                     isOngoing: false,
                     onTap: {
-                        handleEventTap(event)
+                        handleTaskTap(task)
                     }
                 )
             }
-            
-            // Ongoing section divider and events
-            if !ongoingEvents.isEmpty {
+
+            // Ongoing section divider and tasks
+            if !ongoingTasks.isEmpty {
                 // Divider with count
                 HStack(spacing: 8) {
                     Text("ONGOING")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
+
                     // Horizontal line
                     Rectangle()
                         .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
                         .frame(height: 1)
-                    
+
                     // Count
-                    Text("[\(ongoingEvents.count)]")
+                    Text("[\(ongoingTasks.count)]")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .padding(.vertical, 8)
                 .padding(.horizontal, 8)
-                
-                // Ongoing events
-                ForEach(Array(ongoingEvents.enumerated()), id: \.element.id) { index, event in
+
+                // Ongoing tasks
+                ForEach(Array(ongoingTasks.enumerated()), id: \.element.id) { index, task in
                     CalendarEventCard(
-                        event: event,
+                        task: task,
                         isFirst: false,
                         isOngoing: true,
                         onTap: {
-                            handleEventTap(event)
+                            handleTaskTap(task)
                         }
                     )
                 }
@@ -220,21 +220,16 @@ struct ProjectListView: View {
         .padding(.bottom, 16)
     }
     
-    private func handleEventTap(_ event: CalendarEvent) {
-        // Task-only scheduling migration: All events are task events
-        if let task = event.task {
-            // Send task ID and project ID
-            let userInfo: [String: String] = [
-                "taskID": task.id,
-                "projectID": task.projectId
-            ]
+    private func handleTaskTap(_ task: ProjectTask) {
+        let userInfo: [String: String] = [
+            "taskID": task.id,
+            "projectID": task.projectId
+        ]
 
-            // Post notification for task details
-            NotificationCenter.default.post(
-                name: Notification.Name("ShowCalendarTaskDetails"),
-                object: nil,
-                userInfo: userInfo
-            )
-        }
+        NotificationCenter.default.post(
+            name: Notification.Name("ShowCalendarTaskDetails"),
+            object: nil,
+            userInfo: userInfo
+        )
     }
 }

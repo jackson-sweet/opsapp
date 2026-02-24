@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 struct TaskListView: View {
     let project: Project
@@ -137,7 +138,7 @@ struct TaskRow: View {
             title: task.taskType?.display ?? "Task",
             color: Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent,
             status: task.status,
-            startDate: task.calendarEvent?.startDate,
+            startDate: task.startDate,
             teamMemberCount: teamMemberCount,
             onTap: onTap,
             onDelete: canModify ? { showingDeleteConfirmation = true } : nil,
@@ -172,24 +173,19 @@ struct TaskRow: View {
             CalendarSchedulerSheet(
                 isPresented: $showingScheduler,
                 itemType: .task(task),
-                currentStartDate: task.calendarEvent?.startDate,
-                currentEndDate: task.calendarEvent?.endDate,
+                currentStartDate: task.startDate,
+                currentEndDate: task.endDate,
                 onScheduleUpdate: { startDate, endDate in
                     print("[RESCHEDULE_TASK] 📅 Task rescheduled")
                     print("[RESCHEDULE_TASK] Task: \(task.displayTitle)")
                     print("[RESCHEDULE_TASK] New dates: \(startDate) to \(endDate)")
 
-                    if let calendarEvent = task.calendarEvent {
-                        print("[RESCHEDULE_TASK] Updating existing calendar event: \(calendarEvent.id)")
-                        calendarEvent.startDate = startDate
-                        calendarEvent.endDate = endDate
-                        calendarEvent.needsSync = true
-                    } else {
-                        print("[RESCHEDULE_TASK] Creating new calendar event for task")
-                        Task {
-                            await createCalendarEventForTask(task: task, startDate: startDate, endDate: endDate)
-                        }
-                    }
+                    // Set dates directly on task
+                    task.startDate = startDate
+                    task.endDate = endDate
+                    let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+                    task.duration = daysDiff + 1
+                    task.needsSync = true
                     try? dataController.modelContext?.save()
                     print("[RESCHEDULE_TASK] ✅ Task saved to SwiftData")
 
@@ -199,9 +195,9 @@ struct TaskRow: View {
                         print("[RESCHEDULE_TASK] Project: \(project.title)")
 
                         Task {
-                            // Sync computed dates to Bubble
-                            print("[RESCHEDULE_TASK] 🔄 Syncing updated project dates to Bubble...")
-                            try? await dataController.apiService.updateProjectDates(
+                            // Sync computed dates to Supabase
+                            print("[RESCHEDULE_TASK] 🔄 Syncing updated project dates to Supabase...")
+                            try? await dataController.syncManager.updateProjectDates(
                                 projectId: project.id,
                                 startDate: project.computedStartDate,
                                 endDate: project.computedEndDate
@@ -228,7 +224,6 @@ struct TaskRow: View {
 
         // Store IDs and project before deleting
         let taskId = task.id
-        let calendarEventId = task.calendarEvent?.id
         let project = task.project
 
         // STEP 1: Delete from UI immediately (optimistic deletion)
@@ -237,20 +232,13 @@ struct TaskRow: View {
         try? modelContext.save()
         print("[DELETE_TASK] ✅ Task deleted from local database (UI updated)")
 
-        // STEP 2: Delete from Bubble in background
+        // STEP 2: Delete from Supabase in background
         Task {
             do {
-                // Delete calendar event from Bubble if it exists
-                if let eventId = calendarEventId {
-                    print("[DELETE_TASK] 🗑️ Deleting calendar event from Bubble: \(eventId)")
-                    try await dataController.apiService.deleteCalendarEvent(id: eventId)
-                    print("[DELETE_TASK] ✅ Calendar event deleted from Bubble")
-                }
-
-                // Delete the task from Bubble
-                print("[DELETE_TASK] 🗑️ Deleting task from Bubble: \(taskId)")
-                try await dataController.apiService.deleteTask(id: taskId)
-                print("[DELETE_TASK] ✅ Task deleted from Bubble")
+                // Delete the task from Supabase
+                print("[DELETE_TASK] 🗑️ Deleting task from Supabase: \(taskId)")
+                try await dataController.syncManager.deleteTask(taskId: taskId)
+                print("[DELETE_TASK] ✅ Task deleted from Supabase")
 
                 // Update project dates (computed from tasks)
                 if let project = project {
@@ -258,9 +246,9 @@ struct TaskRow: View {
                     print("[DELETE_TASK] Project: \(project.title)")
                     print("[DELETE_TASK] Remaining tasks: \(project.tasks.count)")
 
-                    // Sync computed dates to Bubble
-                    print("[DELETE_TASK] 🔄 Syncing updated project dates to Bubble...")
-                    try await dataController.apiService.updateProjectDates(
+                    // Sync computed dates to Supabase
+                    print("[DELETE_TASK] 🔄 Syncing updated project dates to Supabase...")
+                    try await dataController.syncManager.updateProjectDates(
                         projectId: project.id,
                         startDate: project.computedStartDate,
                         endDate: project.computedEndDate
@@ -275,8 +263,8 @@ struct TaskRow: View {
                     scheduleDeletionNotification(itemType: "TASK", itemName: taskName)
                 }
             } catch {
-                print("[DELETE_TASK] ❌ Error deleting task from Bubble: \(error)")
-                // Task is already deleted from UI, but will reappear on next sync if Bubble deletion failed
+                print("[DELETE_TASK] ❌ Error deleting task from Supabase: \(error)")
+                // Task is already deleted from UI, but will reappear on next sync if deletion failed
                 await MainActor.run {
                     let content = UNMutableNotificationContent()
                     content.title = "Delete Failed"
@@ -314,51 +302,4 @@ struct TaskRow: View {
         }
     }
 
-    private func createCalendarEventForTask(task: ProjectTask, startDate: Date, endDate: Date) async {
-        print("[CREATE_CALENDAR_EVENT] Creating calendar event for task")
-
-        guard let project = task.project else {
-            print("[CREATE_CALENDAR_EVENT] ❌ No project associated with task")
-            return
-        }
-
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime]
-
-        let duration = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1
-
-        let eventDTO = CalendarEventDTO(
-            id: UUID().uuidString,
-            color: task.taskColor,
-            companyId: task.companyId,
-            projectId: task.projectId,
-            taskId: task.id,
-            duration: Double(duration),
-            endDate: dateFormatter.string(from: endDate),
-            startDate: dateFormatter.string(from: startDate),
-            teamMembers: task.getTeamMemberIds(),
-            title: task.taskType?.display ?? "Task",
-            createdDate: nil,
-            modifiedDate: nil,
-            deletedAt: nil
-        )
-
-        do {
-            let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
-
-            await MainActor.run {
-                if let calendarEvent = createdEvent.toModel() {
-                    calendarEvent.needsSync = false
-                    calendarEvent.lastSyncedAt = Date()
-                    dataController.modelContext?.insert(calendarEvent)
-                    task.calendarEvent = calendarEvent
-                    try? dataController.modelContext?.save()
-                    print("[CREATE_CALENDAR_EVENT] ✅ Calendar event created and linked")
-                }
-            }
-        } catch {
-            print("[CREATE_CALENDAR_EVENT] ❌ Failed to create calendar event: \(error)")
-        }
-    }
-    
 }

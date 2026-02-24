@@ -15,6 +15,8 @@ struct TutorialCollapsibleTooltip: View {
     let text: String
     let description: String?
     let animated: Bool
+    var stepIndex: Int = 0      // current step (0-based)
+    var totalSteps: Int = 0     // total number of steps
 
     @State private var isExpanded: Bool = true
     @State private var displayedText: String = ""
@@ -32,19 +34,17 @@ struct TutorialCollapsibleTooltip: View {
         isErrorState ? "exclamationmark.triangle.fill" : "lightbulb.fill"
     }
 
-    init(text: String, description: String? = nil, animated: Bool = true) {
+    init(text: String, description: String? = nil, animated: Bool = true, stepIndex: Int = 0, totalSteps: Int = 0) {
         self.text = text
         self.description = description
         self.animated = animated
+        self.stepIndex = stepIndex
+        self.totalSteps = totalSteps
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Safe area spacer
-            Color.clear
-                .frame(height: 0)
-
-            // Tooltip content
+            // Tooltip content — parent controls vertical positioning
             Button(action: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     isExpanded.toggle()
@@ -73,10 +73,12 @@ struct TutorialCollapsibleTooltip: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // Collapse indicator
-                        Image(systemName: "chevron.up")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        // Step counter in top-right area
+                        if totalSteps > 0 {
+                            Text("STEP \(stepIndex + 1)/\(totalSteps)")
+                                .font(.custom("Mohave-Regular", size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
                     } else {
                         // Collapsed - show "Tap for hint"
                         Text("Tap for hint")

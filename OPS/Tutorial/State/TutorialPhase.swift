@@ -138,6 +138,17 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
     /// Browse job board
     case jobBoardBrowse
 
+    // MARK: - Pipeline Phases (Admin/Office Crew only)
+
+    /// Pipeline overview — introduces the Pipeline tab
+    case pipelineOverview
+
+    /// Estimates overview — building quotes on-site
+    case estimatesOverview
+
+    /// Invoices overview — converting estimates to invoices
+    case invoicesOverview
+
     // MARK: - Completion
 
     /// Tutorial complete
@@ -213,6 +224,14 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         case .jobBoardBrowse:
             return "SWIPE LEFT OR RIGHT"
 
+        // Pipeline Phases
+        case .pipelineOverview:
+            return "YOUR PIPELINE"
+        case .estimatesOverview:
+            return "BUILD ESTIMATES ON-SITE"
+        case .invoicesOverview:
+            return "ESTIMATES TO INVOICES"
+
         case .completed:
             return ""  // No tooltip - completion view handles its own messaging
         }
@@ -276,6 +295,14 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
             return "This marks the job finished. Your crew lead will see it's complete."
         case .jobBoardBrowse:
             return "Jobs are grouped by status: To Do, In Progress, Complete."
+
+        // Pipeline Phases
+        case .pipelineOverview:
+            return "Here's where you manage leads from first contact to closed deal. Drag cards between stages as deals progress."
+        case .estimatesOverview:
+            return "Build a quote on-site and send it to your client in minutes. Add line items from your product catalog or create custom ones."
+        case .invoicesOverview:
+            return "Convert approved estimates to invoices with one tap — no re-entry. Record payments and track what's outstanding."
 
         default:
             return nil
@@ -365,9 +392,12 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
     /// Whether this phase should show Continue button immediately (no delay)
     var showsContinueButtonImmediately: Bool {
         switch self {
-        case .jobBoardBrowse,  // Shows Continue button right away
-             .calendarWeek,    // Continue button instead of scroll detection
-             .calendarMonth:   // Continue button instead of pinch detection
+        case .jobBoardBrowse,      // Shows Continue button right away
+             .calendarWeek,        // Continue button instead of scroll detection
+             .calendarMonth,       // Continue button instead of pinch detection
+             .pipelineOverview,    // Pipeline intro — Continue to next
+             .estimatesOverview,   // Estimates intro — Continue to next
+             .invoicesOverview:    // Invoices intro — Continue to next
             return true
         default:
             return false
@@ -402,6 +432,7 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
              .homeOverview, .projectStarted,
              .jobBoardBrowse,
              .calendarWeek, .calendarMonth,  // These show Continue button
+             .pipelineOverview, .estimatesOverview, .invoicesOverview,  // Pipeline Continue buttons
              .addNote, .addPhoto: // These show Continue button
             return false
         case .projectListSwipe, .tutorialSummary:
@@ -517,10 +548,10 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         }
     }
 
-    // MARK: - Ordered Phase List
+    // MARK: - Phase Ordering
 
-    /// Returns all phases in order for a given flow type (excludes notStarted and completed)
-    static func allPhases(for flowType: TutorialFlowType) -> [TutorialPhase] {
+    /// Returns the ordered array of phases for a given flow type (excluding notStarted and completed)
+    static func phaseOrder(for flowType: TutorialFlowType) -> [TutorialPhase] {
         var phases: [TutorialPhase] = []
         var current: TutorialPhase? = firstPhase(for: flowType)
         while let phase = current, phase != .completed {
@@ -530,20 +561,77 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         return phases
     }
 
-    /// Returns the 1-based step index for this phase within its flow, or nil if not in the flow
-    func stepIndex(for flowType: TutorialFlowType) -> Int? {
-        let phases = TutorialPhase.allPhases(for: flowType)
-        guard let index = phases.firstIndex(of: self) else { return nil }
-        return index + 1
+    // MARK: - Tooltip Vertical Position
+
+    /// Vertical position for tooltip placement (0.0 = top, 1.0 = bottom)
+    /// Per-phase positioning to draw attention near the action area
+    var tooltipVerticalPosition: CGFloat {
+        switch self {
+        // Company Creator phases
+        case .jobBoardIntro:
+            return 0.55  // mid-screen, near FAB
+        case .fabTap:
+            return 0.25  // upper-mid, near expanded menu
+        case .createProjectAction:
+            return 0.25
+        case .projectFormClient, .projectFormName, .projectFormAddTask, .projectFormComplete:
+            return 0.0   // top — form is below
+        case .taskFormType, .taskFormCrew, .taskFormDate, .taskFormDone:
+            return 0.0   // top — task form fills screen
+        case .dragToAccepted:
+            return 0.0   // top — card is mid-screen
+        case .projectListStatusDemo, .projectListSwipe, .closedProjectsScroll:
+            return 0.0
+        case .calendarWeek, .calendarMonthPrompt, .calendarMonth:
+            return 0.0
+        case .tutorialSummary:
+            return 0.3   // centered area
+
+        // Employee phases
+        case .homeOverview, .tapProject:
+            return 0.0
+        case .projectStarted:
+            return 0.0
+        case .tapDetails, .addNote, .addPhoto, .completeProject:
+            return 0.0
+        case .jobBoardBrowse:
+            return 0.0
+
+        // Pipeline phases
+        case .pipelineOverview, .estimatesOverview, .invoicesOverview:
+            return 0.0
+
+        default:
+            return 0.0
+        }
     }
 
-    /// A short human-readable descriptor for logging (based on tooltipText)
-    var stepDescriptor: String {
-        tooltipText.isEmpty ? rawDescription : tooltipText.lowercased()
+    // MARK: - Action Phase Configuration
+
+    /// Whether this phase requires user interaction with the app (vs observation/continue phases)
+    /// Action phases show Back + disabled Continue + Skip in the action bar
+    /// Continue phases show a single wide Continue/Done button
+    var isActionPhase: Bool {
+        switch self {
+        case .jobBoardIntro, .fabTap,
+             .projectFormClient, .projectFormName, .projectFormAddTask,
+             .taskFormType, .taskFormCrew, .taskFormDate, .taskFormDone,
+             .projectFormComplete, .dragToAccepted, .projectListSwipe,
+             .calendarMonthPrompt,
+             .tapProject, .tapDetails, .completeProject:
+            return true
+        default:
+            return false
+        }
     }
 
-    /// Raw description of the phase for logging
-    private var rawDescription: String {
-        String(describing: self)
+    /// The label for the Continue/Done button in the action bar
+    var continueLabel: String {
+        switch self {
+        case .tutorialSummary:
+            return "LET'S GO"
+        default:
+            return "CONTINUE"
+        }
     }
 }

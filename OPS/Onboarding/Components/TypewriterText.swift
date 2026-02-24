@@ -27,7 +27,7 @@ struct TypewriterText: View {
         _ text: String,
         font: Font = OPSStyle.Typography.title,
         color: Color = OPSStyle.Colors.primaryText,
-        typingSpeed: Double = 30,
+        typingSpeed: Double = 50,
         startDelay: Double = 0,
         onComplete: (() -> Void)? = nil
     ) {
@@ -147,7 +147,7 @@ class OnboardingAnimationCoordinator: ObservableObject {
     }
 
     func start() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             self.phase = .headerTyping
         }
     }
@@ -201,10 +201,10 @@ struct AnimatedOnboardingHeader: View {
                         title,
                         font: titleFont,
                         color: OPSStyle.Colors.primaryText,
-                        typingSpeed: 28
+                        typingSpeed: 45
                     ) {
                         // Title complete - advance to subtitle
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             coordinator.advanceTo(.subtitleTyping)
                         }
                     }
@@ -225,7 +225,7 @@ struct AnimatedOnboardingHeader: View {
                             sub,
                             font: subtitleFont,
                             color: OPSStyle.Colors.secondaryText,
-                            typingSpeed: 30
+                            typingSpeed: 50
                         ) {
                             onHeaderComplete?()
                         }
@@ -275,9 +275,9 @@ struct PhasedOnboardingHeader: View {
                         title,
                         font: titleFont,
                         color: OPSStyle.Colors.primaryText,
-                        typingSpeed: 28
+                        typingSpeed: 45
                     ) {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             coordinator.advanceTo(.subtitleTyping)
                         }
                     }
@@ -296,9 +296,9 @@ struct PhasedOnboardingHeader: View {
                             sub,
                             font: subtitleFont,
                             color: OPSStyle.Colors.secondaryText,
-                            typingSpeed: 30
+                            typingSpeed: 50
                         ) {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                 coordinator.advanceTo(.contentFadeIn)
                             }
                         }
@@ -324,7 +324,7 @@ struct PhasedLabel: View {
         _ text: String,
         font: Font = OPSStyle.Typography.captionBold,
         color: Color = OPSStyle.Colors.secondaryText,
-        typingSpeed: Double = 40,
+        typingSpeed: Double = 60,
         index: Int = 0,
         isLast: Bool = false,
         coordinator: OnboardingAnimationCoordinator
@@ -356,7 +356,7 @@ struct PhasedLabel: View {
                 ) {
                     // If this is the last label, trigger button phase
                     if isLast {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                             coordinator.advanceTo(.buttonContainerFadeIn)
                         }
                     }
@@ -380,11 +380,11 @@ struct PhasedContent<Content: View>: View {
             .offset(y: isVisible ? 0 : 20)
             .onChange(of: coordinator.phase) { _, newPhase in
                 if newPhase >= .contentFadeIn && !isVisible {
-                    withAnimation(.easeOut(duration: 0.5)) {
+                    withAnimation(.easeOut(duration: 0.4)) {
                         isVisible = true
                     }
                     // After content fades in, advance to labels
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         coordinator.advanceTo(.labelsTyping)
                     }
                 }
@@ -462,10 +462,10 @@ struct PhasedPrimaryButton: View {
                                     title,
                                     font: OPSStyle.Typography.bodyBold,
                                     color: .black,
-                                    typingSpeed: 25
+                                    typingSpeed: 40
                                 ) {
                                     // Text complete - show icon after delay
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                         withAnimation(.easeOut(duration: 0.4)) {
                                             iconVisible = true
                                         }
@@ -497,7 +497,7 @@ struct PhasedPrimaryButton: View {
                     containerVisible = true
                 }
                 // Start text typing after container appears
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     coordinator.advanceTo(.buttonTextTyping)
                     textVisible = true
                 }
@@ -509,12 +509,12 @@ struct PhasedPrimaryButton: View {
 // MARK: - Animation Timing Helper
 
 struct OnboardingAnimationTiming {
-    static let headerDelay: Double = 0.15
-    static let subtitleDelay: Double = 0.25
-    static let contentFadeDelay: Double = 0.2
-    static let labelStagger: Double = 0.15
-    static let buttonContainerDelay: Double = 0.3
-    static let buttonTextDelay: Double = 0.3
+    static let headerDelay: Double = 0.1
+    static let subtitleDelay: Double = 0.15
+    static let contentFadeDelay: Double = 0.15
+    static let labelStagger: Double = 0.1
+    static let buttonContainerDelay: Double = 0.2
+    static let buttonTextDelay: Double = 0.2
     static let buttonIconDelay: Double = 0.1
 }
 

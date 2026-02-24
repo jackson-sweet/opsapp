@@ -11,7 +11,7 @@ import MapKit
 
 struct ProjectDetailsCard: View {
     let project: Project
-    let selectedEvent: CalendarEvent?
+    let selectedTask: ProjectTask?
     let coordinator: MapCoordinator
     let onStartProject: ((Project) -> Void)?
     @State private var showFullDetails = false
@@ -19,20 +19,14 @@ struct ProjectDetailsCard: View {
     @State private var errorMessage: String?
 
     private var taskTypeBadge: String? {
-        // All events are task events now - return the task type
-        if let task = selectedEvent?.task {
-            return task.taskType?.display
-        }
-        return nil
+        return selectedTask?.taskType?.display
     }
 
     private var taskColor: Color {
-        // All events are task events now - use task color
-        if let task = selectedEvent?.task,
+        if let task = selectedTask,
            let color = Color(hex: task.effectiveColor) {
             return color
         }
-        // Fallback to secondary text
         return OPSStyle.Colors.secondaryText
     }
     

@@ -100,62 +100,56 @@ struct CompanyCodeDisplayView: View {
                         
                         // Company code display
                         VStack(spacing: 24) {
-                            // Code display box
-                            ZStack {
-                                VStack(spacing: 16) {
-                                    HStack(alignment: .center){
-                                        Text("[")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(primaryTextColor)
-                                            .tracking(2)
-                                        
-                                        Text("\(getCompanyCode())")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(primaryTextColor)
-                                            .tracking(2)
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.5)
-                                        
-                                        Text("]")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(primaryTextColor)
-                                            .tracking(2)
-                                    }
-                                    .padding(.vertical, 24)
-                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                    
-                                    // Copy button
+                            // Label row with copy button inline, right aligned
+                            HStack {
+                                Text("COMPANY CODE")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(secondaryTextColor)
+
+                                Spacer()
+
+                                if !getCompanyCode().isEmpty && getCompanyCode() != "CODE_NOT_FOUND" {
                                     Button(action: {
                                         UIPasteboard.general.string = getCompanyCode()
                                         withAnimation(.easeInOut(duration: 0.2)) {
                                             showCopyFeedback = true
                                         }
-                                        
-                                        // Hide feedback after 2 seconds
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                                             withAnimation(.easeInOut(duration: 0.2)) {
                                                 showCopyFeedback = false
                                             }
                                         }
                                     }) {
-                                        HStack {
+                                        HStack(spacing: 4) {
                                             Image(systemName: showCopyFeedback ? "checkmark" : "doc.on.doc")
-                                                .font(OPSStyle.Typography.body)
-                                            Text(showCopyFeedback ? "Copied!".uppercased() : "Copy Code".uppercased())
-                                                .font(OPSStyle.Typography.bodyBold)
+                                                .font(.system(size: 12))
+                                            Text(showCopyFeedback ? "COPIED!" : "COPY")
+                                                .font(OPSStyle.Typography.smallCaption)
                                         }
                                         .foregroundColor(showCopyFeedback ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent)
-                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                        .padding(.vertical, 12)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(showCopyFeedback ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                                        )
                                     }
-                                    .opacity(getCompanyCode().isEmpty || getCompanyCode() == "CODE_NOT_FOUND" ? 0.5 : 1)
-                                    .disabled(getCompanyCode().isEmpty || getCompanyCode() == "CODE_NOT_FOUND")
                                 }
                             }
+
+                            // Code display box
+                            HStack {
+                                Text(getCompanyCode().uppercased())
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(primaryTextColor)
+                                    .tracking(2)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.5)
+
+                                Spacer()
+                            }
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            )
                             
                             Spacer()
                             

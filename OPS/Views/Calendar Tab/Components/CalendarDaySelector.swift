@@ -39,7 +39,7 @@ struct CalendarDaySelector: View {
                                 date: date,
                                 isSelected: DateHelper.isSameDay(date, viewModel.selectedDate),
                                 eventCount: viewModel.projectCount(for: date),
-                                events: viewModel.calendarEvents(for: date),
+                                tasks: viewModel.scheduledTasks(for: date),
                                 onTap: {
                                     viewModel.selectDate(date, userInitiated: true)
                                 }
@@ -94,7 +94,7 @@ struct CalendarDaySelector: View {
             // The view will automatically refresh with the new week
         }
         // Watch for calendar event changes and force refresh
-        .onChange(of: dataController.calendarEventsDidChange) { _, _ in
+        .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
             // Use objectWillChange instead of forcing full view recreation
             viewModel.objectWillChange.send()
         }

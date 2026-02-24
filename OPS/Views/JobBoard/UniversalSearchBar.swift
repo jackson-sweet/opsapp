@@ -81,7 +81,7 @@ struct UniversalSearchBar: View {
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
 
-                if section != .clients {
+                if section != .clients && section != .dashboard {
                     Button(action: {
                         if let onFilterTap = onFilterTap {
                             onFilterTap()

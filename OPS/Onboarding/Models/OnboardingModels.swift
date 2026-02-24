@@ -9,210 +9,22 @@ import Foundation
 
 // Models for onboarding process
 
-// Response from sign_company_up and sign_employee_up endpoints
-struct SignUpResponse: Codable {
-    let success: Bool? // true or false
-    let user_id: String? // User ID returned when signup is successful
-    let error_message: String?
-    let response: ResponseData? // Additional response data that might contain user_id
-    
-    // Check if signup was successful based on new API format
-    var wasSuccessful: Bool {
-        // Check new success boolean field first
-        if let success = success {
-            return success
-        }
-        
-        // Fallback: Check if we have a valid user_id
-        if let userId = user_id, !userId.isEmpty {
-            return true
-        }
-        
-        // Check if user_id is in the response data object
-        if let responseData = response, let userId = responseData.user_id, !userId.isEmpty {
-            return true
-        }
-        
-        return false
-    }
-    
-    // Extract user ID from wherever it might be located
-    var extractedUserId: String? {
-        // Direct user_id has priority
-        if let userId = user_id, !userId.isEmpty {
-            return userId
-        }
-        
-        // Check response data object
-        if let responseData = response, let userId = responseData.user_id, !userId.isEmpty {
-            return userId
-        }
-        
-        return nil
-    }
-}
+// Invite response from ops-web /api/auth/send-invite
+struct InviteResponse: Codable {
+    let success: Bool?
+    let emailsSent: Int?
+    let smsSent: Int?
+    let invitesSent: Int?
 
-// Additional response data that might be nested in the API response
-struct ResponseData: Codable {
-    let user_id: String?
-}
-
-// Company object in the join_company response
-struct CompanyData: Codable {
-    // Make all properties optional to handle flexible API responses
-    let id: String?
-    let _id: String?
-    let name: String?
-    let companyID: String?
-    
-    // Using CodingKeys to map "companyName" to our name property
     private enum CodingKeys: String, CodingKey {
-        case id
-        case _id
-        case companyID
-        case name = "companyName"  // Changed from "Company Name"
+        case success
+        case emailsSent
+        case smsSent
+        case invitesSent
     }
-    
-    // Add computed properties to handle different field naming conventions
-    var companyId: String? {
-        return id ?? _id ?? companyID
-    }
-    
-    // Check if we have valid company data
-    var isValid: Bool {
-        return (companyId != nil && !companyId!.isEmpty)
-    }
-}
 
-// Response from join_company endpoint
-struct JoinCompanyResponse: Codable {
-    let company_joined: Bool? // TRUE or FALSE
-    let user_id: String? // Always returned
-    let company: CompanyDTO? // Full company object if successful
-    let error_message: String?
-    let response: JoinCompanyResponseData? // Additional response data that might be nested
-
-    // Root-level company properties for alternate formats
-    private let rootCompanyName: String?
-    private let id: String?
-    private let _id: String?
-    private let companyID: String?
-    
-    // Using CodingKeys to map "companyName" to our rootCompanyName property
-    private enum CodingKeys: String, CodingKey {
-        case company_joined
-        case user_id
-        case company
-        case error_message
-        case response
-        case id
-        case _id
-        case companyID
-        case rootCompanyName = "companyName"  // Changed from "Company Name"
-    }
-    
     var wasSuccessful: Bool {
-        // Check primary success flag (now boolean)
-        if let joined = company_joined {
-            return joined
-        }
-        
-        // Check if we have valid company data in company object
-        if let company = company, !company.id.isEmpty {
-            return true
-        }
-        
-        // Check root-level company properties
-        if (id != nil && !id!.isEmpty) || (_id != nil && !_id!.isEmpty) || (companyID != nil && !companyID!.isEmpty) {
-            return true
-        }
-        
-        // Check response data
-        if let responseData = response, responseData.wasSuccessful {
-            return true
-        }
-        
-        return false
-    }
-    
-    // Get the effective company data regardless of where it's located in the response
-    var extractedCompanyData: (id: String, name: String)? {
-        // Get from company DTO object first
-        if let company = company, !company.id.isEmpty {
-            let companyName = company.companyName ?? "Your Company"
-            return (company.id, companyName)
-        }
-        
-        // Try root-level properties
-        let rootId = id ?? _id ?? companyID
-        if let rootId = rootId, !rootId.isEmpty {
-            let rootName = rootCompanyName ?? "Your Company"
-            return (rootId, rootName)
-        }
-        
-        // Try response data
-        if let responseData = response, let companyInfo = responseData.extractedCompanyData {
-            return companyInfo
-        }
-        
-        return nil
-    }
-}
-
-// Additional response data for company join
-struct JoinCompanyResponseData: Codable {
-    let company: CompanyData?
-    let company_id: String?
-    let companyName: String?
-    
-    // Using CodingKeys to map "companyName" to our companyName property
-    private enum CodingKeys: String, CodingKey {
-        case company
-        case company_id
-        case companyName = "companyName"  // Already camelCase
-    }
-    
-    var wasSuccessful: Bool {
-        return (company?.isValid ?? false) || (company_id != nil && !company_id!.isEmpty)
-    }
-    
-    var extractedCompanyData: (id: String, name: String)? {
-        if let company = company, company.isValid {
-            let companyId = company.companyId ?? ""
-            let companyName = company.name ?? "Your Company"
-            
-            if !companyId.isEmpty {
-                return (companyId, companyName)
-            }
-        }
-        
-        if let companyId = company_id, !companyId.isEmpty {
-            let companyName = companyName ?? "Your Company"
-            return (companyId, companyName)
-        }
-        
-        return nil
-    }
-}
-
-// Custom errors for sign up process
-enum SignUpError: Error, LocalizedError {
-    case networkError(Error)
-    case invalidResponse
-    case companyJoinFailed
-    case serverError(String)
-    
-    var errorDescription: String? {
-        switch self {
-        case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
-        case .invalidResponse:
-            return "Invalid response from server"
-        case .companyJoinFailed:
-            return "Could not join company. Please check your company code."
-        case .serverError(let message):
-            return "Server error: \(message)"
-        }
+        return success == true || (invitesSent ?? 0) > 0
     }
 }
 

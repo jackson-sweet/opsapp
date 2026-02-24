@@ -361,16 +361,16 @@ struct SchedulingModeConversionSheet: View {
     }
 
     private func updateProjectDatesFromTasks(_ project: Project) {
-        let taskEvents = project.tasks.compactMap { $0.calendarEvent }
-        guard !taskEvents.isEmpty else {
+        let tasksWithDates = project.tasks.filter { $0.startDate != nil }
+        guard !tasksWithDates.isEmpty else {
             project.startDate = nil
             project.endDate = nil
             return
         }
 
         // Find earliest start and latest end
-        let startDates = taskEvents.compactMap { $0.startDate }
-        let endDates = taskEvents.compactMap { $0.endDate }
+        let startDates = tasksWithDates.compactMap { $0.startDate }
+        let endDates = tasksWithDates.compactMap { $0.endDate }
 
         project.startDate = startDates.min()
         project.endDate = endDates.max()
@@ -989,11 +989,6 @@ struct TaskTeamChangeView: View {
             do {
                 // Update task team using centralized function
                 try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedMemberIds))
-
-                // Update calendar event team if exists
-                if let calendarEvent = task.calendarEvent {
-                    try await dataController.updateCalendarEventTeamMembers(event: calendarEvent, memberIds: Array(selectedMemberIds))
-                }
 
                 // Calculate project team from all tasks
                 await MainActor.run {

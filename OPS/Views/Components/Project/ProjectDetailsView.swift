@@ -9,6 +9,7 @@ import SwiftUI
 import UIKit
 import MapKit
 import CoreLocation
+import Supabase
 // Import team member components
 
 /// Enum for collapsible sections in ProjectDetailsView
@@ -2081,9 +2082,14 @@ struct ProjectDetailsView: View {
                             }
                     }
 
-                    // MARK: - Summary Card with Map
-                    ProjectSummaryCard(project: project)
-                        .padding(.horizontal)
+                    // Opportunity badge (Pipeline link)
+                    if let oppId = project.opportunityId, !oppId.isEmpty {
+                        OpportunityBadgeView(opportunityId: oppId)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    }
+
+                    // projectInfoSection handles its own internal dimming
+                    projectInfoSection
 
                     // MARK: - Quick Access Pills
                     sectionPillsView
@@ -2859,7 +2865,7 @@ struct ProjectDetailsView: View {
                 await MainActor.run {
                     refreshTrigger.toggle()
                     // Notify calendar views to refresh
-                    dataController.calendarEventsDidChange.toggle()
+                    dataController.scheduledTasksDidChange.toggle()
                 }
             } catch {
                 print("❌ Failed to clear dates: \(error)")
@@ -4646,9 +4652,11 @@ struct ProjectDetailsView: View {
                 project.needsSync = true
                 try dataController.modelContext?.save()
 
-                // Sync to API
-                let updates = ["title": editedTitle]
-                try await dataController.apiService.updateProject(id: project.id, updates: updates)
+                // Sync to Supabase
+                try await dataController.syncManager.updateProjectFields(
+                    projectId: project.id,
+                    fields: ["title": .string(editedTitle)]
+                )
 
                 await MainActor.run {
                     project.needsSync = false

@@ -2,13 +2,13 @@
 //  EventCarousel.swift
 //  OPS
 //
-//  Carousel for displaying calendar events on the home screen
+//  Carousel for displaying scheduled tasks on the home screen
 //
 
 import SwiftUI
 
 struct EventCarousel: View {
-    let events: [CalendarEvent]
+    let tasks: [ProjectTask]
     @Binding var selectedIndex: Int
     @Binding var showStartConfirmation: Bool
     let isInProjectMode: Bool
@@ -22,7 +22,7 @@ struct EventCarousel: View {
     var body: some View {
         TabView(selection: $selectedIndex) {
             // Create card views for each event
-            ForEach(events.indices, id: \.self) { index in
+            ForEach(tasks.indices, id: \.self) { index in
                 makeEventCard(for: index)
                     .tag(index)
             }
@@ -38,17 +38,17 @@ struct EventCarousel: View {
     }
     
     private func makeEventCard(for index: Int) -> some View {
-        let event = events[index]
-        let project = dataController.getProject(id: event.projectId)
-        
+        let task = tasks[index]
+        let project = dataController.getProject(id: task.projectId)
+
         return EventCardView(
-            event: event,
+            task: task,
             project: project,
             isSelected: selectedIndex == index,
             showConfirmation: showStartConfirmation && selectedIndex == index,
-            isActiveProject: activeProjectID == event.projectId,
+            isActiveProject: activeProjectID == task.projectId,
             currentIndex: selectedIndex,
-            totalCount: events.count,
+            totalCount: tasks.count,
             onTap: {
                 handleCardTap(forIndex: index)
             },
@@ -89,9 +89,9 @@ struct EventCarousel: View {
     }
 }
 
-// Event card view for displaying individual calendar events
+// Event card view for displaying individual scheduled tasks
 struct EventCardView: View {
-    let event: CalendarEvent
+    let task: ProjectTask
     let project: Project?
     let isSelected: Bool
     let showConfirmation: Bool
@@ -110,28 +110,16 @@ struct EventCardView: View {
     @Environment(\.tutorialPhase) private var tutorialPhase
 
     private var displayTitle: String {
-        // ALWAYS show project title
-        return project?.title ?? event.title
+        return project?.title ?? task.displayTitle
     }
 
     private var taskTypeBadge: String? {
-        // All events are task events now
-        if let task = event.task {
-            return task.taskType?.display
-        }
-        return nil
+        return task.taskType?.display
     }
 
     private var displayColor: Color {
-        // All events are task events now - use task color
-        if let task = event.task,
-           let color = Color(hex: task.effectiveColor) {
+        if let color = Color(hex: task.effectiveColor) {
             return color
-        }
-
-        // Fallback to event color or grey
-        if let eventColor = Color(hex: event.color) {
-            return eventColor
         }
         return Color.gray.opacity(0.6)
     }
@@ -151,8 +139,7 @@ struct EventCardView: View {
                         .background(Material.thinMaterial.opacity(0.7))
                     
                     // Subtle background for completed tasks
-                    // All events are task events now
-                    if let task = event.task, task.status == .completed {
+                    if task.status == .completed {
                         OPSStyle.Colors.statusColor(for: .completed).opacity(0.1)
                     }
                     
@@ -263,8 +250,7 @@ struct EventCardView: View {
             }
 
             // Completed overlay - grey out and show badge
-            // All events are task events now
-            if event.task?.status == .completed {
+            if task.status == .completed {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
                     OPSStyle.Colors.modalOverlay
@@ -286,7 +272,7 @@ struct EventCardView: View {
             }
 
             // Cancelled overlay - grey out and show badge
-            if event.task?.status == .cancelled {
+            if task.status == .cancelled {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
                     OPSStyle.Colors.modalOverlay
@@ -328,12 +314,9 @@ struct EventCardView: View {
                 // Success feedback and open details
                 HapticFeedback.longPressSuccess()
 
-                // Open task details view (all events are task events now)
-                if let task = event.task, let project = project {
+                // Open task details view
+                if let project = project {
                     appState.viewTaskDetails(task: task, project: project)
-                } else if let project = project {
-                    // Fallback to project details if task is missing
-                    appState.viewProjectDetails(project)
                 }
             }
         )
@@ -378,11 +361,10 @@ struct EventCardView: View {
         .background(OPSStyle.Colors.primaryAccent.opacity(0.95))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .onTapGesture {
-            // Start task navigation (all events are task events now)
-            if let task = event.task, let project = project {
+            // Start task navigation
+            if let project = project {
                 startTask(task, project: project)
             } else {
-                // Fallback to generic start
                 onStart()
             }
         }

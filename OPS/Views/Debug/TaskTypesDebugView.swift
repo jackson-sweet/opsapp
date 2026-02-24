@@ -140,47 +140,16 @@ struct TaskTypesDebugView: View {
         
         Task {
             do {
-                // Fetch TaskTypes from API
-                let apiTaskTypes = try await dataController.apiService.fetchCompanyTaskTypes(companyId: companyId)
-                
+                // Sync task types via Supabase
+                try await dataController.syncManager.syncCompanyTaskTypes(companyId: companyId)
+
                 await MainActor.run {
-                    // Process TaskTypes
-                    var syncedCount = 0
-                    
-                    for dto in apiTaskTypes {
-                        // Check if this type already exists
-                        let existing = taskTypes.first { $0.id == dto.id }
-                        if existing == nil {
-                            let taskType = dto.toModel()
-                            taskType.companyId = companyId // Set company ID since it's not in the DTO
-                            
-                            // Set default icon if not provided
-                            if taskType.icon == nil {
-                                taskType.icon = getDefaultIcon(for: taskType.display)
-                            }
-                            
-                            modelContext.insert(taskType)
-                            syncedCount += 1
-                        } else {
-                            // Update existing if needed
-                            existing?.display = dto.display
-                            existing?.color = dto.color
-                            existing?.isDefault = dto.isDefault ?? false
-                        }
-                    }
-                    
-                    do {
-                        try modelContext.save()
-                        errorMessage = "Synced \(syncedCount) new task types from API"
-                        fetchTaskTypes()
-                    } catch {
-                        errorMessage = "Failed to save: \(error.localizedDescription)"
-                        isLoading = false
-                    }
+                    errorMessage = "Synced task types from Supabase"
+                    fetchTaskTypes()
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = "API sync failed: \(error.localizedDescription)"
+                    errorMessage = "Supabase sync failed: \(error.localizedDescription)"
                     isLoading = false
                 }
             }

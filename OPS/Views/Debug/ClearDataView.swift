@@ -21,16 +21,14 @@ struct ClearDataView: View {
         case all = "All Data"
         case projects = "Projects"
         case tasks = "Tasks"
-        case calendarEvents = "Calendar Events"
         case taskTypes = "Task Types"
         case users = "Users"
-        
+
         var icon: String {
             switch self {
             case .all: return "trash.fill"
             case .projects: return "folder.fill"
             case .tasks: return "list.bullet"
-            case .calendarEvents: return "calendar"
             case .taskTypes: return "square.grid.2x2.fill"
             case .users: return "person.2.fill"
             }
@@ -143,19 +141,15 @@ struct ClearDataView: View {
                     // Clear all data types
                     count += try clearProjects()
                     count += try clearTasks()
-                    count += try clearCalendarEvents()
                     count += try clearTaskTypes()
                     count += try clearUsers()
-                    
+
                 case .projects:
                     count = try clearProjects()
-                    
+
                 case .tasks:
                     count = try clearTasks()
-                    
-                case .calendarEvents:
-                    count = try clearCalendarEvents()
-                    
+
                 case .taskTypes:
                     count = try clearTaskTypes()
                     
@@ -195,15 +189,6 @@ struct ClearDataView: View {
             modelContext.delete(task)
         }
         return tasks.count
-    }
-    
-    private func clearCalendarEvents() throws -> Int {
-        let descriptor = FetchDescriptor<CalendarEvent>()
-        let events = try modelContext.fetch(descriptor)
-        for event in events {
-            modelContext.delete(event)
-        }
-        return events.count
     }
     
     private func clearTaskTypes() throws -> Int {

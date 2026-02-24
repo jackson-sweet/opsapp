@@ -184,7 +184,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         let title = alert?["title"] as? String
         let body = alert?["body"] as? String
 
-        // Extract custom data from Bubble
+        // Extract custom data from notification
         let notificationType = userInfo["type"] as? String
         let projectId = userInfo["projectId"] as? String
         let taskId = userInfo["taskId"] as? String

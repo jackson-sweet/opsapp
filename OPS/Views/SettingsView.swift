@@ -9,191 +9,337 @@ import SwiftUI
 import UIKit
 import Foundation
 
-// Use standardized components directly (internal modules don't need import)
-
 struct SettingsView: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var appState: AppState
     @State private var showLogoutConfirmation = false
     @State private var showingSearchSheet = false
+    @State private var isRestartingTutorial = false
 
-    // Settings categories
-    enum SettingsCategory: String, Identifiable, CaseIterable {
-        case profile = "Profile Settings"
-        case organization = "Organization Settings"
-        case appSettings = "App Settings"
+    // Developer mode state
+    @State private var developerModeEnabled: Bool = false
+    @State private var developerModeExplicitlyDisabled: Bool = false
 
-        var id: String { self.rawValue }
+    // Navigation destinations (fullScreenCover)
+    @State private var showProfileSettings = false
+    @State private var showOrganizationSettings = false
+    @State private var showSubscriptionSettings = false
+    @State private var showNotificationSettings = false
+    @State private var showMapSettings = false
+    @State private var showDataSettings = false
+    @State private var showSecuritySettings = false
+    @State private var showProductsServices = false
+    @State private var showIntegrations = false
+    @State private var showProjectSettings = false
+    @State private var showWhatsNew = false
+    @State private var showReportIssue = false
+    @State private var showDeveloperDashboard = false
 
-        var iconName: String {
-            switch self {
-            case .profile:
-                return "person"
-            case .organization:
-                return "building.2"
-            case .appSettings:
-                return "gearshape"
-            }
-        }
-
-        var description: String {
-            switch self {
-            case .profile:
-                return "Personal information, contact details"
-            case .organization:
-                return "Company information, team members"
-            case .appSettings:
-                return "Map, notifications, data, security"
-            }
-        }
+    // Role checks
+    private var isAdmin: Bool {
+        dataController.currentUser?.role == .admin
     }
 
+    private var isAdminOrOffice: Bool {
+        let role = dataController.currentUser?.role
+        return role == .admin || role == .officeCrew
+    }
+
+    private var shouldShowDeveloperOptions: Bool {
+        if developerModeExplicitlyDisabled { return false }
+        #if DEBUG
+        return true
+        #else
+        return developerModeEnabled
+        #endif
+    }
 
     // All searchable settings
     private var allSearchableSettings: [SearchableSettingItem] {
         var items: [SearchableSettingItem] = []
 
-        // Profile Settings items
+        // Account items
         items.append(contentsOf: [
             SearchableSettingItem(
                 title: "Profile Information",
-                categoryTitle: "Profile Settings",
-                categoryIcon: "person",
-                keywords: ["name", "contact", "personal", "information"],
+                categoryTitle: "Account",
+                categoryIcon: OPSStyle.Icons.person,
+                keywords: ["name", "contact", "personal", "information", "profile", "phone", "email", "address"],
                 destination: AnyView(ProfileSettingsView().environmentObject(dataController))
             ),
             SearchableSettingItem(
-                title: "Contact Details",
-                categoryTitle: "Profile Settings",
-                categoryIcon: "person",
-                keywords: ["phone", "email", "address", "contact"],
-                destination: AnyView(ProfileSettingsView().environmentObject(dataController))
-            ),
-            SearchableSettingItem(
-                title: "Reset Password",
-                categoryTitle: "Profile Settings",
-                categoryIcon: "person",
-                keywords: ["password", "credentials", "security", "reset"],
-                destination: AnyView(ProfileSettingsView().environmentObject(dataController))
-            )
-        ])
-
-        // Organization Settings items
-        items.append(contentsOf: [
-            SearchableSettingItem(
-                title: "Company Information",
-                categoryTitle: "Organization Settings",
+                title: "Organization",
+                categoryTitle: "Account",
                 categoryIcon: "building.2",
-                keywords: ["company", "business", "organization", "info"],
-                destination: AnyView(OrganizationSettingsView().environmentObject(dataController))
-            ),
-            SearchableSettingItem(
-                title: "Subscription",
-                categoryTitle: "Organization Settings",
-                categoryIcon: "building.2",
-                keywords: ["subscription", "plan", "billing", "seats"],
-                destination: AnyView(OrganizationSettingsView().environmentObject(dataController))
-            ),
-            SearchableSettingItem(
-                title: "Team Management",
-                categoryTitle: "Organization Settings",
-                categoryIcon: "building.2",
-                keywords: ["team", "members", "users", "roles"],
+                keywords: ["company", "business", "organization", "team", "members"],
                 destination: AnyView(OrganizationSettingsView().environmentObject(dataController))
             )
         ])
 
-        // App Settings items
+        if isAdmin {
+            items.append(
+                SearchableSettingItem(
+                    title: "Subscription",
+                    categoryTitle: "Account",
+                    categoryIcon: "creditcard",
+                    keywords: ["subscription", "plan", "billing", "seats", "payment"],
+                    destination: AnyView(OrganizationSettingsView().environmentObject(dataController))
+                )
+            )
+        }
+
+        // App items
         items.append(contentsOf: [
-            SearchableSettingItem(
-                title: "Map Settings",
-                categoryTitle: "App Settings",
-                categoryIcon: "gearshape",
-                keywords: ["map", "navigation", "display"],
-                destination: AnyView(MapSettingsView().environmentObject(dataController))
-            ),
             SearchableSettingItem(
                 title: "Notifications",
-                categoryTitle: "App Settings",
-                categoryIcon: "gearshape",
-                keywords: ["notifications", "alerts", "reminders"],
+                categoryTitle: "App",
+                categoryIcon: OPSStyle.Icons.bellFill,
+                keywords: ["notifications", "alerts", "reminders", "quiet", "mute"],
                 destination: AnyView(NotificationSettingsView().environmentObject(dataController).environmentObject(NotificationManager.shared))
             ),
             SearchableSettingItem(
-                title: "Data & Sync",
-                categoryTitle: "App Settings",
-                categoryIcon: "gearshape",
+                title: "Map Settings",
+                categoryTitle: "App",
+                categoryIcon: OPSStyle.Icons.map,
+                keywords: ["map", "navigation", "display", "zoom", "location"],
+                destination: AnyView(MapSettingsView().environmentObject(dataController))
+            ),
+            SearchableSettingItem(
+                title: "Data & Storage",
+                categoryTitle: "App",
+                categoryIcon: "externaldrive",
                 keywords: ["data", "sync", "storage", "cache"],
                 destination: AnyView(DataStorageSettingsView().environmentObject(dataController))
             ),
             SearchableSettingItem(
                 title: "Security & Privacy",
-                categoryTitle: "App Settings",
-                categoryIcon: "gearshape",
-                keywords: ["security", "privacy", "protection"],
+                categoryTitle: "App",
+                categoryIcon: "lock",
+                keywords: ["security", "privacy", "pin", "biometric", "protection"],
                 destination: AnyView(SecuritySettingsView().environmentObject(dataController))
-            ),
-            SearchableSettingItem(
-                title: "App Version & Info",
-                categoryTitle: "App Settings",
-                categoryIcon: "gearshape",
-                keywords: ["version", "info", "about", "app"],
-                destination: AnyView(AppSettingsView().environmentObject(dataController))
             )
         ])
 
-
-        // Project Settings (conditional based on user role)
-        if let user = dataController.currentUser, (user.role == .admin || user.role == .officeCrew) {
+        // Business items (role-gated)
+        if isAdmin {
             items.append(contentsOf: [
                 SearchableSettingItem(
-                    title: "Task Types",
-                    categoryTitle: "Project Settings",
-                    categoryIcon: "hammer.circle",
-                    keywords: ["task", "types", "project", "templates"],
-                    destination: AnyView(TaskSettingsView().environmentObject(dataController))
+                    title: "Products & Services",
+                    categoryTitle: "Business",
+                    categoryIcon: OPSStyle.Icons.productTag,
+                    keywords: ["products", "services", "catalog", "pricing", "labor", "material"],
+                    destination: AnyView(ProductsListView())
                 ),
                 SearchableSettingItem(
-                    title: "Scheduling Type",
-                    categoryTitle: "Project Settings",
-                    categoryIcon: "hammer.circle",
-                    keywords: ["scheduling", "calendar", "project"],
-                    destination: AnyView(SchedulingTypeExplanationView().environmentObject(dataController))
+                    title: "Integrations",
+                    categoryTitle: "Business",
+                    categoryIcon: OPSStyle.Icons.accountingChart,
+                    keywords: ["integrations", "quickbooks", "sage", "accounting", "sync"],
+                    destination: AnyView(IntegrationsSettingsView())
                 )
             ])
         }
 
+        if isAdminOrOffice {
+            items.append(
+                SearchableSettingItem(
+                    title: "Project Settings",
+                    categoryTitle: "Business",
+                    categoryIcon: "hammer.circle",
+                    keywords: ["task", "types", "project", "defaults", "scheduling"],
+                    destination: AnyView(ProjectSettingsView().environmentObject(dataController))
+                )
+            )
+        }
+
+        // Support items
+        items.append(contentsOf: [
+            SearchableSettingItem(
+                title: "What's New",
+                categoryTitle: "Support",
+                categoryIcon: "sparkles",
+                keywords: ["new", "updates", "features", "changelog", "release"],
+                destination: AnyView(WhatsNewView())
+            ),
+            SearchableSettingItem(
+                title: "Report Issue",
+                categoryTitle: "Support",
+                categoryIcon: OPSStyle.Icons.alert,
+                keywords: ["report", "issue", "bug", "problem", "help"],
+                destination: AnyView(ReportIssueView())
+            )
+        ])
+
         return items
     }
+
+    // MARK: - Body
 
     var body: some View {
         NavigationStack {
             ZStack {
-                // Background gradient
                 OPSStyle.Colors.backgroundGradient
                     .edgesIgnoringSafeArea(.all)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    // App Header - only use it for the title/user info section
                     AppHeader(headerType: .settings)
 
-                    // Search button
-                    searchButton
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
-                        .padding(.bottom, 16)
+                    ScrollView {
+                        VStack(spacing: OPSStyle.Layout.spacing4) {
+                            // Search bar
+                            searchButton
+                                .padding(.horizontal, 20)
+                                .padding(.top, 16)
 
-                    // Settings content
-                    settingsContent
+                            // Profile card
+                            profileCard
+                                .padding(.horizontal, 20)
 
-                    // App version and actions at bottom
-                    versionAndActions
+                            // Account section
+                            settingsSection(title: "ACCOUNT") {
+                                settingsRow(
+                                    icon: "building.2",
+                                    title: "Organization",
+                                    action: { showOrganizationSettings = true }
+                                )
+
+                                if isAdmin {
+                                    sectionDivider
+
+                                    settingsRow(
+                                        icon: "creditcard",
+                                        title: "Subscription",
+                                        action: { showSubscriptionSettings = true }
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, 20)
+
+                            // App section
+                            settingsSection(title: "APP") {
+                                settingsRow(
+                                    icon: OPSStyle.Icons.bellFill,
+                                    title: "Notifications",
+                                    action: { showNotificationSettings = true }
+                                )
+
+                                sectionDivider
+
+                                settingsRow(
+                                    icon: OPSStyle.Icons.map,
+                                    title: "Map Settings",
+                                    action: { showMapSettings = true }
+                                )
+
+                                sectionDivider
+
+                                settingsRow(
+                                    icon: "externaldrive",
+                                    title: "Data & Storage",
+                                    action: { showDataSettings = true }
+                                )
+
+                                sectionDivider
+
+                                settingsRow(
+                                    icon: "lock",
+                                    title: "Security & Privacy",
+                                    action: { showSecuritySettings = true }
+                                )
+                            }
+                            .padding(.horizontal, 20)
+
+                            // Business section (admin/office crew)
+                            if isAdminOrOffice {
+                                settingsSection(title: "BUSINESS") {
+                                    if isAdmin {
+                                        settingsRow(
+                                            icon: OPSStyle.Icons.productTag,
+                                            title: "Products & Services",
+                                            action: { showProductsServices = true }
+                                        )
+
+                                        sectionDivider
+
+                                        settingsRow(
+                                            icon: OPSStyle.Icons.accountingChart,
+                                            title: "Integrations",
+                                            action: { showIntegrations = true }
+                                        )
+
+                                        sectionDivider
+                                    }
+
+                                    settingsRow(
+                                        icon: "hammer.circle",
+                                        title: "Project Settings",
+                                        action: { showProjectSettings = true }
+                                    )
+                                }
+                                .padding(.horizontal, 20)
+                            }
+
+                            // Support section
+                            settingsSection(title: "SUPPORT") {
+                                settingsRow(
+                                    icon: "sparkles",
+                                    title: "What's New",
+                                    action: { showWhatsNew = true }
+                                )
+
+                                sectionDivider
+
+                                settingsRow(
+                                    icon: OPSStyle.Icons.alert,
+                                    title: "Report Issue",
+                                    action: { showReportIssue = true }
+                                )
+
+                                sectionDivider
+
+                                settingsRow(
+                                    icon: "graduationcap",
+                                    title: "Restart Tutorial",
+                                    action: { restartTutorial() }
+                                )
+                            }
+                            .padding(.horizontal, 20)
+
+                            // Developer section (conditional)
+                            if shouldShowDeveloperOptions {
+                                settingsSection(title: "DEVELOPER") {
+                                    settingsRow(
+                                        icon: "hammer.circle.fill",
+                                        title: "Developer Tools",
+                                        action: { showDeveloperDashboard = true }
+                                    )
+                                }
+                                .padding(.horizontal, 20)
+                            }
+
+                            // Log out button
+                            logOutButton
+                                .padding(.horizontal, 20)
+                                .padding(.top, 8)
+
+                            // App version footer
+                            appVersionFooter
+                                .padding(.top, 8)
+                                .padding(.bottom, 24)
+                        }
+                        .padding(.bottom, 90) // Tab bar padding
+                    }
                 }
-                .padding(.bottom, 90) // Add padding for tab bar
             }
         }
         .onAppear {
-            // Track screen view for analytics
             AnalyticsManager.shared.trackScreenView(screenName: .settings, screenClass: "SettingsView")
+            developerModeEnabled = UserDefaults.standard.bool(forKey: "developerModeEnabled")
+            #if DEBUG
+            if !developerModeEnabled && UserDefaults.standard.object(forKey: "developerModeEnabled") != nil {
+                developerModeExplicitlyDisabled = true
+            }
+            #endif
         }
         .sheet(isPresented: $showingSearchSheet) {
             SettingsSearchSheet(allSearchableSettings: allSearchableSettings)
@@ -202,155 +348,108 @@ struct SettingsView: View {
         .alert("Log Out", isPresented: $showLogoutConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Log Out", role: .destructive) {
-                logout()
+                dataController.logout()
             }
         } message: {
             Text("Are you sure you want to log out of your account?")
         }
-    }
-
-    // MARK: - Content Views
-
-    // Settings tab content
-    private var settingsContent: some View {
-        // Use GeometryReader to determine if content needs scrolling
-        GeometryReader { geometry in
-
-                VStack(spacing: 20) {
-                    // Settings categories
-                    ForEach(SettingsCategory.allCases) { category in
-                        NavigationLink(destination: destinationFor(category)) {
-                            categoryCard(for: category)
-                        }
-                    }
-                    
-                    Spacer(minLength: 20)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                //.frame(minHeight: geometry.size.height) // Ensure content fills scroll view
-
-        }
-    }
-    
-    // Action buttons only - app info moved to AppSettingsView
-    private var versionAndActions: some View {
-        VStack(spacing: 16) {
-            Divider()
-                .background(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 20)
-            
-            // What we're working on - compact card
-            NavigationLink(destination: WhatsNewView()) {
-                HStack {
-                    Text("What We're Working On")
-                        .font(.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
+        // MARK: - Navigation Covers
+        .fullScreenCover(isPresented: $showProfileSettings) {
+            NavigationStack {
+                ProfileSettingsView()
+                    .environmentObject(dataController)
             }
-            
-            // Feature request, report issue, and logout buttons
-            HStack(spacing: 12) {
-                // First row: Feature request and Report issue buttons
-                VStack(spacing: 12) {
-                    
-                    // Report issue button
-                    NavigationLink(destination: ReportIssueView()) {
-                        HStack {
-                            Image(systemName: OPSStyle.Icons.alert)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.warningStatus)
-                            
-                            Text("REPORT ISSUE")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.warningStatus)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
-                        )
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-                    .frame(height: 44)
-                }
-                
-                // Second row: Logout button (full width)
-                Button(action: {
-                    showLogoutConfirmation = true
-                }) {
-                    HStack {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.errorStatus)
-                        
-                        Text("LOG OUT")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.errorStatus)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1)
-                    )
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                }
-                .frame(height: 44)
+        }
+        .fullScreenCover(isPresented: $showOrganizationSettings) {
+            NavigationStack {
+                OrganizationSettingsView()
+                    .environmentObject(dataController)
             }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 20)
-            
+        }
+        .fullScreenCover(isPresented: $showSubscriptionSettings) {
+            NavigationStack {
+                OrganizationSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showNotificationSettings) {
+            NavigationStack {
+                NotificationSettingsView()
+                    .environmentObject(dataController)
+                    .environmentObject(NotificationManager.shared)
+            }
+        }
+        .fullScreenCover(isPresented: $showMapSettings) {
+            NavigationStack {
+                MapSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showDataSettings) {
+            NavigationStack {
+                DataStorageSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showSecuritySettings) {
+            NavigationStack {
+                SecuritySettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showProductsServices) {
+            NavigationStack {
+                ProductsListView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showIntegrations) {
+            NavigationStack {
+                IntegrationsSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showProjectSettings) {
+            NavigationStack {
+                ProjectSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showWhatsNew) {
+            NavigationStack {
+                WhatsNewView()
+            }
+        }
+        .fullScreenCover(isPresented: $showReportIssue) {
+            NavigationStack {
+                ReportIssueView()
+            }
+        }
+        .fullScreenCover(isPresented: $showDeveloperDashboard) {
+            NavigationStack {
+                DeveloperDashboard()
+                    .environmentObject(dataController)
+            }
+        }
+        .onChange(of: showDeveloperDashboard) { _, isShowing in
+            if !isShowing {
+                developerModeEnabled = UserDefaults.standard.bool(forKey: "developerModeEnabled")
+                #if DEBUG
+                if !developerModeEnabled && UserDefaults.standard.object(forKey: "developerModeEnabled") != nil {
+                    developerModeExplicitlyDisabled = true
+                }
+                #endif
+            }
         }
     }
-    
-    // MARK: - Helper Views and Functions
-    
-    // Convenience function for SettingsCategory
-    private func categoryCard(for category: SettingsCategory) -> some View {
-        CategoryCard(
-            title: category.rawValue,
-            description: category.description,
-            iconName: category.iconName
-        )
-    }
-    
-    // Return appropriate destination view based on selected category
-    @ViewBuilder
-    private func destinationFor(_ category: SettingsCategory) -> some View {
-        switch category {
-        case .profile:
-            ProfileSettingsView()
-                .environmentObject(dataController)
-        case .organization:
-            OrganizationSettingsView()
-                .environmentObject(dataController)
-        case .appSettings:
-            AppSettingsView()
-                .environmentObject(dataController)
-        }
-    }
-    
 
-    // Search button
+    // MARK: - Search Button
+
     private var searchButton: some View {
-        Button(action: {
-            showingSearchSheet = true
-        }) {
+        Button(action: { showingSearchSheet = true }) {
             HStack(spacing: 12) {
                 Image(systemName: OPSStyle.Icons.search)
-                    .font(.system(size: 18))
+                    .font(.system(size: 16))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 Text("Search settings...")
@@ -361,7 +460,7 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+            .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -370,14 +469,212 @@ struct SettingsView: View {
         }
     }
 
-    private func logout() {
-        // Simple, direct logout function
-        dataController.logout()
+    // MARK: - Profile Card
+
+    private var profileCard: some View {
+        Button(action: { showProfileSettings = true }) {
+            HStack(spacing: 14) {
+                // Avatar
+                profileAvatar
+
+                // Name and subtitle
+                VStack(alignment: .leading, spacing: 4) {
+                    Text((dataController.currentUser?.fullName ?? "User").uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+
+                    HStack(spacing: 4) {
+                        if let role = dataController.currentUser?.role {
+                            Text(role.displayName)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+
+                        if let email = dataController.currentUser?.email, !email.isEmpty {
+                            Text("·")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            Text(email)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Profile Avatar
+
+    @ViewBuilder
+    private var profileAvatar: some View {
+        if let user = dataController.currentUser {
+            if let imageData = user.profileImageData,
+               let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(Color(hex: user.userColor ?? "#59779F") ?? OPSStyle.Colors.primaryAccent)
+                    .frame(width: 48, height: 48)
+                    .overlay(
+                        Text("\(user.firstName.prefix(1))\(user.lastName.prefix(1))")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.white)
+                    )
+            }
+        } else {
+            Circle()
+                .fill(OPSStyle.Colors.primaryAccent)
+                .frame(width: 48, height: 48)
+                .overlay(
+                    Text("U")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.white)
+                )
+        }
+    }
+
+    // MARK: - Grouped Section Builder
+
+    private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Section header
+            Text(title)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            // Grouped card
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+        }
+    }
+
+    // MARK: - Row Component
+
+    private func settingsRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(width: 28, alignment: .center)
+
+                Text(title)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Spacer()
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Divider
+
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(OPSStyle.Colors.cardBorder)
+            .frame(height: 1)
+            .padding(.leading, 58) // Inset past icon area
+    }
+
+    // MARK: - Log Out
+
+    private var logOutButton: some View {
+        Button(action: { showLogoutConfirmation = true }) {
+            HStack {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+
+                Text("LOG OUT")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.errorStatus, lineWidth: 1)
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+        }
+    }
+
+    // MARK: - App Version Footer
+
+    private var appVersionFooter: some View {
+        HStack(spacing: 12) {
+            Image("LogoWhite")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 24, height: 24)
+
+            Text("OPS v\(AppConfiguration.AppInfo.version)")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Text("·")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Text("© 2025 OPS")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Tutorial Restart
+
+    private func restartTutorial() {
+        guard dataController.currentUser != nil else { return }
+        isRestartingTutorial = true
+        isRestartingTutorial = false
+        appState.shouldRestartTutorial = true
     }
 }
 
 #Preview {
     SettingsView()
         .environmentObject(DataController())
+        .environmentObject(AppState())
         .preferredColorScheme(.dark)
 }

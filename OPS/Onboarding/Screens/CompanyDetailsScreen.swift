@@ -25,7 +25,7 @@ struct CompanyDetailsScreen: View {
     // Animation coordinator
     @StateObject private var animationCoordinator = OnboardingAnimationCoordinator()
 
-    /// The industry value to send to Bubble (either selected industry or custom text)
+    /// The industry value to send (either selected industry or custom text)
     private var industryValue: String {
         if selectedIndustry == .other {
             return customIndustry.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -61,11 +61,28 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
-    // Dynamic tabs based on user role and inventory access
+    // Whether the current user has Pipeline access (admin/office crew only)
+    private var hasPipelineAccess: Bool {
+        let role = dataController.currentUser?.role
+        return role == .admin || role == .officeCrew
+    }
+
+    // Computed tab indices that adapt based on role
+    private var pipelineTabIndex: Int? { hasPipelineAccess ? 1 : nil }
+    private var jobBoardTabIndex: Int { hasPipelineAccess ? 2 : 1 }
+    private var scheduleTabIndex: Int { hasPipelineAccess ? 3 : 2 }
+    private var settingsTabIndex: Int { hasPipelineAccess ? 4 : 3 }
+
+    // Dynamic tabs based on user role
     private var tabs: [TabItem] {
         var baseTabs: [TabItem] = [
             TabItem(iconName: "house.fill")
         ]
+
+        // Add Pipeline tab for admin/office crew only
+        if hasPipelineAccess {
+            baseTabs.append(TabItem(iconName: OPSStyle.Icons.pipelineChart))
+        }
 
         // Add Job Board tab for all users (admin, office crew, and field crew)
         baseTabs.append(TabItem(iconName: "briefcase.fill"))
@@ -102,6 +119,11 @@ struct MainTabView: View {
         return selectedTab == (tabCount - 1)
     }
 
+    // Check if currently on Pipeline tab (has its own FAB)
+    private var isPipelineTab: Bool {
+        pipelineTabIndex != nil && selectedTab == pipelineTabIndex
+    }
+
     private var slideTransition: AnyTransition {
         if selectedTab > previousTab {
             return .asymmetric(
@@ -124,38 +146,19 @@ struct MainTabView: View {
 
             // Content views with transition - each complete view slides as a unit
             ZStack {
-                // All users now have Job Board access
-                // Tab indices shift when inventory tab is present
-                if hasInventoryAccess {
-                    // With inventory: Home(0), JobBoard(1), Inventory(2), Schedule(3), Settings(4)
-                    switch selectedTab {
-                    case 0:
-                        HomeView()
-                    case 1:
-                        JobBoardView()
-                    case 2:
-                        InventoryView()
-                    case 3:
-                        ScheduleView()
-                    case 4:
-                        SettingsView()
-                    default:
-                        HomeView()
-                    }
+                // Tab content — indices adapt based on role (Pipeline tab for admin/office only)
+                if selectedTab == 0 {
+                    HomeView()
+                } else if selectedTab == pipelineTabIndex {
+                    PipelineTabView()
+                } else if selectedTab == jobBoardTabIndex {
+                    JobBoardView()
+                } else if selectedTab == scheduleTabIndex {
+                    ScheduleView()
+                } else if selectedTab == settingsTabIndex {
+                    SettingsView()
                 } else {
-                    // Without inventory: Home(0), JobBoard(1), Schedule(2), Settings(3)
-                    switch selectedTab {
-                    case 0:
-                        HomeView()
-                    case 1:
-                        JobBoardView()
-                    case 2:
-                        ScheduleView()
-                    case 3:
-                        SettingsView()
-                    default:
-                        HomeView()
-                    }
+                    HomeView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -198,8 +201,8 @@ struct MainTabView: View {
             FloatingActionMenu(currentTab: selectedTab, hasInventoryAccess: hasInventoryAccess)
                 .environmentObject(dataController)
                 .environmentObject(appState)
-                .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isInventorySelectionMode ? 1 : 0)
-                .allowsHitTesting(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isInventorySelectionMode)
+                .opacity(!isSettingsTab && !isPipelineTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects ? 1 : 0)
+                .allowsHitTesting(!isSettingsTab && !isPipelineTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects)
                 .animation(.easeInOut(duration: 0.2), value: isSettingsTab)
                 .animation(.easeInOut(duration: 0.2), value: dataController.isPerformingInitialSync)
                 .animation(.easeInOut(duration: 0.2), value: appState.isLoadingProjects)
@@ -293,27 +296,14 @@ struct MainTabView: View {
         .onChange(of: selectedTab) { oldValue, newValue in
             previousTab = oldValue
 
-            // Track tab selection for analytics
-            // Tab indices shift when inventory is present
+            // Track tab selection for analytics — use computed indices for role-adaptive mapping
             let tabName: TabName = {
-                if hasInventoryAccess {
-                    switch newValue {
-                    case 0: return .home
-                    case 1: return .jobBoard
-                    case 2: return .inventory
-                    case 3: return .schedule
-                    case 4: return .settings
-                    default: return .home
-                    }
-                } else {
-                    switch newValue {
-                    case 0: return .home
-                    case 1: return .jobBoard
-                    case 2: return .schedule
-                    case 3: return .settings
-                    default: return .home
-                    }
-                }
+                if newValue == 0 { return .home }
+                if newValue == pipelineTabIndex { return .pipeline }
+                if newValue == jobBoardTabIndex { return .jobBoard }
+                if newValue == scheduleTabIndex { return .schedule }
+                if newValue == settingsTabIndex { return .settings }
+                return .home
             }()
             AnalyticsManager.shared.trackTabSelected(tabName: tabName)
         }

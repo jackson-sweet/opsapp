@@ -11,6 +11,8 @@ import UniformTypeIdentifiers
 import UIKit
 
 struct JobBoardDashboard: View {
+    var searchText: String = ""
+
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @Environment(\.modelContext) private var modelContext
@@ -117,8 +119,23 @@ struct JobBoardDashboard: View {
                         .contentShape(Rectangle())
                         .highPriorityGesture(
                             DragGesture(minimumDistance: 0)
-                                .onChanged { _ in
-                                    print("🚫 Overlay blocking scroll/swipe")
+                                .onChanged { value in
+                                    if let project = draggedProject {
+                                        handleDragChanged(project: project, location: value.location, geometry: geometry)
+                                    }
+                                }
+                                .onEnded { _ in
+                                    if let project = draggedProject {
+                                        handleDragEnded(project: project, geometry: geometry)
+                                    } else {
+                                        // Long press without drag — reset state
+                                        withAnimation(.easeOut(duration: 0.2)) {
+                                            isLongPressing = false
+                                        }
+                                        dragLocation = .zero
+                                        illuminatedArrowCount = 0
+                                        lastHapticArrowCount = 0
+                                    }
                                 }
                         )
 
@@ -698,40 +715,26 @@ struct JobBoardDashboard: View {
             return
         }
 
-        // Check connectivity and sync accordingly
-        if dataController.isConnected {
-            // Sync to backend immediately
-            Task {
-                do {
-                    try await dataController.apiService.updateProject(
-                        id: project.id,
-                        updates: ["status": newStatus.rawValue]
-                    )
-                    await MainActor.run {
-                        project.needsSync = false
-                        project.lastSyncedAt = Date()
-                    }
-                    print("[ARCHIVE_DEBUG] ✅ Project status synced to backend: \(newStatus.rawValue)")
-                } catch {
-                    await MainActor.run {
-                        project.needsSync = true
-                        // Trigger background sync to queue for later
-                        dataController.syncManager?.triggerBackgroundSync()
-                    }
-                    print("[ARCHIVE_DEBUG] ❌ Failed to sync project status to backend: \(error)")
+        // Sync to backend
+        Task {
+            do {
+                try await dataController.syncManager.updateProjectStatus(
+                    projectId: project.id,
+                    status: newStatus
+                )
+                await MainActor.run {
+                    project.needsSync = false
+                    project.lastSyncedAt = Date()
                 }
+                print("[ARCHIVE_DEBUG] ✅ Project status synced to backend: \(newStatus.rawValue)")
+            } catch {
+                await MainActor.run {
+                    project.needsSync = true
+                    // Trigger background sync to queue for later
+                    dataController.syncManager?.triggerBackgroundSync()
+                }
+                print("[ARCHIVE_DEBUG] ❌ Failed to sync project status to backend: \(error)")
             }
-        } else {
-            // Offline - queue for background sync
-            print("[ARCHIVE_DEBUG] 📴 Offline - queueing status change for background sync")
-            dataController.syncManager?.triggerBackgroundSync()
-
-            // Show offline feedback
-            NotificationCenter.default.post(
-                name: NSNotification.Name("ShowSuccessMessage"),
-                object: nil,
-                userInfo: ["message": "Saved locally. Will sync when connection improves."]
-            )
         }
     }
 
@@ -754,6 +757,16 @@ struct JobBoardDashboard: View {
                 project.teamMembers.contains { user in
                     user.id == currentUser.id
                 }
+            }
+        }
+
+        // Search filter
+        if !searchText.isEmpty {
+            let query = searchText.lowercased()
+            filteredProjects = filteredProjects.filter { project in
+                project.title.lowercased().contains(query) ||
+                (project.client?.name.lowercased().contains(query) ?? false) ||
+                (project.address?.lowercased().contains(query) ?? false)
             }
         }
 
@@ -970,6 +983,11 @@ struct DirectionalDragCard: View {
             }
             .simultaneousGesture(combinedGesture)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
+            .onChange(of: isDragged) { _, newValue in
+                if !newValue && isLongPressing {
+                    isLongPressing = false
+                }
+            }
             .sheet(isPresented: $showingDetails) {
                 NavigationView {
                     ProjectDetailsView(project: project)

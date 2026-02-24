@@ -3,10 +3,11 @@
 //  OPS
 //
 //  Overlay that prompts admin/office crew to assign roles to employees
-//  who don't have an employeeType set in Bubble.
+//  who don't have an employeeType set.
 //
 
 import SwiftUI
+import Supabase
 
 /// Represents a user who needs a role assignment
 struct UnassignedUser: Identifiable {
@@ -322,9 +323,9 @@ struct UnassignedRolesOverlay: View {
                     employeeTypeValue = "Admin"
                 }
 
-                try await dataController.apiService.updateUser(
-                    id: user.id,
-                    userData: [BubbleFields.User.employeeType: employeeTypeValue]
+                try await dataController.syncManager.updateUserFields(
+                    userId: user.id,
+                    fields: ["employee_type": .string(employeeTypeValue)]
                 )
 
                 print("[UNASSIGNED_ROLES] Updated \(user.fullName) → \(employeeTypeValue)")

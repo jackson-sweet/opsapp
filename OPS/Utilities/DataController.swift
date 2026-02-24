@@ -10,6 +10,7 @@ import SwiftUI
 import SwiftData
 import Combine
 import GoogleSignIn
+import Supabase
 
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
@@ -31,7 +32,7 @@ class DataController: ObservableObject {
     @Published var showSyncRestoredAlert = false
     @Published var isPerformingInitialSync = false // Track post-login initial sync
     @Published var syncStatusMessage = "" // Console-style sync status messages
-    @Published var calendarEventsDidChange = false // Toggle to trigger calendar refresh
+    @Published var scheduledTasksDidChange = false // Toggle to refresh calendar views
     private var hasCompletedInitialConnectionCheck = false // Track if we've done initial setup
 
     // Global app state for external views to access
@@ -39,7 +40,6 @@ class DataController: ObservableObject {
     
     // MARK: - Dependencies
     let authManager: AuthManager
-    let apiService: APIService
     private let keychainManager: KeychainManager
     private let connectivityMonitor: ConnectivityMonitor
     var modelContext: ModelContext?
@@ -50,7 +50,7 @@ class DataController: ObservableObject {
     private let syncRetryInterval: TimeInterval = 180 // 3 minutes
 
     // MARK: - Public Access
-    var syncManager: CentralizedSyncManager!
+    var syncManager: SupabaseSyncManager!
     var imageSyncManager: ImageSyncManager!
     @Published var simplePINManager = SimplePINManager()
     
@@ -60,8 +60,7 @@ class DataController: ObservableObject {
         self.keychainManager = KeychainManager()
         self.authManager = AuthManager()
         self.connectivityMonitor = ConnectivityMonitor()
-        self.apiService = APIService(authManager: authManager)
-        
+
         // Set initial connection state
         isConnected = connectivityMonitor.isConnected
         connectionType = connectivityMonitor.connectionType
@@ -176,17 +175,15 @@ class DataController: ObservableObject {
 
         print("[DATA_CONTROLLER] Initializing SyncManager...")
 
-        // Initialize the centralized sync manager
-        self.syncManager = CentralizedSyncManager(
+        // Initialize the Supabase sync manager
+        self.syncManager = SupabaseSyncManager(
             modelContext: modelContext,
-            apiService: apiService,
             connectivityMonitor: connectivityMonitor
         )
-        
+
         // Initialize the image sync manager
         self.imageSyncManager = ImageSyncManager(
             modelContext: modelContext,
-            apiService: apiService,
             connectivityMonitor: connectivityMonitor
         )
         
@@ -261,9 +258,35 @@ class DataController: ObservableObject {
         }
     
     // MARK: - Authentication
+
+    /// Returns true if the string is a valid UUID format (Supabase uses UUIDs for all IDs)
+    private func isValidUUID(_ string: String) -> Bool {
+        UUID(uuidString: string) != nil
+    }
+
     @MainActor
     private func checkExistingAuth() async {
-        
+
+        // MIGRATION: Detect legacy-format IDs and force re-login through Supabase Auth.
+        // Legacy IDs look like "1748465773440x642579687246238300", Supabase uses UUIDs.
+        // If we detect non-UUID IDs, clear stored credentials so the user re-authenticates
+        // via Supabase Auth, which will store proper UUID-format IDs.
+        let storedUserId = UserDefaults.standard.string(forKey: "user_id")
+        let storedCompanyId = UserDefaults.standard.string(forKey: "company_id")
+
+        let userIdNeedsMigration = storedUserId != nil && !isValidUUID(storedUserId!)
+        let companyIdNeedsMigration = storedCompanyId != nil && !isValidUUID(storedCompanyId!)
+
+        if userIdNeedsMigration || companyIdNeedsMigration {
+            print("[AUTH_MIGRATION] Detected legacy-format IDs in UserDefaults — forcing re-login")
+            if let uid = storedUserId { print("[AUTH_MIGRATION]   user_id: \(uid)") }
+            if let cid = storedCompanyId { print("[AUTH_MIGRATION]   company_id: \(cid)") }
+
+            // Clear all stored IDs so the user goes through Supabase Auth login
+            clearAuthentication()
+            return
+        }
+
         // First check if we have a direct authentication flag from onboarding
         let isAuthenticated = UserDefaults.standard.bool(forKey: "is_authenticated")
         let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
@@ -338,129 +361,58 @@ class DataController: ObservableObject {
             return
         }
         
-        // Fall back to traditional authentication check if needed
-        // Check for stored credentials
-        if let userId = keychainManager.retrieveUserId(),
-           let _ = keychainManager.retrieveToken() {
-            
-            
-            // Validate token expiration
-            if let expiration = keychainManager.retrieveTokenExpiration(),
-               expiration > Date() {
-                
-                // Set the authentication flag in UserDefaults to maintain state across app restarts
-                UserDefaults.standard.set(true, forKey: "is_authenticated")
-                UserDefaults.standard.set(true, forKey: "onboarding_completed")
-                
-                // Store user ID in UserDefaults as well for backup
-                UserDefaults.standard.set(userId, forKey: "user_id")
-                UserDefaults.standard.set(userId, forKey: "currentUserId")
-                
-                do {
-                    if let context = modelContext {
-                        let descriptor = FetchDescriptor<User>(
-                            predicate: #Predicate<User> { $0.id == userId }
-                        )
-                        
-                        let users = try context.fetch(descriptor)
-                        
-                        if let user = users.first {
-                            self.currentUser = user
+        // Fall back to Supabase session restoration
+        do {
+            let session = try await SupabaseService.shared.client.auth.session
+            let supabaseUserId = session.user.id.uuidString.lowercased()
+            let email = session.user.email ?? ""
 
-                            // Link user to OneSignal for push notifications
-                            NotificationManager.shared.linkUserToOneSignal()
+            // Load user identifiers from Supabase users table
+            try? await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)
+            let userId = authManager.getUserId() ?? supabaseUserId
 
-                            // Configure OneSignal service for sending notifications
-                            Task {
-                                await OneSignalService.shared.configure()
-                            }
+            // Set authentication flags
+            UserDefaults.standard.set(true, forKey: "is_authenticated")
+            UserDefaults.standard.set(userId, forKey: "user_id")
+            UserDefaults.standard.set(userId, forKey: "currentUserId")
 
-                            // Only set isAuthenticated if user has completed onboarding
-                            if user.hasCompletedAppOnboarding {
-                                self.isAuthenticated = true
-                            } else {
-                                self.isAuthenticated = false
-                            }
+            // Try to find user in local SwiftData
+            if let context = modelContext {
+                let descriptor = FetchDescriptor<User>(
+                    predicate: #Predicate<User> { $0.id == userId }
+                )
+                let users = try context.fetch(descriptor)
 
-                            if let companyId = user.companyId {
-                                UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
-                                UserDefaults.standard.set(companyId, forKey: "company_id")
-                                
-                                // Fetch company details if we're connected
-                                if isConnected {
-                                    Task {
-                                        do {
-                                            let companyDTO = try await apiService.fetchCompany(id: companyId)
-                                            
-                                            // Check if company already exists in database
-                                            let companyDescriptor = FetchDescriptor<Company>(
-                                                predicate: #Predicate<Company> { $0.id == companyId }
-                                            )
-                                            let existingCompanies = try context.fetch(companyDescriptor)
-                                            
-                                            if let existingCompany = existingCompanies.first {
-                                                // Update existing company
-                                                existingCompany.name = companyDTO.companyName ?? existingCompany.name
-                                                existingCompany.externalId = companyDTO.companyID
-                                                existingCompany.phone = companyDTO.phone
-                                                existingCompany.email = companyDTO.officeEmail
-                                                
-                                                if let loc = companyDTO.location {
-                                                    existingCompany.address = loc.formattedAddress
-                                                    existingCompany.latitude = loc.lat
-                                                    existingCompany.longitude = loc.lng
-                                                }
-                                                
-                                                existingCompany.openHour = companyDTO.openHour
-                                                existingCompany.closeHour = companyDTO.closeHour
-                                                existingCompany.lastSyncedAt = Date()
-                                                
-                                            } else {
-                                                // Create new company
-                                                let newCompany = companyDTO.toModel()
-                                                context.insert(newCompany)
-                                            }
-                                            
-                                            try context.save()
-                                        } catch {
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            initializeSyncManager()
-                            return
-                        }
+                if let user = users.first {
+                    self.currentUser = user
+
+                    NotificationManager.shared.linkUserToOneSignal()
+                    Task { await OneSignalService.shared.configure() }
+
+                    if user.hasCompletedAppOnboarding {
+                        self.isAuthenticated = true
+                        UserDefaults.standard.set(true, forKey: "onboarding_completed")
                     }
-                    
-                    if isConnected {
-                        try await fetchUserFromAPI(userId: userId)
-                    } else {
-                        // Even without internet, check onboarding status
-                        let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
-                        if onboardingCompleted {
-                            self.isAuthenticated = true
-                        } else {
-                            self.isAuthenticated = false
-                        }
-                        
-                        // Create a placeholder user
-                        let placeholderUser = User(id: userId, firstName: "User", lastName: "", role: .fieldCrew, companyId: "")
-                        self.currentUser = placeholderUser
-                        
-                        if let context = modelContext {
-                            context.insert(placeholderUser)
-                            try context.save()
-                            initializeSyncManager()
-                        }
+
+                    if let companyId = user.companyId {
+                        UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+                        UserDefaults.standard.set(companyId, forKey: "company_id")
                     }
-                } catch {
-                    clearAuthentication()
+
+                    initializeSyncManager()
+                    return
                 }
-            } else {
-                clearAuthentication()
             }
-        } else {
+
+            // No local user — try to fetch from API if connected
+            if isConnected {
+                try await fetchUserFromAPI(userId: userId)
+            } else {
+                let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
+                self.isAuthenticated = onboardingCompleted
+            }
+        } catch {
+            // No valid Supabase session — clear auth
             clearAuthentication()
         }
         
@@ -471,12 +423,8 @@ class DataController: ObservableObject {
     func login(username: String, password: String) async -> Bool {
         
         do {
-            // Sign in with the auth manager
-            let _ = try await authManager.signIn(username: username, password: password)
-            
-            // Store the username (only for re-authentication, not displayed to user)
-            keychainManager.storeUsername(username)
-            keychainManager.storePassword(password)
+            // Sign in via Supabase Auth (handles session, stores userId + companyId)
+            try await authManager.loginWithEmail(username, password: password)
             
             
             if let userId = authManager.getUserId() {
@@ -521,39 +469,35 @@ class DataController: ObservableObject {
     @MainActor
     func loginWithApple(appleResult: AppleSignInManager.AppleSignInResult) async -> Bool {
         do {
-            // Attempt Apple login with Bubble
-            let loginResult = try await authManager.signInWithApple(
-                identityToken: appleResult.identityToken,
-                userIdentifier: appleResult.userIdentifier,
-                email: appleResult.email,
-                givenName: appleResult.givenName,
-                familyName: appleResult.familyName
-            )
-            
-            let userDTO = loginResult.user
-            
-            
+            // Authenticate with Supabase using Apple identity token
+            try await SupabaseService.shared.signInWithApple(identityToken: appleResult.identityToken)
+
+            // Get session info from Supabase
+            let session = try await SupabaseService.shared.client.auth.session
+            let supabaseUserId = session.user.id.uuidString.lowercased()
+            let email = session.user.email ?? appleResult.email ?? ""
+
             // Store Apple user identifier for future logins
             UserDefaults.standard.set(appleResult.userIdentifier, forKey: "apple_user_identifier")
-            
+
+            // Look up existing user in Supabase users table by email
+            try await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)
+
+            // Use the user ID from users table (may differ from auth UUID for migrated users)
+            let userId = authManager.getUserId() ?? supabaseUserId
+
             // Set authentication flags
             UserDefaults.standard.set(true, forKey: "is_authenticated")
-            UserDefaults.standard.set(userDTO.id, forKey: "user_id")
-            UserDefaults.standard.set(userDTO.id, forKey: "currentUserId")
-            
-            // Store user type if available
-            if let userTypeString = userDTO.userType {
-                if userTypeString.lowercased() == "company" {
-                    UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
-                } else if userTypeString.lowercased() == "employee" {
-                    UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
-                }
-                UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+            UserDefaults.standard.set(userId, forKey: "user_id")
+            UserDefaults.standard.set(userId, forKey: "currentUserId")
+
+            // Try to fetch full user data - may fail for brand new users
+            do {
+                try await fetchUserFromAPI(userId: userId)
+            } catch {
+                print("[AUTH] User not found in users table — likely a new user, will need onboarding")
             }
-            
-            // Fetch and create/update user
-            try await fetchUserFromAPI(userId: userDTO.id)
-            
+
             // Check onboarding status
             if let user = currentUser {
                 let hasCompany = !(user.companyId ?? "").isEmpty
@@ -563,42 +507,39 @@ class DataController: ObservableObject {
                 // Determine if onboarding is needed (indicates new user)
                 let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding || !hasUserType
 
-                // Track analytics for Google Ads (Apple sign-in)
+                // Store user type if available
+                if let userTypeString = user.userType?.rawValue {
+                    if userTypeString.lowercased() == "company" {
+                        UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+                    } else if userTypeString.lowercased() == "employee" {
+                        UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
+                    }
+                    UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+                }
+
+                // Track analytics (Apple sign-in)
                 if needsOnboarding {
-                    // New user - track as sign-up
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .apple)
                 } else {
-                    // Returning user - track as login
                     AnalyticsManager.shared.trackLogin(userType: user.userType, method: .apple)
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
-                AnalyticsManager.shared.setUserId(userDTO.id)
+                AnalyticsManager.shared.setUserId(userId)
 
                 UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
 
                 if !needsOnboarding {
                     self.isAuthenticated = true
-                    // Projects will sync after company fetch in fetchUserFromAPI
-                } else {
-                    // Don't set isAuthenticated - let LoginView handle onboarding
                 }
 
                 return true
             }
 
-            return false
+            // No user found — new user, needs onboarding
+            UserDefaults.standard.set(false, forKey: "onboarding_completed")
+            return true
         } catch {
-
-            // Check for specific errors
-            if let authError = error as? AuthError {
-                switch authError {
-                case .invalidCredentials:
-                    // User doesn't exist yet - this is expected for new users
-                    print("Invalid Credentials")
-                default: break
-                }
-            }
-
+            print("[AUTH] Apple login failed: \(error)")
             return false
         }
     }
@@ -607,66 +548,37 @@ class DataController: ObservableObject {
     @MainActor
     func loginWithGoogle(googleUser: GIDGoogleUser) async -> Bool {
         guard let idToken = googleUser.idToken?.tokenString,
-              let email = googleUser.profile?.email,
-              let name = googleUser.profile?.name else {
+              let email = googleUser.profile?.email else {
             return false
         }
-        
+
         do {
-            // Attempt Google login with Bubble
-            let loginResult = try await authManager.signInWithGoogle(
-                idToken: idToken,
-                email: email,
-                name: name,
-                givenName: googleUser.profile?.givenName,
-                familyName: googleUser.profile?.familyName
-            )
-            
-            let userDTO = loginResult.user
-            let companyDTO = loginResult.company
-            
-            
-            // Immediately set user type if available
-            if let userTypeString = userDTO.userType {
-                // Map Bubble's user type strings to our UserType enum
-                if userTypeString.lowercased() == "company" {
-                    UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
-                } else if userTypeString.lowercased() == "employee" {
-                    UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
-                }
-                // Also store the raw value as a backup
-                UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
-            }
-            
+            // Authenticate with Supabase using Google ID token
+            try await SupabaseService.shared.signInWithGoogle(idToken: idToken)
+
+            // Get session info from Supabase
+            let session = try await SupabaseService.shared.client.auth.session
+            let supabaseUserId = session.user.id.uuidString.lowercased()
+
+            // Look up existing user in Supabase users table by email
+            try await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)
+
+            // Use the user ID from users table (may differ from auth UUID for migrated users)
+            let userId = authManager.getUserId() ?? supabaseUserId
+
             // Set authentication flags
             UserDefaults.standard.set(true, forKey: "is_authenticated")
-            // Don't automatically set onboarding_completed for Google login
-            // We need to check if they have a company first
-            UserDefaults.standard.set(userDTO.id, forKey: "user_id")
-            UserDefaults.standard.set(userDTO.id, forKey: "currentUserId")
-            
-            
-            // Fetch and create/update user using existing method
-            try await fetchUserFromAPI(userId: userDTO.id)
-            
-            // If company data was returned, save it in the local database
-            if let companyDTO = companyDTO {
-                
-                // Check if user is admin from the login response
-                if let adminRefs = companyDTO.admin {
-                    let adminIds = adminRefs.compactMap { $0.stringValue }
-                    
-                    if adminIds.contains(userDTO.id), let user = currentUser {
-                        user.role = .admin
-                        try? modelContext?.save()
-                    }
-                }
-                // We already fetched company data in fetchUserFromAPI, so we don't need to save it again
-                // The fetchCompanyData method was already called and handled the company save
-            } else {
+            UserDefaults.standard.set(userId, forKey: "user_id")
+            UserDefaults.standard.set(userId, forKey: "currentUserId")
+
+            // Try to fetch full user data - may fail for brand new users
+            do {
+                try await fetchUserFromAPI(userId: userId)
+            } catch {
+                print("[AUTH] User not found in users table — likely a new user, will need onboarding")
             }
-            
-            // Now check if user has completed onboarding based on their data
+
+            // Check onboarding status
             if let user = currentUser {
                 let hasCompany = !(user.companyId ?? "").isEmpty
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
@@ -674,40 +586,39 @@ class DataController: ObservableObject {
                 // Determine if onboarding is needed (indicates new user)
                 let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding
 
-                // Track analytics for Google Ads (Google sign-in)
+                // Store user type if available
+                if let userTypeString = user.userType?.rawValue {
+                    if userTypeString.lowercased() == "company" {
+                        UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
+                    } else if userTypeString.lowercased() == "employee" {
+                        UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
+                    }
+                    UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+                }
+
+                // Track analytics (Google sign-in)
                 if needsOnboarding {
-                    // New user - track as sign-up
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .google)
                 } else {
-                    // Returning user - track as login
                     AnalyticsManager.shared.trackLogin(userType: user.userType, method: .google)
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
-                AnalyticsManager.shared.setUserId(userDTO.id)
+                AnalyticsManager.shared.setUserId(userId)
 
                 UserDefaults.standard.set(!needsOnboarding, forKey: "onboarding_completed")
 
-                // Only set isAuthenticated if they've completed onboarding
-                // Otherwise, return true to indicate login succeeded but don't set isAuthenticated
                 if !needsOnboarding {
                     self.isAuthenticated = true
-                    // Projects sync already triggered in fetchUserFromAPI after company fetch
-                } else {
-                    // Onboarding is needed - sync will happen in fetchUserFromAPI
                 }
 
-                // Return true to indicate login was successful (even if onboarding is needed)
                 return true
             }
 
-            return false
-        } catch let error as AuthError {
-
-            // If it's invalid credentials, it means no account exists
-            if case .invalidCredentials = error {
-            }
-            return false
+            // No user found — new user, needs onboarding
+            UserDefaults.standard.set(false, forKey: "onboarding_completed")
+            return true
         } catch {
+            print("[AUTH] Google login failed: \(error)")
             return false
         }
     }
@@ -723,121 +634,36 @@ class DataController: ObservableObject {
         let descriptor = FetchDescriptor<User>(predicate: #Predicate<User> { $0.id == userId })
         let existingUsers = try context.fetch(descriptor)
         
-        let userDTO = try await apiService.fetchUser(id: userId)
-        
-        var user: User
-        
-        // Transaction to update or create user
-        do {
+        // syncManager handles fetch, convert, and upsert
+        initializeSyncManager()
+        guard let fetchedUser = try await syncManager?.fetchUser(id: userId) else {
+            // If syncManager couldn't fetch, try local
             if let existingUser = existingUsers.first {
-                // Update existing user instead of creating a new one
-                user = existingUser
-                
-                // Store existing projects to preserve relationships
-                let existingProjects = existingUser.assignedProjects
-                
-                // Update the user fields from DTO while preserving relationships
-                user.firstName = userDTO.nameFirst ?? user.firstName
-                user.lastName = userDTO.nameLast ?? user.lastName
-                
-                // Handle email - prioritize authentication email if available
-                if let emailAuth = userDTO.authentication?.email?.email {
-                    user.email = emailAuth
-                } else if let email = userDTO.email {
-                    user.email = email
-                }
-                
-                // Handle profile image URL
-                if let avatarUrl = userDTO.avatar {
-                    user.profileImageURL = avatarUrl
-                }
-                
-                // Handle phone number
-                if let phone = userDTO.phone {
-                    user.phone = phone
-                }
-                
-                // Handle role based on employee type
-                if let employeeTypeString = userDTO.employeeType {
-                    user.role = BubbleFields.EmployeeType.toSwiftEnum(employeeTypeString)
-                } else {
-                    // If no employee type is set, default to field crew
-                    // This will be corrected when company data is fetched
-                    user.role = .fieldCrew
-                }
-                
-                // Handle company ID
-                if let companyId = userDTO.company, !companyId.isEmpty {
-                    user.companyId = companyId
-                    // Company will be fetched below after sync manager is initialized
-                } else {
-                }
-                
-                // Handle user type
-                if let userType = userDTO.userType {
-                    user.userType = UserType(rawValue: userType) ?? user.userType
-                }
-                
-                // Handle home address
-                if let address = userDTO.homeAddress {
-                    user.homeAddress = address.formattedAddress
-                }
-                
-                // Update phone if available in DTO
-                if let phone = userDTO.phone {
-                    user.phone = phone
-                }
-
-                // Update tutorial/onboarding completion flags
-                // Use API value if true (API is source of truth once synced)
-                // Keep local value if API returns false/nil (allows offline completion to persist)
-                if userDTO.hasCompletedAppTutorial == true {
-                    user.hasCompletedAppTutorial = true
-                }
-                if userDTO.hasCompletedAppOnboarding == true {
-                    user.hasCompletedAppOnboarding = true
-                }
-
-                // We don't have these fields in the DTO currently
-                // user.latitude = userDTO.latitude ?? user.latitude
-                // user.longitude = userDTO.longitude ?? user.longitude
-                // user.locationName = userDTO.locationName ?? user.locationName
-                // user.clientId = userDTO.clientId ?? user.clientId
-                // user.isActive = userDTO.isActive ?? true
-                
-                // Set sync status
-                user.lastSyncedAt = Date()
-                user.needsSync = false
-                
-                // Don't overwrite existing project relationships
-                if existingProjects.isEmpty && !user.assignedProjects.isEmpty {
-                }
+                self.currentUser = existingUser
             } else {
-                // Create new user
-                user = userDTO.toModel()
-                context.insert(user)
+                throw NSError(domain: "DataController", code: 2,
+                              userInfo: [NSLocalizedDescriptionKey: "Failed to fetch user"])
             }
-            
-            try context.save()
-        } catch {
-            throw error
+            return
         }
-        
+
+        let user = fetchedUser
+
         // Update app state with the current user
         self.currentUser = user
-        
+
         // Store user type in UserDefaults for onboarding flow
-        if let userTypeString = userDTO.userType {
-            // Map Bubble's user type strings to our UserType enum
-            if userTypeString.lowercased() == "company" {
+        if let userType = user.userType {
+            // Map user type strings to our UserType enum
+            if userType == .company {
                 UserDefaults.standard.set(UserType.company.rawValue, forKey: "selected_user_type")
-            } else if userTypeString.lowercased() == "employee" {
+            } else if userType == .employee {
                 UserDefaults.standard.set(UserType.employee.rawValue, forKey: "selected_user_type")
             }
             // Also store the raw value as a backup
-            UserDefaults.standard.set(userTypeString, forKey: "user_type_raw")
+            UserDefaults.standard.set(userType.rawValue, forKey: "user_type_raw")
         }
-        
+
         // Save important IDs to UserDefaults
         if let companyId = user.companyId {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
@@ -985,6 +811,9 @@ class DataController: ObservableObject {
 
         // Sign out from auth manager
         authManager.signOut()
+
+        // Sign out from Supabase
+        Task { await SupabaseService.shared.signOut() }
         
         // Clear PIN settings
         simplePINManager.removePIN()
@@ -1022,15 +851,7 @@ class DataController: ObservableObject {
             // Delete in correct order to avoid relationship issues
             // Start with leaf entities that don't have critical relationships
             
-            // 1. Delete CalendarEvents first (they reference tasks and projects)
-            if let calendarEvents = try? context.fetch(FetchDescriptor<CalendarEvent>()) {
-                print("[LOGOUT] Deleting \(calendarEvents.count) calendar events...")
-                for event in calendarEvents {
-                    context.delete(event)
-                }
-            }
-            
-            // 2. Delete ProjectTasks (they reference projects)
+            // 1. Delete ProjectTasks (they reference projects)
             if let tasks = try? context.fetch(FetchDescriptor<ProjectTask>()) {
                 print("[LOGOUT] Deleting \(tasks.count) tasks...")
                 for task in tasks {
@@ -1315,37 +1136,24 @@ class DataController: ObservableObject {
             let companies = try context.fetch(descriptor)
             
             if companies.isEmpty || (companies.first?.needsSync == true) {
-                let companyDTO = try await apiService.fetchCompany(id: companyId)
-                
+                // syncManager handles fetch, convert, and upsert
+                let company = try await syncManager.fetchCompany(id: companyId)
+
                 await MainActor.run {
-                    // Variable to track the company we're working with
-                    var company: Company
-                    
-                    if let existingCompany = companies.first {
-                        // Update existing
-                        updateCompany(existingCompany, from: companyDTO)
-                        company = existingCompany
-                    } else {
-                        // Create new
-                        let newCompany = companyDTO.toModel()
-                        context.insert(newCompany)
-                        company = newCompany
-                    }
-                    
-                    // Log final subscription state after update
-                    
-                    try? context.save()
-                    
-                    // If team members haven't been synced, or it's been more than a day, sync team members
-                    if !company.teamMembersSynced || 
-                       company.lastSyncedAt == nil || 
-                       Date().timeIntervalSince(company.lastSyncedAt!) > 86400 {
-                        
-                        // Launch a task to fetch team members
-                        Task {
-                            await syncManager?.syncCompanyTeamMembers(company)
+                    if let company = company {
+                        try? context.save()
+
+                        // If team members haven't been synced, or it's been more than a day, sync team members
+                        if !company.teamMembersSynced ||
+                           company.lastSyncedAt == nil ||
+                           Date().timeIntervalSince(company.lastSyncedAt!) > 86400 {
+
+                            // Launch a task to fetch team members
+                            Task {
+                                await self.syncManager?.syncCompanyTeamMembers(company)
+                            }
+                        } else {
                         }
-                    } else {
                     }
                 }
             } else {
@@ -1355,161 +1163,7 @@ class DataController: ObservableObject {
         }
     }
     
-    // Helper to update company from DTO
-    private func updateCompany(_ company: Company, from dto: CompanyDTO) {
-        
-        company.name = dto.companyName ?? "Unknown Company"
-        company.externalId = dto.companyID
-        company.companyDescription = dto.companyDescription
-        
-        // Handle location
-        if let location = dto.location {
-            company.address = location.formattedAddress
-            company.latitude = location.lat
-            company.longitude = location.lng
-        }
-        
-        // Handle contact information
-        company.phone = dto.phone
-        company.email = dto.officeEmail
-        company.website = dto.website
-        
-        // Handle logo
-        if let logoImage = dto.logo, let logoUrl = logoImage.url {
-            company.logoURL = logoUrl
-        }
-        
-        // Handle business hours
-        company.openHour = dto.openHour
-        company.closeHour = dto.closeHour
-        
-        // Log subscription data from DTO if available
-        if let subscriptionStatus = dto.subscriptionStatus {
-            // CRITICAL FIX: Normalize status to lowercase to match enum values
-            let normalizedStatus = subscriptionStatus.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-            let oldStatus = company.subscriptionStatus
-            company.subscriptionStatus = normalizedStatus
-            print("[SUBSCRIPTION] Status changed: \(oldStatus ?? "nil") -> \(normalizedStatus)")
-        } else {
-            print("[SUBSCRIPTION] Status update: nil (no change)")
-        }
-        
-        if let subscriptionPlan = dto.subscriptionPlan {
-            // CRITICAL FIX: Normalize plan to lowercase to match enum values
-            let normalizedPlan = subscriptionPlan.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-            let oldPlan = company.subscriptionPlan
-            company.subscriptionPlan = normalizedPlan
-            print("[SUBSCRIPTION] Plan changed: \(oldPlan ?? "nil") -> \(normalizedPlan)")
-        } else {
-            print("[SUBSCRIPTION] Plan update: nil (no change)")
-        }
-        
-        if let subscriptionEnd = dto.subscriptionEnd {
-            company.subscriptionEnd = subscriptionEnd
-        } else {
-        }
-        
-        if let subscriptionPeriod = dto.subscriptionPeriod {
-            company.subscriptionPeriod = subscriptionPeriod
-        } else {
-        }
-        
-        if let maxSeats = dto.maxSeats {
-            company.maxSeats = maxSeats
-        } else {
-        }
-        
-        if let seatedEmployees = dto.seatedEmployees {
-            let seatedIds = seatedEmployees.compactMap { $0.stringValue }
-            company.seatedEmployeeIds = seatedIds.joined(separator: ",")
-        } else {
-        }
-        
-        if let seatGraceStartDate = dto.seatGraceStartDate {
-            company.seatGraceStartDate = seatGraceStartDate
-        } else {
-        }
-        
-        // Note: subscriptionIdsJson not available in current DTO
-        
-        if let trialStartDate = dto.trialStartDate {
-            company.trialStartDate = trialStartDate
-        } else {
-        }
-        
-        if let trialEndDate = dto.trialEndDate {
-            company.trialEndDate = trialEndDate
-        } else {
-        }
-        
-        if let hasPrioritySupport = dto.hasPrioritySupport {
-            company.hasPrioritySupport = hasPrioritySupport
-        } else {
-        }
-        
-        if let dataSetupPurchased = dto.dataSetupPurchased {
-            company.dataSetupPurchased = dataSetupPurchased
-        } else {
-        }
-        
-        if let dataSetupCompleted = dto.dataSetupCompleted {
-            company.dataSetupCompleted = dataSetupCompleted
-        } else {
-        }
-        
-        if let dataSetupScheduledDate = dto.dataSetupScheduledDate {
-            company.dataSetupScheduledDate = dataSetupScheduledDate
-        } else {
-        }
-        
-        if let stripeCustomerId = dto.stripeCustomerId {
-            company.stripeCustomerId = stripeCustomerId
-        } else {
-        }
-        
-        // Handle admin role update
-        if let currentUser = currentUser,
-           let adminRefs = dto.admin {
-            // Check if current user's ID is in the admin list
-            let adminIds = adminRefs.compactMap { $0.stringValue }
-
-            print("[DATA_CONTROLLER] Checking admin status for user: \(currentUser.id)")
-            print("[DATA_CONTROLLER] Company admin IDs: \(adminIds)")
-
-            if adminIds.contains(currentUser.id) {
-                print("[DATA_CONTROLLER] ✅ User IS admin - updating role from \(currentUser.role) to .admin")
-                // Update current user's role to admin
-                currentUser.role = .admin
-                // Save the context immediately to ensure role update is persisted
-                try? modelContext?.save()
-
-                // CRITICAL: Force UI update by triggering objectWillChange
-                self.objectWillChange.send()
-                print("[DATA_CONTROLLER] Admin role updated and UI notified")
-            } else {
-                print("[DATA_CONTROLLER] ⚠️ User is NOT admin")
-            }
-        } else {
-            print("[DATA_CONTROLLER] Cannot check admin status - missing currentUser or admin list")
-        }
-        
-        // Handle admin list
-        if let adminRefs = dto.admin {
-            let adminIds = adminRefs.compactMap { $0.stringValue }
-            company.setAdminIds(adminIds)
-        }
-        
-        // Handle company details
-        if let industryValue = dto.industry, !industryValue.isEmpty {
-            company.setIndustries([industryValue])
-        }
-        company.companySize = dto.companySize
-        company.companyAge = dto.companyAge
-        
-        company.lastSyncedAt = Date()
-        company.needsSync = false
-        
-    }
+    // Note: updateCompany(from: CompanyDTO) removed - syncManager.fetchCompany handles upsert directly
     
     /// Ensures project team members are properly synchronized between IDs and User objects
     @MainActor
@@ -1543,112 +1197,57 @@ class DataController: ObservableObject {
                 let existingUsers = try context.fetch(descriptor)
                 
                 if let existingUser = existingUsers.first {
-                    // User exists - link to project
-                    
-                    // Always try to refresh user data if we're online to ensure we have the latest
+                    // User exists - refresh if online
                     if isConnected {
                         do {
-                            let userDTO = try await apiService.fetchUser(id: memberId)
-                            
-                            // Check if user is still part of the company
-                            if userDTO.company == nil || (userDTO.company != nil && userDTO.company != existingUser.companyId) {
-                                // User is no longer part of the company - remove them
-                                
-                                // Remove from all projects
-                                for assignedProject in existingUser.assignedProjects {
-                                    assignedProject.teamMembers.removeAll { $0.id == memberId }
+                            // syncManager.fetchUser handles fetch, convert, and upsert
+                            if let refreshedUser = try await syncManager?.fetchUser(id: memberId) {
+                                // Check if user is still part of the company
+                                if refreshedUser.companyId == nil || refreshedUser.companyId != existingUser.companyId {
+                                    // User is no longer part of the company - remove them
+                                    for assignedProject in existingUser.assignedProjects {
+                                        assignedProject.teamMembers.removeAll { $0.id == memberId }
+                                    }
+                                    context.delete(existingUser)
+                                    continue
                                 }
-                                
-                                // Delete the user
-                                context.delete(existingUser)
-                                continue // Skip to next team member
                             }
-                            
-                            // Update all user fields to ensure we have the latest data
-                            existingUser.firstName = userDTO.nameFirst ?? existingUser.firstName
-                            existingUser.lastName = userDTO.nameLast ?? existingUser.lastName
-                            
-                            // Update phone number
-                            if let phoneNumber = userDTO.phone {
-                                existingUser.phone = phoneNumber
-                            }
-                            
-                            // Update email
-                            if let emailAuth = userDTO.authentication?.email?.email {
-                                existingUser.email = emailAuth
-                            } else if let email = userDTO.email {
-                                existingUser.email = email
-                            }
-                            
-                            // Update profile image URL
-                            if let avatarUrl = userDTO.avatar {
-                                existingUser.profileImageURL = avatarUrl
-                            }
-                            
-                            // Update last synced time
-                            existingUser.lastSyncedAt = Date()
-                            
-                            // Save the context
-                            try context.save()
                         } catch {
                         }
                     }
-                    
+
                     // Add to project's team members if not already there
                     if !project.teamMembers.contains(where: { $0.id == existingUser.id }) {
                         project.teamMembers.append(existingUser)
                     }
-                    
+
                     // Add project to user's assigned projects if not already there
                     if !existingUser.assignedProjects.contains(where: { $0.id == project.id }) {
                         existingUser.assignedProjects.append(project)
                     }
                 } else if isConnected {
-                    // User doesn't exist locally but we're online - fetch from API
+                    // User doesn't exist locally but we're online - fetch via syncManager
                     do {
-                        let userDTO = try await apiService.fetchUser(id: memberId)
-                        
-                        // Check if user belongs to a company
-                        if userDTO.company == nil {
-                            continue // Skip this user
-                        }
-                        
-                        // Create new user
-                        let newUser = userDTO.toModel()
+                        if let newUser = try await syncManager?.fetchUser(id: memberId) {
+                            // Check if user belongs to a company
+                            if newUser.companyId == nil {
+                                continue // Skip this user
+                            }
 
-                        // Create bidirectional relationship (with duplicate check)
-                        if !newUser.assignedProjects.contains(where: { $0.id == project.id }) {
-                            newUser.assignedProjects.append(project)
-                        }
-                        if !project.teamMembers.contains(where: { $0.id == newUser.id }) {
-                            project.teamMembers.append(newUser)
-                        }
-                        
-                        // Insert into database
-                        context.insert(newUser)
-                    } catch {
-                        // Check if this is a 404 error (user deleted from system)
-                        if let apiError = error as? APIError, case .httpError(let statusCode) = apiError, statusCode == 404 {
-                            
-                            // Delete any existing local user with this ID
-                            let existingUserPredicate = #Predicate<User> { $0.id == memberId }
-                            let existingUserDescriptor = FetchDescriptor<User>(predicate: existingUserPredicate)
-                            if let existingUsers = try? context.fetch(existingUserDescriptor) {
-                                for userToDelete in existingUsers {
-                                    context.delete(userToDelete)
-                                }
+                            // Create bidirectional relationship (with duplicate check)
+                            if !newUser.assignedProjects.contains(where: { $0.id == project.id }) {
+                                newUser.assignedProjects.append(project)
                             }
-                            
-                            // Add to sync manager's non-existent cache if available
-                            if let syncManager = self.syncManager {
-                                syncManager.addNonExistentUserId(memberId)
+                            if !project.teamMembers.contains(where: { $0.id == newUser.id }) {
+                                project.teamMembers.append(newUser)
                             }
-                            
+                        } else {
+                            // User not found - add to non-existent cache
+                            syncManager?.addNonExistentUserId(memberId)
                             continue
                         }
-                        
-                        
-                        // Only create placeholder for non-404 errors (network issues, etc)
+                    } catch {
+                        // Create placeholder for network errors
                         let placeholderUser = User(
                             id: memberId,
                             firstName: "Team Member",
@@ -1657,21 +1256,16 @@ class DataController: ObservableObject {
                             companyId: project.companyId
                         )
 
-                        // Create bidirectional relationship (with duplicate check)
                         if !placeholderUser.assignedProjects.contains(where: { $0.id == project.id }) {
                             placeholderUser.assignedProjects.append(project)
                         }
                         if !project.teamMembers.contains(where: { $0.id == placeholderUser.id }) {
                             project.teamMembers.append(placeholderUser)
                         }
-                        
-                        // Insert into database
                         context.insert(placeholderUser)
                     }
                 } else {
                     // Offline and user doesn't exist - create placeholder
-
-                    // Create placeholder user until we can fetch real data when online
                     let placeholderUser = User(
                         id: memberId,
                         firstName: "Team Member",
@@ -1680,15 +1274,12 @@ class DataController: ObservableObject {
                         companyId: project.companyId
                     )
 
-                    // Create bidirectional relationship (with duplicate check)
                     if !placeholderUser.assignedProjects.contains(where: { $0.id == project.id }) {
                         placeholderUser.assignedProjects.append(project)
                     }
                     if !project.teamMembers.contains(where: { $0.id == placeholderUser.id }) {
                         project.teamMembers.append(placeholderUser)
                     }
-
-                    // Insert into database
                     context.insert(placeholderUser)
                 }
             } catch {
@@ -1770,7 +1361,7 @@ class DataController: ObservableObject {
         }
     }
     
-    /// Force refresh projects from Bubble backend
+    /// Force refresh projects from backend
     func refreshProjectsFromBackend() async {
         guard isConnected, isAuthenticated else {
             return
@@ -1794,203 +1385,142 @@ class DataController: ObservableObject {
         }
     }
     
-    // MARK: - CalendarEvent Methods
+    // MARK: - Scheduled Task Methods
 
-    /// Get active calendar events that overlap with a date range (optimized for scheduler)
-    /// This method is much more efficient than calling getCalendarEvents(for:) in a loop
-    func getCalendarEvents(in dateRange: ClosedRange<Date>) -> [CalendarEvent] {
+    /// Get scheduled tasks that overlap with a date range (optimized for scheduler)
+    /// This method is much more efficient than calling getScheduledTasks(for:) in a loop
+    func getScheduledTasks(in dateRange: ClosedRange<Date>) -> [ProjectTask] {
         guard let context = modelContext else {
             return []
         }
 
         do {
-            // Fetch all events once (much faster than multiple queries)
-            let allEvents = try context.fetch(FetchDescriptor<CalendarEvent>())
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
 
-            // Filter events that overlap with the date range
-            let filteredEvents = allEvents.filter { event in
-                // Check if event overlaps with the range
-                guard let eventStart = event.startDate else { return false }
-                let eventEnd = event.endDate ?? eventStart
+            let filteredTasks = allTasks.filter { task in
+                guard task.deletedAt == nil else { return false }
+                guard let taskStart = task.startDate else { return false }
+                let taskEnd = task.endDate ?? taskStart
 
-                // Event overlaps if:
-                // - Event starts before range ends AND
-                // - Event ends after range starts
-                return eventStart <= dateRange.upperBound && eventEnd >= dateRange.lowerBound
+                // Task overlaps if it starts before range ends AND ends after range starts
+                return taskStart <= dateRange.upperBound && taskEnd >= dateRange.lowerBound
             }
 
-            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
         } catch {
-            print("[CALENDAR] ❌ Failed to fetch events in range: \(error)")
+            print("[SCHEDULE] ❌ Failed to fetch tasks in range: \(error)")
             return []
         }
     }
 
-    /// Get calendar events for a specific date (simplified version for scheduler)
-    func getCalendarEvents(for date: Date) -> [CalendarEvent] {
+    /// Get scheduled tasks for a specific date
+    func getScheduledTasks(for date: Date) -> [ProjectTask] {
         guard let context = modelContext else {
             return []
         }
 
-        let descriptor = FetchDescriptor<CalendarEvent>()
-
         do {
-            let allEvents = try context.fetch(descriptor)
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
 
-            // Filter by date
-            let filteredEvents = allEvents.filter { event in
-                // Check if event is active on this date
-                let spannedDates = event.spannedDates
-                return spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
+            let filteredTasks = allTasks.filter { task in
+                guard task.deletedAt == nil else { return false }
+                guard let taskStart = task.startDate else { return false }
+                let taskEnd = task.endDate ?? taskStart
+                let calendar = Calendar.current
+
+                // Check if date falls within task's start-to-end range
+                return calendar.compare(taskStart, to: date, toGranularity: .day) != .orderedDescending
+                    && calendar.compare(taskEnd, to: date, toGranularity: .day) != .orderedAscending
             }
 
-            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
         } catch {
             return []
         }
     }
 
-    /// Get calendar events for a specific date for the current user
-    func getCalendarEventsForCurrentUser(for date: Date) -> [CalendarEvent] {
-        guard let user = currentUser else { 
-            return [] 
-        }
-        guard let context = modelContext else { 
-            return [] 
-        }
-        
-        
-        let descriptor = FetchDescriptor<CalendarEvent>()
-        
+    /// Get scheduled tasks for a specific date for the current user
+    func getScheduledTasksForCurrentUser(for date: Date) -> [ProjectTask] {
+        guard let user = currentUser else { return [] }
+        guard let context = modelContext else { return [] }
+
         do {
-            let allEvents = try context.fetch(descriptor)
-            
-            /*
-            // Search for any Railings events specifically
-            let railingsEvents = allEvents.filter { $0.title.lowercased().contains("railings") }
-            if !railingsEvents.isEmpty {
-                for (index, event) in railingsEvents.enumerated() {
-                    if let project = event.project {
-                    }
-                }
-            }
-            */
-            
-            /*
-            // Debug first few events for general context
-            for (index, event) in allEvents.prefix(5).enumerated() {
-            }
-            */
-            
-            // Filter by date and user access
-            var passedDateFilter = 0
-            var passedShouldDisplayFilter = 0
-            var passedUserAccessFilter = 0
-            
-            let filteredEvents = allEvents.filter { event in
-                // Check if event is active on this date
-                let spannedDates = event.spannedDates
-                let isActiveOnDate = spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
-                
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+
+            let filteredTasks = allTasks.filter { task in
+                guard task.deletedAt == nil else { return false }
+                guard let taskStart = task.startDate else { return false }
+                let taskEnd = task.endDate ?? taskStart
+                let calendar = Calendar.current
+
+                // Check if date falls within task's start-to-end range
+                let isActiveOnDate = calendar.compare(taskStart, to: date, toGranularity: .day) != .orderedDescending
+                    && calendar.compare(taskEnd, to: date, toGranularity: .day) != .orderedAscending
+
                 if !isActiveOnDate {
                     return false
                 }
-                passedDateFilter += 1
-                passedShouldDisplayFilter += 1
-                
-                // For Admin and Office Crew, show all company events
+
+                // For Admin and Office Crew, show all company tasks
                 if user.role == .admin || user.role == .officeCrew {
-                    let matchesCompany = event.companyId == user.companyId
-                    if !matchesCompany {
-                        return false
-                    } else {
-                        passedUserAccessFilter += 1
-                        return true
-                    }
+                    return task.companyId == user.companyId
                 } else {
-                    // For Field Crew, only show events they're assigned to
-                    let eventTeamMemberIds = event.getTeamMemberIds()
-                    let isAssignedViaIds = eventTeamMemberIds.contains(user.id)
-                    let isAssignedViaObjects = event.teamMembers.contains(where: { $0.id == user.id })
-                    let isAssigned = isAssignedViaIds || isAssignedViaObjects
-                    
-                    if !isAssigned {
-                        // Also check task assignment if this is a task event
-                        if let task = event.task {
-                            let taskTeamMemberIds = task.getTeamMemberIds()
-                            let isAssignedToTask = taskTeamMemberIds.contains(user.id) || task.teamMembers.contains(where: { $0.id == user.id })
-                            
-                            if isAssignedToTask {
-                                passedUserAccessFilter += 1
-                                return true
-                            }
-                        }
-                        return false
-                    } else {
-                        passedUserAccessFilter += 1
-                        return true
-                    }
-                }
-            }
-            
-            // Commented out verbose logging to prevent console spam during calendar rendering
-            
-            // for event in filteredEvents {
-            // }
-            
-            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
-        } catch {
-            return []
-        }
-    }
-
-    func getAllCalendarEvents(from startDate: Date) -> [CalendarEvent] {
-        guard let user = currentUser else {
-            return []
-        }
-        guard let context = modelContext else {
-            return []
-        }
-
-        let descriptor = FetchDescriptor<CalendarEvent>()
-
-        do {
-            let allEvents = try context.fetch(descriptor)
-
-            let filteredEvents = allEvents.filter { event in
-                // Filter by startDate instead of endDate to include events without end dates
-                guard let eventStartDate = event.startDate else { return false }
-                if eventStartDate < startDate {
-                    return false
-                }
-
-                if user.role == .admin || user.role == .officeCrew {
-                    return event.companyId == user.companyId
-                } else {
-                    let eventTeamMemberIds = event.getTeamMemberIds()
-                    let isAssignedViaIds = eventTeamMemberIds.contains(user.id)
-                    let isAssignedViaObjects = event.teamMembers.contains(where: { $0.id == user.id })
-                    let isAssigned = isAssignedViaIds || isAssignedViaObjects
+                    // For Field Crew, only show tasks they're assigned to
+                    let taskTeamMemberIds = task.getTeamMemberIds()
+                    let isAssigned = taskTeamMemberIds.contains(user.id)
+                        || task.teamMembers.contains(where: { $0.id == user.id })
 
                     if !isAssigned {
-                        if let task = event.task {
-                            let taskTeamMemberIds = task.getTeamMemberIds()
-                            let isAssignedToTask = taskTeamMemberIds.contains(user.id) || task.teamMembers.contains(where: { $0.id == user.id })
-                            return isAssignedToTask
-                        }
-                        if let project = event.project {
+                        // Also check project assignment
+                        if let project = task.project {
                             let projectTeamMemberIds = project.getTeamMemberIds()
-                            let isAssignedToProject = projectTeamMemberIds.contains(user.id) || project.teamMembers.contains(where: { $0.id == user.id })
-                            return isAssignedToProject
+                            return projectTeamMemberIds.contains(user.id)
+                                || project.teamMembers.contains(where: { $0.id == user.id })
                         }
                         return false
                     }
-
                     return true
                 }
             }
 
-            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+        } catch {
+            return []
+        }
+    }
+
+    /// Get all scheduled tasks from a given start date, filtered by current user access
+    func getAllScheduledTasks(from startDate: Date) -> [ProjectTask] {
+        guard let user = currentUser else { return [] }
+        guard let context = modelContext else { return [] }
+
+        do {
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+
+            let filteredTasks = allTasks.filter { task in
+                guard let taskStartDate = task.startDate else { return false }
+                if taskStartDate < startDate { return false }
+
+                if user.role == .admin || user.role == .officeCrew {
+                    return task.companyId == user.companyId
+                } else {
+                    let taskTeamMemberIds = task.getTeamMemberIds()
+                    let isAssigned = taskTeamMemberIds.contains(user.id)
+                        || task.teamMembers.contains(where: { $0.id == user.id })
+
+                    if !isAssigned {
+                        if let project = task.project {
+                            let projectTeamMemberIds = project.getTeamMemberIds()
+                            return projectTeamMemberIds.contains(user.id)
+                                || project.teamMembers.contains(where: { $0.id == user.id })
+                        }
+                        return false
+                    }
+                    return true
+                }
+            }
+
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
         } catch {
             return []
         }
@@ -2028,37 +1558,20 @@ class DataController: ObservableObject {
                          userInfo: [NSLocalizedDescriptionKey: "Project not found locally and offline"])
         }
         
-        // Online and needing refresh: fetch from API
+        // Online and needing refresh: sync projects then read from local
         do {
-            let projectDTO = try await apiService.fetchProject(id: projectId)
-            
-            // Convert to model and save
-            let project = projectDTO.toModel()
-            
-            // Update or insert
-            if let existingProject = try context.fetch(descriptor).first {
-                // Update existing (careful not to overwrite local changes)
-                if !existingProject.needsSync {
-                    // Only update if no pending local changes
-                    // Full implementation would merge changes
-                }
-                
-                // Ensure team members are properly linked
-                await syncProjectTeamMembers(existingProject)
-                return existingProject
-            } else {
-                // Insert new
-                context.insert(project)
-                try context.save()
-                
-                // Ensure team members are properly linked
-                await syncProjectTeamMembers(project)
-                return project
-            }
-        } catch {
-            // On API error, fall back to local if available
+            try await syncManager?.syncProjects()
+
             if let localProject = try context.fetch(descriptor).first {
-                // Still ensure team members are properly linked
+                await syncProjectTeamMembers(localProject)
+                return localProject
+            }
+
+            throw NSError(domain: "DataController", code: 4,
+                         userInfo: [NSLocalizedDescriptionKey: "Project not found after sync"])
+        } catch {
+            // On sync error, fall back to local if available
+            if let localProject = try context.fetch(descriptor).first {
                 await syncProjectTeamMembers(localProject)
                 return localProject
             }
@@ -2095,32 +1608,22 @@ class DataController: ObservableObject {
             return localProjects
         }
         
-        // Otherwise fetch fresh data using our new centralized API
+        // Trigger a sync to get fresh data, then use local SwiftData
         do {
-            // Fetch remote projects but discard them for now
-            // In the future, we'll process and merge them with local data
-            _ = try await apiService.fetchUserProjectsForDate(
-                userId: userId,
-                date: today
-            )
-            
-            // Sync team member relationships for each project
-            for project in localProjects {
-                await syncProjectTeamMembers(project)
-            }
-            
-            // Return local projects for now until full sync is implemented
-            return localProjects
+            try await syncManager?.syncProjects()
         } catch {
-            // On error, fall back to local data
-            
-            // Still ensure team member relationships are synchronized for projects
-            for project in localProjects {
-                await syncProjectTeamMembers(project)
-            }
-            
-            return localProjects
+            // Non-fatal - we still have local data
         }
+
+        // Re-fetch from local after sync
+        let refreshedProjects = getProjects(for: today, assignedTo: user ?? currentUser)
+
+        // Sync team member relationships for each project
+        for project in refreshedProjects {
+            await syncProjectTeamMembers(project)
+        }
+
+        return refreshedProjects
     }
     
     
@@ -2233,39 +1736,9 @@ class DataController: ObservableObject {
 
     @MainActor
     func syncTaskStatusOptions(for companyId: String) async {
-        guard let context = modelContext else { return }
-
-        do {
-            let dtos = try await apiService.fetchTaskStatusOptions(companyId: companyId)
-
-            for dto in dtos {
-                let descriptor = FetchDescriptor<TaskStatusOption>(
-                    predicate: #Predicate<TaskStatusOption> { $0.id == dto._id }
-                )
-                let existing = try context.fetch(descriptor)
-
-                if let option = existing.first {
-                    option.display = dto.Display
-                    option.color = dto.color
-                    option.index = Int(dto.index)
-                    option.lastSyncedAt = Date()
-                } else {
-                    let newOption = TaskStatusOption(
-                        id: dto._id,
-                        display: dto.Display,
-                        color: dto.color,
-                        index: Int(dto.index),
-                        companyId: companyId
-                    )
-                    context.insert(newOption)
-                }
-            }
-
-            try context.save()
-            print("[DataController] ✅ Synced \(dtos.count) task status options")
-        } catch {
-            print("[DataController] ❌ Error syncing task status options: \(error)")
-        }
+        // Task status options now come from the TaskStatus enum, not from the API
+        // This method is a no-op but kept for compatibility
+        print("[DataController] Task status options are now derived from TaskStatus enum")
     }
     
     func getCurrentUserCompany() -> Company? {
@@ -2310,40 +1783,17 @@ class DataController: ObservableObject {
     /// Force refresh company data from API
     @MainActor
     func forceRefreshCompany(id: String) async throws {
-        guard isConnected, isAuthenticated, let context = modelContext else {
+        guard isConnected, isAuthenticated else {
             if !isConnected {
-                throw NSError(domain: "DataController", code: 100, 
+                throw NSError(domain: "DataController", code: 100,
                              userInfo: [NSLocalizedDescriptionKey: "No internet connection"])
             }
-            if !isAuthenticated {
-                throw NSError(domain: "DataController", code: 101, 
-                             userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
-            }
-            throw NSError(domain: "DataController", code: 102, 
-                         userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+            throw NSError(domain: "DataController", code: 101,
+                         userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
         }
-        
-        
-        // Fetch fresh data from API
-        let companyDTO = try await apiService.fetchCompany(id: id)
-        
-        // Check if we already have this company locally
-        let descriptor = FetchDescriptor<Company>(
-            predicate: #Predicate<Company> { $0.id == id }
-        )
-        let companies = try context.fetch(descriptor)
-        
-        if let existingCompany = companies.first {
-            // Update existing company
-            updateCompany(existingCompany, from: companyDTO)
-        } else {
-            // Create new company
-            let newCompany = companyDTO.toModel()
-            context.insert(newCompany)
-        }
-        
-        // Save changes
-        try context.save()
+
+        // syncManager handles fetch, convert, and upsert
+        let _ = try await syncManager.fetchCompany(id: id)
     }
     
     func appDidBecomeActive() {
@@ -2574,18 +2024,14 @@ class DataController: ObservableObject {
         }
     }
     
-    /// Request a password reset email
+    /// Request a password reset email via Supabase Auth
     /// - Parameter email: The user's email address
     /// - Returns: Tuple with success flag and optional error message
     func requestPasswordReset(email: String) async -> (Bool, String?) {
         do {
-            let success = try await authManager.requestPasswordReset(email: email)
-            return (success, nil)
-        } catch let error as AuthError {
-            // Return user-friendly error message
-            return (false, error.localizedDescription)
+            try await authManager.resetPassword(email: email)
+            return (true, nil)
         } catch {
-            // Return generic error message
             return (false, "Failed to request password reset. Please try again.")
         }
     }
@@ -2596,8 +2042,8 @@ class DataController: ObservableObject {
     @MainActor
     func deleteUserAccount(userId: String) async -> Bool {
         do {
-            // Call the API to delete the user account
-            let response = try await apiService.deleteUser(id: userId)
+            // Call the sync manager to delete the user account
+            try await syncManager.deleteUser(userId: userId)
 
             // If successful, clean up local data and log out
             logout()
@@ -2638,11 +2084,11 @@ class DataController: ObservableObject {
         try modelContext.save()
         print("[DELETE_PROJECT] ✅ Project '\(projectTitle)' soft deleted locally")
 
-        // Trigger background sync to push changes to Bubble
+        // Trigger background sync to push changes to server
         syncManager?.triggerBackgroundSync()
     }
 
-    /// Delete a task and its calendar event from both Bubble API and local storage
+    /// Delete a task from both Supabase and local storage
     /// - Parameters:
     ///   - task: The task to delete
     ///   - updateProject: Whether to update parent project dates (default: true)
@@ -2654,16 +2100,10 @@ class DataController: ObservableObject {
         }
 
         let taskId = task.id
-        let calendarEventId = task.calendarEvent?.id
         let project = task.project
 
-        // STEP 1: Delete calendar event from Bubble if it exists
-        if let eventId = calendarEventId {
-            try await apiService.deleteCalendarEvent(id: eventId)
-        }
-
-        // STEP 2: Delete task from Bubble
-        try await apiService.deleteTask(id: taskId)
+        // STEP 1: Delete task from Supabase
+        try await syncManager.deleteTask(taskId: taskId)
 
         // STEP 3: Delete from local SwiftData
         modelContext.delete(task)
@@ -2673,8 +2113,8 @@ class DataController: ObservableObject {
         if updateProject, let project = project {
             try modelContext.save()
 
-            // Sync updated computed dates to Bubble
-            try await apiService.updateProjectDates(
+            // Sync updated computed dates to Supabase
+            try await syncManager.updateProjectDates(
                 projectId: project.id,
                 startDate: project.computedStartDate,
                 endDate: project.computedEndDate
@@ -2682,7 +2122,7 @@ class DataController: ObservableObject {
         }
     }
 
-    /// Delete a client from both Bubble API and local storage
+    /// Delete a client from both server and local storage
     /// - Parameter client: The client to delete
     /// - Throws: API or database errors
     /// - Note: Caller is responsible for handling associated projects (reassignment or deletion)
@@ -2692,8 +2132,8 @@ class DataController: ObservableObject {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
 
-        // STEP 1: Delete client from Bubble
-        try await apiService.deleteClient(id: client.id)
+        // STEP 1: Delete client from Supabase
+        try await syncManager.deleteClient(clientId: client.id)
 
         // STEP 2: Delete client from local SwiftData
         modelContext.delete(client)
@@ -2705,10 +2145,9 @@ class DataController: ObservableObject {
     ///   - project: The project to reschedule
     ///   - startDate: New start date
     ///   - endDate: New end date
-    ///   - calendarEvent: The project's calendar event (optional, will be found if not provided)
     /// - Throws: API or database errors
     @MainActor
-    func rescheduleProject(_ project: Project, startDate: Date, endDate: Date, calendarEvent: CalendarEvent? = nil) async throws {
+    func rescheduleProject(_ project: Project, startDate: Date, endDate: Date) async throws {
         guard let modelContext = modelContext else {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
@@ -2717,54 +2156,22 @@ class DataController: ObservableObject {
         print("[RESCHEDULE_PROJECT] Old dates: \(project.startDate?.description ?? "nil") - \(project.endDate?.description ?? "nil")")
         print("[RESCHEDULE_PROJECT] New dates: \(startDate.description) - \(endDate.description)")
 
-        // STEP 1: Update calendar event if provided
-        // Note: primaryCalendarEvent removed in task-only scheduling migration
-        // All calendar events are task-based now
-        if let event = calendarEvent {
-            event.startDate = startDate
-            event.endDate = endDate
-            event.needsSync = true
-            print("[RESCHEDULE_PROJECT] ✅ Calendar event updated locally")
-        } else {
-            print("[RESCHEDULE_PROJECT] ⚠️ No calendar event provided")
-        }
-
-        // STEP 2: Update project dates
+        // STEP 1: Update project dates
         project.startDate = startDate
         project.endDate = endDate
         project.needsSync = true
 
-        // STEP 3: Save locally
+        // STEP 2: Save locally
         try modelContext.save()
         print("[RESCHEDULE_PROJECT] ✅ Changes saved locally")
 
-        // STEP 4: Update dates in Bubble
-        try await apiService.updateProjectDates(
+        // STEP 3: Update dates in Supabase
+        try await syncManager.updateProjectDates(
             projectId: project.id,
             startDate: startDate,
             endDate: endDate
         )
-        print("[RESCHEDULE_PROJECT] ✅ Project dates updated in Bubble")
-
-        // STEP 5: Update calendar event in Bubble if it exists
-        if let event = calendarEvent {
-            let formatter = ISO8601DateFormatter()
-            let startDateString = formatter.string(from: startDate)
-            let endDateString = formatter.string(from: endDate)
-
-            print("[RESCHEDULE_PROJECT] 📅 Updating calendar event dates:")
-            print("[RESCHEDULE_PROJECT]   - Start: \(startDate) → \(startDateString)")
-            print("[RESCHEDULE_PROJECT]   - End: \(endDate) → \(endDateString)")
-
-            try await apiService.updateCalendarEvent(
-                id: event.id,
-                updates: [
-                    "startDate": startDateString,
-                    "endDate": endDateString
-                ]
-            )
-            print("[RESCHEDULE_PROJECT] ✅ Calendar event updated in Bubble")
-        }
+        print("[RESCHEDULE_PROJECT] ✅ Project dates updated in Supabase")
     }
 
     // We're removing the ability to update profile images for now
@@ -2836,112 +2243,24 @@ class DataController: ObservableObject {
         }
     }
     
-    func getCalendarEvent(id: String) -> CalendarEvent? {
-        guard let context = modelContext else { return nil }
-        
-        // Always fetch fresh from context to avoid invalidated models
-        do {
-            let descriptor = FetchDescriptor<CalendarEvent>(
-                predicate: #Predicate<CalendarEvent> { $0.id == id }
-            )
-            let events = try context.fetch(descriptor)
-            
-            if let event = events.first {
-                return event
-            }
-            return nil
-        } catch {
-            print("[DataController] Error fetching calendar event \(id): \(error)")
-            return nil
-        }
-    }
-    
-    // MARK: - Diagnostic Functions
-    
-    /// Diagnostic function to search for specific project and analyze calendar event issues
-    func diagnoseRailingsVinylProject() {
-        
-        guard let context = modelContext else {
-            return
-        }
-        
-        do {
-            // Search for projects with "Railings" in the title
-            let allProjects = try context.fetch(FetchDescriptor<Project>())
-            let railingsProjects = allProjects.filter { $0.title.lowercased().contains("railings") }
-            
-            
-            for (index, project) in railingsProjects.enumerated() {
-                
-                // Check for tasks
-                let tasks = project.tasks
-                
-                for (taskIndex, task) in tasks.enumerated() {
-                    if let calendarEvent = task.calendarEvent {
-                    }
-                }
-                
-                // Search for associated calendar events
-                let projectId = project.id
-                let calendarEventDescriptor = FetchDescriptor<CalendarEvent>(
-                    predicate: #Predicate<CalendarEvent> { $0.projectId == projectId }
-                )
-                let projectCalendarEvents = try context.fetch(calendarEventDescriptor)
-                
-                for (eventIndex, event) in projectCalendarEvents.enumerated() {
-                    
-                    // Check spanned dates for Aug 17 and Aug 19
-                    let spannedDates = event.spannedDates
-                    let calendar = Calendar.current
-                    
-                    let aug17_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 17))!
-                    let aug19_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 19))!
-                    
-                    let coversAug17 = spannedDates.contains { calendar.isDate($0, inSameDayAs: aug17_2025) }
-                    let coversAug19 = spannedDates.contains { calendar.isDate($0, inSameDayAs: aug19_2025) }
-                    
-                }
-            }
-            
-            // Also search for tasks with "Railings" in project title
-            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
-            let railingsTasks = allTasks.filter { task in
-                if let project = task.project {
-                    return project.title.lowercased().contains("railings")
-                }
-                return false
-            }
-            
-            
-            for (index, task) in railingsTasks.enumerated() {
-                if let calendarEvent = task.calendarEvent {
-                }
-            }
-            
-            // Check for calendar events on specific dates
-            let calendar = Calendar.current
-            let aug17_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 17))!
-            let aug19_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 19))!
-            
-            for date in [aug17_2025, aug19_2025] {
-                let eventsForDate = getCalendarEventsForCurrentUser(for: date)
-                
-                for event in eventsForDate {
-                    if event.title.lowercased().contains("railings") {
-                    }
-                }
-            }
-            
-        } catch {
-        }
-        
-    }
-    
-    
     /// Gets a user by ID
+    func getTask(id: String) -> ProjectTask? {
+        guard let context = modelContext else { return nil }
+
+        do {
+            let descriptor = FetchDescriptor<ProjectTask>(
+                predicate: #Predicate<ProjectTask> { $0.id == id }
+            )
+            let tasks = try context.fetch(descriptor)
+            return tasks.first
+        } catch {
+            return nil
+        }
+    }
+
     func getUser(id: String) -> User? {
         guard let context = modelContext else { return nil }
-        
+
         do {
             let descriptor = FetchDescriptor<User>(
                 predicate: #Predicate<User> { $0.id == id }
@@ -2972,40 +2291,13 @@ class DataController: ObservableObject {
     
     // MARK: - OPS Contacts Management
     
-    /// Fetch OPS Contacts option set from Bubble
+    /// Fetch OPS Contacts
+    /// TODO: Implement OPS Contacts fetch from Supabase when the table is set up
     @MainActor
     private func fetchOpsContacts() async {
-        do {
-            
-            // Fetch from Bubble API
-            let endpoint = "obj/opscontacts"  // Option sets are usually at obj/[option_set_name]
-            let response: OpsContactsResponse = try await apiService.executeRequest(
-                endpoint: endpoint,
-                method: "GET"
-            )
-            
-            guard let context = modelContext else {
-                return
-            }
-            
-            // Clear existing OPS Contacts
-            let descriptor = FetchDescriptor<OpsContact>()
-            let existingContacts = try context.fetch(descriptor)
-            for contact in existingContacts {
-                context.delete(contact)
-            }
-            
-            // Save new contacts
-            for dto in response.response.results {
-                let contact = dto.toOpsContact()
-                context.insert(contact)
-            }
-            
-            try context.save()
-            
-        } catch {
-            // Non-critical error - don't block login
-        }
+        // OpsContacts fetched from Supabase
+        // This is a non-critical feature - contacts will be populated when Supabase table is ready
+        print("[OPS_CONTACTS] Skipping fetch - Supabase migration pending")
     }
     
     /// Get an OPS Contact by role
@@ -3073,16 +2365,6 @@ class DataController: ObservableObject {
             count += try context.fetchCount(taskDescriptor)
         } catch {
             print("[SYNC] ⚠️ Failed to count pending tasks: \(error)")
-        }
-
-        // Count pending calendar events
-        do {
-            let eventDescriptor = FetchDescriptor<CalendarEvent>(
-                predicate: #Predicate<CalendarEvent> { $0.needsSync == true }
-            )
-            count += try context.fetchCount(eventDescriptor)
-        } catch {
-            print("[SYNC] ⚠️ Failed to count pending events: \(error)")
         }
 
         // Count pending users
@@ -3197,7 +2479,7 @@ class DataController: ObservableObject {
     ///   - operationName: Name for logging (e.g., "UPDATE_TASK_STATUS", "UPDATE_PROJECT", etc.)
     ///   - itemDescription: Brief description of the item (e.g., "task abc123 to Completed")
     ///   - localUpdate: Closure that performs the local database update
-    ///   - syncToAPI: Closure that syncs to Bubble API (called only if connected)
+    ///   - syncToAPI: Closure that syncs to server (called only if connected)
     @MainActor
     func performSyncedOperation<T>(
         item: T,
@@ -3295,7 +2577,7 @@ class DataController: ObservableObject {
                 task.needsSync = true
             },
             syncToAPI: {
-                try await self.apiService.updateTaskStatus(id: task.id, status: newStatus.rawValue)
+                try await self.syncManager.updateTaskStatus(taskId: task.id, status: newStatus)
                 task.needsSync = false
                 task.lastSyncedAt = Date()
             }
@@ -3312,7 +2594,7 @@ class DataController: ObservableObject {
             AnalyticsManager.shared.trackTaskCompleted(taskType: task.taskType?.display)
 
             // Send task completion notification to all project team members
-            if let project = project, OneSignalService.shared.isConfigured {
+            if let project = project {
                 let projectTeamMemberIds = project.teamMembers.map { $0.id }
                 if !projectTeamMemberIds.isEmpty {
                     let taskName = task.displayTitle
@@ -3437,7 +2719,7 @@ class DataController: ObservableObject {
                 project.needsSync = true
             },
             syncToAPI: {
-                try await self.apiService.updateProjectStatus(id: project.id, status: newStatus.rawValue)
+                try await self.syncManager.updateProjectStatus(projectId: project.id, status: newStatus)
                 project.needsSync = false
                 project.lastSyncedAt = Date()
             }
@@ -3452,7 +2734,7 @@ class DataController: ObservableObject {
         // Send push notification if project was just marked as completed
         if newStatus == .completed && previousStatus != .completed {
             let teamMemberIds = project.getTeamMemberIds()
-            if !teamMemberIds.isEmpty, OneSignalService.shared.isConfigured {
+            if !teamMemberIds.isEmpty {
                 Task {
                     do {
                         try await OneSignalService.shared.notifyProjectCompletion(
@@ -3468,49 +2750,47 @@ class DataController: ObservableObject {
         }
     }
 
-    // MARK: - Calendar Event Operations
+    // MARK: - Task Schedule Operations
 
-    /// Update calendar event dates - SINGLE SOURCE OF TRUTH for calendar event updates
+    /// Update task schedule dates - SINGLE SOURCE OF TRUTH for task scheduling updates
     @MainActor
-    func updateCalendarEvent(event: CalendarEvent, startDate: Date, endDate: Date) async throws {
-        // Store task/project references before async operation
-        let task = event.task
-        let project = task?.project
+    func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date) async throws {
+        let project = task.project
 
         // Capture previous dates to detect actual changes
-        let previousStartDate = event.startDate
-        let previousEndDate = event.endDate
+        let previousStartDate = task.startDate
+        let previousEndDate = task.endDate
 
         try await performSyncedOperation(
-            item: event,
-            operationName: "UPDATE_CALENDAR_EVENT",
-            itemDescription: "Updating calendar event \(event.id)",
+            item: task,
+            operationName: "UPDATE_TASK_SCHEDULE",
+            itemDescription: "Updating task \(task.id) schedule",
             localUpdate: {
-                event.startDate = startDate
-                event.endDate = endDate
+                task.startDate = startDate
+                task.endDate = endDate
                 let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-                event.duration = daysDiff + 1
-                event.needsSync = true
+                task.duration = daysDiff + 1
+                task.needsSync = true
             },
             syncToAPI: {
                 let formatter = ISO8601DateFormatter()
                 formatter.formatOptions = [.withInternetDateTime]
 
-                let updates: [String: Any] = [
-                    BubbleFields.CalendarEvent.startDate: formatter.string(from: startDate),
-                    BubbleFields.CalendarEvent.endDate: formatter.string(from: endDate),
-                    BubbleFields.CalendarEvent.duration: event.duration
+                let fields: [String: AnyJSON] = [
+                    "start_date": .string(formatter.string(from: startDate)),
+                    "end_date": .string(formatter.string(from: endDate)),
+                    "duration": .integer(task.duration)
                 ]
 
-                try await self.apiService.updateCalendarEvent(id: event.id, updates: updates)
-                event.needsSync = false
-                event.lastSyncedAt = Date()
+                try await self.syncManager.updateTaskFields(taskId: task.id, fields: fields)
+                task.needsSync = false
+                task.lastSyncedAt = Date()
             }
         )
 
         // Send schedule change notification if dates actually changed
         let datesChanged = previousStartDate != startDate || previousEndDate != endDate
-        if datesChanged, let task = task, let project = project, OneSignalService.shared.isConfigured {
+        if datesChanged, let project = project {
             let teamMemberIds = task.getTeamMemberIds()
             if !teamMemberIds.isEmpty {
                 Task {
@@ -3529,19 +2809,13 @@ class DataController: ObservableObject {
             }
         }
 
-        // Recalculate task indices if this event is linked to a task
-        // This runs regardless of whether calendar sync succeeded
+        // Recalculate task indices
         if let project = project {
             do {
                 try await recalculateTaskIndices(for: project)
             } catch {
-                print("[UPDATE_CALENDAR_EVENT] ⚠️ Failed to recalculate task indices: \(error)")
+                print("[UPDATE_TASK_SCHEDULE] ⚠️ Failed to recalculate task indices: \(error)")
             }
-        }
-
-        // Notify calendar views to refresh
-        await MainActor.run {
-            calendarEventsDidChange.toggle()
         }
     }
 
@@ -3560,8 +2834,7 @@ class DataController: ObservableObject {
         var unscheduledTasks: [ProjectTask] = []
 
         for task in allTasks {
-            if let calendarEvent = task.calendarEvent,
-               let startDate = calendarEvent.startDate {
+            if let startDate = task.startDate {
                 scheduledTasks.append((task: task, startDate: startDate))
             } else {
                 unscheduledTasks.append(task)
@@ -3602,13 +2875,13 @@ class DataController: ObservableObject {
         // Save changes locally
         try modelContext?.save()
 
-        // Sync taskIndex to Bubble for all changed tasks
+        // Sync taskIndex to Supabase for all changed tasks
         if !tasksToSync.isEmpty {
-            print("[TASK_INDEX] 🔄 Syncing \(tasksToSync.count) task indices to Bubble...")
+            print("[TASK_INDEX] 🔄 Syncing \(tasksToSync.count) task indices to Supabase...")
             for (task, index) in tasksToSync {
                 do {
-                    let updates: [String: Any] = [BubbleFields.Task.taskIndex: index]
-                    try await apiService.updateTask(id: task.id, updates: updates)
+                    let fields: [String: AnyJSON] = ["task_index": .integer(index)]
+                    try await syncManager.updateTaskFields(taskId: task.id, fields: fields)
                     task.needsSync = false
                     task.lastSyncedAt = Date()
                     print("[TASK_INDEX]   ✅ Synced taskIndex=\(index) for task '\(task.displayTitle)'")
@@ -3618,7 +2891,7 @@ class DataController: ObservableObject {
                 }
             }
             try modelContext?.save()
-            print("[TASK_INDEX] ✅ Bubble sync complete")
+            print("[TASK_INDEX] ✅ Supabase sync complete")
         }
     }
 
@@ -3629,11 +2902,9 @@ class DataController: ObservableObject {
     /// It handles:
     /// 1. Updating task.teamMemberIdsString
     /// 2. Updating task.teamMembers relationship array
-    /// 3. Updating task's calendar event team members (both string and relationship)
-    /// 4. Syncing task team members to Bubble API
-    /// 5. Syncing calendar event team members to Bubble API
-    /// 6. Updating project team members to reflect changes
-    /// 7. Sending push notifications to newly assigned members
+    /// 3. Syncing task team members to Supabase
+    /// 4. Updating project team members to reflect changes
+    /// 5. Sending push notifications to newly assigned members
     @MainActor
     func updateTaskTeamMembers(task: ProjectTask, memberIds: [String]) async throws {
         print("[UPDATE_TASK_TEAM] 🔄 Starting comprehensive task team update...")
@@ -3664,28 +2935,15 @@ class DataController: ObservableObject {
                 print("[UPDATE_TASK_TEAM] ✅ Task local state updated (IDs string + relationship)")
             },
             syncToAPI: {
-                try await self.apiService.updateTaskTeamMembers(id: task.id, teamMemberIds: memberIds)
+                try await self.syncManager.updateTaskTeamMembers(taskId: task.id, memberIds: memberIds)
                 task.needsSync = false
                 task.lastSyncedAt = Date()
-                print("[UPDATE_TASK_TEAM] ✅ Task team synced to Bubble API")
+                print("[UPDATE_TASK_TEAM] ✅ Task team synced to Supabase")
             }
         )
 
-        // Update calendar event team members if task has one
-        if let calendarEvent = task.calendarEvent {
-            print("[UPDATE_TASK_TEAM] 🔄 Updating associated calendar event team members...")
-            try await updateCalendarEventTeamMembersComprehensive(
-                event: calendarEvent,
-                memberIds: memberIds,
-                memberUsers: teamMemberUsers
-            )
-            print("[UPDATE_TASK_TEAM] ✅ Calendar event team members updated")
-        } else {
-            print("[UPDATE_TASK_TEAM] ℹ️ Task has no calendar event to update")
-        }
-
         // Send push notifications to newly added team members
-        if !addedMemberIds.isEmpty, OneSignalService.shared.isConfigured {
+        if !addedMemberIds.isEmpty {
             let taskName = task.displayTitle
             let projectName = task.project?.title ?? "Project"
 
@@ -3731,32 +2989,6 @@ class DataController: ObservableObject {
             print("[FETCH_USERS] ❌ Error fetching users by ID: \(error)")
             return []
         }
-    }
-
-    /// Update calendar event team members comprehensively (both string and relationship)
-    @MainActor
-    private func updateCalendarEventTeamMembersComprehensive(
-        event: CalendarEvent,
-        memberIds: [String],
-        memberUsers: [User]
-    ) async throws {
-        try await performSyncedOperation(
-            item: event,
-            operationName: "UPDATE_EVENT_TEAM",
-            itemDescription: "Updating calendar event \(event.id) team members",
-            localUpdate: {
-                // Update calendar event team member IDs string
-                event.setTeamMemberIds(memberIds)
-                // Update calendar event team members relationship array
-                event.teamMembers = memberUsers
-                event.needsSync = true
-            },
-            syncToAPI: {
-                try await self.apiService.updateCalendarEventTeamMembers(id: event.id, teamMemberIds: memberIds)
-                event.needsSync = false
-                event.lastSyncedAt = Date()
-            }
-        )
     }
 
     /// Syncs project team members based on all its tasks
@@ -3805,28 +3037,9 @@ class DataController: ObservableObject {
                 project.needsSync = true
             },
             syncToAPI: {
-                try await self.apiService.updateProjectTeamMembers(projectId: project.id, teamMemberIds: memberIds)
+                try await self.syncManager.updateProjectTeamMembers(projectId: project.id, memberIds: memberIds)
                 project.needsSync = false
                 project.lastSyncedAt = Date()
-            }
-        )
-    }
-
-    /// Update calendar event team members - SINGLE SOURCE OF TRUTH
-    @MainActor
-    func updateCalendarEventTeamMembers(event: CalendarEvent, memberIds: [String]) async throws {
-        try await performSyncedOperation(
-            item: event,
-            operationName: "UPDATE_EVENT_TEAM",
-            itemDescription: "Updating calendar event \(event.id) team members",
-            localUpdate: {
-                event.setTeamMemberIds(memberIds)
-                event.needsSync = true
-            },
-            syncToAPI: {
-                try await self.apiService.updateCalendarEventTeamMembers(id: event.id, teamMemberIds: memberIds)
-                event.needsSync = false
-                event.lastSyncedAt = Date()
             }
         )
     }
@@ -3844,8 +3057,8 @@ class DataController: ObservableObject {
                 client.needsSync = true
             },
             syncToAPI: {
-                try await self.apiService.updateClient(
-                    id: client.id,
+                try await self.syncManager.updateClient(
+                    clientId: client.id,
                     name: client.name,
                     email: client.email,
                     phone: client.phoneNumber,
@@ -3871,7 +3084,7 @@ class DataController: ObservableObject {
                 project.needsSync = true
             },
             syncToAPI: {
-                try await self.apiService.updateProjectNotes(id: project.id, notes: notes)
+                try await self.syncManager.updateProjectNotes(projectId: project.id, notes: notes)
                 project.needsSync = false
                 project.lastSyncedAt = Date()
             }
@@ -3892,11 +3105,10 @@ class DataController: ObservableObject {
                 project.needsSync = true
             },
             syncToAPI: {
-                try await self.apiService.updateProjectDates(
+                try await self.syncManager.updateProjectDates(
                     projectId: project.id,
                     startDate: startDate,
-                    endDate: endDate,
-                    clearDates: clearDates || (startDate == nil && endDate == nil)
+                    endDate: endDate
                 )
                 project.needsSync = false
                 project.lastSyncedAt = Date()
@@ -3916,7 +3128,7 @@ class DataController: ObservableObject {
                 project.needsSync = true
             },
             syncToAPI: {
-                try await self.apiService.updateProject(id: project.id, updates: ["address": address])
+                try await self.syncManager.updateProjectAddress(projectId: project.id, address: address)
                 project.needsSync = false
                 project.lastSyncedAt = Date()
             }
@@ -3937,8 +3149,9 @@ class DataController: ObservableObject {
                 task.needsSync = true
             },
             syncToAPI: {
-                let dto = TaskDTO.from(task)
-                _ = try await self.apiService.createTask(dto)
+                // TODO: Convert ProjectTask to SupabaseProjectTaskDTO for creation
+                // For now, trigger background sync which will pick up the needsSync flag
+                self.syncManager?.triggerBackgroundSync()
                 task.needsSync = false
                 task.lastSyncedAt = Date()
             }
@@ -3957,14 +3170,17 @@ class DataController: ObservableObject {
             },
             syncToAPI: {
                 // Convert task properties to update dictionary
-                var updates: [String: Any] = [:]
+                var fields: [String: AnyJSON] = [:]
                 if let notes = task.taskNotes {
-                    updates[BubbleFields.Task.taskNotes] = notes
+                    fields["task_notes"] = .string(notes)
                 }
-                updates[BubbleFields.Task.teamMembers] = task.getTeamMemberIds()
-                updates[BubbleFields.Task.status] = task.status.rawValue
+                fields["status"] = .string(task.status.rawValue)
 
-                try await self.apiService.updateTask(id: task.id, updates: updates)
+                try await self.syncManager.updateTaskFields(taskId: task.id, fields: fields)
+
+                // Also update team members separately
+                try await self.syncManager.updateTaskTeamMembers(taskId: task.id, memberIds: task.getTeamMemberIds())
+
                 task.needsSync = false
                 task.lastSyncedAt = Date()
             }
@@ -4028,12 +3244,12 @@ class DataController: ObservableObject {
             user.profileImageURL = s3URL
             try? modelContext?.save()
 
-            // 4. Update Bubble with S3 URL
-            try await apiService.updateUser(userId: user.id, fields: [
-                BubbleFields.User.avatar: s3URL
+            // 4. Update Supabase with S3 URL
+            try await syncManager.updateUserFields(userId: user.id, fields: [
+                "profile_image_url": .string(s3URL)
             ])
 
-            print("[PROFILE_IMAGE] ✅ Updated Bubble with S3 URL")
+            print("[PROFILE_IMAGE] ✅ Updated Supabase with S3 URL")
             return s3URL
 
         } catch {
@@ -4053,15 +3269,15 @@ class DataController: ObservableObject {
         user.profileImageData = nil
         try? modelContext?.save()
 
-        // Clear from Bubble
+        // Clear from Supabase
         do {
-            try await apiService.updateUser(userId: user.id, fields: [
-                BubbleFields.User.avatar: ""
+            try await syncManager.updateUserFields(userId: user.id, fields: [
+                "profile_image_url": .string("")
             ])
-            print("[PROFILE_IMAGE] ✅ Profile image deleted from Bubble")
+            print("[PROFILE_IMAGE] ✅ Profile image deleted from Supabase")
         } catch {
-            print("[PROFILE_IMAGE] ⚠️ Failed to delete from Bubble: \(error)")
-            // Local deletion succeeded, Bubble update will retry on next sync
+            print("[PROFILE_IMAGE] ⚠️ Failed to delete from Supabase: \(error)")
+            // Local deletion succeeded, Supabase update will retry on next sync
         }
 
         print("[PROFILE_IMAGE] ✅ Profile image deleted")
@@ -4116,12 +3332,12 @@ class DataController: ObservableObject {
             company.logoURL = s3URL
             try? modelContext?.save()
 
-            // 4. Update Bubble with S3 URL
-            try await apiService.updateCompanyFields(companyId: company.id, fields: [
-                BubbleFields.Company.logo: s3URL
+            // 4. Update Supabase with S3 URL
+            try await syncManager.updateCompanyFields(companyId: company.id, fields: [
+                "logo_url": s3URL
             ])
 
-            print("[COMPANY_LOGO] ✅ Updated Bubble with S3 URL")
+            print("[COMPANY_LOGO] ✅ Updated Supabase with S3 URL")
             return s3URL
 
         } catch {
@@ -4141,15 +3357,15 @@ class DataController: ObservableObject {
         company.logoData = nil
         try? modelContext?.save()
 
-        // Clear from Bubble
+        // Clear from Supabase
         do {
-            try await apiService.updateCompanyFields(companyId: company.id, fields: [
-                BubbleFields.Company.logo: ""
+            try await syncManager.updateCompanyFields(companyId: company.id, fields: [
+                "logo_url": ""
             ])
-            print("[COMPANY_LOGO] ✅ Logo deleted from Bubble")
+            print("[COMPANY_LOGO] ✅ Logo deleted from Supabase")
         } catch {
-            print("[COMPANY_LOGO] ⚠️ Failed to delete from Bubble: \(error)")
-            // Local deletion succeeded, Bubble update will retry on next sync
+            print("[COMPANY_LOGO] ⚠️ Failed to delete from Supabase: \(error)")
+            // Local deletion succeeded, Supabase update will retry on next sync
         }
 
         print("[COMPANY_LOGO] ✅ Company logo deleted")
@@ -4157,18 +3373,18 @@ class DataController: ObservableObject {
 
     // MARK: - Company Default Project Color
 
-    /// Update the company's default project color in both local database and Bubble API
+    /// Update the company's default project color in both local database and server
     func updateCompanyDefaultProjectColor(companyId: String, color: String) async throws {
         print("[COMPANY_COLOR] Updating default project color to: \(color)")
 
-        // Update in Bubble API
+        // Update in Supabase
         do {
-            try await apiService.updateCompanyFields(companyId: companyId, fields: [
-                BubbleFields.Company.defaultProjectColor: color
+            try await syncManager.updateCompanyFields(companyId: companyId, fields: [
+                "default_project_color": color
             ])
-            print("[COMPANY_COLOR] ✅ Default project color updated in Bubble")
+            print("[COMPANY_COLOR] ✅ Default project color updated in Supabase")
         } catch {
-            print("[COMPANY_COLOR] ⚠️ Failed to update in Bubble: \(error)")
+            print("[COMPANY_COLOR] ⚠️ Failed to update in Supabase: \(error)")
             throw error
         }
 
@@ -4204,23 +3420,32 @@ class DataController: ObservableObject {
         }
 
         do {
-            print("[UNASSIGNED_ROLES] Fetching company users for company: \(companyId)")
-            let companyUsers = try await apiService.fetchCompanyUsers(companyId: companyId)
+            print("[UNASSIGNED_ROLES] Syncing company users for company: \(companyId)")
+            // Sync users from Supabase first
+            try await syncManager.syncUsers()
 
-            // Filter for users with nil employeeType (excluding current user)
-            let unassignedDTOs = companyUsers.filter { dto in
-                dto.employeeType == nil && dto.id != user.id
+            // Read from local SwiftData
+            guard let context = modelContext else { return [] }
+
+            let descriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { $0.companyId == companyId }
+            )
+            let companyUsers = try context.fetch(descriptor)
+
+            // Filter for users with default role (no assigned employee type) excluding current user
+            let unassignedLocalUsers = companyUsers.filter { localUser in
+                localUser.role == .fieldCrew && localUser.id != user.id
             }
 
-            print("[UNASSIGNED_ROLES] Found \(unassignedDTOs.count) users without employeeType")
+            print("[UNASSIGNED_ROLES] Found \(unassignedLocalUsers.count) users without assigned role")
 
             // Convert to UnassignedUser objects
-            let unassignedUsers = unassignedDTOs.map { dto in
+            let unassignedUsers = unassignedLocalUsers.map { localUser in
                 UnassignedUser(
-                    id: dto.id,
-                    firstName: dto.nameFirst ?? "",
-                    lastName: dto.nameLast ?? "",
-                    email: dto.email ?? dto.authentication?.email?.email
+                    id: localUser.id,
+                    firstName: localUser.firstName,
+                    lastName: localUser.lastName,
+                    email: localUser.email
                 )
             }
 

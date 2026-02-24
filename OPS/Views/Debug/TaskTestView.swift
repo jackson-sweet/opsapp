@@ -16,7 +16,6 @@ struct TaskTestView: View {
     @State private var testProject: Project?
     @State private var testTasks: [ProjectTask] = []
     @State private var testTaskTypes: [TaskType] = []
-    @State private var testCalendarEvents: [CalendarEvent] = []
     @State private var statusMessage = "Ready to test"
     @State private var isSyncing = false
 
@@ -48,8 +47,8 @@ struct TaskTestView: View {
             .buttonStyle(.bordered)
             .disabled(testProject == nil)
 
-            Button(action: testCalendarEventGeneration) {
-                Label("Generate Calendar Events", systemImage: "calendar")
+            Button(action: testTaskDateAssignment) {
+                Label("Assign Task Dates", systemImage: "calendar")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -100,10 +99,6 @@ struct TaskTestView: View {
 
         if !testTasks.isEmpty {
             tasksDataSection
-        }
-
-        if !testCalendarEvents.isEmpty {
-            calendarEventsDataSection
         }
     }
 
@@ -176,6 +171,10 @@ struct TaskTestView: View {
                         .font(.caption2)
                     Text("Order: \(task.displayOrder)")
                         .font(.caption2)
+                    Text("Dates: \(formatDate(task.startDate)) - \(formatDate(task.endDate))")
+                        .font(.caption2)
+                    Text("Duration: \(task.duration) days")
+                        .font(.caption2)
                 }
                 .padding(8)
                 .background(Color.gray.opacity(0.1))
@@ -185,40 +184,6 @@ struct TaskTestView: View {
         .padding(.horizontal)
     }
 
-    private var calendarEventsDataSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Calendar Events")
-                .font(.headline)
-
-            ForEach(testCalendarEvents, id: \.id) { event in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        if let icon = event.displayIcon {
-                            Image(systemName: icon)
-                                .foregroundColor(event.swiftUIColor)
-                        }
-                        Text(event.title)
-                            .font(.caption)
-                            .bold()
-                        Spacer()
-                        Text(event.task?.taskType?.display ?? "Task")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    Text("Dates: \(formatDate(event.startDate)) - \(formatDate(event.endDate))")
-                        .font(.caption2)
-                    Text("Multi-day: \(event.isMultiDay ? "Yes" : "No")")
-                        .font(.caption2)
-                    Text("Color: \(event.color)")
-                        .font(.caption2)
-                }
-                .padding(8)
-                .background(event.swiftUIColor.opacity(0.1))
-                .cornerRadius(6)
-            }
-        }
-        .padding(.horizontal)
-    }
 
     var body: some View {
         NavigationView {
@@ -379,61 +344,47 @@ struct TaskTestView: View {
         }
     }
     
-    private func testCalendarEventGeneration() {
-        guard let project = testProject else { return }
-        
-        statusMessage = "Generating calendar events..."
-        testCalendarEvents.removeAll()
-        
+    private func testTaskDateAssignment() {
+        guard testProject != nil else { return }
+
+        statusMessage = "Assigning dates to tasks..."
+
         let calendar = Calendar.current
         var currentDate = Date()
-        
-        // Generate calendar events for tasks
-        for (index, task) in testTasks.enumerated() {
+
+        // Assign dates directly to tasks
+        for task in testTasks {
             let startDate = currentDate
             let endDate = calendar.date(byAdding: .day, value: 2, to: startDate) ?? startDate
-            
-            let event = CalendarEvent.fromTask(
-                task,
-                startDate: startDate,
-                endDate: endDate
-            )
-            
-            modelContext.insert(event)
-            task.calendarEvent = event
-            testCalendarEvents.append(event)
-            
+
+            task.startDate = startDate
+            task.endDate = endDate
+            let daysDiff = calendar.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+            task.duration = daysDiff + 1
+            task.needsSync = true
+
             // Move to next date
             currentDate = calendar.date(byAdding: .day, value: 3, to: currentDate) ?? currentDate
         }
-        
-        // Task-only scheduling migration: Project-level events no longer exist
-        // Projects without tasks don't have calendar events
-        
+
         do {
             try modelContext.save()
-            statusMessage = "✅ Generated \(testCalendarEvents.count) calendar events"
-            
+            statusMessage = "Assigned dates to \(testTasks.count) tasks"
+
             // Display date ranges
-            let dateInfo = testCalendarEvents.map { event in
-                "\(event.title): \(event.spannedDates.count) days"
+            let dateInfo = testTasks.map { task in
+                "\(task.displayTitle): \(task.spannedDates.count) days"
             }.joined(separator: "\n")
             statusMessage += "\n\(dateInfo)"
-            
+
         } catch {
-            statusMessage = "❌ Error generating calendar events: \(error.localizedDescription)"
+            statusMessage = "Error assigning task dates: \(error.localizedDescription)"
         }
     }
     
     private func cleanupTestData() {
         statusMessage = "Cleaning up test data..."
-        
-        // Delete calendar events
-        for event in testCalendarEvents {
-            modelContext.delete(event)
-        }
-        testCalendarEvents.removeAll()
-        
+
         // Delete tasks
         for task in testTasks {
             modelContext.delete(task)

@@ -21,7 +21,7 @@ struct ManageSubscriptionView: View {
     @State private var errorMessage: String?
 
     // Stripe subscription info (fetched fresh on view appear)
-    @State private var stripeSubscriptionInfo: BubbleSubscriptionService.SubscriptionInfoResponse?
+    @State private var stripeSubscriptionInfo: StripeService.SubscriptionInfoResponse?
     @State private var isLoadingStripeInfo = false
     @State private var stripeInfoError: String?
 
@@ -113,48 +113,46 @@ struct ManageSubscriptionView: View {
     // MARK: - Fetch Stripe Subscription Info
 
     private func fetchStripeSubscriptionInfo() {
-        guard let company = company,
-              let stripeCustomerId = company.stripeCustomerId,
-              !stripeCustomerId.isEmpty else {
-            print("[BILLING] No Stripe customer ID available")
-            stripeInfoError = "No payment account linked"
+        guard let company = company else {
+            print("[BILLING] No company available")
+            stripeInfoError = "No company found"
             return
         }
 
         isLoadingStripeInfo = true
         stripeInfoError = nil
 
-        print("[BILLING] Fetching subscription info for customer: \(stripeCustomerId)")
+        print("[BILLING] Fetching subscription info for company: \(company.id)")
 
-        BubbleSubscriptionService.shared.fetchSubscriptionInfo(stripeCustomerId: stripeCustomerId) { result in
-            isLoadingStripeInfo = false
+        Task {
+            do {
+                let info = try await StripeService.shared.getSubscriptionInfo(companyId: company.id)
+                isLoadingStripeInfo = false
 
-            switch result {
-            case .success(let info):
                 if info.subscriptionId != nil {
-                    print("[BILLING] ✅ Subscription: \(info.planName ?? "unknown") (\(info.status ?? "unknown"))")
-                    // Update local company data with fresh Stripe data
-                    self.updateCompanyFromStripe(info)
+                    print("[BILLING] Subscription: \(info.planName ?? "unknown") (\(info.status ?? "unknown"))")
+                    updateCompanyFromStripe(info)
                 } else {
-                    print("[BILLING] ✅ No active subscription (trial user)")
+                    print("[BILLING] No active subscription (trial user)")
                 }
-                self.stripeSubscriptionInfo = info
+                stripeSubscriptionInfo = info
 
-            case .failure(let error):
-                print("[BILLING] ❌ Failed: \(error.localizedDescription)")
-                self.stripeInfoError = error.localizedDescription
+            } catch {
+                isLoadingStripeInfo = false
+                print("[BILLING] Failed: \(error.localizedDescription)")
+                stripeInfoError = error.localizedDescription
             }
         }
     }
 
     /// Update local company data with fresh Stripe subscription info
-    private func updateCompanyFromStripe(_ info: BubbleSubscriptionService.SubscriptionInfoResponse) {
+    private func updateCompanyFromStripe(_ info: StripeService.SubscriptionInfoResponse) {
         guard let company = company else { return }
 
         var hasChanges = false
 
         // Update subscription end date (next billing date)
-        if let periodEnd = info.currentPeriodEnd, company.subscriptionEnd != periodEnd {
+        if let periodEnd = info.currentPeriodEndDate, company.subscriptionEnd != periodEnd {
             company.subscriptionEnd = periodEnd
             hasChanges = true
         }
@@ -469,7 +467,7 @@ struct ManageSubscriptionView: View {
                     if stripeInfo.subscriptionId != nil {
                         // Success - show fresh Stripe data
                         billingInfoRows(
-                            nextBillingDate: stripeInfo.currentPeriodEnd,
+                            nextBillingDate: stripeInfo.currentPeriodEndDate,
                             billingPeriod: displayBillingInterval(stripeInfo.billingInterval),
                             hasPrioritySupport: company.hasPrioritySupport,
                             cancelAtPeriodEnd: stripeInfo.cancelAtPeriodEnd
@@ -803,9 +801,7 @@ struct ManageSubscriptionView: View {
 
     @MainActor
     private func cancelSubscription() async {
-        guard let company = company,
-              let userId = dataController.currentUser?.id,
-              let plan = company.subscriptionPlanEnum else {
+        guard let company = company else {
             errorMessage = "Unable to cancel subscription"
             return
         }
@@ -814,13 +810,7 @@ struct ManageSubscriptionView: View {
         errorMessage = nil
 
         do {
-            try await BubbleSubscriptionService.shared.cancelSubscription(
-                userId: userId,
-                companyId: company.id,
-                reason: cancellationReason.isEmpty ? "No reason provided" : cancellationReason,
-                cancelPriority: cancelPriorityToo,
-                plan: plan
-            )
+            try await StripeService.shared.cancel(companyId: company.id)
 
             // Update local state
             company.subscriptionStatus = SubscriptionStatus.cancelled.rawValue

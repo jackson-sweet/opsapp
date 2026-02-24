@@ -101,9 +101,9 @@ struct TaskSettingsView: View {
         .navigationBarHidden(true)
         .onAppear {
             fetchTaskTypes()
-            // If no task types found, try syncing from Bubble
+            // If no task types found, try syncing from server
             if taskTypes.isEmpty {
-                syncTaskTypesFromBubble()
+                syncTaskTypes()
             }
         }
         .sheet(isPresented: $showingEditSheet) {
@@ -187,15 +187,15 @@ struct TaskSettingsView: View {
         }
     }
 
-    private func syncTaskTypesFromBubble() {
+    private func syncTaskTypes() {
         guard let companyId = dataController.currentUser?.companyId else { return }
 
-        print("🔄 Syncing task types from Bubble for company: \(companyId)")
+        print("🔄 Syncing task types for company: \(companyId)")
 
         Task {
             do {
                 try await dataController.syncManager.syncCompanyTaskTypes(companyId: companyId)
-                print("✅ Task types synced from Bubble")
+                print("✅ Task types synced from server")
 
                 // Refresh the list on main thread
                 await MainActor.run {

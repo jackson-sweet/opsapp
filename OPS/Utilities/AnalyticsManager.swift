@@ -565,6 +565,7 @@ enum ScreenName: String {
 /// Tab names for analytics tracking
 enum TabName: String {
     case home = "home"
+    case pipeline = "pipeline"
     case jobBoard = "job_board"
     case inventory = "inventory"
     case schedule = "schedule"
@@ -575,10 +576,10 @@ enum TabName: String {
     var index: Int {
         switch self {
         case .home: return 0
-        case .jobBoard: return 1
-        case .inventory: return 2 // Only present when user has inventoryAccess
-        case .schedule: return 2  // or 3 with inventory
-        case .settings: return 3  // or 4 with inventory
+        case .pipeline: return 1
+        case .jobBoard: return 2
+        case .schedule: return 3
+        case .settings: return 4
         }
     }
 }

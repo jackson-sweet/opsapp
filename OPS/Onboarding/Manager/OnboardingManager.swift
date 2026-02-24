@@ -9,6 +9,7 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import Supabase
 
 @MainActor
 class OnboardingManager: ObservableObject {
@@ -30,7 +31,6 @@ class OnboardingManager: ObservableObject {
 
     private let dataController: DataController
     private let onboardingService: OnboardingService
-    private let apiService: APIService
 
     // MARK: - Callbacks
 
@@ -41,7 +41,6 @@ class OnboardingManager: ObservableObject {
     init(dataController: DataController) {
         self.dataController = dataController
         self.onboardingService = OnboardingService()
-        self.apiService = APIService(authManager: dataController.authManager)
 
         // Load saved state or create initial
         if let savedState = OnboardingState.load() {
@@ -434,7 +433,7 @@ class OnboardingManager: ObservableObject {
 
     // MARK: - Resume Logic
 
-    /// Determine the resume screen based on user data from Bubble
+    /// Determine the resume screen based on existing user data
     /// Call this after authentication to figure out where to resume
     func determineResumeScreen() -> OnboardingScreen {
         guard let user = dataController.currentUser else {
@@ -566,17 +565,40 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER] Creating account for: \(email)")
 
         do {
-            // Sign up using OnboardingService
-            let response = try await onboardingService.signUpUser(
-                email: email,
-                password: password,
-                userType: flow.userType
-            )
+            // Sign up via Supabase Auth
+            let authManager = dataController.authManager
+            try await authManager.signUpWithEmail(email, password: password)
 
-            guard response.wasSuccessful, let userId = response.extractedUserId else {
-                let message = response.error_message ?? "Account creation failed"
-                throw OnboardingManagerError.serverError(message)
+            guard let userId = authManager.getUserId(), !userId.isEmpty else {
+                throw OnboardingManagerError.serverError("Account creation failed — no user ID returned")
             }
+
+            // Create a row in the Supabase users table
+            let userRepo = UserRepository(companyId: "")
+            let userDTO = SupabaseUserDTO(
+                id: userId,
+                bubbleId: nil,
+                companyId: nil,
+                firstName: "",
+                lastName: "",
+                email: email,
+                phone: nil,
+                homeAddress: nil,
+                profileImageUrl: nil,
+                userColor: nil,
+                role: nil,
+                userType: flow.userType.rawValue,
+                isCompanyAdmin: nil,
+                hasCompletedOnboarding: false,
+                hasCompletedTutorial: nil,
+                devPermission: nil,
+                latitude: nil,
+                longitude: nil,
+                locationName: nil,
+                isActive: true,
+                deletedAt: nil
+            )
+            try await userRepo.upsert(userDTO)
 
             // Store credentials - CRITICAL: Set both user_id AND currentUserId
             state.userData.email = email
@@ -584,7 +606,7 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(email, forKey: "user_email")
             UserDefaults.standard.set(password, forKey: "user_password")
             UserDefaults.standard.set(userId, forKey: "user_id")
-            UserDefaults.standard.set(userId, forKey: "currentUserId") // Required for CentralizedSyncManager
+            UserDefaults.standard.set(userId, forKey: "currentUserId")
             UserDefaults.standard.set(flow.userType.rawValue, forKey: "selected_user_type")
 
             state.isAuthenticated = true
@@ -596,11 +618,17 @@ class OnboardingManager: ObservableObject {
             await createLocalUser(userId: userId, email: email, userType: flow.userType)
             print("[ONBOARDING_MANAGER] Local user created and DataController initialized")
 
-            // PATCH userType to Bubble (required by spec)
+            // PATCH userType to Supabase
             try await patchUserType(userId: userId, userType: flow.userType)
 
-        } catch let error as SignUpError {
-            throw OnboardingManagerError.serverError(error.localizedDescription)
+        } catch let error as OnboardingManagerError {
+            throw error
+        } catch {
+            let msg = error.localizedDescription
+            if msg.contains("already registered") || msg.contains("already been registered") {
+                throw OnboardingManagerError.serverError("An account with this email already exists. Please log in instead.")
+            }
+            throw OnboardingManagerError.serverError(msg)
         }
     }
 
@@ -637,12 +665,14 @@ class OnboardingManager: ObservableObject {
         state.save()
     }
 
-    /// PATCH userType to Bubble
+    /// PATCH userType to Supabase
     private func patchUserType(userId: String, userType: UserType) async throws {
         print("[ONBOARDING_MANAGER] PATCHing userType '\(userType.rawValue)' for user \(userId)")
 
-        let fields: [String: Any] = ["userType": userType.rawValue]
-        try await apiService.updateUser(userId: userId, fields: fields)
+        let fields: [String: AnyJSON] = [
+            "user_type": .string(userType.rawValue)
+        ]
+        try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
 
         print("[ONBOARDING_MANAGER] userType PATCHed successfully")
     }
@@ -678,55 +708,88 @@ class OnboardingManager: ObservableObject {
             // First update user profile
             try await updateUserProfile()
 
-            // Create company via OnboardingService
-            let response = try await onboardingService.updateCompany(
-                companyId: state.companyData.companyId, // nil for new, ID for update
+            // Generate a unique company code
+            let newCompanyCode = generateCompanyCode()
+            let now = ISO8601DateFormatter().string(from: Date())
+            let trialEnd = ISO8601DateFormatter().string(from: Calendar.current.date(byAdding: .day, value: 30, to: Date())!)
+
+            // Insert company into Supabase
+            let companyRepo = CompanyRepository()
+            let payload = NewCompanyPayload(
                 name: state.companyData.name,
-                email: state.companyData.email,
+                email: state.companyData.email.isEmpty ? nil : state.companyData.email,
                 phone: state.companyData.phone.isEmpty ? nil : state.companyData.phone,
-                industry: state.companyData.industry,
-                size: state.companyData.size,
-                age: state.companyData.age,
-                address: state.companyData.address,
-                userId: userId,
-                firstName: state.userData.firstName,
-                lastName: state.userData.lastName,
-                userPhone: state.userData.phone
+                address: state.companyData.address.isEmpty ? nil : state.companyData.address,
+                company_code: newCompanyCode,
+                admin_ids: [userId],
+                account_holder_id: userId,
+                industries: state.companyData.industry.isEmpty ? nil : [state.companyData.industry],
+                company_size: state.companyData.size.isEmpty ? nil : state.companyData.size,
+                company_age: state.companyData.age.isEmpty ? nil : state.companyData.age,
+                subscription_status: "trial",
+                subscription_plan: "trial",
+                trial_start_date: now,
+                trial_end_date: trialEnd,
+                max_seats: 10,
+                created_at: now,
+                updated_at: now
             )
+            let createdCompany = try await companyRepo.insert(payload)
+            let companyId = createdCompany.id
 
-            guard response.wasSuccessful,
-                  let company = response.extractedCompany,
-                  let companyId = company.extractedId else {
-                throw OnboardingManagerError.serverError("Company creation failed")
-            }
+            // Update user's company_id in Supabase
+            let userRepo = UserRepository(companyId: companyId)
+            try await userRepo.updateFields(userId: userId, fields: [
+                "company_id": .string(companyId),
+                "role": .string("admin"),
+                "is_company_admin": .bool(true)
+            ])
 
-            // Store company data
+            // Store company data in state
             state.companyData.companyId = companyId
-            state.companyData.companyCode = company.extractedCode ?? companyId
-            print("[ONBOARDING_MANAGER] Company created in Bubble:")
+            state.companyData.companyCode = newCompanyCode
+            print("[ONBOARDING_MANAGER] Company created in Supabase:")
             print("[ONBOARDING_MANAGER]   - companyId: \(companyId)")
-            print("[ONBOARDING_MANAGER]   - companyCode: \(state.companyData.companyCode ?? "unknown")")
+            print("[ONBOARDING_MANAGER]   - companyCode: \(newCompanyCode)")
 
             state.profileCompanyPhase = .success
             state.hasExistingCompany = true
             state.save()
 
-            // CRITICAL: Update local user's data before syncing company
-            // syncCompany() relies on currentUser?.companyId to fetch company data
+            // Store in UserDefaults
+            UserDefaults.standard.set(companyId, forKey: "company_id")
+            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+            UserDefaults.standard.set(state.companyData.name, forKey: "Company Name")
+
+            // Update local user's data before syncing company
             if let currentUser = dataController.currentUser {
-                print("[ONBOARDING_MANAGER] DataController.currentUser exists:")
-                print("[ONBOARDING_MANAGER]   - id: \(currentUser.id)")
-                print("[ONBOARDING_MANAGER]   - companyId BEFORE: \(currentUser.companyId ?? "nil")")
                 currentUser.companyId = companyId
-                // Also update name fields that were PATCHed to Bubble in updateUserProfile()
                 currentUser.firstName = state.userData.firstName
                 currentUser.lastName = state.userData.lastName
                 if !state.userData.phone.isEmpty {
                     currentUser.phone = state.userData.phone
                 }
+                currentUser.role = .admin
+                try? dataController.modelContext?.save()
                 print("[ONBOARDING_MANAGER] ✅ Updated local user - companyId: \(companyId), name: \(currentUser.fullName)")
             } else {
                 print("[ONBOARDING_MANAGER] ⚠️ DataController.currentUser is NIL! Cannot set companyId!")
+            }
+
+            // Create Company object in SwiftData
+            if let modelContext = dataController.modelContext {
+                let companyObject = Company(id: companyId, name: state.companyData.name)
+                companyObject.email = state.companyData.email
+                companyObject.phone = state.companyData.phone
+                companyObject.address = state.companyData.address
+                companyObject.subscriptionStatus = "trial"
+                companyObject.subscriptionPlan = "trial"
+                companyObject.trialStartDate = Date()
+                companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 30, to: Date())
+                companyObject.maxSeats = 10
+                modelContext.insert(companyObject)
+                try? modelContext.save()
+                print("[ONBOARDING_MANAGER] ✅ Company saved to SwiftData")
             }
 
             // Trigger sync to load company data
@@ -739,9 +802,9 @@ class OnboardingManager: ObservableObject {
             }
 
             print("[ONBOARDING_MANAGER] ========== CREATE COMPANY END ==========")
-            print("[ONBOARDING_MANAGER] Company created: \(companyId), code: \(state.companyData.companyCode ?? "unknown")")
+            print("[ONBOARDING_MANAGER] Company created: \(companyId), code: \(newCompanyCode)")
 
-            return state.companyData.companyCode ?? companyId
+            return newCompanyCode
 
         } catch {
             state.profileCompanyPhase = .form
@@ -767,33 +830,64 @@ class OnboardingManager: ObservableObject {
             // First update user profile
             try await updateUserProfile()
 
-            // Store user data in UserDefaults for join_company API
-            UserDefaults.standard.set(state.userData.firstName, forKey: "user_first_name")
-            UserDefaults.standard.set(state.userData.lastName, forKey: "user_last_name")
-            UserDefaults.standard.set(state.userData.phone, forKey: "user_phone_number")
+            // Look up company by code in Supabase
+            let companyRepo = CompanyRepository()
+            guard let companyDTO = try await companyRepo.fetchByCode(code) else {
+                throw OnboardingManagerError.invalidCompanyCode
+            }
 
-            // Join company via OnboardingService
-            let companyId = try await onboardingService.joinCompany(
-                code: code,
-                userId: userId,
-                dataController: dataController
-            )
+            let companyId = companyDTO.id
+
+            // Update user's company_id and role in Supabase
+            let userRepo = UserRepository(companyId: companyId)
+            try await userRepo.updateFields(userId: userId, fields: [
+                "company_id": .string(companyId),
+                "role": .string("field_crew"),
+                "is_company_admin": .bool(false)
+            ])
+
+            // Add user to company's seated_employee_ids
+            var seatIds = companyDTO.seatedEmployeeIds ?? []
+            if !seatIds.contains(userId) {
+                seatIds.append(userId)
+                try? await companyRepo.updateSeatedEmployees(companyId: companyId, userIds: seatIds)
+            }
 
             state.companyData.companyId = companyId
             state.companyData.companyCode = code
             state.hasExistingCompany = true
             state.save()
 
-            // CRITICAL: Update local user's data before syncing company
+            // Store in UserDefaults
+            UserDefaults.standard.set(companyId, forKey: "company_id")
+            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+            UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
+
+            // Update local user's data before syncing company
             if let currentUser = dataController.currentUser {
                 currentUser.companyId = companyId
-                // Also update name fields that were PATCHed to Bubble in updateUserProfile()
                 currentUser.firstName = state.userData.firstName
                 currentUser.lastName = state.userData.lastName
                 if !state.userData.phone.isEmpty {
                     currentUser.phone = state.userData.phone
                 }
+                try? dataController.modelContext?.save()
                 print("[ONBOARDING_MANAGER] Updated local user - companyId: \(companyId), name: \(currentUser.fullName)")
+            }
+
+            // Create Company object in SwiftData
+            if let modelContext = dataController.modelContext {
+                let compDesc = FetchDescriptor<Company>(
+                    predicate: #Predicate<Company> { $0.id == companyId }
+                )
+                if (try? modelContext.fetch(compDesc).first) == nil {
+                    let companyObject = Company(id: companyId, name: companyDTO.name)
+                    companyObject.email = companyDTO.email
+                    companyObject.phone = companyDTO.phone
+                    companyObject.address = companyDTO.address
+                    modelContext.insert(companyObject)
+                    try? modelContext.save()
+                }
             }
 
             // Trigger sync to load company data
@@ -806,17 +900,14 @@ class OnboardingManager: ObservableObject {
 
         } catch {
             state.profileJoinPhase = .form
-            if let signUpError = error as? SignUpError {
-                if case .companyJoinFailed = signUpError {
-                    throw OnboardingManagerError.invalidCompanyCode
-                }
-                throw OnboardingManagerError.serverError(signUpError.localizedDescription)
+            if let onboardingError = error as? OnboardingManagerError {
+                throw onboardingError
             }
-            throw error
+            throw OnboardingManagerError.serverError(error.localizedDescription)
         }
     }
 
-    /// Update user profile to Bubble
+    /// Update user profile to Supabase
     private func updateUserProfile() async throws {
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
             throw OnboardingManagerError.noUserId
@@ -824,16 +915,16 @@ class OnboardingManager: ObservableObject {
 
         print("[ONBOARDING_MANAGER] Updating user profile for: \(userId)")
 
-        var fields: [String: Any] = [
-            "nameFirst": state.userData.firstName,
-            "nameLast": state.userData.lastName
+        var fields: [String: AnyJSON] = [
+            "first_name": .string(state.userData.firstName),
+            "last_name": .string(state.userData.lastName)
         ]
 
         if !state.userData.phone.isEmpty {
-            fields["phone"] = state.userData.phone
+            fields["phone"] = .string(state.userData.phone)
         }
 
-        try await apiService.updateUser(userId: userId, fields: fields)
+        try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
 
         print("[ONBOARDING_MANAGER] User profile updated")
     }
@@ -971,7 +1062,7 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER] ✅ Credentials stored to UserDefaults")
     }
 
-    /// PATCH hasCompletedAppOnboarding to Bubble
+    /// PATCH hasCompletedAppOnboarding to Supabase
     private func markOnboardingComplete() async {
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
             print("[ONBOARDING_MANAGER] No user ID for completion patch")
@@ -979,9 +1070,11 @@ class OnboardingManager: ObservableObject {
         }
 
         do {
-            let fields: [String: Any] = ["hasCompletedAppOnboarding": true]
-            try await apiService.updateUser(userId: userId, fields: fields)
-            print("[ONBOARDING_MANAGER] hasCompletedAppOnboarding PATCHed to true")
+            let fields: [String: AnyJSON] = [
+                "has_completed_onboarding": .bool(true)
+            ]
+            try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+            print("[ONBOARDING_MANAGER] has_completed_onboarding PATCHed to true")
         } catch {
             print("[ONBOARDING_MANAGER] Failed to patch completion: \(error)")
             // Non-fatal, continue anyway

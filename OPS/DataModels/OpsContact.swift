@@ -2,7 +2,7 @@
 //  OpsContact.swift
 //  OPS
 //
-//  Model for OPS support contacts fetched from Bubble option set
+//  Model for OPS support contacts
 //
 
 import Foundation

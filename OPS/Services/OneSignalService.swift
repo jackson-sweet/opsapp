@@ -2,124 +2,59 @@
 //  OneSignalService.swift
 //  OPS
 //
-//  Service for sending push notifications via OneSignal REST API
-//  Created December 8, 2025
+//  Service for sending push notifications via ops-web API route
+//  (server-side OneSignal REST API calls handled by ops-web)
 //
 
 import Foundation
+import Supabase
 
-/// Service for sending targeted push notifications via OneSignal
+/// Service for sending targeted push notifications via ops-web backend
 class OneSignalService {
     static let shared = OneSignalService()
     private init() {}
 
     private let appId = "0fc0a8e0-9727-49b6-9e37-5d6d919d741f"
-    private let apiEndpoint = "https://onesignal.com/api/v1/notifications"
-
-    /// The REST API key fetched from Bubble (stored in memory only, not persisted)
-    private var restApiKey: String?
-
-    /// Whether the service is ready to send notifications
-    var isConfigured: Bool {
-        return restApiKey != nil
-    }
 
     // MARK: - Configuration
 
-    /// Fetch the OneSignal REST API key from Bubble
-    /// Call this after user logs in
+    /// No configuration needed - ops-web handles the OneSignal API key server-side
     func configure() async {
-        do {
-            let key = try await fetchApiKeyFromBubble()
-            self.restApiKey = key
-            print("[ONESIGNAL SERVICE] Configured successfully")
-        } catch {
-            print("[ONESIGNAL SERVICE] Failed to fetch API key: \(error.localizedDescription)")
-        }
+        print("[ONESIGNAL SERVICE] Ready (server-side via ops-web)")
     }
 
-    /// Clear the API key on logout
+    /// Clear on logout (no-op, kept for API compatibility)
     func clearConfiguration() {
-        restApiKey = nil
         print("[ONESIGNAL SERVICE] Configuration cleared")
-    }
-
-    /// Fetch API key from Bubble backend
-    private func fetchApiKeyFromBubble() async throws -> String {
-        let urlString = "\(AppConfiguration.bubbleBaseURL)\(AppConfiguration.bubbleWorkflowAPIPath)/fetch-os-key"
-        print("[ONESIGNAL SERVICE] Fetching API key from: \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            print("[ONESIGNAL SERVICE] Invalid URL")
-            throw OneSignalError.invalidEndpoint
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"  // Bubble workflow endpoints typically use POST
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(AppConfiguration.bubbleAPIToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        // Log response for debugging
-        if let responseString = String(data: data, encoding: .utf8) {
-            print("[ONESIGNAL SERVICE] Response: \(responseString)")
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            print("[ONESIGNAL SERVICE] Failed to fetch API key, status: \(statusCode)")
-            throw OneSignalError.apiError(statusCode: statusCode, message: "Failed to fetch API key")
-        }
-
-        // Response format: { "status": "success", "response": { "key": "os_v2_app_..." } }
-        struct KeyResponse: Decodable {
-            let status: String
-            let response: ResponseData
-
-            struct ResponseData: Decodable {
-                let key: String
-            }
-        }
-
-        do {
-            let keyResponse = try JSONDecoder().decode(KeyResponse.self, from: data)
-            print("[ONESIGNAL SERVICE] Successfully decoded API key")
-            return keyResponse.response.key
-        } catch {
-            print("[ONESIGNAL SERVICE] Failed to decode response: \(error)")
-            throw error
-        }
     }
 
     // MARK: - Send Notification Methods
 
-    /// Send notification to a specific user by their Bubble user ID
+    /// Send notification to a specific user by their user ID
     func sendToUser(
         userId: String,
         title: String,
         body: String,
         data: [String: Any]? = nil
     ) async throws {
-        try await sendNotification(
-            targetType: .externalUserId,
-            targetValue: userId,
+        try await sendViaOpsWeb(
+            recipientUserIds: [userId],
             title: title,
             body: body,
             data: data
         )
     }
 
-    /// Send notification to multiple users by their Bubble user IDs
+    /// Send notification to multiple users by their user IDs
     func sendToUsers(
         userIds: [String],
         title: String,
         body: String,
         data: [String: Any]? = nil
     ) async throws {
-        try await sendNotification(
-            targetType: .externalUserIds,
-            targetValues: userIds,
+        guard !userIds.isEmpty else { return }
+        try await sendViaOpsWeb(
+            recipientUserIds: userIds,
             title: title,
             body: body,
             data: data
@@ -136,7 +71,6 @@ class OneSignalService {
         taskId: String,
         projectId: String
     ) async throws {
-        // Don't notify yourself
         if userId == UserDefaults.standard.string(forKey: "currentUserId") {
             print("[ONESIGNAL SERVICE] Skipping self-notification for task assignment")
             return
@@ -164,7 +98,6 @@ class OneSignalService {
         taskId: String,
         projectId: String
     ) async throws {
-        // Filter out current user
         let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
         let filteredUserIds = userIds.filter { $0 != currentUserId }
 
@@ -196,7 +129,6 @@ class OneSignalService {
         projectId: String,
         completedByName: String?
     ) async throws {
-        // Filter out current user
         let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
         let filteredUserIds = userIds.filter { $0 != currentUserId }
 
@@ -226,7 +158,6 @@ class OneSignalService {
         projectName: String,
         projectId: String
     ) async throws {
-        // Filter out current user
         let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
         let filteredUserIds = userIds.filter { $0 != currentUserId }
 
@@ -254,7 +185,6 @@ class OneSignalService {
         projectName: String,
         projectId: String
     ) async throws {
-        // Don't notify yourself
         if userId == UserDefaults.standard.string(forKey: "currentUserId") {
             print("[ONESIGNAL SERVICE] Skipping self-notification for project assignment")
             return
@@ -275,63 +205,40 @@ class OneSignalService {
 
     // MARK: - Private Implementation
 
-    private enum TargetType {
-        case externalUserId
-        case externalUserIds
-        case segment
-    }
-
-    private func sendNotification(
-        targetType: TargetType,
-        targetValue: String? = nil,
-        targetValues: [String]? = nil,
+    /// Send notification via ops-web backend route
+    private func sendViaOpsWeb(
+        recipientUserIds: [String],
         title: String,
         body: String,
         data: [String: Any]? = nil
     ) async throws {
-        guard let apiKey = restApiKey else {
-            print("[ONESIGNAL SERVICE] Not configured - cannot send notification")
-            throw OneSignalError.apiKeyNotConfigured
+        let session: Session
+        do {
+            session = try await SupabaseService.shared.client.auth.session
+        } catch {
+            print("[ONESIGNAL SERVICE] No authenticated user - cannot send notification")
+            throw OneSignalError.notAuthenticated
         }
 
-        var payload: [String: Any] = [
-            "app_id": appId,
-            "headings": ["en": title],
-            "contents": ["en": body]
-        ]
+        let idToken = session.accessToken
 
-        // Add targeting based on type
-        switch targetType {
-        case .externalUserId:
-            if let value = targetValue {
-                payload["include_aliases"] = ["external_id": [value]]
-                payload["target_channel"] = "push"
-            }
-        case .externalUserIds:
-            if let values = targetValues, !values.isEmpty {
-                payload["include_aliases"] = ["external_id": values]
-                payload["target_channel"] = "push"
-            }
-        case .segment:
-            if let value = targetValue {
-                payload["included_segments"] = [value]
-            }
-        }
-
-        // Add custom data for deep linking
-        if let data = data {
-            payload["data"] = data
-        }
-
-        // Make the API request
-        guard let url = URL(string: apiEndpoint) else {
-            throw OneSignalError.invalidEndpoint
-        }
+        let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/notifications/send")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Basic \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+
+        var payload: [String: Any] = [
+            "recipientUserIds": recipientUserIds,
+            "title": title,
+            "body": body
+        ]
+
+        if let data = data {
+            payload["data"] = data
+        }
+
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (responseData, response) = try await URLSession.shared.data(for: request)
@@ -346,28 +253,28 @@ class OneSignalService {
             throw OneSignalError.apiError(statusCode: httpResponse.statusCode, message: errorMessage)
         }
 
-        print("[ONESIGNAL SERVICE] Notification sent successfully")
+        print("[ONESIGNAL SERVICE] Notification sent successfully via ops-web")
     }
 }
 
 // MARK: - Errors
 
 enum OneSignalError: Error, LocalizedError {
-    case apiKeyNotConfigured
+    case notAuthenticated
     case invalidEndpoint
     case invalidResponse
     case apiError(statusCode: Int, message: String)
 
     var errorDescription: String? {
         switch self {
-        case .apiKeyNotConfigured:
-            return "OneSignal REST API key not configured"
+        case .notAuthenticated:
+            return "Not authenticated - cannot send notification"
         case .invalidEndpoint:
-            return "Invalid OneSignal API endpoint"
+            return "Invalid API endpoint"
         case .invalidResponse:
-            return "Invalid response from OneSignal API"
+            return "Invalid response from API"
         case .apiError(let statusCode, let message):
-            return "OneSignal API error (\(statusCode)): \(message)"
+            return "API error (\(statusCode)): \(message)"
         }
     }
 }

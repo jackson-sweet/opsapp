@@ -35,7 +35,7 @@ class TutorialDemoDataManager {
     // MARK: - Public API
 
     /// Seeds all demo data to SwiftData
-    /// Order matters due to relationships: TaskTypes -> Users -> TeamMembers -> Clients -> Projects (with Tasks and CalendarEvents)
+    /// Order matters due to relationships: TaskTypes -> Users -> TeamMembers -> Clients -> Projects (with Tasks)
     func seedAllDemoData() async throws {
         print("[TUTORIAL_SEED] Starting demo data seeding...")
 
@@ -60,7 +60,6 @@ class TutorialDemoDataManager {
         print("[TUTORIAL_CLEANUP] User-created project IDs to delete: \(userCreatedProjectIds)")
 
         // Delete in reverse order of creation (each method saves after deletion)
-        try await deleteCalendarEvents()
         try await deleteTasks()
         try await deleteProjects()
         try await deleteClients()
@@ -73,7 +72,7 @@ class TutorialDemoDataManager {
 
         // Verify cleanup
         let remainingCounts = getDemoDataCounts()
-        print("[TUTORIAL_CLEANUP] Remaining after cleanup - Projects: \(remainingCounts.projects), Tasks: \(remainingCounts.tasks), Events: \(remainingCounts.events)")
+        print("[TUTORIAL_CLEANUP] Remaining after cleanup - Projects: \(remainingCounts.projects), Tasks: \(remainingCounts.tasks)")
 
         print("[TUTORIAL_CLEANUP] Demo data cleanup complete!")
     }
@@ -134,15 +133,6 @@ class TutorialDemoDataManager {
                 }
             }
 
-            // Update calendar event team members as well
-            if let event = task.calendarEvent {
-                if !event.teamMembers.contains(where: { $0.id == userId }) {
-                    event.teamMembers.append(currentUser)
-                    var eventIds = event.getTeamMemberIds()
-                    eventIds.append(userId)
-                    event.setTeamMemberIds(eventIds)
-                }
-            }
         }
 
         try context.save()
@@ -294,11 +284,7 @@ class TutorialDemoDataManager {
                 task.teamMembers = crewUsers
                 task.setTeamMemberIds(taskData.crewIds)
 
-                // Create calendar event for this task
-                let calendarEventId = DemoIDs.calendarEventId(taskId: taskId)
-                let eventTitle = "\(project.effectiveClientName) - \(project.title)"
-
-                // Calculate end date based on duration (default 1 day = same day)
+                // Set scheduling dates directly on task
                 let endDate: Date
                 if taskData.durationDays > 1 {
                     endDate = Calendar.current.date(byAdding: .day, value: taskData.durationDays - 1, to: scheduledDate) ?? scheduledDate
@@ -306,25 +292,9 @@ class TutorialDemoDataManager {
                     endDate = scheduledDate
                 }
 
-                let calendarEvent = CalendarEvent(
-                    id: calendarEventId,
-                    projectId: project.id,
-                    companyId: companyId,
-                    title: eventTitle,
-                    startDate: scheduledDate,
-                    endDate: endDate,
-                    color: taskColor
-                )
-                calendarEvent.taskId = taskId
-                calendarEvent.setTeamMemberIds(taskData.crewIds)
-                calendarEvent.teamMembers = crewUsers
-                calendarEvent.project = project
-
-                context.insert(calendarEvent)
-
-                // Link calendar event to task
-                task.calendarEvent = calendarEvent
-                task.calendarEventId = calendarEvent.id
+                task.startDate = scheduledDate
+                task.endDate = endDate
+                task.duration = taskData.durationDays
 
                 context.insert(task)
                 project.tasks.append(task)
@@ -349,51 +319,6 @@ class TutorialDemoDataManager {
     }
 
     // MARK: - Cleanup Methods
-
-    private func deleteCalendarEvents() async throws {
-        // Delete events with DEMO_ prefix (all types: DEMO_EVENT_, etc.)
-        let descriptor = FetchDescriptor<CalendarEvent>(
-            predicate: #Predicate<CalendarEvent> { event in
-                event.id.starts(with: "DEMO_")
-            }
-        )
-        let events = try context.fetch(descriptor)
-        print("[TUTORIAL_CLEANUP] Deleting \(events.count) calendar events by prefix")
-        for event in events {
-            context.delete(event)
-        }
-
-        // Also delete events linked to demo projects (fallback for any missed)
-        let projectDescriptor = FetchDescriptor<Project>(
-            predicate: #Predicate<Project> { $0.id.starts(with: "DEMO_") }
-        )
-        let demoProjects = try context.fetch(projectDescriptor)
-        for project in demoProjects {
-            let projectId = project.id
-            let eventsByProject = FetchDescriptor<CalendarEvent>(
-                predicate: #Predicate<CalendarEvent> { $0.projectId == projectId }
-            )
-            let linkedEvents = try context.fetch(eventsByProject)
-            print("[TUTORIAL_CLEANUP] Deleting \(linkedEvents.count) calendar events for project \(projectId)")
-            for event in linkedEvents {
-                context.delete(event)
-            }
-        }
-
-        // Also delete events for user-created projects
-        for projectId in userCreatedProjectIds {
-            let eventsByProject = FetchDescriptor<CalendarEvent>(
-                predicate: #Predicate<CalendarEvent> { $0.projectId == projectId }
-            )
-            let linkedEvents = try context.fetch(eventsByProject)
-            print("[TUTORIAL_CLEANUP] Deleting \(linkedEvents.count) calendar events for user project \(projectId)")
-            for event in linkedEvents {
-                context.delete(event)
-            }
-        }
-
-        try context.save()
-    }
 
     private func deleteTasks() async throws {
         // Delete tasks with DEMO_ prefix
@@ -678,7 +603,7 @@ class TutorialDemoDataManager {
     }
 
     /// Gets a count of all demo entities for debugging
-    func getDemoDataCounts() -> (projects: Int, tasks: Int, clients: Int, taskTypes: Int, users: Int, teamMembers: Int, events: Int) {
+    func getDemoDataCounts() -> (projects: Int, tasks: Int, clients: Int, taskTypes: Int, users: Int, teamMembers: Int) {
         // Use string literals directly to avoid captured variable issues in SwiftData predicates
         let projectCount = (try? context.fetchCount(FetchDescriptor<Project>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
         let taskCount = (try? context.fetchCount(FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
@@ -686,8 +611,7 @@ class TutorialDemoDataManager {
         let taskTypeCount = (try? context.fetchCount(FetchDescriptor<TaskType>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
         let userCount = (try? context.fetchCount(FetchDescriptor<User>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
         let teamMemberCount = (try? context.fetchCount(FetchDescriptor<TeamMember>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
-        let eventCount = (try? context.fetchCount(FetchDescriptor<CalendarEvent>(predicate: #Predicate { $0.id.starts(with: "DEMO_") }))) ?? 0
 
-        return (projectCount, taskCount, clientCount, taskTypeCount, userCount, teamMemberCount, eventCount)
+        return (projectCount, taskCount, clientCount, taskTypeCount, userCount, teamMemberCount)
     }
 }

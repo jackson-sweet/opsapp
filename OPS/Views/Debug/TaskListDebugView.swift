@@ -151,66 +151,17 @@ struct TaskListDebugView: View {
         
         Task {
             do {
-                // First, fetch TaskTypes from API
-                let apiTaskTypes = try await dataController.apiService.fetchCompanyTaskTypes(companyId: companyId)
-                
-                // Then fetch Tasks from API
-                let apiTasks = try await dataController.apiService.fetchCompanyTasks(companyId: companyId)
-                
+                // Sync task types and tasks via Supabase
+                try await dataController.syncManager.syncCompanyTaskTypes(companyId: companyId)
+                try await dataController.syncManager.syncTasks()
+
                 await MainActor.run {
-                    // Process TaskTypes first
-                    var taskTypeMap: [String: TaskType] = [:]
-                    
-                    // Fetch existing task types
-                    let existingTypes = try? modelContext.fetch(FetchDescriptor<TaskType>())
-                    for type in existingTypes ?? [] {
-                        taskTypeMap[type.id] = type
-                    }
-                    
-                    // Sync task types from API
-                    var syncedTypesCount = 0
-                    for dto in apiTaskTypes {
-                        if taskTypeMap[dto.id] == nil {
-                            let taskType = dto.toModel()
-                            taskType.companyId = companyId // Set company ID since it's not in the DTO
-                            modelContext.insert(taskType)
-                            taskTypeMap[dto.id] = taskType
-                            syncedTypesCount += 1
-                        }
-                    }
-                    
-                    // Convert and save tasks
-                    var syncedTasksCount = 0
-                    let defaultColor = "#59779F"
-                    
-                    for dto in apiTasks {
-                        // Check if exists
-                        let existing = tasks.first { $0.id == dto.id }
-                        if existing == nil {
-                            let task = dto.toModel(defaultColor: defaultColor)
-                            
-                            // Link to task type if available
-                            if let typeId = dto.type, let taskType = taskTypeMap[typeId] {
-                                task.taskType = taskType
-                            }
-                            
-                            modelContext.insert(task)
-                            syncedTasksCount += 1
-                        }
-                    }
-                    
-                    do {
-                        try modelContext.save()
-                        errorMessage = "Synced \(syncedTypesCount) task types and \(syncedTasksCount) tasks from API"
-                    } catch {
-                        errorMessage = "Failed to save: \(error.localizedDescription)"
-                    }
-                    
+                    errorMessage = "Synced task types and tasks from Supabase"
                     fetchTasks()
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = "API sync failed: \(error.localizedDescription)"
+                    errorMessage = "Supabase sync failed: \(error.localizedDescription)"
                     isLoading = false
                 }
             }
@@ -255,7 +206,9 @@ struct TaskDetailCard: View {
                 FieldRow(label: "Project ID", value: task.projectId)
                 FieldRow(label: "Company ID", value: task.companyId)
                 FieldRow(label: "Task Type ID", value: task.taskTypeId)
-                FieldRow(label: "Calendar Event ID", value: task.calendarEventId ?? "nil")
+                FieldRow(label: "Start Date", value: task.startDate?.formatted() ?? "nil")
+                FieldRow(label: "End Date", value: task.endDate?.formatted() ?? "nil")
+                FieldRow(label: "Duration", value: "\(task.duration) days")
                 FieldRow(label: "Display Order", value: "\(task.displayOrder)")
                 FieldRow(label: "Task Color", value: task.taskColor)
                 FieldRow(label: "Effective Color", value: task.effectiveColor)

@@ -125,7 +125,7 @@ struct UserListItem: View {
             }
             .padding(16)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         }
     }
     
@@ -201,7 +201,7 @@ struct ProjectListItem: View {
             }
             .padding(16)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         }
     }
     

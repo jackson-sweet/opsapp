@@ -109,7 +109,7 @@ struct TacticalInitialLoadingView: View {
         }
         .onChange(of: dataController.syncStatusMessage) { _, newMessage in
             if !newMessage.isEmpty && !visibleLines.contains(newMessage) {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     visibleLines.append(newMessage)
                     if visibleLines.count > 5 {
                         visibleLines.removeFirst()
@@ -128,7 +128,7 @@ struct TacticalInitialLoadingView: View {
 
         for (index, message) in initialMessages.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.3) {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     visibleLines.append(message)
                 }
             }
@@ -163,7 +163,7 @@ struct LoadingView: View {
             }
             .padding(24)
             .background(Color(white: 0.1))
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         }
     }
 }

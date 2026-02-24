@@ -77,7 +77,7 @@ struct NotesDisplayField: View {
                     .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
-        .animation(.easeInOut(duration: 0.2), value: isEditing)
+        .animation(OPSStyle.Animation.fast, value: isEditing)
     }
 
     @ViewBuilder
@@ -108,7 +108,7 @@ struct NotesDisplayField: View {
 
             if canEdit {
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         editedNotes = ""
                         isEditing = true
                         isExpanded = true
@@ -147,7 +147,7 @@ struct NotesDisplayField: View {
             // Show more button and edit icon
             HStack {
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         isExpanded = true
                     }
                 }) {
@@ -160,7 +160,7 @@ struct NotesDisplayField: View {
 
                 if canEdit {
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             editedNotes = notes
                             isEditing = true
                             isExpanded = true
@@ -189,7 +189,7 @@ struct NotesDisplayField: View {
                     Spacer()
 
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             editedNotes = notes
                             isEditing = true
                         }
@@ -223,7 +223,7 @@ struct NotesDisplayField: View {
 
                 // Cancel button
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         isEditing = false
                         editedNotes = notes
                     }
@@ -237,7 +237,7 @@ struct NotesDisplayField: View {
 
                 // Save button
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         isEditing = false
                     }
                     onSave()

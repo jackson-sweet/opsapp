@@ -287,7 +287,7 @@ struct PINGatedView: View {
 
                     }
                     .opacity(pinManager.requiresPIN && !pinManager.isAuthenticated ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.3), value: pinManager.isAuthenticated)
+                    .animation(OPSStyle.Animation.standard, value: pinManager.isAuthenticated)
 
                 // PIN overlay
                 if pinManager.requiresPIN && !pinManager.isAuthenticated {
@@ -367,8 +367,8 @@ struct PINGatedView: View {
                     .transition(.opacity)
                 }
             }
-                .animation(.easeInOut(duration: 0.3), value: showUnassignedRolesOverlay)
-                .animation(.easeInOut(duration: 0.3), value: activeAppMessage?.id)
+                .animation(OPSStyle.Animation.standard, value: showUnassignedRolesOverlay)
+                .animation(OPSStyle.Animation.standard, value: activeAppMessage?.id)
             }
         }
         .task {

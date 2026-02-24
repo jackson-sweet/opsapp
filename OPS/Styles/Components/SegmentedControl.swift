@@ -23,7 +23,7 @@ struct SegmentedControl<SelectionValue>: View where SelectionValue: Hashable {
                     title: option.label,
                     isSelected: selection == option.value,
                     action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             selection = option.value
                         }
                     }

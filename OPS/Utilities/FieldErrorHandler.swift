@@ -88,7 +88,7 @@ enum FieldErrorHandler {
             }
             .padding()
             .background(OPSStyle.Colors.darkBackground)
-            .cornerRadius(8)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .padding(.horizontal)
         }
     }

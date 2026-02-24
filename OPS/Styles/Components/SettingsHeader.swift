@@ -31,7 +31,7 @@ struct SettingsHeader: View {
             }
             .frame(width: 44, height: 44)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
             
             // Title with consistent styling - left aligned
             Text(title.uppercased())
@@ -51,7 +51,7 @@ struct SettingsHeader: View {
                 }
                 .frame(width: 80, height: 44)
                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                .cornerRadius(12)
+                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
             } else {
                 // Empty spacer to balance the header
                 Spacer()

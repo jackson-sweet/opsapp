@@ -11,29 +11,29 @@ struct WeekDayCell: View {
     let date: Date
     let isSelected: Bool
     let eventCount: Int
-    let events: [CalendarEvent]
+    let tasks: [ProjectTask]
     let onTap: () -> Void
-    
+
     // Computed counts for new vs ongoing
     private var newEventCount: Int {
-        events.filter { event in
-            Calendar.current.isDate(event.startDate ?? Date(), inSameDayAs: date)
+        tasks.filter { task in
+            Calendar.current.isDate(task.startDate ?? Date(), inSameDayAs: date)
         }.count
     }
-    
+
     private var ongoingEventCount: Int {
-        events.filter { event in
-            let startDate = event.startDate ?? Date()
-            let endDate = event.endDate ?? Date()
+        tasks.filter { task in
+            let startDate = task.startDate ?? Date()
+            let endDate = task.endDate ?? Date()
             return startDate < date && date <= endDate
         }.count
     }
-    
-    init(date: Date, isSelected: Bool, eventCount: Int, events: [CalendarEvent] = [], onTap: @escaping () -> Void) {
+
+    init(date: Date, isSelected: Bool, eventCount: Int, tasks: [ProjectTask] = [], onTap: @escaping () -> Void) {
         self.date = date
         self.isSelected = isSelected
         self.eventCount = eventCount
-        self.events = events
+        self.tasks = tasks
         self.onTap = onTap
     }
     

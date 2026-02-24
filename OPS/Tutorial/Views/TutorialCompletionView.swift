@@ -62,7 +62,7 @@ struct TutorialCompletionView: View {
                     "DONE IN \(manager.formattedTime). NOT BAD.",
                     font: OPSStyle.Typography.title,
                     color: OPSStyle.Colors.primaryText,
-                    typingSpeed: 25
+                    typingSpeed: 40
                 ) {
                     // Show subtext after headline completes
                 }
@@ -74,7 +74,7 @@ struct TutorialCompletionView: View {
                     "YOU'RE READY.",
                     font: OPSStyle.Typography.title,
                     color: OPSStyle.Colors.primaryText,
-                    typingSpeed: 25
+                    typingSpeed: 40
                 ) {
                     // Show subtext after headline completes
                 }
@@ -87,7 +87,7 @@ struct TutorialCompletionView: View {
                 completionSubtext,
                 font: OPSStyle.Typography.body,
                 color: OPSStyle.Colors.secondaryText,
-                typingSpeed: 20,
+                typingSpeed: 35,
                 startDelay: 1.2
             ) {
                 // Show button after subtext completes
@@ -178,7 +178,7 @@ struct StandaloneCompletionView: View {
                                 "DONE IN \(formattedTime). NOT BAD.",
                                 font: OPSStyle.Typography.title,
                                 color: OPSStyle.Colors.primaryText,
-                                typingSpeed: 25
+                                typingSpeed: 40
                             ) {
                                 // Subtext starts after headline
                             }
@@ -189,7 +189,7 @@ struct StandaloneCompletionView: View {
                                 "YOU'RE READY.",
                                 font: OPSStyle.Typography.title,
                                 color: OPSStyle.Colors.primaryText,
-                                typingSpeed: 25
+                                typingSpeed: 40
                             ) {
                                 // Subtext starts after headline
                             }
@@ -202,7 +202,7 @@ struct StandaloneCompletionView: View {
                             "Now build your first real project and run your crew right.",
                             font: OPSStyle.Typography.body,
                             color: OPSStyle.Colors.secondaryText,
-                            typingSpeed: 20,
+                            typingSpeed: 35,
                             startDelay: 1.2
                         ) {
                             withAnimation(.easeOut(duration: 0.3)) {

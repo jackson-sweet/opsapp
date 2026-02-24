@@ -12,7 +12,7 @@ enum UserRole: String, Codable {
     case officeCrew = "office_crew"
     case admin = "admin"
 
-    // Handle legacy title-case values from SwiftData/Bubble
+    // Handle legacy title-case values
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
@@ -44,7 +44,7 @@ enum UserType: String, CaseIterable, Codable {
     case employee = "employee"
     case company = "company"
 
-    // Handle legacy title-case values from SwiftData/Bubble
+    // Handle legacy title-case values
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)

@@ -106,6 +106,7 @@ struct NewCompanyPayload: Codable {
     let company_size: String?
     let company_age: String?
     let subscription_status: String
+    let subscription_plan: String
     let trial_start_date: String
     let trial_end_date: String
     let max_seats: Int

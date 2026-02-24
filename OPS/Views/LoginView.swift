@@ -484,7 +484,7 @@ struct LoginView: View {
                 // Perform Apple Sign-In
                 let appleResult = try await AppleSignInManager.shared.signIn(presenting: window)
                 
-                // Authenticate with Bubble backend
+                // Authenticate with backend
                 let success = await dataController.loginWithApple(appleResult: appleResult)
                 
                 isLoggingIn = false
@@ -546,7 +546,7 @@ struct LoginView: View {
                 // Perform Google Sign-In on main thread
                 let googleUser = try await GoogleSignInManager.shared.signIn(presenting: rootViewController)
                 
-                // Authenticate with Bubble backend
+                // Authenticate with backend
                 let success = await dataController.loginWithGoogle(googleUser: googleUser)
                 
                 isLoggingIn = false

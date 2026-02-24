@@ -25,7 +25,7 @@ import SwiftUI
 ///     title: task.taskType?.display ?? "Task",
 ///     color: Color(hex: task.taskColor) ?? .blue,
 ///     status: task.status,
-///     startDate: task.calendarEvent?.startDate,
+///     startDate: task.startDate,
 ///     teamMemberCount: task.getTeamMemberIds().count,
 ///     onTap: { /* handle tap */ },
 ///     onDelete: canDelete ? { /* handle delete */ } : nil

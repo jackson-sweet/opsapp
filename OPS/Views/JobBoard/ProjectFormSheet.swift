@@ -543,7 +543,17 @@ struct ProjectFormSheet: View {
                         }
                     }
                     .padding()
-                    .padding(.bottom, 24)
+                    .padding(.bottom, tutorialMode ? 100 : 24)
+                    .onChange(of: tutorialPhase) { _, newPhase in
+                        if tutorialMode && newPhase == .projectFormAddTask {
+                            // Scroll after expansion animation completes
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                withAnimation {
+                                    proxy.scrollTo("addTaskButton", anchor: .center)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1149,6 +1159,7 @@ struct ProjectFormSheet: View {
                 }
                 .allowsHitTesting(isAddTaskEnabled)
                 .opacity(tutorialMode && !isAddTaskEnabled ? 0.5 : 1.0)
+                .id("addTaskButton")
             }
         }
     }
@@ -1671,7 +1682,7 @@ struct ProjectFormSheet: View {
             let taskTeamMemberIds = Set(localTasks.flatMap { $0.teamMemberIds })
             let projectOnlyMemberIds = projectTeamMemberIds.subtracting(taskTeamMemberIds)
 
-            if !projectOnlyMemberIds.isEmpty && OneSignalService.shared.isConfigured {
+            if !projectOnlyMemberIds.isEmpty {
                 let projectName = project.title
 
                 for userId in projectOnlyMemberIds {
@@ -1868,7 +1879,6 @@ struct ProjectFormSheet: View {
                 companyId: companyId,
                 projectId: project.id,
                 taskTypeId: localTask.taskTypeId,
-                calendarEventId: nil,  // Will be set after calendar event creation
                 customTitle: localTask.customTitle,
                 taskNotes: nil,
                 status: localTask.status.rawValue,
@@ -1877,6 +1887,15 @@ struct ProjectFormSheet: View {
                 teamMemberIds: task.teamMembers.map { $0.id },
                 sourceLineItemId: nil,
                 sourceEstimateId: nil,
+                startDate: localTask.startDate.map { ISO8601DateFormatter().string(from: $0) },
+                endDate: localTask.endDate.map { ISO8601DateFormatter().string(from: $0) },
+                duration: {
+                    if let start = localTask.startDate, let end = localTask.endDate {
+                        let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+                        return daysDiff + 1
+                    }
+                    return 1
+                }(),
                 deletedAt: nil
             )
 
@@ -1884,7 +1903,7 @@ struct ProjectFormSheet: View {
             remoteTaskId = createdTaskId
             print("[TASK_CREATE] ✅ Task synced to Supabase with ID: \(remoteTaskId)")
 
-            // Update task with Bubble ID
+            // Update task after server sync
             await MainActor.run {
                 task.id = remoteTaskId
                 task.needsSync = false
@@ -1896,7 +1915,7 @@ struct ProjectFormSheet: View {
             // Use Set to deduplicate in case teamMembers has duplicates
             let teamMemberIds = Set(task.teamMembers.map { $0.id })
             print("[TASK_CREATE] 📬 Team member IDs for notification: \(teamMemberIds) (count: \(teamMemberIds.count))")
-            if !teamMemberIds.isEmpty && OneSignalService.shared.isConfigured {
+            if !teamMemberIds.isEmpty {
                 let taskName = task.displayTitle
                 let projectName = project.title
 
@@ -1919,92 +1938,23 @@ struct ProjectFormSheet: View {
                 print("[TASK_CREATE] 📬 Task assignment notifications queued for \(teamMemberIds.count) team members")
             }
         } catch {
-            print("[TASK_CREATE] ⚠️ Failed to sync task to Bubble: \(error)")
+            print("[TASK_CREATE] ⚠️ Failed to sync task to server: \(error)")
             await MainActor.run {
                 task.needsSync = true
                 try? modelContext.save()
             }
         }
 
-        // Always create calendar event for the task
-        // Use LocalTask dates if provided, otherwise leave dates as nil (unscheduled)
-        let startDate = localTask.startDate
-        let endDate = localTask.endDate
-        let calendarEventId = UUID().uuidString
-
-        // CalendarEvent title: "Client Name - Project Name"
-        let eventTitle = "\(project.effectiveClientName) - \(project.title)"
-
-        // Task-only scheduling migration: type parameter removed
-        let calendarEvent = CalendarEvent(
-            id: calendarEventId,
-            projectId: project.id,
-            companyId: companyId,
-            title: eventTitle,
-            startDate: startDate,
-            endDate: endDate,
-            color: taskType.color
-        )
-
-        calendarEvent.taskId = remoteTaskId  // Use Bubble task ID, not local UUID
-        calendarEvent.setTeamMemberIds(task.teamMembers.map { $0.id })
-        calendarEvent.teamMembers = task.teamMembers
-
-        task.calendarEvent = calendarEvent
-        task.calendarEventId = calendarEventId
-
+        // Set scheduling dates directly on the task
         await MainActor.run {
-            modelContext.insert(calendarEvent)
-            try? modelContext.save()
-            print("[TASK_CREATE] ✅ Calendar event created locally")
-        }
-
-        // Sync calendar event to Supabase immediately
-        do {
-            print("[TASK_CREATE] 🔄 Syncing calendar event to Supabase...")
-            let formatter = ISO8601DateFormatter()
-
-            // Calculate duration in days (only if dates exist)
-            let duration: Int
-            if let start = startDate, let end = endDate {
+            task.startDate = localTask.startDate
+            task.endDate = localTask.endDate
+            if let start = localTask.startDate, let end = localTask.endDate {
                 let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
-                duration = daysDiff + 1
-            } else {
-                duration = 1  // Default duration for unscheduled tasks
+                task.duration = daysDiff + 1
             }
-
-            let supabaseEventDTO = SupabaseCalendarEventDTO(
-                id: calendarEventId,
-                bubbleId: nil,
-                companyId: companyId,
-                projectId: project.id,
-                title: eventTitle,
-                color: taskType.color,
-                startDate: startDate.map { formatter.string(from: $0) },
-                endDate: endDate.map { formatter.string(from: $0) },
-                duration: duration,
-                teamMemberIds: task.teamMembers.map { $0.id },
-                deletedAt: nil
-            )
-
-            let createdEventId = try await dataController.syncManager.createCalendarEvent(dto: supabaseEventDTO)
-            print("[TASK_CREATE] ✅ Calendar event synced to Supabase with ID: \(createdEventId)")
-
-            // CRITICAL: Update local calendar event ID to match Supabase's ID to prevent duplicates on sync
-            await MainActor.run {
-                calendarEvent.id = createdEventId
-                task.calendarEventId = createdEventId
-                calendarEvent.needsSync = false
-                calendarEvent.lastSyncedAt = Date()
-                try? modelContext.save()
-                print("[TASK_CREATE] ✅ Local calendar event ID updated to Supabase ID: \(createdEventId)")
-            }
-        } catch {
-            print("[TASK_CREATE] ⚠️ Failed to sync calendar event to Supabase: \(error)")
-            await MainActor.run {
-                calendarEvent.needsSync = true
-                try? modelContext.save()
-            }
+            try? modelContext.save()
+            print("[TASK_CREATE] ✅ Task dates set locally")
         }
 
         // Recalculate task indices for the project
@@ -2068,35 +2018,19 @@ struct ProjectFormSheet: View {
             task.setTeamMemberIds(project.teamMembers.map { $0.id })
         }
 
-        // Create calendar event for the task (local only)
-        let startDate = localTask.startDate
-        let endDate = localTask.endDate
-        let calendarEventId = "DEMO_EVENT_\(UUID().uuidString)"
-        let eventTitle = "\(project.effectiveClientName) - \(project.title)"
-
-        let calendarEvent = CalendarEvent(
-            id: calendarEventId,
-            projectId: project.id,
-            companyId: companyId,
-            title: eventTitle,
-            startDate: startDate,
-            endDate: endDate,
-            color: taskType.color
-        )
-
-        calendarEvent.taskId = taskId
-        calendarEvent.setTeamMemberIds(task.teamMembers.map { $0.id })
-        calendarEvent.teamMembers = task.teamMembers
-
-        task.calendarEvent = calendarEvent
-        task.calendarEventId = calendarEventId
+        // Set scheduling dates directly on the task
+        task.startDate = localTask.startDate
+        task.endDate = localTask.endDate
+        if let start = localTask.startDate, let end = localTask.endDate {
+            let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+            task.duration = daysDiff + 1
+        }
 
         await MainActor.run {
             modelContext.insert(task)
-            modelContext.insert(calendarEvent)
             project.tasks.append(task)
             try? modelContext.save()
-            print("[TASK_CREATE_LOCAL] ✅ Task and calendar event saved locally (tutorial mode)")
+            print("[TASK_CREATE_LOCAL] ✅ Task saved locally (tutorial mode)")
         }
     }
 }

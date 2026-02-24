@@ -7,38 +7,21 @@
 
 import Foundation
 import SwiftUI
+import Supabase
 
-/// Service for handling image uploads using presigned URLs from AWS Lambda
+/// Service for handling image uploads using presigned URLs from ops-web
 @MainActor
 class PresignedURLUploadService {
-    // Singleton instance
     static let shared = PresignedURLUploadService()
-    
+
     private init() {}
-    
+
     // MARK: - Data Models
-    
-    /// Response from Lambda function for presigned URL
+
+    /// Response from ops-web presign endpoint
     struct PresignedURLResponse: Codable {
         let uploadUrl: String
-        let fileUrl: String
-        let fields: [String: String]?
-    }
-    
-    /// Request to Lambda for presigned URL (project images)
-    struct PresignedURLRequest: Codable {
-        let filename: String
-        let contentType: String
-        let projectId: String
-        let companyId: String
-    }
-
-    /// Request to Lambda for presigned URL (profile/logo images)
-    struct ProfilePresignedURLRequest: Codable {
-        let filename: String
-        let contentType: String
-        let imageType: String  // "profile" or "logo"
-        let companyId: String
+        let publicUrl: String
     }
     
     // MARK: - Public Methods
@@ -113,7 +96,7 @@ class PresignedURLUploadService {
                 )
                 
                 // Step 3: Add to results
-                uploadedImages.append((url: presignedResponse.fileUrl, filename: filename))
+                uploadedImages.append((url: presignedResponse.publicUrl, filename: filename))
                 
             } catch {
                 throw error
@@ -157,8 +140,8 @@ class PresignedURLUploadService {
             imageData: imageData
         )
 
-        print("[PRESIGNED_UPLOAD] ✅ Profile image uploaded successfully: \(presignedResponse.fileUrl)")
-        return presignedResponse.fileUrl
+        print("[PRESIGNED_UPLOAD] ✅ Profile image uploaded successfully: \(presignedResponse.publicUrl)")
+        return presignedResponse.publicUrl
     }
 
     /// Upload a company logo using presigned URL
@@ -194,81 +177,54 @@ class PresignedURLUploadService {
             imageData: imageData
         )
 
-        print("[PRESIGNED_UPLOAD] ✅ Logo uploaded successfully: \(presignedResponse.fileUrl)")
-        return presignedResponse.fileUrl
+        print("[PRESIGNED_UPLOAD] ✅ Logo uploaded successfully: \(presignedResponse.publicUrl)")
+        return presignedResponse.publicUrl
     }
 
     // MARK: - Private Methods
     
-    /// Get presigned URL from Lambda function
+    /// Get presigned URL from ops-web
     private func getPresignedURL(filename: String, projectId: String, companyId: String) async throws -> PresignedURLResponse {
-        
-        // Create request to Lambda
-        let lambdaRequest = PresignedURLRequest(
+        return try await requestPresignedURL(
             filename: filename,
             contentType: "image/jpeg",
-            projectId: projectId,
-            companyId: companyId
+            folder: "projects/\(companyId)/\(projectId)"
         )
-        
-        // Lambda endpoint for getting presigned URLs
-        // TODO: Update this to match your actual Bubble workflow name
-        let lambdaURL = URL(string: "\(AppConfiguration.bubbleBaseURL)/api/1.1/wf/get_presigned_url")!
-        
-        var request = URLRequest(url: lambdaURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let requestData = try JSONEncoder().encode(lambdaRequest)
-        request.httpBody = requestData
-        
-        if let bodyString = String(data: requestData, encoding: .utf8) {
-        }
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw UploadError.invalidResponse
-        }
-        
-        
-        if let responseString = String(data: data, encoding: .utf8) {
-        }
-        
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw UploadError.lambdaError(statusCode: httpResponse.statusCode)
-        }
-        
-        let presignedResponse = try JSONDecoder().decode(PresignedURLResponse.self, from: data)
-        
-        return presignedResponse
     }
 
     /// Get presigned URL for profile or logo image
     private func getPresignedURLForProfile(filename: String, imageType: String, companyId: String) async throws -> PresignedURLResponse {
         print("[PRESIGNED_UPLOAD] Requesting presigned URL for \(imageType): \(filename)")
-
-        // Create request to Lambda
-        let lambdaRequest = ProfilePresignedURLRequest(
+        return try await requestPresignedURL(
             filename: filename,
             contentType: "image/jpeg",
-            imageType: imageType,
-            companyId: companyId
+            folder: "\(imageType)s/\(companyId)"
         )
+    }
 
-        // Lambda endpoint for getting presigned URLs
-        let lambdaURL = URL(string: "\(AppConfiguration.bubbleBaseURL)/api/1.1/wf/get_presigned_url_profile")!
+    /// Shared presigned URL request to ops-web
+    private func requestPresignedURL(filename: String, contentType: String, folder: String) async throws -> PresignedURLResponse {
+        let session: Session
+        do {
+            session = try await SupabaseService.shared.client.auth.session
+        } catch {
+            throw UploadError.invalidResponse
+        }
 
-        var request = URLRequest(url: lambdaURL)
+        let idToken = session.accessToken
+        let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/uploads/presign")
+
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
 
-        let requestData = try JSONEncoder().encode(lambdaRequest)
-        request.httpBody = requestData
-
-        if let bodyString = String(data: requestData, encoding: .utf8) {
-            print("[PRESIGNED_UPLOAD] Request body: \(bodyString)")
-        }
+        let body: [String: String] = [
+            "filename": filename,
+            "contentType": contentType,
+            "folder": folder
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -276,79 +232,34 @@ class PresignedURLUploadService {
             throw UploadError.invalidResponse
         }
 
-        print("[PRESIGNED_UPLOAD] Response status: \(httpResponse.statusCode)")
-
-        if let responseString = String(data: data, encoding: .utf8) {
-            print("[PRESIGNED_UPLOAD] Response body: \(responseString)")
-        }
-
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw UploadError.lambdaError(statusCode: httpResponse.statusCode)
+            throw UploadError.presignError(statusCode: httpResponse.statusCode)
         }
 
-        let presignedResponse = try JSONDecoder().decode(PresignedURLResponse.self, from: data)
-
-        return presignedResponse
+        return try JSONDecoder().decode(PresignedURLResponse.self, from: data)
     }
 
-    /// Upload image data to S3 using presigned URL
+    /// Upload image data to S3 using presigned PUT URL
     private func uploadToPresignedURL(presignedResponse: PresignedURLResponse, imageData: Data) async throws {
-        
         guard let url = URL(string: presignedResponse.uploadUrl) else {
             throw UploadError.invalidURL
         }
-        
+
         var request = URLRequest(url: url)
-        
-        // Check if this is a POST with form fields or a simple PUT
-        if let fields = presignedResponse.fields, !fields.isEmpty {
-            // POST with multipart form data
-            request.httpMethod = "POST"
-            
-            let boundary = UUID().uuidString
-            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-            
-            var body = Data()
-            
-            // Add form fields
-            for (key, value) in fields {
-                body.append("--\(boundary)\r\n".data(using: .utf8)!)
-                body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
-                body.append("\(value)\r\n".data(using: .utf8)!)
-            }
-            
-            // Add file data
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
-            body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-            body.append(imageData)
-            body.append("\r\n".data(using: .utf8)!)
-            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-            
-            request.httpBody = body
-            
-        } else {
-            // Simple PUT request
-            request.httpMethod = "PUT"
-            request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
-            request.setValue("\(imageData.count)", forHTTPHeaderField: "Content-Length")
-            request.httpBody = imageData
-        }
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
+        request.httpMethod = "PUT"
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue("\(imageData.count)", forHTTPHeaderField: "Content-Length")
+        request.httpBody = imageData
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw UploadError.invalidResponse
         }
-        
-        
-        if !data.isEmpty, let responseString = String(data: data, encoding: .utf8) {
-        }
-        
+
         guard (200...299).contains(httpResponse.statusCode) else {
             throw UploadError.s3Error(statusCode: httpResponse.statusCode)
         }
-        
     }
     
     /// Extract street address for filename prefix
@@ -469,17 +380,17 @@ class PresignedURLUploadService {
 enum UploadError: LocalizedError {
     case invalidResponse
     case invalidURL
-    case lambdaError(statusCode: Int)
+    case presignError(statusCode: Int)
     case s3Error(statusCode: Int)
-    
+
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
             return "Invalid response from server"
         case .invalidURL:
             return "Invalid upload URL"
-        case .lambdaError(let code):
-            return "Lambda function error (status: \(code))"
+        case .presignError(let code):
+            return "Presign request error (status: \(code))"
         case .s3Error(let code):
             return "S3 upload error (status: \(code))"
         }

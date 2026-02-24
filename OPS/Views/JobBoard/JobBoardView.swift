@@ -20,7 +20,7 @@ struct JobBoardView: View {
     @State private var showingProjectFilterSheet = false
     @State private var showingTaskFilterSheet = false
 
-    // Preloading state
+    // Preloading state (legacy — client query now filtered at DB level)
     @State private var isPreloadingClients = false
     @State private var hasPreloadedClients = false
 
@@ -78,6 +78,7 @@ struct JobBoardView: View {
                             .padding(.top, 70) // Account for header
                             .onChange(of: selectedSection) { oldValue, newValue in
                                 previousSection = oldValue
+                                searchText = ""
                             }
                             .onChange(of: tutorialPhase) { oldPhase, newPhase in
                                 // Animate tab switch when entering step 12 (projectListStatusDemo)
@@ -97,28 +98,26 @@ struct JobBoardView: View {
                             .frame(height: 70)
                     }
 
-                    // Universal search bar
-                    if selectedSection != .dashboard {
-                        UniversalSearchBar(
-                            section: selectedSection,
-                            searchText: $searchText,
-                            showingFilters: $showingFilters,
-                            onFilterTap: {
-                                switch selectedSection {
-                                case .projects:
-                                    showingProjectFilterSheet = true
-                                case .tasks:
-                                    showingTaskFilterSheet = true
-                                default:
-                                    break
-                                }
+                    // Universal search bar (hidden during tutorial)
+                    if !tutorialMode {
+                    UniversalSearchBar(
+                        section: selectedSection,
+                        searchText: $searchText,
+                        showingFilters: $showingFilters,
+                        onFilterTap: {
+                            switch selectedSection {
+                            case .projects:
+                                showingProjectFilterSheet = true
+                            case .tasks:
+                                showingTaskFilterSheet = true
+                            default:
+                                break
                             }
-                        )
-                        .padding(.top, 12)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                         
-                        
+                        }
+                    )
+                    .padding(.top, 12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
                     }
 
                     // Main content with slide transitions
@@ -135,9 +134,9 @@ struct JobBoardView: View {
                         } else {
                             switch selectedSection {
                             case .dashboard:
-                                JobBoardDashboard()
+                                JobBoardDashboard(searchText: searchText)
                             case .clients:
-                                ClientListView(searchText: searchText)
+                                ClientListView(searchText: searchText, companyId: dataController.currentUser?.companyId ?? "")
                                     .padding(.horizontal, 16)
                             case .projects:
                                 JobBoardProjectListView(
@@ -163,8 +162,7 @@ struct JobBoardView: View {
                         previousSection = oldValue
                     }
                     .task {
-                        // Preload clients in background when Job Board first appears
-                        await preloadClientsData()
+                        // Client preloading no longer needed — @Query is filtered at DB level
                     }
                     .onAppear {
                         // Track screen view for analytics
@@ -189,27 +187,8 @@ struct JobBoardView: View {
         }
 
     // MARK: - Background Data Preloading
-
-    @MainActor
-    private func preloadClientsData() async {
-        guard !hasPreloadedClients && !isPreloadingClients else { return }
-        guard let companyId = dataController.currentUser?.companyId else { return }
-
-        isPreloadingClients = true
-
-        try? await Task.sleep(nanoseconds: 500_000_000)
-
-        print("[PRELOAD] Starting background client data preload")
-
-        let clients = dataController.getAllClients(for: companyId)
-        for client in clients {
-            _ = client.projects.count
-        }
-
-        hasPreloadedClients = true
-        isPreloadingClients = false
-        print("[PRELOAD] Preloaded \(clients.count) clients with project data")
-    }
+    // Client preloading removed — @Query in ClientListView now filters at DB level,
+    // eliminating the need for eager relationship traversal.
 }
 
 // MARK: - Floating Action Item

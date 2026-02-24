@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Status enum matching your Bubble Job Status exactly
+/// Status enum for project/task status tracking
 enum Status: String, Codable, CustomStringConvertible, CaseIterable {
     case rfq = "rfq"
     case estimated = "estimated"
@@ -21,7 +21,7 @@ enum Status: String, Codable, CustomStringConvertible, CaseIterable {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
 
-        // Handle legacy title-case values from Bubble
+        // Handle legacy title-case values
         switch rawValue {
         case "Pending": self = .rfq
         case "RFQ": self = .rfq

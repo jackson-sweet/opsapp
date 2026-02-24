@@ -19,7 +19,7 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
-struct CalendarEventPreview: Identifiable, Equatable {
+struct ScheduledTaskPreview: Identifiable, Equatable {
     let id: String
     let eventId: String
     let title: String
@@ -34,7 +34,7 @@ struct CalendarEventPreview: Identifiable, Equatable {
     let isFirstInWeek: Bool
     let taskTypeDisplay: String?  // Task type for subtitle in tall events
 
-    static func == (lhs: CalendarEventPreview, rhs: CalendarEventPreview) -> Bool {
+    static func == (lhs: ScheduledTaskPreview, rhs: ScheduledTaskPreview) -> Bool {
         lhs.id == rhs.id
     }
 }
@@ -63,7 +63,7 @@ struct MoreEventsIndicator: Identifiable {
 }
 
 class MonthGridCache: ObservableObject {
-    @Published var eventsByDate: [String: [CalendarEventPreview]] = [:]
+    @Published var eventsByDate: [String: [ScheduledTaskPreview]] = [:]
     @Published var isLoading = false
 
     private let calendar = Calendar.current
@@ -72,60 +72,58 @@ class MonthGridCache: ObservableObject {
         isLoading = true
 
         Task { @MainActor in
-            var cache: [String: [CalendarEventPreview]] = [:]
+            var cache: [String: [ScheduledTaskPreview]] = [:]
 
             let oneYearAgo = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
 
-            // Task-only scheduling migration: active property removed
-            var allEvents = dataController.getAllCalendarEvents(from: oneYearAgo)
+            var allTasks = dataController.getAllScheduledTasks(from: oneYearAgo)
 
-            // Tutorial mode only shows demo events
+            // Tutorial mode only shows demo tasks
             if tutorialMode {
-                allEvents = allEvents.filter { $0.id.hasPrefix("DEMO_") }
+                allTasks = allTasks.filter { $0.id.hasPrefix("DEMO_") }
             }
 
-            let filteredEvents = viewModel.applyEventFilters(to: allEvents)
+            let filteredTasks = viewModel.applyTaskFilters(to: allTasks)
 
-            for event in filteredEvents {
-                guard let startDate = event.startDate else { continue }
-                let eventStart = calendar.startOfDay(for: startDate)
+            for task in filteredTasks {
+                guard let startDate = task.startDate else { continue }
+                let taskStart = calendar.startOfDay(for: startDate)
                 // If no end date, treat as single-day event
-                let endDate = event.endDate ?? startDate
-                let eventEnd = calendar.startOfDay(for: endDate)
+                let endDate = task.endDate ?? startDate
+                let taskEnd = calendar.startOfDay(for: endDate)
 
-                let isMultiDay = !calendar.isDate(eventStart, inSameDayAs: eventEnd)
-                let daySpan = calendar.dateComponents([.day], from: eventStart, to: eventEnd).day ?? 0
+                let isMultiDay = !calendar.isDate(taskStart, inSameDayAs: taskEnd)
+                let daySpan = calendar.dateComponents([.day], from: taskStart, to: taskEnd).day ?? 0
                 let totalDays = daySpan + 1
 
-                var currentDate = eventStart
+                var currentDate = taskStart
                 var dayOffset = 0
 
-                while currentDate <= eventEnd {
+                while currentDate <= taskEnd {
                     let dateKey = formatDateKey(currentDate)
                     let isFirst = dayOffset == 0
-                    let isLast = currentDate >= eventEnd
+                    let isLast = currentDate >= taskEnd
 
                     let weekday = calendar.component(.weekday, from: currentDate)
                     let isMonday = (weekday == 2)
                     let isFirstInWeek = isFirst || isMonday
 
-                    // Task-only scheduling migration: Use stored color for all events
-                    let displayColor = event.color
+                    let displayColor = task.effectiveColor
 
-                    let preview = CalendarEventPreview(
-                        id: "\(event.id)_\(dayOffset)",
-                        eventId: event.id,
-                        title: event.title,
+                    let preview = ScheduledTaskPreview(
+                        id: "\(task.id)_\(dayOffset)",
+                        eventId: task.id,
+                        title: task.displayTitle,
                         color: displayColor,
-                        startDate: eventStart,
-                        endDate: eventEnd,
+                        startDate: taskStart,
+                        endDate: taskEnd,
                         isMultiDay: isMultiDay,
                         dayOffset: dayOffset,
                         totalDays: totalDays,
                         isFirst: isFirst,
                         isLast: isLast,
                         isFirstInWeek: isFirstInWeek,
-                        taskTypeDisplay: event.task?.taskType?.display
+                        taskTypeDisplay: task.taskType?.display
                     )
 
                     if cache[dateKey] == nil {
@@ -148,7 +146,7 @@ class MonthGridCache: ObservableObject {
         }
     }
 
-    func events(for date: Date) -> [CalendarEventPreview] {
+    func events(for date: Date) -> [ScheduledTaskPreview] {
         let dateKey = formatDateKey(date)
         return eventsByDate[dateKey] ?? []
     }
@@ -298,7 +296,7 @@ struct MonthGridView: View {
         let isLevel3 = cellHeight >= 180
 
         var occupiedSlots: [[Bool]] = Array(repeating: Array(repeating: false, count: maxSlots), count: 7)
-        var eventsByDay: [[CalendarEventPreview]] = Array(repeating: [], count: 7)
+        var eventsByDay: [[ScheduledTaskPreview]] = Array(repeating: [], count: 7)
 
         for (dayIndex, date) in dates.enumerated() {
             guard let date = date else { continue }
@@ -638,7 +636,7 @@ struct MonthGridView: View {
                     cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
                 }
             }
-            .onChange(of: dataController.calendarEventsDidChange) { _, _ in
+            .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
                 if let dataController = viewModel.dataController {
                     cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
                 }
@@ -721,7 +719,7 @@ struct MonthDayCell: View {
 }
 
 struct EventBadge: View {
-    let event: CalendarEventPreview
+    let event: ScheduledTaskPreview
     let cellHeight: CGFloat
 
     private var badgeHeight: CGFloat? {
@@ -1004,27 +1002,27 @@ struct DayDetailsSheet: View {
     @EnvironmentObject var dataController: DataController
     @EnvironmentObject var appState: AppState
 
-    private var events: [CalendarEventPreview] {
+    private var eventPreviews: [ScheduledTaskPreview] {
         cache.events(for: date)
     }
 
-    private var calendarEvents: [CalendarEvent] {
-        let eventIds = Set(events.map { $0.eventId })
-        return eventIds.compactMap { id in
-            dataController.getCalendarEvent(id: id)
+    private var scheduledTasks: [ProjectTask] {
+        let taskIds = Set(eventPreviews.map { $0.eventId })
+        return taskIds.compactMap { id in
+            dataController.getTask(id: id)
         }
     }
 
-    // Separate new and ongoing events (matching week view)
-    private var newEvents: [CalendarEvent] {
-        calendarEvents.filter { event in
-            Calendar.current.isDate(event.startDate ?? Date(), inSameDayAs: date)
+    // Separate new and ongoing tasks (matching week view)
+    private var newTasks: [ProjectTask] {
+        scheduledTasks.filter { task in
+            Calendar.current.isDate(task.startDate ?? Date(), inSameDayAs: date)
         }
     }
 
-    private var ongoingEvents: [CalendarEvent] {
-        calendarEvents.filter { event in
-            let startDate = event.startDate ?? Date()
+    private var ongoingTasks: [ProjectTask] {
+        scheduledTasks.filter { task in
+            let startDate = task.startDate ?? Date()
             return !Calendar.current.isDate(startDate, inSameDayAs: date)
         }
     }
@@ -1038,12 +1036,12 @@ struct DayDetailsSheet: View {
                     .padding(.horizontal)
                     .padding(.top, 8)
 
-                Text("\(calendarEvents.count) event\(calendarEvents.count == 1 ? "" : "s")")
+                Text("\(scheduledTasks.count) event\(scheduledTasks.count == 1 ? "" : "s")")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .padding(.horizontal)
 
-                if calendarEvents.isEmpty {
+                if scheduledTasks.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: OPSStyle.Icons.calendar)
                             .font(.system(size: 48))
@@ -1056,21 +1054,21 @@ struct DayDetailsSheet: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 60)
                 } else {
-                    // New events section (matching week view template)
-                    ForEach(Array(newEvents.enumerated()), id: \.element.id) { index, event in
+                    // New tasks section (matching week view template)
+                    ForEach(Array(newTasks.enumerated()), id: \.element.id) { index, task in
                         CalendarEventCard(
-                            event: event,
+                            task: task,
                             isFirst: index == 0,
                             isOngoing: false,
                             onTap: {
-                                handleEventTap(event)
+                                handleTaskTap(task)
                             }
                         )
                         .padding(.horizontal)
                     }
 
-                    // Ongoing section divider and events (matching week view template)
-                    if !ongoingEvents.isEmpty {
+                    // Ongoing section divider and tasks (matching week view template)
+                    if !ongoingTasks.isEmpty {
                         HStack(spacing: 8) {
                             Text("ONGOING")
                                 .font(OPSStyle.Typography.captionBold)
@@ -1080,20 +1078,20 @@ struct DayDetailsSheet: View {
                                 .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
                                 .frame(height: 1)
 
-                            Text("[\(ongoingEvents.count)]")
+                            Text("[\(ongoingTasks.count)]")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         .padding(.vertical, 8)
                         .padding(.horizontal, 24)
 
-                        ForEach(Array(ongoingEvents.enumerated()), id: \.element.id) { index, event in
+                        ForEach(Array(ongoingTasks.enumerated()), id: \.element.id) { index, task in
                             CalendarEventCard(
-                                event: event,
+                                task: task,
                                 isFirst: false,
                                 isOngoing: true,
                                 onTap: {
-                                    handleEventTap(event)
+                                    handleTaskTap(task)
                                 }
                             )
                             .padding(.horizontal)
@@ -1107,28 +1105,23 @@ struct DayDetailsSheet: View {
         .presentationDetents([.fraction(0.3), .fraction(0.7), .large])
     }
 
-    private func handleEventTap(_ event: CalendarEvent) {
-        // Task-only scheduling migration: All events are task events
-        if let task = event.task {
-            // Send task ID and project ID
-            let userInfo: [String: String] = [
-                "taskID": task.id,
-                "projectID": task.projectId
-            ]
+    private func handleTaskTap(_ task: ProjectTask) {
+        let userInfo: [String: String] = [
+            "taskID": task.id,
+            "projectID": task.projectId
+        ]
 
-            // Post notification for task details
-            NotificationCenter.default.post(
-                name: Notification.Name("ShowCalendarTaskDetails"),
-                object: nil,
-                userInfo: userInfo
-            )
-        }
+        NotificationCenter.default.post(
+            name: Notification.Name("ShowCalendarTaskDetails"),
+            object: nil,
+            userInfo: userInfo
+        )
         dismiss()
     }
 }
 
 struct EventDetailCard: View {
-    let event: CalendarEvent
+    let task: ProjectTask
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @State private var showingQuickActions = false
@@ -1139,11 +1132,11 @@ struct EventDetailCard: View {
     @State private var isPressed = false
 
     private var eventColor: Color {
-        Color(hex: event.color) ?? OPSStyle.Colors.primaryAccent
+        Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent
     }
 
     private var dateRangeText: String {
-        if let start = event.startDate, let end = event.endDate {
+        if let start = task.startDate, let end = task.endDate {
             return "\(start.formatted(date: .abbreviated, time: .omitted)) - \(end.formatted(date: .abbreviated, time: .omitted))"
         } else {
             return "No dates"
@@ -1159,18 +1152,12 @@ struct EventDetailCard: View {
                     .cornerRadius(2)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(event.title)
+                    Text(task.displayTitle)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    if let project = event.project {
+                    if let project = task.project {
                         Text(project.title)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-
-                    if let task = event.task {
-                        Text(task.displayTitle)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -1243,8 +1230,7 @@ struct EventDetailCard: View {
             Button("Cancel", role: .cancel) {}
         }
         .sheet(isPresented: $showingDetailView) {
-            // Task-only scheduling migration: All events are task events
-            if let task = event.task, let project = task.project {
+            if let project = task.project {
                 TaskDetailsView(task: task, project: project)
                     .environmentObject(dataController)
                     .environmentObject(appState)
@@ -1252,46 +1238,25 @@ struct EventDetailCard: View {
             }
         }
         .sheet(isPresented: $showingReschedule) {
-            // Task-only scheduling migration: All events are task events
-            if let task = event.task {
-                CalendarSchedulerSheet(
-                    isPresented: $showingReschedule,
-                    itemType: .task(task),
-                    currentStartDate: event.startDate,
-                    currentEndDate: event.endDate,
-                    onScheduleUpdate: { newStart, newEnd in
-                        updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
-                    }
-                )
-                .environmentObject(dataController)
-            }
+            CalendarSchedulerSheet(
+                isPresented: $showingReschedule,
+                itemType: .task(task),
+                currentStartDate: task.startDate,
+                currentEndDate: task.endDate,
+                onScheduleUpdate: { newStart, newEnd in
+                    updateTaskSchedule(startDate: newStart, endDate: newEnd)
+                }
+            )
+            .environmentObject(dataController)
         }
     }
 
-    private func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date) {
-        guard let calendarEvent = task.calendarEvent else { return }
-
+    private func updateTaskSchedule(startDate: Date, endDate: Date) {
         Task {
             do {
-                try await dataController.updateCalendarEvent(event: calendarEvent, startDate: startDate, endDate: endDate)
+                try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
             } catch {
                 print("Error updating task schedule: \(error)")
-            }
-        }
-    }
-
-    private func updateProjectSchedule(project: Project, startDate: Date, endDate: Date) {
-        Task {
-            do {
-                try await dataController.rescheduleProject(
-                    project,
-                    startDate: startDate,
-                    endDate: endDate,
-                    calendarEvent: event
-                )
-                print("[MONTH_GRID] ✅ Project rescheduled successfully")
-            } catch {
-                print("[MONTH_GRID] ❌ Error rescheduling project: \(error)")
             }
         }
     }

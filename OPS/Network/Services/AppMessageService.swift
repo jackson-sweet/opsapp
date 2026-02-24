@@ -2,7 +2,7 @@
 //  AppMessageService.swift
 //  OPS
 //
-//  Service for fetching app messages
+//  Service for fetching app messages from Supabase
 //  Used to display update notices, maintenance alerts, and announcements on app launch
 //
 
@@ -19,39 +19,18 @@ struct AppMessageDTO: Codable, Identifiable {
     let dismissable: Bool?
     let targetUserTypes: [String]?
     let appStoreUrl: String?
-    let createdDate: Date?
+    let createdAt: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id = "_id"
+        case id
         case active
         case title
         case body
-        case messageType
+        case messageType = "message_type"
         case dismissable
-        case targetUserTypes
-        case appStoreUrl
-        case createdDate = "Created Date"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-
-        id = try container.decode(String.self, forKey: .id)
-        active = try container.decodeIfPresent(Bool.self, forKey: .active)
-        title = try container.decodeIfPresent(String.self, forKey: .title)
-        body = try container.decodeIfPresent(String.self, forKey: .body)
-        messageType = try container.decodeIfPresent(String.self, forKey: .messageType)
-        dismissable = try container.decodeIfPresent(Bool.self, forKey: .dismissable)
-        targetUserTypes = try container.decodeIfPresent([String].self, forKey: .targetUserTypes)
-        appStoreUrl = try container.decodeIfPresent(String.self, forKey: .appStoreUrl)
-
-        if let dateString = try container.decodeIfPresent(String.self, forKey: .createdDate) {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            createdDate = formatter.date(from: dateString)
-        } else {
-            createdDate = nil
-        }
+        case targetUserTypes = "target_user_types"
+        case appStoreUrl = "app_store_url"
+        case createdAt = "created_at"
     }
 }
 
@@ -95,29 +74,28 @@ enum AppMessageType: String {
     }
 }
 
-// MARK: - Response Wrapper
-
-struct AppMessageResponse: Codable {
-    let response: AppMessageResponseData
-}
-
-struct AppMessageResponseData: Codable {
-    let results: [AppMessageDTO]
-    let remaining: Int?
-    let count: Int?
-}
-
 // MARK: - App Message Service
 
 class AppMessageService {
 
-    /// Fetches the active app message
+    /// Fetches the active app message from Supabase
     /// Returns nil if no active message exists or if the fetch fails
-    /// TODO: Migrate to Supabase app_messages table when available
     func fetchActiveMessage() async -> AppMessageDTO? {
-        // Bubble endpoint removed — return nil until Supabase table is set up
-        print("[APP_MESSAGE] App messages not yet migrated to Supabase")
-        return nil
+        do {
+            let response: [AppMessageDTO] = try await SupabaseService.shared.client
+                .from("app_messages")
+                .select()
+                .eq("active", value: true)
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+
+            return response.first
+        } catch {
+            print("[APP_MESSAGE] Failed to fetch app messages: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     /// Checks if a message should be shown to the current user based on their role

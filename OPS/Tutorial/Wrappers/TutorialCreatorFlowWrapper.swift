@@ -124,66 +124,38 @@ struct TutorialCreatorFlowWrapper: View {
                 .environmentObject(dataController)
             }
 
-            // Layer 7: Collapsible tooltip at top of screen + Continue button
-            VStack(spacing: 0) {
+            // Layer 7: Dynamically positioned tooltip (with embedded progress bar)
+            GeometryReader { geo in
+                let safeTop = geo.safeAreaInsets.top
+                let position = stateManager.currentPhase.tooltipVerticalPosition
+                let yOffset = safeTop + 8 + (geo.size.height - safeTop - 100) * position
+
                 TutorialCollapsibleTooltip(
                     text: stateManager.tooltipText,
                     description: stateManager.tooltipDescription,
-                    animated: true
+                    animated: true,
+                    stepIndex: stateManager.phaseIndex,
+                    totalSteps: stateManager.totalPhases
                 )
-
-                // Continue button (appears after auto-advance timer)
-                if stateManager.showContinueButton {
-                    Button {
-                        stateManager.continueFromAutoAdvance()
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text("CONTINUE")
-                                .font(OPSStyle.Typography.bodyBold)
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .bold))
-                        }
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 12)
-                        .background(Color.white)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        // Dark glow effect
-                        .shadow(color: Color.black.opacity(0.8), radius: 20, x: 0, y: 0)
-                        .shadow(color: Color.black.opacity(0.6), radius: 40, x: 0, y: 4)
-                    }
-                    .padding(.top, 16)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                Spacer()
+                .padding(.horizontal, 16)
+                .position(x: geo.size.width / 2, y: yOffset)
+                .animation(.easeInOut(duration: 0.4), value: stateManager.currentPhase)
             }
-            .animation(.easeOut(duration: 0.3), value: stateManager.showContinueButton)
+            .allowsHitTesting(true)
 
-            // Layer 8 (TOPMOST): Floating Done button for tutorial summary
-            if shouldShowDoneButton {
+            // Layer 8 (TOPMOST): Action bar at bottom
+            if stateManager.currentPhase != .notStarted && stateManager.currentPhase != .completed {
                 VStack {
                     Spacer()
-                    Button {
-                        TutorialHaptics.success()
-                        stateManager.advancePhase()
-                    } label: {
-                        Text("DONE")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 18)
-                            .background(Color.white)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            // Dark glow effect
-                            .shadow(color: Color.black.opacity(0.8), radius: 20, x: 0, y: 0)
-                            .shadow(color: Color.black.opacity(0.6), radius: 40, x: 0, y: 4)
-                    }
-                    .padding(.horizontal, 40)
-                    .padding(.bottom, 120)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    TutorialActionBar(
+                        isActionPhase: stateManager.currentPhase.isActionPhase,
+                        continueLabel: stateManager.currentPhase.continueLabel,
+                        phaseIndex: stateManager.phaseIndex,
+                        onBack: { stateManager.goBack() },
+                        onContinue: { stateManager.continueFromAutoAdvance() },
+                        onSkip: { stateManager.skipPhase() }
+                    )
                 }
-                .animation(.easeOut(duration: 0.3), value: shouldShowDoneButton)
             }
         }
         .ignoresSafeArea(.keyboard)
@@ -363,11 +335,6 @@ struct TutorialCreatorFlowWrapper: View {
         default:
             return .zero
         }
-    }
-
-    /// Whether to show the floating done button for tutorial summary
-    private var shouldShowDoneButton: Bool {
-        stateManager.currentPhase == .tutorialSummary
     }
 
     /// Whether to show the spotlight overlay (not shown for intro phases - blocking overlay handles it)

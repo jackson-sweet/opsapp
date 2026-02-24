@@ -22,7 +22,7 @@ struct OPSApp: App {
     // Create the model container for SwiftData
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            // Bubble-backed models
+            // Core data models
             User.self,
             Project.self,
             Company.self,
@@ -32,7 +32,7 @@ struct OPSApp: App {
             ProjectTask.self,
             TaskType.self,
             TaskStatusOption.self,
-            CalendarEvent.self,
+            SyncOperation.self,
             OpsContact.self,
             // Supabase-backed models
             Opportunity.self,
@@ -117,11 +117,6 @@ struct OPSApp: App {
                             await notificationManager.scheduleNotificationsForAllProjects(using: modelContext)
                         }
 
-                        // Task-only scheduling migration: Delete old project-level CalendarEvents (one-time cleanup)
-                        if !UserDefaults.standard.bool(forKey: "project_events_cleaned_v1") {
-                            await deleteProjectLevelCalendarEvents()
-                            UserDefaults.standard.set(true, forKey: "project_events_cleaned_v1")
-                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
@@ -235,50 +230,6 @@ struct OPSApp: App {
         }
     }
 
-    /// Migration: Delete old project-level CalendarEvents (where taskId is nil)
-    /// This is a one-time cleanup for the task-only scheduling migration
-    @MainActor
-    private func deleteProjectLevelCalendarEvents() async {
-        print("[MIGRATION] 🔄 Starting task-only scheduling migration...")
-        print("[MIGRATION] Deleting old project-level CalendarEvents (where taskId is nil)")
-
-        guard let modelContext = dataController.modelContext else {
-            print("[MIGRATION] ❌ Model context not available")
-            return
-        }
-
-        do {
-            // Fetch all CalendarEvents where taskId is nil (project-level events)
-            let descriptor = FetchDescriptor<CalendarEvent>(
-                predicate: #Predicate<CalendarEvent> { event in
-                    event.taskId == nil
-                }
-            )
-
-            let projectLevelEvents = try modelContext.fetch(descriptor)
-            let count = projectLevelEvents.count
-
-            if count == 0 {
-                print("[MIGRATION] ✅ No project-level CalendarEvents found - migration complete")
-                return
-            }
-
-            print("[MIGRATION] Found \(count) project-level CalendarEvent(s) to delete")
-
-            // Delete each project-level event
-            for event in projectLevelEvents {
-                print("[MIGRATION]   Deleting event: \(event.id) - \(event.title)")
-                modelContext.delete(event)
-            }
-
-            // Save changes
-            try modelContext.save()
-            print("[MIGRATION] ✅ Successfully deleted \(count) project-level CalendarEvent(s)")
-            print("[MIGRATION] ✅ Task-only scheduling migration complete")
-        } catch {
-            print("[MIGRATION] ❌ Failed to delete project-level CalendarEvents: \(error)")
-        }
-    }
 }
 
 

@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Overlay that prompts admin/office crew to assign roles to employees
-//  who don't have an employeeType set in Bubble.
+//  who don't have an employeeType set.
 //
 
 import SwiftUI

@@ -493,12 +493,6 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
         case .calendarMonthPrompt:
             return .calendarMonth
         case .calendarMonth:
-            return .pipelineOverview  // Transition to pipeline phases
-        case .pipelineOverview:
-            return .estimatesOverview
-        case .estimatesOverview:
-            return .invoicesOverview
-        case .invoicesOverview:
             return .tutorialSummary  // Final summary before completion
         case .tutorialSummary:
             return .completed
@@ -551,6 +545,93 @@ enum TutorialPhase: Int, CaseIterable, Identifiable {
             return .jobBoardIntro
         case .employee:
             return .homeOverview
+        }
+    }
+
+    // MARK: - Phase Ordering
+
+    /// Returns the ordered array of phases for a given flow type (excluding notStarted and completed)
+    static func phaseOrder(for flowType: TutorialFlowType) -> [TutorialPhase] {
+        var phases: [TutorialPhase] = []
+        var current: TutorialPhase? = firstPhase(for: flowType)
+        while let phase = current, phase != .completed {
+            phases.append(phase)
+            current = phase.next(for: flowType)
+        }
+        return phases
+    }
+
+    // MARK: - Tooltip Vertical Position
+
+    /// Vertical position for tooltip placement (0.0 = top, 1.0 = bottom)
+    /// Per-phase positioning to draw attention near the action area
+    var tooltipVerticalPosition: CGFloat {
+        switch self {
+        // Company Creator phases
+        case .jobBoardIntro:
+            return 0.55  // mid-screen, near FAB
+        case .fabTap:
+            return 0.25  // upper-mid, near expanded menu
+        case .createProjectAction:
+            return 0.25
+        case .projectFormClient, .projectFormName, .projectFormAddTask, .projectFormComplete:
+            return 0.0   // top — form is below
+        case .taskFormType, .taskFormCrew, .taskFormDate, .taskFormDone:
+            return 0.0   // top — task form fills screen
+        case .dragToAccepted:
+            return 0.0   // top — card is mid-screen
+        case .projectListStatusDemo, .projectListSwipe, .closedProjectsScroll:
+            return 0.0
+        case .calendarWeek, .calendarMonthPrompt, .calendarMonth:
+            return 0.0
+        case .tutorialSummary:
+            return 0.3   // centered area
+
+        // Employee phases
+        case .homeOverview, .tapProject:
+            return 0.0
+        case .projectStarted:
+            return 0.0
+        case .tapDetails, .addNote, .addPhoto, .completeProject:
+            return 0.0
+        case .jobBoardBrowse:
+            return 0.0
+
+        // Pipeline phases
+        case .pipelineOverview, .estimatesOverview, .invoicesOverview:
+            return 0.0
+
+        default:
+            return 0.0
+        }
+    }
+
+    // MARK: - Action Phase Configuration
+
+    /// Whether this phase requires user interaction with the app (vs observation/continue phases)
+    /// Action phases show Back + disabled Continue + Skip in the action bar
+    /// Continue phases show a single wide Continue/Done button
+    var isActionPhase: Bool {
+        switch self {
+        case .jobBoardIntro, .fabTap,
+             .projectFormClient, .projectFormName, .projectFormAddTask,
+             .taskFormType, .taskFormCrew, .taskFormDate, .taskFormDone,
+             .projectFormComplete, .dragToAccepted, .projectListSwipe,
+             .calendarMonthPrompt,
+             .tapProject, .tapDetails, .completeProject:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// The label for the Continue/Done button in the action bar
+    var continueLabel: String {
+        switch self {
+        case .tutorialSummary:
+            return "LET'S GO"
+        default:
+            return "CONTINUE"
         }
     }
 }

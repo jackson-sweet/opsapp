@@ -6,7 +6,7 @@
 //  Table: project_tasks
 //
 //  Column note: task_notes (not notes), custom_title (not title), task_color (not color).
-//  Scheduling dates are NOT stored on project_tasks — they live on the linked calendar_event.
+//  Scheduling dates (start_date, end_date, duration) are stored directly on project_tasks.
 //
 
 import Foundation

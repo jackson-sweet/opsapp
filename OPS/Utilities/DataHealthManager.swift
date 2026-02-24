@@ -122,16 +122,16 @@ class DataHealthManager: ObservableObject {
         if user.companyId == nil || user.companyId?.isEmpty == true {
             print("[DATA_HEALTH] ⚠️ User has no company ID")
 
-            // Fetch user from API to see if they have a company in Bubble
+            // Fetch user from API to check company association
             if let apiUser = await fetchUserFromAPI(userId: userId) {
                 if let apiCompanyId = apiUser.companyId, !apiCompanyId.isEmpty {
-                    // User has company in Bubble but not locally - update local
+                    // User has company on server but not locally - update local
                     user.companyId = apiCompanyId
                     try? dataController.modelContext?.save()
                     print("[DATA_HEALTH] ✅ Updated user with company ID from API: \(apiCompanyId)")
                 } else {
-                    // User has no company in Bubble either - send to company join
-                    print("[DATA_HEALTH] ❌ User has no company in Bubble - return to onboarding")
+                    // User has no company on server either - send to company join
+                    print("[DATA_HEALTH] ❌ User has no company on server - return to onboarding")
                     currentHealthState = .missingCompanyId
                     return (.missingCompanyId, .returnToOnboarding(step: .companyCode))
                 }

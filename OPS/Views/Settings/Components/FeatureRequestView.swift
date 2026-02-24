@@ -179,45 +179,22 @@ struct FeatureRequestView: View {
     }
     
     private func submitFeatureRequestToAPI() async throws {
-        // Get the current user ID
-        guard let userId = dataController.currentUser?.id else {
-            throw NSError(domain: "FeatureRequestView", code: 1, 
+        guard let userEmail = dataController.currentUser?.email else {
+            throw NSError(domain: "FeatureRequestView", code: 1,
                          userInfo: [NSLocalizedDescriptionKey: "User not logged in"])
         }
-        
-        // Create parameters
-        let parameters: [String: Any] = [
-            "feature_title": featureTitle,
-            "feature_description": featureDescription,
-            "user": userId,
-            "platform": "iOS mobile",
-            "isBug": false // This is a feature request, not a bug
-        ]
-        
-        // Create JSON body
-        let jsonData = try JSONSerialization.data(withJSONObject: parameters)
-        
-        // Create URL
-        let endpoint = "api/1.1/wf/request_feature"
-        var request = URLRequest(url: AppConfiguration.bubbleBaseURL.appendingPathComponent(endpoint))
-        request.httpMethod = "POST"
-        request.httpBody = jsonData
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        // Execute request
-        let (_, response) = try await URLSession.shared.data(for: request)
-        
-        // Check response
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw NSError(domain: "FeatureRequestView", code: 2,
-                         userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
-        }
-        
-        // Check status code
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw NSError(domain: "FeatureRequestView", code: 3,
-                         userInfo: [NSLocalizedDescriptionKey: "Request failed with status code \(httpResponse.statusCode)"])
-        }
+
+        try await SupabaseService.shared.client
+            .from("feature_requests")
+            .insert([
+                "type": "feature",
+                "title": featureTitle,
+                "description": featureDescription,
+                "platform": "iOS mobile",
+                "user_email": userEmail,
+                "status": "new"
+            ])
+            .execute()
     }
 }
 

@@ -624,7 +624,7 @@ struct PlanSelectionView: View {
             switch status {
             case .active:
                 // If status is active, trust it and disable the button
-                // The subscriptionEnd field may not always sync from Bubble
+                // The subscriptionEnd field may not always be synced yet
                 return true
 
             case .trial:
@@ -800,281 +800,137 @@ struct PlanSelectionView: View {
             return
         }
         
-        // Directly create subscription through Bubble
-        // Bubble handles customer creation automatically
-        createSubscriptionThroughBubble(priceId: priceId, companyId: company.id)
+        createSubscriptionViaStripe(priceId: priceId, companyId: company.id)
     }
     
     private func validatePromoCode() {
         isValidatingPromo = true
         promoValidationError = nil
-        
-        // Call Bubble API to validate promo code
-        let endpoint = "https://opsapp.co/api/1.1/wf/validate_promo_code?api_token=f81e9da85b7a12e996ac53e970a52299"
-        
-        guard let url = URL(string: endpoint) else {
-            isValidatingPromo = false
-            promoValidationError = "Invalid server URL"
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body: [String: Any] = [
-            "promo_code": promoCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        ]
-        
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        } catch {
-            isValidatingPromo = false
-            promoValidationError = "Failed to validate code"
-            return
-        }
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                self.isValidatingPromo = false
-                
-                if let error = error {
-                    self.promoValidationError = "Network error: \(error.localizedDescription)"
-                    return
-                }
-                
-                // Check HTTP status
-                if let httpResponse = response as? HTTPURLResponse {
-                    if httpResponse.statusCode == 404 {
-                        self.promoValidationError = "Validation service not available"
-                        return
-                    } else if httpResponse.statusCode != 200 {
-                        self.promoValidationError = "Server error (\(httpResponse.statusCode))"
-                        return
-                    }
-                }
-                
-                guard let data = data else {
-                    self.promoValidationError = "No response data"
-                    return
-                }
-                
-                // Debug: Print raw response
-                #if DEBUG
-                if let jsonString = String(data: data, encoding: .utf8) {
-                    print("📥 PROMO VALIDATION RESPONSE: \(jsonString)")
-                }
-                #endif
-                
-                do {
-                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        print("🔍 PROMO RESPONSE KEYS: \(json.keys.sorted())")
-                        
-                        // Check if it's wrapped in a response object
-                        let responseData = json["response"] as? [String: Any] ?? json
-                        print("🔍 RESPONSE DATA KEYS: \(responseData.keys.sorted())")
-                        
-                        if let valid = responseData["valid"] as? Bool {
-                            if valid {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    self.validatedPromoCode = self.promoCode
-                                    
-                                    // Get discount details
-                                    if let percentage = responseData["discount_percentage"] as? Double {
-                                        self.promoDiscount = Int(percentage)
-                                    } else if let percentage = responseData["discount_percentage"] as? Int {
-                                        self.promoDiscount = percentage
-                                    } else if let amountOff = responseData["discount_amount"] as? Int,
-                                              let plan = self.selectedPlan {
-                                        // Calculate percentage from fixed amount if needed
-                                        let price = self.selectedSchedule == .monthly ?
-                                            plan.monthlyPrice :
-                                            plan.annualPrice
-                                        if price > 0 {
-                                            self.promoDiscount = min(100, Int((Double(amountOff) / Double(price)) * 100))
-                                        }
-                                    }
-                                    
-                                    // Show coupon name if available
-                                    if let couponName = responseData["coupon_name"] as? String {
-                                    }
-                                    
-                                    // Check remaining uses if available
-                                    if let maxRedemptions = responseData["max_redemptions"] as? Int,
-                                       let timesRedeemed = responseData["times_redeemed"] as? Int {
-                                        let remainingUses = maxRedemptions - timesRedeemed
-                                        if remainingUses == 1 {
-                                        } else if remainingUses <= 5 {
-                                        }
-                                    }
-                                    
-                                    self.promoValidationError = nil
-                                }
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    // Get specific error message
-                                    let errorMessage = responseData["error"] as? String ?? "Invalid promo code"
 
-                                    // Provide user-friendly error messages
-                                    switch errorMessage.lowercased() {
-                                    case let msg where msg.contains("maximum redemptions"):
-                                        self.promoValidationError = "This code has reached its usage limit"
-                                    case let msg where msg.contains("expired"):
-                                        self.promoValidationError = "This promo code has expired"
-                                    case let msg where msg.contains("inactive"):
-                                        self.promoValidationError = "This promo code is no longer active"
-                                    case let msg where msg.contains("invalid"):
-                                        self.promoValidationError = "Invalid promo code"
-                                    default:
-                                        self.promoValidationError = errorMessage
-                                    }
+        Task {
+            do {
+                let response = try await StripeService.shared.validatePromoCode(
+                    promoCode.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
 
-                                    self.validatedPromoCode = nil
-                                    self.promoDiscount = nil
+                await MainActor.run {
+                    self.isValidatingPromo = false
+
+                    if response.valid {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            self.validatedPromoCode = self.promoCode
+
+                            // Get discount details
+                            if let percentage = response.discountPercentage {
+                                self.promoDiscount = Int(percentage)
+                            } else if let amountOff = response.discountAmount,
+                                      let plan = self.selectedPlan {
+                                let price = self.selectedSchedule == .monthly ?
+                                    plan.monthlyPrice :
+                                    plan.annualPrice
+                                if price > 0 {
+                                    self.promoDiscount = min(100, Int((Double(amountOff) / Double(price)) * 100))
                                 }
                             }
-                        } else {
-                            self.promoValidationError = "Invalid response format"
+
+                            self.promoValidationError = nil
+                        }
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            let errorMessage = response.error ?? "Invalid promo code"
+
+                            switch errorMessage.lowercased() {
+                            case let msg where msg.contains("maximum redemptions"):
+                                self.promoValidationError = "This code has reached its usage limit"
+                            case let msg where msg.contains("expired"):
+                                self.promoValidationError = "This promo code has expired"
+                            case let msg where msg.contains("inactive"):
+                                self.promoValidationError = "This promo code is no longer active"
+                            case let msg where msg.contains("invalid"):
+                                self.promoValidationError = "Invalid promo code"
+                            default:
+                                self.promoValidationError = errorMessage
+                            }
+
+                            self.validatedPromoCode = nil
+                            self.promoDiscount = nil
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.isValidatingPromo = false
+                    self.promoValidationError = "Network error: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    private func createSubscriptionViaStripe(priceId: String, companyId: String) {
+        // Determine plan and period from priceId for the subscribe route
+        let plan = determinePlanFromPriceId(priceId)
+        let period = determinePeriodFromPriceId(priceId)
+
+        if useSetupIntentFlow {
+            // Setup intent flow: collect payment method first, then subscribe
+            print("[STRIPE] Using setup intent flow")
+            Task {
+                do {
+                    let setupResponse = try await StripeService.shared.createSetupIntent(companyId: companyId)
+                    await MainActor.run {
+                        if let clientSecret = setupResponse.clientSecret as String? {
+                            self.presentPaymentSheet(
+                                clientSecret: clientSecret,
+                                ephemeralKey: "",
+                                customerId: ""
+                            )
                         }
                     }
                 } catch {
-                    self.promoValidationError = "Failed to parse response"
-                }
-            }
-        }.resume()
-    }
-    
-    private func createSubscriptionThroughBubble(priceId: String, companyId: String) {
-        if useSetupIntentFlow {
-            // New secure flow: Create setup intent first, subscription after payment
-            print("🔐 Using secure setup intent flow")
-            BubbleSubscriptionService.shared.createSetupIntent(
-                companyId: companyId,
-                priceId: priceId
-            ) { result in
-                switch result {
-                case .success(let response):
-                    print("📦 SETUP INTENT CREATED:")
-                    print("  - Has Client Secret: \(response.paymentClientSecret != nil)")
-                    print("  - Customer ID: \(response.customer_id ?? "nil")")
-                    print("  - Setup Intent ID: \(response.setup_intent_id ?? "nil")")
-                    print("  - Amount Due: \(response.amount_due ?? -1)")
-                    
-                    // Store the setup intent ID from the response
-                    self.currentSetupIntentId = response.setup_intent_id
-                    print("  - Stored Setup Intent ID: \(self.currentSetupIntentId ?? "nil")")
-                    
-                    // Check if payment is required
-                    if response.amount_due == 0 {
-                        // 100% discount - no payment needed, complete subscription immediately
-                        print("✅ 100% discount applied - completing subscription without payment")
-                        self.completeSubscriptionAfterPayment(
-                            setupIntentId: self.currentSetupIntentId,
-                            priceId: priceId,
-                            companyId: companyId
-                        )
-                    } else if let clientSecret = response.paymentClientSecret,
-                              let ephemeralKey = response.ephemeral_key,
-                              let customerId = response.customer_id {
-                        // Payment required - present payment sheet
-                        self.presentPaymentSheet(
-                            clientSecret: clientSecret,
-                            ephemeralKey: ephemeralKey,
-                            customerId: customerId
-                        )
-                    } else {
+                    await MainActor.run {
                         self.isProcessingPayment = false
-                        self.errorMessage = "Payment setup failed. Missing required payment details."
+                        self.errorMessage = error.localizedDescription
                         self.showPaymentError = true
                     }
-                    
-                case .failure(let error):
-                    self.isProcessingPayment = false
-                    self.errorMessage = error.localizedDescription
-                    self.showPaymentError = true
                 }
             }
         } else {
-            // Old flow (for backward compatibility)
-            BubbleSubscriptionService.shared.createSubscriptionWithPayment(
-            priceId: priceId,
-            companyId: companyId,
-            promoCode: validatedPromoCode ?? nil
-        ) { result in
-            switch result {
-            case .success(let response):
-                // Log the response for debugging
-                print("📦 SUBSCRIPTION CREATED:")
-                print("  - Status: \(response.subscription_status ?? "unknown")")
-                print("  - Amount Due: \(response.amount_due ?? -1)")
-                print("  - Has Client Secret: \(response.paymentClientSecret != nil)")
-                
-                // Check if subscription is already active (100% discount applied)
-                if response.subscription_status == "active" || response.amount_due == 0 {
-                    // Subscription is active with 100% discount - no payment needed
-                    print("✅ Subscription active with 100% discount - no payment needed")
-                    self.isProcessingPayment = false
-                    self.handleSuccessfulSubscription()
-                } else if response.subscription_status == "incomplete" || response.subscription_status == "trialing" {
-                    // Subscription created but payment needed
-                    if let clientSecret = response.paymentClientSecret,
-                       let ephemeralKey = response.ephemeral_key,
-                       let customerId = response.customer_id {
-                        print("💳 Presenting payment sheet for incomplete subscription")
-                        self.presentPaymentSheet(
-                            clientSecret: clientSecret,
-                            ephemeralKey: ephemeralKey,
-                            customerId: customerId
-                        )
-                    } else {
-                        print("❌ Incomplete subscription but missing payment details")
+            // Direct subscribe flow
+            Task {
+                do {
+                    let response = try await StripeService.shared.subscribe(
+                        companyId: companyId,
+                        plan: plan,
+                        period: period,
+                        promoCode: validatedPromoCode
+                    )
+
+                    await MainActor.run {
+                        if response.status == "active" {
+                            self.isProcessingPayment = false
+                            self.handleSuccessfulSubscription()
+                        } else if let clientSecret = response.clientSecret {
+                            self.presentPaymentSheet(
+                                clientSecret: clientSecret,
+                                ephemeralKey: "",
+                                customerId: ""
+                            )
+                        } else {
+                            self.isProcessingPayment = false
+                            self.handleSuccessfulSubscription()
+                        }
+                    }
+                } catch {
+                    await MainActor.run {
                         self.isProcessingPayment = false
-                        self.errorMessage = "Payment setup required but payment details missing. Please contact support."
+                        self.errorMessage = error.localizedDescription
                         self.showPaymentError = true
                     }
-                } else if let clientSecret = response.paymentClientSecret,
-                          let ephemeralKey = response.ephemeral_key,
-                          let customerId = response.customer_id {
-                    // Payment is needed (legacy flow)
-                    self.presentPaymentSheet(
-                        clientSecret: clientSecret,
-                        ephemeralKey: ephemeralKey,
-                        customerId: customerId
-                    )
-                } else {
-                    self.isProcessingPayment = false
-                    
-                    // More helpful error message
-                    var errorDetails = "Unable to complete payment setup. "
-                    if response.paymentClientSecret == nil {
-                        errorDetails += "Payment method not initialized. "
-                    }
-                    if response.customer_id == nil {
-                        errorDetails += "Customer account not found. "
-                    }
-                    errorDetails += "Please try again or contact support."
-                    
-                    // Log debug info
-                    print("❌ PAYMENT SETUP FAILED:")
-                    print("  - Client Secret: \(response.paymentClientSecret ?? "nil")")
-                    print("  - Ephemeral Key: \(response.ephemeral_key ?? "nil")")
-                    print("  - Customer ID: \(response.customer_id ?? "nil")")
-                    print("  - Subscription ID: \(response.subscription_id ?? "nil")")
-                    print("  - Status: \(response.subscription_status ?? "nil")")
-                    
-                    self.errorMessage = errorDetails
-                    self.showPaymentError = true
                 }
-                
-            case .failure(let error):
-                self.isProcessingPayment = false
-                self.errorMessage = error.localizedDescription
-                self.showPaymentError = true
             }
         }
-        }  // Close the else block for old flow
     }
-    
+
     private func createSubscription(customerId: String, priceId: String) {
         guard let company = dataController.getCurrentUserCompany() else {
             errorMessage = "Unable to load company information"
@@ -1082,80 +938,81 @@ struct PlanSelectionView: View {
             isProcessingPayment = false
             return
         }
-        
-        // Use Bubble service to create subscription
-        BubbleSubscriptionService.shared.createSubscriptionWithPayment(
-            priceId: priceId,
-            companyId: company.id
-        ) { result in
-            switch result {
-            case .success(let response):
-                // Check if we got the necessary payment details
-                if let clientSecret = response.paymentClientSecret,
-                   let ephemeralKey = response.ephemeral_key,
-                   let customerId = response.customer_id {
-                    self.presentPaymentSheet(
-                        clientSecret: clientSecret,
-                        ephemeralKey: ephemeralKey,
-                        customerId: customerId
-                    )
-                } else {
+
+        let plan = determinePlanFromPriceId(priceId)
+        let period = determinePeriodFromPriceId(priceId)
+
+        Task {
+            do {
+                let response = try await StripeService.shared.subscribe(
+                    companyId: company.id,
+                    plan: plan,
+                    period: period
+                )
+
+                await MainActor.run {
+                    if response.status == "active" {
+                        self.isProcessingPayment = false
+                        self.handleSuccessfulSubscription()
+                    } else if let clientSecret = response.clientSecret {
+                        self.presentPaymentSheet(
+                            clientSecret: clientSecret,
+                            ephemeralKey: "",
+                            customerId: ""
+                        )
+                    } else {
+                        self.isProcessingPayment = false
+                        self.errorMessage = "Payment setup failed. Please try again."
+                        self.showPaymentError = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
                     self.isProcessingPayment = false
-                    
-                    // More helpful error message
-                    var errorDetails = "Unable to complete payment setup. "
-                    if response.paymentClientSecret == nil {
-                        errorDetails += "Payment method not initialized. "
-                    }
-                    if response.customer_id == nil {
-                        errorDetails += "Customer account not found. "
-                    }
-                    errorDetails += "Please try again or contact support."
-                    
-                    // Log debug info
-                    print("❌ PAYMENT SETUP FAILED:")
-                    print("  - Client Secret: \(response.paymentClientSecret ?? "nil")")
-                    print("  - Ephemeral Key: \(response.ephemeral_key ?? "nil")")
-                    print("  - Customer ID: \(response.customer_id ?? "nil")")
-                    print("  - Subscription ID: \(response.subscription_id ?? "nil")")
-                    print("  - Status: \(response.subscription_status ?? "nil")")
-                    
-                    self.errorMessage = errorDetails
+                    self.errorMessage = error.localizedDescription
                     self.showPaymentError = true
                 }
-                
-            case .failure(let error):
-                self.isProcessingPayment = false
-                self.errorMessage = error.localizedDescription
-                self.showPaymentError = true
             }
         }
     }
-    
+
     private func completeSubscriptionAfterPayment(setupIntentId: String?, priceId: String, companyId: String) {
-        // Call the complete_subscription endpoint
-        BubbleSubscriptionService.shared.completeSubscription(
-            companyId: companyId,
-            priceId: priceId,
-            setupIntentId: setupIntentId,
-            promoCode: validatedPromoCode
-        ) { result in
-            switch result {
-            case .success(let response):
-                print("✅ SUBSCRIPTION COMPLETED:")
-                print("  - Subscription ID: \(response.subscription_id ?? "nil")")
-                print("  - Status: \(response.subscription_status ?? "unknown")")
-                
-                self.isProcessingPayment = false
-                // Don't call handleSuccessfulSubscription here since polling is already running
-                // The polling will detect the subscription activation and dismiss
-                
-            case .failure(let error):
-                self.isProcessingPayment = false
-                // Stop polling and show error
-                self.stopPollingWithError("Failed to activate subscription: \(error.localizedDescription)")
+        let plan = determinePlanFromPriceId(priceId)
+        let period = determinePeriodFromPriceId(priceId)
+
+        Task {
+            do {
+                let response = try await StripeService.shared.subscribe(
+                    companyId: companyId,
+                    plan: plan,
+                    period: period,
+                    promoCode: validatedPromoCode
+                )
+                await MainActor.run {
+                    print("[STRIPE] Subscription completed: \(response.status ?? "unknown")")
+                    self.isProcessingPayment = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.isProcessingPayment = false
+                    self.stopPollingWithError("Failed to activate subscription: \(error.localizedDescription)")
+                }
             }
         }
+    }
+
+    // MARK: - Price ID Helpers
+
+    private func determinePlanFromPriceId(_ priceId: String) -> String {
+        if priceId.contains("starter") { return "starter" }
+        if priceId.contains("team") { return "team" }
+        if priceId.contains("business") { return "business" }
+        return "starter"
+    }
+
+    private func determinePeriodFromPriceId(_ priceId: String) -> String {
+        if priceId.contains("annual") || priceId.contains("yearly") { return "Annual" }
+        return "Monthly"
     }
     
     private func presentPaymentSheet(clientSecret: String, ephemeralKey: String, customerId: String) {

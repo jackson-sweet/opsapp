@@ -212,8 +212,8 @@ struct TaskFormSheet: View {
             _selectedTaskTypeId = State(initialValue: task.taskTypeId)
             _taskNotes = State(initialValue: task.taskNotes ?? "")
             _selectedTeamMemberIds = State(initialValue: Set(task.getTeamMemberIds()))
-            _startDate = State(initialValue: task.calendarEvent?.startDate)
-            _endDate = State(initialValue: task.calendarEvent?.endDate)
+            _startDate = State(initialValue: task.startDate)
+            _endDate = State(initialValue: task.endDate)
             _selectedStatus = State(initialValue: task.status)
         } else if let projectId = preselectedProjectId {
             _selectedProjectId = State(initialValue: projectId)
@@ -1121,27 +1121,15 @@ struct TaskFormSheet: View {
                     task.setTeamMemberIds(Array(selectedTeamMemberIds))
                 }
 
-                if let calendarEvent = task.calendarEvent {
-                    // CalendarEvent title: "Client Name - Project Name"
-                    if let project = task.project {
-                        calendarEvent.title = "\(project.effectiveClientName) - \(project.title)"
-                    }
-                    calendarEvent.startDate = startDate
-                    calendarEvent.endDate = endDate
-                    if let start = startDate, let end = endDate {
-                        let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
-                        calendarEvent.duration = daysDiff + 1
-                    }
-                } else {
-                    let newEvent = CalendarEvent.fromTask(task, startDate: startDate, endDate: endDate)
-                    task.calendarEvent = newEvent
-                    modelContext.insert(newEvent)
+                // Set scheduling dates directly on the task
+                task.startDate = startDate
+                task.endDate = endDate
+                if let start = startDate, let end = endDate {
+                    let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+                    task.duration = daysDiff + 1
                 }
 
                 task.needsSync = true
-                if let calendarEvent = task.calendarEvent {
-                    calendarEvent.needsSync = true
-                }
 
                 try modelContext.save()
                 print("[TASK_FORM] ✅ Task saved locally")
@@ -1174,7 +1162,6 @@ struct TaskFormSheet: View {
                         companyId: task.companyId,
                         projectId: task.projectId,
                         taskTypeId: task.taskTypeId,
-                        calendarEventId: task.calendarEventId,
                         customTitle: task.customTitle,
                         taskNotes: task.taskNotes,
                         status: task.status.rawValue,
@@ -1183,6 +1170,9 @@ struct TaskFormSheet: View {
                         teamMemberIds: task.getTeamMemberIds(),
                         sourceLineItemId: nil,
                         sourceEstimateId: nil,
+                        startDate: task.startDate.map { ISO8601DateFormatter().string(from: $0) },
+                        endDate: task.endDate.map { ISO8601DateFormatter().string(from: $0) },
+                        duration: task.duration,
                         deletedAt: nil
                     )
                     let createdTaskId = try await dataController.syncManager.createTask(dto: supabaseTaskDTO)
@@ -1192,42 +1182,8 @@ struct TaskFormSheet: View {
                     task.needsSync = false
                     task.lastSyncedAt = Date()
 
-                    if let calendarEvent = task.calendarEvent {
-                        print("[TASK_FORM] 📅 Creating calendar event on Supabase...")
-                        let dateFormatter = ISO8601DateFormatter()
-
-                        let duration: Int
-                        if let start = calendarEvent.startDate, let end = calendarEvent.endDate {
-                            let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
-                            duration = daysDiff + 1
-                        } else {
-                            duration = calendarEvent.duration
-                        }
-
-                        let eventDTO = SupabaseCalendarEventDTO(
-                            id: calendarEvent.id,
-                            bubbleId: nil,
-                            companyId: calendarEvent.companyId,
-                            projectId: calendarEvent.projectId,
-                            title: calendarEvent.title,
-                            color: calendarEvent.color,
-                            startDate: calendarEvent.startDate.map { dateFormatter.string(from: $0) },
-                            endDate: calendarEvent.endDate.map { dateFormatter.string(from: $0) },
-                            duration: duration,
-                            teamMemberIds: calendarEvent.getTeamMemberIds(),
-                            deletedAt: nil
-                        )
-
-                        let createdEventId = try await dataController.syncManager.createCalendarEvent(dto: eventDTO)
-                        calendarEvent.id = createdEventId
-                        task.calendarEventId = createdEventId
-                        calendarEvent.needsSync = false
-                        calendarEvent.lastSyncedAt = Date()
-                        print("[TASK_FORM] ✅ Calendar event created with ID: \(createdEventId)")
-                    }
-
                     try modelContext.save()
-                    print("[TASK_FORM] ✅ Task and calendar event saved to SwiftData")
+                    print("[TASK_FORM] ✅ Task saved to SwiftData")
 
                     if let project = task.project {
                         print("[TASK_FORM] 📅 Project dates automatically computed from tasks...")

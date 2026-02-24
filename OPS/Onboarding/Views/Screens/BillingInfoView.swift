@@ -196,7 +196,7 @@ struct BillingInfoView: View {
                         "30 DAYS FREE",
                         font: OPSStyle.Typography.title,
                         color: OPSStyle.Colors.primaryText,
-                        typingSpeed: 28
+                        typingSpeed: 45
                     ) {
                         // Show content after title completes
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -255,7 +255,7 @@ struct BillingInfoView: View {
     }
 
     private func trialBenefitRow(text: String, index: Int, isLast: Bool = false) -> some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 Text("→")
                     .font(OPSStyle.Typography.caption)
@@ -289,7 +289,7 @@ struct BillingInfoView: View {
                         "YOU'RE IN.",
                         font: OPSStyle.Typography.title,
                         color: OPSStyle.Colors.primaryText,
-                        typingSpeed: 28
+                        typingSpeed: 45
                     ) {
                         // Show content after title completes
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {

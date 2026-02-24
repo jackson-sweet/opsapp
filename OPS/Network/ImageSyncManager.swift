@@ -10,17 +10,13 @@ import SwiftData
 import Foundation
 import Network
 
-/// Manager for handling image synchronization between local storage, S3, and Bubble API
+/// Manager for handling image synchronization between local storage, S3, and Supabase
 @MainActor
 class ImageSyncManager: ObservableObject {
     // Dependencies
     private let modelContext: ModelContext?
     private let connectivityMonitor: ConnectivityMonitor
-    private let s3Service = S3UploadService.shared
     private let presignedURLService = PresignedURLUploadService.shared
-    
-    // Configuration flag to use presigned URLs instead of direct S3 upload
-    private let usePresignedURLs = false // Set to true to use Lambda presigned URLs
     
     // In-memory queue of pending image uploads
     private var pendingUploads: [PendingImageUpload] = []
@@ -75,109 +71,45 @@ class ImageSyncManager: ObservableObject {
         }
     }
     
-    /// Save images using S3 and register them with Bubble
+    /// Save images using S3 and update Supabase
     func saveImages(_ images: [UIImage], for project: Project) async -> [String] {
-        
         let companyId = project.companyId
         guard !companyId.isEmpty else {
             return []
         }
-        
+
         var savedURLs: [String] = []
-        
+
         if connectivityMonitor.isConnected {
             do {
-                // Upload to S3 (using either direct upload or presigned URLs)
-                let s3Results: [(url: String, filename: String)]
-                
-                if usePresignedURLs {
-                    s3Results = try await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
-                } else {
-                    s3Results = try await s3Service.uploadProjectImages(images, for: project, companyId: companyId)
-                }
-                
-                // Create list of URL strings for Bubble API
-                let imageURLs = s3Results.map { $0.url }
-                
-                // Register with Bubble API
-                let requestBody: [String: Any] = [
-                    "project_id": project.id,
-                    "images": imageURLs  // Just an array of URL strings
-                ]
-                
-                for (index, url) in imageURLs.enumerated() {
-                }
-                
-                let uploadURL = URL(string: "\(AppConfiguration.bubbleBaseURL)/api/1.1/wf/upload_project_images")!
-                
-                var request = URLRequest(url: uploadURL)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.setValue("Bearer \(AppConfiguration.bubbleAPIToken)", forHTTPHeaderField: "Authorization")
-                
-                let requestBodyData = try JSONSerialization.data(withJSONObject: requestBody)
-                request.httpBody = requestBodyData
-                
-                if let bodyString = String(data: requestBodyData, encoding: .utf8) {
-                }
-                
-                request.allHTTPHeaderFields?.forEach { key, value in
-                    if key.lowercased() == "authorization" {
-                    } else {
-                    }
-                }
-                
-                let (data, response) = try await URLSession.shared.data(for: request)
-                
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    // S3 upload succeeded but Bubble failed - clean up S3
-                    for result in s3Results {
-                        try? await s3Service.deleteImageFromS3(url: result.url, companyId: companyId, projectId: project.id)
-                    }
-                    throw S3Error.bubbleAPIFailed
-                }
-                
-                
-                if let responseString = String(data: data, encoding: .utf8) {
-                }
-                
-                guard (200...299).contains(httpResponse.statusCode) else {
-                    if let errorBody = String(data: data, encoding: .utf8) {
-                    }
-                    // S3 upload succeeded but Bubble failed - clean up S3
-                    for result in s3Results {
-                        try? await s3Service.deleteImageFromS3(url: result.url, companyId: companyId, projectId: project.id)
-                    }
-                    throw S3Error.bubbleAPIFailed
-                }
-                
-                // Success - return the S3 URLs
+                // Upload to S3 via presigned URLs
+                let s3Results = try await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
+
                 savedURLs = s3Results.map { $0.url }
-                
-                
+
                 // Update project with new image URLs
                 var currentImages = project.getProjectImages()
                 currentImages.append(contentsOf: savedURLs)
-                
+
                 project.setProjectImageURLs(currentImages)
-                
+
+                // Update Supabase directly with new image URLs
+                try await SupabaseService.shared.client
+                    .from("projects")
+                    .update(["project_images": currentImages])
+                    .eq("id", value: project.id)
+                    .execute()
+
                 // Mark project for sync
                 project.needsSync = true
                 project.syncPriority = 2
-                
-                // Save changes
+
                 if let modelContext = modelContext {
-                    do {
-                        try modelContext.save()
-                    } catch {
-                    }
-                } else {
+                    try? modelContext.save()
                 }
-                
-                
+
             } catch {
-                
-                // For offline mode, save locally and queue for later
+                // Offline fallback - save locally and queue for later
                 for (index, image) in images.enumerated() {
                     if let localURL = await saveImageLocally(image, for: project, index: index) {
                         savedURLs.append(localURL)
@@ -192,8 +124,7 @@ class ImageSyncManager: ObservableObject {
                 }
             }
         }
-        
-        
+
         return savedURLs
     }
     
@@ -242,51 +173,32 @@ class ImageSyncManager: ObservableObject {
         return nil
     }
     
-    /// Delete an image from S3, Bubble, and locally
+    /// Delete an image from S3 and locally
     func deleteImage(_ urlString: String, from project: Project) async -> Bool {
-        
         // Check if it's a local URL
         if urlString.starts(with: "local://") {
-            // Remove from file system
             _ = ImageFileManager.shared.deleteImage(localID: urlString)
-            
-            // Remove from pending uploads if present
             pendingUploads.removeAll { $0.localURL == urlString }
             savePendingUploads()
-            
             return true
         }
-        
-        // If it's an S3 URL, delete from S3
+
+        // If it's an S3 URL, remove from local cache
         if urlString.contains("s3") && urlString.contains("amazonaws.com") {
-            let companyId = project.companyId
-            guard !companyId.isEmpty else {
-                return false
-            }
-            
-            do {
-                try await s3Service.deleteImageFromS3(url: urlString, companyId: companyId, projectId: project.id)
-                
-                // Also remove from local cache if present
-                _ = ImageFileManager.shared.deleteImage(localID: urlString)
-                
-                return true
-            } catch {
-                return false
-            }
+            _ = ImageFileManager.shared.deleteImage(localID: urlString)
+            return true
         }
-        
-        // Handle legacy Bubble URLs
+
+        // Handle legacy URLs
         if urlString.contains("opsapp.co/") && urlString.contains("/img/") {
-            // Remove from local cache
             ImageFileManager.shared.deleteImage(localID: urlString)
             return true
         }
-        
+
         return false
     }
-    
-    /// Sync all pending images to S3 and Bubble
+
+    /// Sync all pending images to S3 and Supabase
     func syncPendingImages() async {
         
         guard !isSyncing, connectivityMonitor.isConnected else { 
@@ -326,12 +238,12 @@ class ImageSyncManager: ObservableObject {
         guard let project = getProject(by: projectId) else {
             return
         }
-        
+
         let companyId = project.companyId
         guard !companyId.isEmpty else {
             return
         }
-        
+
         // Convert pending uploads to UIImages
         let images = uploads.compactMap { upload in
             if let imageData = ImageFileManager.shared.getImageData(localID: upload.localURL) {
@@ -339,51 +251,18 @@ class ImageSyncManager: ObservableObject {
             }
             return upload.originalImage
         }
-        
+
         guard !images.isEmpty else {
             return
         }
-        
+
         do {
-            // Upload to S3 (using either direct upload or presigned URLs)
-            let s3Results: [(url: String, filename: String)]
-            
-            if usePresignedURLs {
-                s3Results = try await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
-            } else {
-                s3Results = try await s3Service.uploadProjectImages(images, for: project, companyId: companyId)
-            }
-            
-            // Create list of URL strings for Bubble API
-            let imageURLs = s3Results.map { $0.url }
-            
-            // Register with Bubble API
-            let requestBody: [String: Any] = [
-                "project_id": projectId,
-                "images": imageURLs  // Just an array of URL strings
-            ]
-            
-            let uploadURL = URL(string: "\(AppConfiguration.bubbleBaseURL)/api/1.1/wf/upload_project_images")!
-            var request = URLRequest(url: uploadURL)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("Bearer \(AppConfiguration.bubbleAPIToken)", forHTTPHeaderField: "Authorization")
-            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-            
-            let (_, response) = try await URLSession.shared.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else {
-                // S3 upload succeeded but Bubble failed - clean up S3
-                for result in s3Results {
-                    try? await s3Service.deleteImageFromS3(url: result.url, companyId: companyId, projectId: projectId)
-                }
-                throw S3Error.bubbleAPIFailed
-            }
-            
+            // Upload to S3 via presigned URLs
+            let s3Results = try await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
+
             // Success - update project with S3 URLs
             var currentImages = project.getProjectImages()
-            
+
             // Replace local URLs with S3 URLs
             for (index, upload) in uploads.enumerated() {
                 if let localIndex = currentImages.firstIndex(of: upload.localURL),
@@ -392,23 +271,30 @@ class ImageSyncManager: ObservableObject {
                     project.markImageAsSynced(upload.localURL)
                 }
             }
-            
+
             project.setProjectImageURLs(currentImages)
+
+            // Update Supabase directly
+            try await SupabaseService.shared.client
+                .from("projects")
+                .update(["project_images": currentImages])
+                .eq("id", value: project.id)
+                .execute()
+
             project.needsSync = true
-            
+
             // Remove from pending uploads
             pendingUploads.removeAll { upload in
                 uploads.contains { $0.localURL == upload.localURL }
             }
             savePendingUploads()
-            
-            // Save changes
+
             if let modelContext = modelContext {
                 try? modelContext.save()
             }
-            
-            
+
         } catch {
+            print("[IMAGE_SYNC] Failed to sync images for project \(projectId): \(error)")
         }
     }
     

@@ -203,17 +203,6 @@ extension SupabaseProjectDTO {
 // MARK: - SupabaseProjectTaskDTO → ProjectTask
 
 extension SupabaseProjectTaskDTO {
-    /// Converts to a ProjectTask SwiftData model.
-    ///
-    /// Deviations from plan template:
-    /// - ProjectTask.init requires (id:projectId:taskTypeId:companyId:status:taskColor:).
-    ///   Plan template used `init(id:title:projectId:)` which does not exist.
-    /// - ProjectTask has NO `title` property — uses `customTitle` and taskType.display.
-    /// - ProjectTask has NO `notes` property — uses `taskNotes`.
-    /// - ProjectTask has NO `scheduledDate` or `scheduledEndDate` stored properties —
-    ///   dates come from the linked CalendarEvent. The plan's template for these does not apply.
-    /// - ProjectTask has NO `allDay` property — plan template set this.
-    /// - `calendarEventId` is stored as a string on the model for later lookup.
     func toModel() -> ProjectTask {
         let resolvedStatus = TaskStatus(rawValue: status) ?? .booked
         let task = ProjectTask(
@@ -226,46 +215,14 @@ extension SupabaseProjectTaskDTO {
         )
         task.customTitle = customTitle
         task.taskNotes = taskNotes
-        task.calendarEventId = calendarEventId
         task.displayOrder = displayOrder ?? 0
         task.teamMemberIdsString = (teamMemberIds ?? []).joined(separator: ",")
         task.sourceLineItemId = sourceLineItemId
         task.sourceEstimateId = sourceEstimateId
+        task.startDate = startDate.flatMap { SupabaseDate.parse($0) }
+        task.endDate = endDate.flatMap { SupabaseDate.parse($0) }
+        task.duration = duration ?? 1
         task.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         return task
-    }
-}
-
-// MARK: - SupabaseCalendarEventDTO → CalendarEvent
-
-extension SupabaseCalendarEventDTO {
-    /// Converts to a CalendarEvent SwiftData model.
-    ///
-    /// Deviations from plan template:
-    /// - CalendarEvent.init requires (id:projectId:companyId:title:startDate:endDate:color:).
-    ///   Plan template used `init(id:companyId:startDate:)` which does not exist.
-    /// - CalendarEvent has NO `allDay` property — plan template set this.
-    /// - CalendarEvent has NO `eventType` stored property accessed directly — it has
-    ///   CalendarEventType enum but defaults to .task.
-    /// - CalendarEvent has NO `taskId` in its init — it is set as a separate property.
-    ///   In the Supabase schema, task linkage flows via project_tasks.calendar_event_id,
-    ///   not calendar_events.task_id. The taskId property on the model is set by the
-    ///   sync layer after resolving the owning task.
-    /// - `teamMemberIds` from Supabase is stored via setTeamMemberIds().
-    func toModel() -> CalendarEvent {
-        let resolvedStart = startDate.flatMap { SupabaseDate.parse($0) }
-        let resolvedEnd = endDate.flatMap { SupabaseDate.parse($0) }
-        let event = CalendarEvent(
-            id: id,
-            projectId: projectId ?? "",
-            companyId: companyId,
-            title: title,
-            startDate: resolvedStart,
-            endDate: resolvedEnd,
-            color: color ?? "#417394"
-        )
-        event.setTeamMemberIds(teamMemberIds ?? [])
-        event.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
-        return event
     }
 }

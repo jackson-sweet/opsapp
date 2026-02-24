@@ -253,7 +253,7 @@ struct OrganizationDetailsView: View {
     // MARK: - Company Code Section
 
     private var companyCodeSection: some View {
-        // Use company's externalId (companyID from Bubble) as the company code
+        // Use company's externalId as the company code
         let companyCode = company?.externalId ?? ""
 
         return VStack(alignment: .leading, spacing: 8) {

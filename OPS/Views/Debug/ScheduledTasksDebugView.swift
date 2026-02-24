@@ -2,54 +2,57 @@
 //  CalendarEventsDebugView.swift
 //  OPS
 //
-//  Debug view for displaying all calendar events with full field details
+//  Debug view for displaying scheduled tasks with full field details
+//  (Renamed from CalendarEventsDebugView after CalendarEvent model was removed)
 //
 
 import SwiftUI
 import SwiftData
 
-struct CalendarEventsDebugView: View {
+/// Debug view renamed from CalendarEventsDebugView.
+/// Now displays ProjectTask scheduling info instead of CalendarEvent entities.
+struct ScheduledTasksDebugView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
-    
-    @State private var events: [CalendarEvent] = []
+
+    @State private var tasks: [ProjectTask] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var selectedEvent: CalendarEvent?
-    @State private var filterType: String? = nil
+    @State private var selectedTask: ProjectTask?
     @State private var searchText: String = ""
-    @State private var showDeleted: Bool = false
-    @State private var showingEventSearchSheet = false
-    
-    var filteredEvents: [CalendarEvent] {
-        var filtered = events
+    @State private var showUnscheduledOnly: Bool = false
+    @State private var showScheduledOnly: Bool = false
+    @State private var showingTaskSearchSheet = false
 
-        // Filter by deleted status
-        if !showDeleted {
-            filtered = filtered.filter { $0.deletedAt == nil }
+    var filteredTasks: [ProjectTask] {
+        var filtered = tasks
+
+        // Filter by scheduled status
+        if showScheduledOnly {
+            filtered = filtered.filter { $0.startDate != nil }
         }
-
-        // All events are task events now - no type filtering needed
+        if showUnscheduledOnly {
+            filtered = filtered.filter { $0.startDate == nil }
+        }
 
         // Filter by search text
         if !searchText.isEmpty {
-            filtered = filtered.filter { event in
-                event.id.localizedCaseInsensitiveContains(searchText) ||
-                event.title.localizedCaseInsensitiveContains(searchText) ||
-                event.projectId.localizedCaseInsensitiveContains(searchText) ||
-                (event.taskId?.localizedCaseInsensitiveContains(searchText) ?? false)
+            filtered = filtered.filter { task in
+                task.id.localizedCaseInsensitiveContains(searchText) ||
+                task.displayTitle.localizedCaseInsensitiveContains(searchText) ||
+                task.projectId.localizedCaseInsensitiveContains(searchText)
             }
         }
 
         return filtered
     }
-    
+
     var body: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 0) {
                 // Header
                 HStack {
@@ -58,16 +61,16 @@ struct CalendarEventsDebugView: View {
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                    
+
                     Spacer()
-                    
-                    Text("Calendar Events Debug")
+
+                    Text("Scheduled Tasks Debug")
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(.white)
-                    
+
                     Spacer()
-                    
-                    Button(action: fetchEvents) {
+
+                    Button(action: fetchTasks) {
                         Image(systemName: OPSStyle.Icons.sync)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -75,7 +78,7 @@ struct CalendarEventsDebugView: View {
                 }
                 .padding()
                 .background(OPSStyle.Colors.cardBackgroundDark)
-                
+
                 // Search bar
                 HStack {
                     HStack {
@@ -96,7 +99,7 @@ struct CalendarEventsDebugView: View {
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(8)
 
-                    Button(action: { showingEventSearchSheet = true }) {
+                    Button(action: { showingTaskSearchSheet = true }) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .padding(8)
@@ -108,23 +111,31 @@ struct CalendarEventsDebugView: View {
 
                 // Filter chips
                 HStack(spacing: 12) {
-                    Text("All events are task events")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Spacer()
+                    EventFilterChip(
+                        title: "Scheduled",
+                        isSelected: showScheduledOnly,
+                        action: {
+                            showScheduledOnly.toggle()
+                            if showScheduledOnly { showUnscheduledOnly = false }
+                        }
+                    )
 
                     EventFilterChip(
-                        title: showDeleted ? "Hide Deleted" : "Show Deleted",
-                        isSelected: showDeleted,
-                        action: { showDeleted.toggle() }
+                        title: "Unscheduled",
+                        isSelected: showUnscheduledOnly,
+                        action: {
+                            showUnscheduledOnly.toggle()
+                            if showUnscheduledOnly { showScheduledOnly = false }
+                        }
                     )
+
+                    Spacer()
                 }
                 .padding(.horizontal)
-                
+
                 if isLoading {
                     Spacer()
-                    ProgressView("Loading events...")
+                    ProgressView("Loading tasks...")
                         .foregroundColor(.white)
                     Spacer()
                 } else if let error = errorMessage {
@@ -143,16 +154,16 @@ struct CalendarEventsDebugView: View {
                             .padding(.horizontal)
                     }
                     Spacer()
-                } else if filteredEvents.isEmpty {
+                } else if filteredTasks.isEmpty {
                     Spacer()
                     VStack(spacing: 16) {
                         Image(systemName: "calendar.badge.exclamationmark")
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Text("No Events Found")
+                        Text("No Tasks Found")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(.white)
-                        Text("No calendar events in the database")
+                        Text("No tasks match the current filters")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -160,96 +171,81 @@ struct CalendarEventsDebugView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 12) {
-                            ForEach(filteredEvents, id: \.id) { event in
-                                CalendarEventDetailCard(event: event)
+                            ForEach(filteredTasks, id: \.id) { task in
+                                ScheduledTaskDetailCard(task: task)
                                     .onTapGesture {
-                                        selectedEvent = event
+                                        selectedTask = task
                                     }
                             }
                         }
                         .padding()
                     }
                 }
-                
-                // Summary bar with sync options
+
+                // Summary bar
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Total: \(events.count) events")
+                        Text("Total: \(tasks.count) tasks")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        Text("All task events")
+
+                        let scheduledCount = tasks.filter { $0.startDate != nil }.count
+                        Text("\(scheduledCount) scheduled, \(tasks.count - scheduledCount) unscheduled")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
-                    
+
                     Spacer()
-                    
-                    HStack(spacing: 12) {
-                        Button("Sync from API") {
-                            syncEventsFromAPI()
-                        }
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.warningStatus)
-                        
-                        Button("Generate from Projects") {
-                            generateEventsFromProjects()
-                        }
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                    Button("Sync Tasks") {
+                        syncTasksFromAPI()
                     }
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding()
                 .background(OPSStyle.Colors.cardBackgroundDark)
             }
         }
         .onAppear {
-            fetchEvents()
+            fetchTasks()
         }
-        .sheet(item: $selectedEvent) { event in
-            CalendarEventDetailSheet(event: event)
+        .sheet(item: $selectedTask) { task in
+            ScheduledTaskDetailSheet(task: task)
         }
-        .sheet(isPresented: $showingEventSearchSheet) {
-            EventSearchSheet(dataController: dataController)
+        .sheet(isPresented: $showingTaskSearchSheet) {
+            TaskSearchSheet(dataController: dataController)
         }
     }
-    
-    private func fetchEvents() {
+
+    private func fetchTasks() {
         isLoading = true
         errorMessage = nil
-        
+
         do {
-            let descriptor = FetchDescriptor<CalendarEvent>(
+            let descriptor = FetchDescriptor<ProjectTask>(
                 sortBy: [SortDescriptor(\.startDate)]
             )
-            events = try modelContext.fetch(descriptor)
+            tasks = try modelContext.fetch(descriptor)
             isLoading = false
         } catch {
-            errorMessage = "Failed to fetch events: \(error.localizedDescription)"
+            errorMessage = "Failed to fetch tasks: \(error.localizedDescription)"
             isLoading = false
         }
     }
-    
-    private func syncEventsFromAPI() {
+
+    private func syncTasksFromAPI() {
         isLoading = true
         errorMessage = nil
-        
+
         Task {
             do {
-                guard let companyId = dataController.currentUser?.companyId else {
-                    await MainActor.run {
-                        errorMessage = "No company ID found"
-                        isLoading = false
-                    }
-                    return
-                }
-                
-                // Sync calendar events via Supabase
-                try await dataController.syncManager.syncCalendarEvents()
+                // Sync tasks via Supabase
+                try await dataController.syncManager.syncTasks()
 
                 await MainActor.run {
-                    errorMessage = "Synced calendar events from Supabase"
-                    fetchEvents()
+                    errorMessage = "Synced tasks from Supabase"
+                    fetchTasks()
                 }
             } catch {
                 await MainActor.run {
@@ -259,44 +255,14 @@ struct CalendarEventsDebugView: View {
             }
         }
     }
-    
-    private func generateEventsFromProjects() {
-        isLoading = true
-        
-        do {
-            // Fetch all projects
-            let projectDescriptor = FetchDescriptor<Project>()
-            let projects = try modelContext.fetch(projectDescriptor)
-            
-            var generatedCount = 0
-            
-            // Task-only scheduling migration: Project-level calendar events are no longer supported
-            // All calendar events are now task-based only
-            errorMessage = "Project-level event generation is no longer supported. All events are task-based now."
-            
-            try modelContext.save()
-            
-            if generatedCount > 0 {
-                errorMessage = "Generated \(generatedCount) new events"
-            } else {
-                errorMessage = "No new events to generate"
-            }
-            
-            fetchEvents()
-            
-        } catch {
-            errorMessage = "Failed to generate events: \(error.localizedDescription)"
-            isLoading = false
-        }
-    }
 }
 
-// Event filter chip component
+// Event filter chip component (kept for reuse)
 struct EventFilterChip: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             Text(title)
@@ -310,37 +276,37 @@ struct EventFilterChip: View {
     }
 }
 
-// Calendar event detail card
-struct CalendarEventDetailCard: View {
-    let event: CalendarEvent
-    
+// Scheduled task detail card
+struct ScheduledTaskDetailCard: View {
+    let task: ProjectTask
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header
             HStack {
-                if let icon = event.displayIcon {
+                if let icon = task.taskType?.icon {
                     Image(systemName: icon)
-                        .foregroundColor(event.swiftUIColor)
+                        .foregroundColor(task.swiftUIColor)
                 }
-                
+
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(event.title)
+                    Text(task.displayTitle)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(.white)
-                    
-                    Text(event.subtitle)
+
+                    Text(task.project?.title ?? "No project")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                
+
                 Spacer()
-                
+
                 HStack(spacing: 4) {
                     Circle()
-                        .fill(event.swiftUIColor)
+                        .fill(task.swiftUIColor)
                         .frame(width: 8, height: 8)
 
-                    Text("Task")
+                    Text(task.status.displayName)
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -349,28 +315,25 @@ struct CalendarEventDetailCard: View {
                 .background(OPSStyle.Colors.cardBackground)
                 .cornerRadius(6)
             }
-            
+
             Divider()
                 .background(OPSStyle.Colors.tertiaryText)
-            
+
             // Fields grid
             VStack(alignment: .leading, spacing: 4) {
-                FieldRow(label: "ID", value: event.id)
-                FieldRow(label: "Type", value: "Task")
-                FieldRow(label: "Project ID", value: event.projectId)
-                FieldRow(label: "Task ID", value: event.taskId ?? "nil")
-                FieldRow(label: "Company ID", value: event.companyId)
-                FieldRow(label: "Color", value: event.color)
-                FieldRow(label: "Duration", value: "\(event.duration) days")
-                FieldRow(label: "Start Date", value: event.startDate.map { formatDate($0) } ?? "nil")
-                FieldRow(label: "End Date", value: event.endDate.map { formatDate($0) } ?? "nil")
-                FieldRow(label: "Multi-Day", value: event.isMultiDay ? "Yes" : "No")
-                FieldRow(label: "Spanned Days", value: "\(event.spannedDates.count)")
-                FieldRow(label: "Team Members", value: event.getTeamMemberIds().joined(separator: ", ").isEmpty ? "none" : event.getTeamMemberIds().joined(separator: ", "))
-                // Task-only scheduling migration: 'active' and 'shouldDisplay' properties removed
-                FieldRow(label: "Needs Sync", value: event.needsSync ? "Yes" : "No")
-                FieldRow(label: "Last Synced", value: event.lastSyncedAt?.formatted() ?? "Never")
-                FieldRow(label: "Deleted At", value: event.deletedAt?.formatted() ?? "Not deleted")
+                FieldRow(label: "ID", value: task.id)
+                FieldRow(label: "Project ID", value: task.projectId)
+                FieldRow(label: "Company ID", value: task.companyId)
+                FieldRow(label: "Task Type", value: task.taskType?.display ?? "Unknown")
+                FieldRow(label: "Color", value: task.effectiveColor)
+                FieldRow(label: "Duration", value: "\(task.duration) days")
+                FieldRow(label: "Start Date", value: task.startDate.map { formatDate($0) } ?? "nil")
+                FieldRow(label: "End Date", value: task.endDate.map { formatDate($0) } ?? "nil")
+                FieldRow(label: "Multi-Day", value: task.isMultiDay ? "Yes" : "No")
+                FieldRow(label: "Spanned Days", value: "\(task.spannedDates.count)")
+                FieldRow(label: "Team Members", value: task.getTeamMemberIds().joined(separator: ", ").isEmpty ? "none" : task.getTeamMemberIds().joined(separator: ", "))
+                FieldRow(label: "Needs Sync", value: task.needsSync ? "Yes" : "No")
+                FieldRow(label: "Last Synced", value: task.lastSyncedAt?.formatted() ?? "Never")
             }
             .font(OPSStyle.Typography.smallCaption)
         }
@@ -378,7 +341,7 @@ struct CalendarEventDetailCard: View {
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
-    
+
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -387,33 +350,33 @@ struct CalendarEventDetailCard: View {
     }
 }
 
-// Detailed sheet for a single event
-struct CalendarEventDetailSheet: View {
+// Detailed sheet for a single scheduled task
+struct ScheduledTaskDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let event: CalendarEvent
-    
+    let task: ProjectTask
+
     var body: some View {
         NavigationView {
             ZStack {
                 OPSStyle.Colors.backgroundGradient
                     .edgesIgnoringSafeArea(.all)
-                
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         // Date Range
-                        Section("Date Range") {
+                        DebugSection("Date Range") {
                             VStack(alignment: .leading, spacing: 8) {
-                                FieldRow(label: "Start", value: event.startDate.map { formatDateTime($0) } ?? "nil")
-                                FieldRow(label: "End", value: event.endDate.map { formatDateTime($0) } ?? "nil")
-                                FieldRow(label: "Duration", value: "\(event.duration) days")
-                                
-                                if event.isMultiDay {
+                                FieldRow(label: "Start", value: task.startDate.map { formatDateTime($0) } ?? "nil")
+                                FieldRow(label: "End", value: task.endDate.map { formatDateTime($0) } ?? "nil")
+                                FieldRow(label: "Duration", value: "\(task.duration) days")
+
+                                if task.isMultiDay {
                                     Text("Spanned Dates:")
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    
-                                    ForEach(event.spannedDates, id: \.self) { date in
-                                        Text("• \(formatDate(date))")
+
+                                    ForEach(task.spannedDates, id: \.self) { date in
+                                        Text("- \(formatDate(date))")
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(OPSStyle.Colors.primaryText)
                                             .padding(.leading, 8)
@@ -424,16 +387,16 @@ struct CalendarEventDetailSheet: View {
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(8)
                         }
-                        
+
                         // Project Info
-                        if let project = event.project {
-                            Section("Project") {
+                        if let project = task.project {
+                            DebugSection("Project") {
                                 VStack(alignment: .leading, spacing: 8) {
                                     FieldRow(label: "Title", value: project.title)
                                     FieldRow(label: "Status", value: project.status.displayName)
                                     FieldRow(label: "Client", value: project.effectiveClientName)
                                     FieldRow(label: "Address", value: project.address ?? "No address")
-                                    
+
                                     if let notes = project.notes, !notes.isEmpty {
                                         Text("Notes:")
                                             .font(OPSStyle.Typography.caption)
@@ -448,36 +411,34 @@ struct CalendarEventDetailSheet: View {
                                 .cornerRadius(8)
                             }
                         }
-                        
-                        // Task Info
-                        if let task = event.task {
-                            Section("Task") {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    FieldRow(label: "Title", value: task.displayTitle)
-                                    FieldRow(label: "Status", value: task.status.displayName)
-                                    FieldRow(label: "Type", value: task.taskType?.display ?? "Unknown")
-                                    FieldRow(label: "Color", value: task.effectiveColor)
-                                    
-                                    if let notes = task.taskNotes, !notes.isEmpty {
-                                        Text("Notes:")
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                        Text(notes)
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                    }
+
+                        // Task Details
+                        DebugSection("Task Info") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                FieldRow(label: "Title", value: task.displayTitle)
+                                FieldRow(label: "Status", value: task.status.displayName)
+                                FieldRow(label: "Type", value: task.taskType?.display ?? "Unknown")
+                                FieldRow(label: "Color", value: task.effectiveColor)
+
+                                if let notes = task.taskNotes, !notes.isEmpty {
+                                    Text("Notes:")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    Text(notes)
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                 }
-                                .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(8)
                             }
+                            .padding()
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(8)
                         }
-                        
+
                         // Team Members
-                        if !event.teamMembers.isEmpty {
-                            Section("Team Members") {
+                        if !task.teamMembers.isEmpty {
+                            DebugSection("Team Members") {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    ForEach(event.teamMembers, id: \.id) { member in
+                                    ForEach(task.teamMembers, id: \.id) { member in
                                         HStack {
                                             Text(member.fullName)
                                                 .foregroundColor(.white)
@@ -497,7 +458,7 @@ struct CalendarEventDetailSheet: View {
                     .padding()
                 }
             }
-            .navigationTitle("Event Details")
+            .navigationTitle("Task Schedule Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -508,13 +469,13 @@ struct CalendarEventDetailSheet: View {
             }
         }
     }
-    
+
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         return formatter.string(from: date)
     }
-    
+
     private func formatDateTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -523,15 +484,14 @@ struct CalendarEventDetailSheet: View {
     }
 }
 
-// Event search sheet - search by ID and fetch from Bubble
-struct EventSearchSheet: View {
+// Task search sheet - search by ID
+struct TaskSearchSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     let dataController: DataController
 
-    @State private var eventId: String = ""
-    @State private var localEvent: CalendarEvent?
-    @State private var bubbleEventDTO: SupabaseCalendarEventDTO?
+    @State private var taskId: String = ""
+    @State private var localTask: ProjectTask?
     @State private var isSearching = false
     @State private var errorMessage: String?
 
@@ -545,12 +505,12 @@ struct EventSearchSheet: View {
                     VStack(alignment: .leading, spacing: 20) {
                         // Search input
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("EVENT ID")
+                            Text("TASK ID")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
                             HStack {
-                                TextField("Enter event ID (e.g., 1762212616726x338849986229004860)", text: $eventId)
+                                TextField("Enter task ID", text: $taskId)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .autocorrectionDisabled()
                                     .textInputAutocapitalization(.never)
@@ -558,18 +518,18 @@ struct EventSearchSheet: View {
                                     .background(OPSStyle.Colors.cardBackgroundDark)
                                     .cornerRadius(8)
 
-                                if !eventId.isEmpty {
-                                    Button(action: { eventId = "" }) {
+                                if !taskId.isEmpty {
+                                    Button(action: { taskId = "" }) {
                                         Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
                                 }
                             }
 
-                            Button(action: searchEvent) {
+                            Button(action: searchTask) {
                                 HStack {
                                     Image(systemName: OPSStyle.Icons.search)
-                                    Text("Search Local & Bubble")
+                                    Text("Search Local")
                                 }
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(.white)
@@ -578,7 +538,7 @@ struct EventSearchSheet: View {
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .cornerRadius(8)
                             }
-                            .disabled(eventId.isEmpty || isSearching)
+                            .disabled(taskId.isEmpty || isSearching)
                         }
 
                         if let error = errorMessage {
@@ -606,7 +566,7 @@ struct EventSearchSheet: View {
                         }
 
                         // Local SwiftData result
-                        if let local = localEvent {
+                        if let local = localTask {
                             VStack(alignment: .leading, spacing: 12) {
                                 Label("LOCAL SWIFTDATA", systemImage: "cylinder.fill")
                                     .font(OPSStyle.Typography.captionBold)
@@ -614,17 +574,15 @@ struct EventSearchSheet: View {
 
                                 VStack(alignment: .leading, spacing: 8) {
                                     FieldRow(label: "ID", value: local.id)
-                                    FieldRow(label: "Title", value: local.title)
-                                    FieldRow(label: "Type", value: "Task")
+                                    FieldRow(label: "Title", value: local.displayTitle)
+                                    FieldRow(label: "Status", value: local.status.displayName)
                                     FieldRow(label: "Project ID", value: local.projectId)
-                                    FieldRow(label: "Task ID", value: local.taskId ?? "nil")
                                     FieldRow(label: "Company ID", value: local.companyId)
-                                    FieldRow(label: "Color", value: local.color)
+                                    FieldRow(label: "Task Type", value: local.taskType?.display ?? "Unknown")
+                                    FieldRow(label: "Color", value: local.effectiveColor)
                                     FieldRow(label: "Start Date", value: local.startDate?.formatted() ?? "nil")
                                     FieldRow(label: "End Date", value: local.endDate?.formatted() ?? "nil")
                                     FieldRow(label: "Duration", value: "\(local.duration) days")
-                                    // Task-only scheduling migration: 'active' and 'shouldDisplay' properties removed
-                                    FieldRow(label: "Deleted At", value: local.deletedAt?.formatted() ?? "Not deleted")
                                     FieldRow(label: "Last Synced", value: local.lastSyncedAt?.formatted() ?? "Never")
                                     FieldRow(label: "Needs Sync", value: local.needsSync ? "Yes" : "No")
                                 }
@@ -633,70 +591,12 @@ struct EventSearchSheet: View {
                             .padding()
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(8)
-                        } else if !isSearching && !eventId.isEmpty {
+                        } else if !isSearching && !taskId.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Label("LOCAL SWIFTDATA", systemImage: "cylinder.fill")
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
-                                Text("Event not found in local SwiftData")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                            .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(8)
-                        }
-
-                        // Bubble API result
-                        if let bubble = bubbleEventDTO {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Label("BUBBLE API", systemImage: "cloud.fill")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                                VStack(alignment: .leading, spacing: 8) {
-                                    FieldRow(label: "ID", value: bubble.id)
-                                    FieldRow(label: "Title", value: bubble.title ?? "nil")
-                                    // Task-only scheduling migration: type and active fields removed
-                                    FieldRow(label: "Project ID", value: bubble.projectId ?? "nil")
-                                    FieldRow(label: "Task ID", value: "N/A (linked via project_tasks)")
-                                    FieldRow(label: "Company ID", value: bubble.companyId ?? "nil")
-                                    FieldRow(label: "Color", value: bubble.color ?? "nil")
-                                    FieldRow(label: "Start Date", value: bubble.startDate ?? "nil")
-                                    FieldRow(label: "End Date", value: bubble.endDate ?? "nil")
-                                    FieldRow(label: "Duration", value: bubble.duration.map { "\($0)" } ?? "nil")
-                                    FieldRow(label: "Deleted At", value: bubble.deletedAt ?? "nil")
-                                    FieldRow(label: "Team Members", value: bubble.teamMemberIds?.joined(separator: ", ") ?? "nil")
-
-                                    Divider()
-                                        .background(OPSStyle.Colors.tertiaryText)
-
-                                    // DTO conversion test
-                                    let modelFromDTO = bubble.toModel()
-                                    if true {
-                                        Label("DTO Conversion: SUCCESS", systemImage: "checkmark.circle.fill")
-                                            .font(OPSStyle.Typography.captionBold)
-                                            .foregroundColor(OPSStyle.Colors.successStatus)
-                                    } else {
-                                        Label("DTO Conversion: FAILED", systemImage: "xmark.circle.fill")
-                                            .font(OPSStyle.Typography.captionBold)
-                                            .foregroundColor(OPSStyle.Colors.errorStatus)
-                                        Text("This event will fail to sync because DTO cannot be converted to model.")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    }
-                                }
-                                .font(OPSStyle.Typography.smallCaption)
-                            }
-                            .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(8)
-                        } else if !isSearching && !eventId.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label("BUBBLE API", systemImage: "cloud.fill")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                                Text("Event not found in Bubble API")
+                                Text("Task not found in local SwiftData")
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
@@ -708,7 +608,7 @@ struct EventSearchSheet: View {
                     .padding()
                 }
             }
-            .navigationTitle("Search Event by ID")
+            .navigationTitle("Search Task by ID")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -720,35 +620,43 @@ struct EventSearchSheet: View {
         }
     }
 
-    private func searchEvent() {
+    private func searchTask() {
         isSearching = true
         errorMessage = nil
-        localEvent = nil
-        bubbleEventDTO = nil
+        localTask = nil
 
-        Task {
-            // Search local SwiftData
-            let localDescriptor = FetchDescriptor<CalendarEvent>(
-                predicate: #Predicate { $0.id == eventId }
-            )
-            do {
-                let localResults = try modelContext.fetch(localDescriptor)
-                await MainActor.run {
-                    localEvent = localResults.first
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Local search error: \(error.localizedDescription)"
-                }
-            }
+        let searchId = taskId
+        let localDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate { $0.id == searchId }
+        )
+        do {
+            let localResults = try modelContext.fetch(localDescriptor)
+            localTask = localResults.first
+        } catch {
+            errorMessage = "Local search error: \(error.localizedDescription)"
+        }
 
-            // TODO: Replace with Supabase query for calendar event by ID
-            // The old Bubble API fetchCalendarEvent(id:) no longer exists.
-            // For now, only local search is available in debug view.
+        isSearching = false
+    }
+}
 
-            await MainActor.run {
-                isSearching = false
-            }
+// Section helper for debug sheets (avoids conflict with SwiftUI Section)
+private struct DebugSection<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+            content
         }
     }
 }

@@ -12,7 +12,7 @@ import CoreLocation
 /// Client model - represents a customer/client in the system
 @Model
 final class Client: Identifiable {
-    var id: String // Bubble's unique ID (_id field)
+    var id: String // Unique identifier
     var name: String
     var email: String?
     var phoneNumber: String?
@@ -36,7 +36,7 @@ final class Client: Identifiable {
     // Sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
-    var createdAt: Date? // When the client was created (from Bubble)
+    var createdAt: Date? // When the client was created
 
     // Soft delete support
     var deletedAt: Date?

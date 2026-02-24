@@ -11,6 +11,8 @@ import UniformTypeIdentifiers
 import UIKit
 
 struct JobBoardDashboard: View {
+    var searchText: String = ""
+
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @Environment(\.modelContext) private var modelContext
@@ -120,8 +122,23 @@ struct JobBoardDashboard: View {
                         .contentShape(Rectangle())
                         .highPriorityGesture(
                             DragGesture(minimumDistance: 0)
-                                .onChanged { _ in
-                                    print("🚫 Overlay blocking scroll/swipe")
+                                .onChanged { value in
+                                    if let project = draggedProject {
+                                        handleDragChanged(project: project, location: value.location, geometry: geometry)
+                                    }
+                                }
+                                .onEnded { _ in
+                                    if let project = draggedProject {
+                                        handleDragEnded(project: project, geometry: geometry)
+                                    } else {
+                                        // Long press without drag — reset state
+                                        withAnimation(.easeOut(duration: 0.2)) {
+                                            isLongPressing = false
+                                        }
+                                        dragLocation = .zero
+                                        illuminatedArrowCount = 0
+                                        lastHapticArrowCount = 0
+                                    }
                                 }
                         )
 
@@ -746,6 +763,16 @@ struct JobBoardDashboard: View {
             }
         }
 
+        // Search filter
+        if !searchText.isEmpty {
+            let query = searchText.lowercased()
+            filteredProjects = filteredProjects.filter { project in
+                project.title.lowercased().contains(query) ||
+                (project.client?.name.lowercased().contains(query) ?? false) ||
+                (project.address?.lowercased().contains(query) ?? false)
+            }
+        }
+
         return filteredProjects.sorted { ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast) }
     }
 
@@ -959,6 +986,11 @@ struct DirectionalDragCard: View {
             }
             .simultaneousGesture(combinedGesture)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
+            .onChange(of: isDragged) { _, newValue in
+                if !newValue && isLongPressing {
+                    isLongPressing = false
+                }
+            }
             .sheet(isPresented: $showingDetails) {
                 NavigationView {
                     ProjectDetailsView(project: project)

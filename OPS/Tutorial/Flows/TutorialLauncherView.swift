@@ -172,10 +172,10 @@ struct TutorialLauncherView: View {
                         fullTitle,
                         font: OPSStyle.Typography.title,
                         color: OPSStyle.Colors.primaryText,
-                        typingSpeed: 28
+                        typingSpeed: 45
                     ) {
                         // Title complete - show description
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                             withAnimation(.easeOut(duration: 0.3)) {
                                 showDescription = true
                             }
@@ -283,9 +283,9 @@ struct TutorialLauncherView: View {
                                         "START TUTORIAL",
                                         font: OPSStyle.Typography.bodyBold,
                                         color: .black,
-                                        typingSpeed: 25
+                                        typingSpeed: 40
                                     ) {
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                             withAnimation(.easeOut(duration: 0.4)) {
                                                 showButtonIcon = true
                                             }
@@ -518,7 +518,7 @@ struct TutorialLauncherView: View {
 
                 // Log demo data counts for debugging
                 let counts = manager.getDemoDataCounts()
-                print("[TUTORIAL_LAUNCHER] Demo data seeded - Projects: \(counts.projects), Tasks: \(counts.tasks), Events: \(counts.events)")
+                print("[TUTORIAL_LAUNCHER] Demo data seeded - Projects: \(counts.projects), Tasks: \(counts.tasks)")
 
                 // Seeding complete, start the tutorial
                 isSeeding = false

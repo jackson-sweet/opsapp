@@ -23,7 +23,7 @@ struct UniversalJobBoardCard: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
-    @Query private var allClients: [Client]
+    @State private var allClientsForDeletion: [Client] = []
     @State private var tutorialShimmerOffset: CGFloat = -200
     @State private var showingMoreActions = false
     @State private var showingDetails = false
@@ -139,7 +139,7 @@ struct UniversalJobBoardCard: View {
                     itemType: "Client",
                     childItems: client.projects.sorted { $0.title < $1.title },
                     childType: "Project",
-                    availableReassignments: allClients,
+                    availableReassignments: allClientsForDeletion,
                     getItemDisplay: { client in
                         AnyView(
                             Text(client.name)
@@ -185,7 +185,7 @@ struct UniversalJobBoardCard: View {
                     },
                     onDelete: { client, reassignments, deletions in
                         let clientProjects = client.projects.sorted { $0.title < $1.title }
-                        let availableClients = allClients.filter {
+                        let availableClients = allClientsForDeletion.filter {
                             $0.id != client.id &&
                             !$0.id.contains("-")
                         }
@@ -609,7 +609,7 @@ struct UniversalJobBoardCard: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .padding(8)
 
-                        if task.calendarEvent?.startDate == nil {
+                        if task.startDate == nil {
                             Text("UNSCHEDULED")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -837,6 +837,10 @@ struct UniversalJobBoardCard: View {
                 }
 
                 Button("Delete", role: .destructive) {
+                    // Lazy-load all clients only when deletion sheet is needed
+                    if let companyId = dataController.currentUser?.companyId {
+                        allClientsForDeletion = dataController.getAllClients(for: companyId)
+                    }
                     showingClientDeletionSheet = true
                 }
             }
@@ -909,29 +913,20 @@ struct UniversalJobBoardCard: View {
                 CalendarSchedulerSheet(
                     isPresented: $showingScheduler,
                     itemType: .task(selectedTask),
-                    currentStartDate: selectedTask.calendarEvent?.startDate,
-                    currentEndDate: selectedTask.calendarEvent?.endDate,
+                    currentStartDate: selectedTask.startDate,
+                    currentEndDate: selectedTask.endDate,
                     onScheduleUpdate: { startDate, endDate in
                         Task {
                             do {
-                                // Update or create calendar event
-                                if let calendarEvent = selectedTask.calendarEvent {
-                                    try await dataController.updateCalendarEvent(event: calendarEvent, startDate: startDate, endDate: endDate)
-                                } else {
-                                    // Create new calendar event for the task
-                                    let newEvent = CalendarEvent.fromTask(selectedTask, startDate: startDate, endDate: endDate)
-                                    selectedTask.calendarEvent = newEvent
-                                    dataController.modelContext?.insert(newEvent)
-                                    newEvent.needsSync = true
-                                    try? dataController.modelContext?.save()
-                                }
+                                // Update dates directly on the task
+                                try await dataController.updateTaskSchedule(task: selectedTask, startDate: startDate, endDate: endDate)
 
                                 // Update parent project dates if necessary
                                 if let project = selectedTask.project {
-                                    let allTaskEvents = project.tasks.compactMap { $0.calendarEvent }
-                                    if !allTaskEvents.isEmpty {
-                                        let earliestStart = allTaskEvents.compactMap { $0.startDate }.min() ?? startDate
-                                        let latestEnd = allTaskEvents.compactMap { $0.endDate }.max() ?? endDate
+                                    let tasksWithDates = project.tasks.filter { $0.startDate != nil }
+                                    if !tasksWithDates.isEmpty {
+                                        let earliestStart = tasksWithDates.compactMap { $0.startDate }.min() ?? startDate
+                                        let latestEnd = tasksWithDates.compactMap { $0.endDate }.max() ?? endDate
 
                                         if project.startDate != earliestStart || project.endDate != latestEnd {
                                             try await dataController.updateProjectDates(project: project, startDate: earliestStart, endDate: latestEnd)
@@ -939,34 +934,32 @@ struct UniversalJobBoardCard: View {
                                     }
                                 }
                             } catch {
-                                print("❌ Failed to sync task schedule to Bubble: \(error)")
+                                print("❌ Failed to sync task schedule: \(error)")
                             }
                         }
                     },
                     onClearDates: {
-                        // Clear task calendar event dates
+                        // Clear task dates
                         Task {
                             do {
-                                if let calendarEvent = selectedTask.calendarEvent {
-                                    // Clear dates manually
-                                    calendarEvent.startDate = nil
-                                    calendarEvent.endDate = nil
-                                    calendarEvent.needsSync = true
+                                // Clear dates directly on the task
+                                await MainActor.run {
+                                    selectedTask.startDate = nil
+                                    selectedTask.endDate = nil
+                                    selectedTask.duration = 0
+                                    selectedTask.needsSync = true
                                     try? dataController.modelContext?.save()
                                 }
 
                                 // Update parent project dates if necessary
                                 if let project = selectedTask.project {
-                                    let allTaskEvents = project.tasks.compactMap { $0.calendarEvent }
-                                    let taskEventsWithDates = allTaskEvents.filter { $0.startDate != nil && $0.endDate != nil }
+                                    let tasksWithDates = project.tasks.filter { $0.startDate != nil && $0.endDate != nil }
 
-                                    if taskEventsWithDates.isEmpty {
-                                        // No tasks have dates, clear project dates
+                                    if tasksWithDates.isEmpty {
                                         try await dataController.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
                                     } else {
-                                        // Recalculate project dates from remaining task dates
-                                        let earliestStart = taskEventsWithDates.compactMap { $0.startDate }.min()
-                                        let latestEnd = taskEventsWithDates.compactMap { $0.endDate }.max()
+                                        let earliestStart = tasksWithDates.compactMap { $0.startDate }.min()
+                                        let latestEnd = tasksWithDates.compactMap { $0.endDate }.max()
 
                                         if let start = earliestStart, let end = latestEnd {
                                             try await dataController.updateProjectDates(project: project, startDate: start, endDate: end)
@@ -992,13 +985,12 @@ struct UniversalJobBoardCard: View {
                     currentStartDate: project.startDate,
                     currentEndDate: project.endDate,
                 onScheduleUpdate: { startDate, endDate in
-                    // Task-only scheduling migration: Remove primaryCalendarEvent handling
                     // Projects without tasks can be scheduled directly
                     Task {
                         do {
                             try await dataController.updateProjectDates(project: project, startDate: startDate, endDate: endDate)
                         } catch {
-                            print("❌ Failed to sync project schedule to Bubble: \(error)")
+                            print("❌ Failed to sync project schedule to server: \(error)")
                         }
                     }
 
@@ -1025,28 +1017,20 @@ struct UniversalJobBoardCard: View {
             CalendarSchedulerSheet(
                 isPresented: $showingScheduler,
                 itemType: .task(task),
-                currentStartDate: task.calendarEvent?.startDate,
-                currentEndDate: task.calendarEvent?.endDate,
+                currentStartDate: task.startDate,
+                currentEndDate: task.endDate,
                 onScheduleUpdate: { startDate, endDate in
                     Task {
                         do {
-                            // Update or create calendar event
-                            if let calendarEvent = task.calendarEvent {
-                                try await dataController.updateCalendarEvent(event: calendarEvent, startDate: startDate, endDate: endDate)
-                            } else {
-                                // Create new calendar event for the task
-                                let newEvent = CalendarEvent.fromTask(task, startDate: startDate, endDate: endDate)
-                                task.calendarEvent = newEvent
-                                dataController.modelContext?.insert(newEvent)
-                                try? dataController.modelContext?.save()
-                            }
+                            // Update dates directly on the task
+                            try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
 
                             // Update parent project dates if necessary
                             if let project = task.project {
-                                let allTaskEvents = project.tasks.compactMap { $0.calendarEvent }
-                                if !allTaskEvents.isEmpty {
-                                    let earliestStart = allTaskEvents.compactMap { $0.startDate }.min() ?? startDate
-                                    let latestEnd = allTaskEvents.compactMap { $0.endDate }.max() ?? endDate
+                                let tasksWithDates = project.tasks.filter { $0.startDate != nil }
+                                if !tasksWithDates.isEmpty {
+                                    let earliestStart = tasksWithDates.compactMap { $0.startDate }.min() ?? startDate
+                                    let latestEnd = tasksWithDates.compactMap { $0.endDate }.max() ?? endDate
 
                                     if project.startDate != earliestStart || project.endDate != latestEnd {
                                         try await dataController.updateProjectDates(project: project, startDate: earliestStart, endDate: latestEnd)
@@ -1054,60 +1038,55 @@ struct UniversalJobBoardCard: View {
                                 }
                             }
                         } catch {
-                            print("❌ Failed to sync task schedule to Bubble: \(error)")
+                            print("❌ Failed to sync task schedule: \(error)")
                         }
                     }
                 },
                 onClearDates: {
-                    // Clear task calendar event dates
+                    // Clear task dates
                     Task {
                         do {
-                            print("🗑️ [JOB_BOARD] Clearing task calendar event dates")
+                            print("🗑️ [JOB_BOARD] Clearing task dates")
 
-                            if let calendarEvent = task.calendarEvent {
-                                // Update locally
-                                await MainActor.run {
-                                    calendarEvent.startDate = nil
-                                    calendarEvent.endDate = nil
-                                    calendarEvent.duration = 0
-                                    calendarEvent.needsSync = true
-                                    try? dataController.modelContext?.save()
-                                }
+                            // Update locally
+                            await MainActor.run {
+                                task.startDate = nil
+                                task.endDate = nil
+                                task.duration = 0
+                                task.needsSync = true
+                                try? dataController.modelContext?.save()
+                            }
 
-                                // Sync to Supabase
-                                let fields: [String: AnyJSON] = [
-                                    "start_date": .null,
-                                    "end_date": .null,
-                                    "duration": .integer(0)
-                                ]
-                                try await dataController.syncManager.updateCalendarEvent(eventId: calendarEvent.id, fields: fields)
-                                await MainActor.run {
-                                    calendarEvent.needsSync = false
-                                    calendarEvent.lastSyncedAt = Date()
-                                    try? dataController.modelContext?.save()
-                                }
+                            // Sync to Supabase
+                            let fields: [String: AnyJSON] = [
+                                "start_date": .null,
+                                "end_date": .null,
+                                "duration": .integer(0)
+                            ]
+                            try await dataController.syncManager.updateTaskFields(taskId: task.id, fields: fields)
+                            await MainActor.run {
+                                task.needsSync = false
+                                task.lastSyncedAt = Date()
+                                try? dataController.modelContext?.save()
+                            }
 
-                                // Update parent project dates if necessary
-                                if let project = task.project {
-                                    let allTaskEvents = project.tasks.compactMap { $0.calendarEvent }
-                                    let taskEventsWithDates = allTaskEvents.filter { $0.startDate != nil && $0.endDate != nil }
+                            // Update parent project dates if necessary
+                            if let project = task.project {
+                                let tasksWithDates = project.tasks.filter { $0.startDate != nil && $0.endDate != nil }
 
-                                    if taskEventsWithDates.isEmpty {
-                                        // No tasks have dates, clear project dates
-                                        try await dataController.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
-                                    } else {
-                                        // Recalculate project dates from remaining task dates
-                                        let earliestStart = taskEventsWithDates.compactMap { $0.startDate }.min()
-                                        let latestEnd = taskEventsWithDates.compactMap { $0.endDate }.max()
+                                if tasksWithDates.isEmpty {
+                                    try await dataController.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
+                                } else {
+                                    let earliestStart = tasksWithDates.compactMap { $0.startDate }.min()
+                                    let latestEnd = tasksWithDates.compactMap { $0.endDate }.max()
 
-                                        if let start = earliestStart, let end = latestEnd {
-                                            try await dataController.updateProjectDates(project: project, startDate: start, endDate: end)
-                                        }
+                                    if let start = earliestStart, let end = latestEnd {
+                                        try await dataController.updateProjectDates(project: project, startDate: start, endDate: end)
                                     }
                                 }
                             }
 
-                            print("✅ [JOB_BOARD] Task calendar event dates cleared")
+                            print("✅ [JOB_BOARD] Task dates cleared")
                         } catch {
                             print("❌ [JOB_BOARD] Failed to clear task dates: \(error)")
                         }
@@ -1185,8 +1164,8 @@ struct UniversalJobBoardCard: View {
                                         Spacer()
 
                                         // Show dates if scheduled
-                                        if let startDate = task.calendarEvent?.startDate,
-                                           let endDate = task.calendarEvent?.endDate {
+                                        if let startDate = task.startDate,
+                                           let endDate = task.endDate {
                                             VStack(alignment: .trailing, spacing: 2) {
                                                 Text(startDate, style: .date)
                                                     .font(OPSStyle.Typography.smallCaption)
@@ -1378,7 +1357,7 @@ struct UniversalJobBoardCard: View {
             }
 
             // Always show calendar icon
-            if let startDate = task.calendarEvent?.startDate {
+            if let startDate = task.startDate {
                 items.append((OPSStyle.Icons.calendar, DateHelper.simpleDateString(from: startDate)))
             } else {
                 items.append((OPSStyle.Icons.calendar, "-"))
@@ -1643,7 +1622,7 @@ struct UniversalJobBoardCard: View {
 
         // Check if any relevant tasks are unscheduled
         let unscheduledTasks = relevantTasks.filter { task in
-            task.calendarEvent?.startDate == nil
+            task.startDate == nil
         }
         return !unscheduledTasks.isEmpty
     }

@@ -283,7 +283,7 @@ struct TaskDetailsView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This will permanently delete this task and any associated calendar events. This action cannot be undone.")
+            Text("This will permanently delete this task. This action cannot be undone.")
         }
     }
     
@@ -409,12 +409,12 @@ struct TaskDetailsView: View {
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                            if let date = task.scheduledDate {
-                                Text(formatDate(date))
+                            if let start = task.startDate, let end = task.endDate {
+                                Text(formatDateRange(start, end))
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
-                            } else if let calendarEvent = task.calendarEvent, let start = calendarEvent.startDate, let end = calendarEvent.endDate {
-                                Text(formatDateRange(start, end))
+                            } else if let date = task.scheduledDate {
+                                Text(formatDate(date))
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                             } else {
@@ -560,8 +560,7 @@ struct TaskDetailsView: View {
 
         // Use centralized method which handles:
         // - Task teamMemberIdsString + teamMembers relationship
-        // - Calendar event teamMemberIdsString + teamMembers relationship
-        // - API sync for both task and calendar event
+        // - API sync for task
         // - Project team member updates
         // - Push notifications for new assignments
         Task {
@@ -825,7 +824,7 @@ struct TaskDetailsView: View {
                 // Dismiss the view after successful deletion
                 await MainActor.run {
                     // Notify calendar views to refresh
-                    dataController.calendarEventsDidChange.toggle()
+                    dataController.scheduledTasksDidChange.toggle()
                     dismiss()
                 }
             } catch {
@@ -840,39 +839,24 @@ struct TaskDetailsView: View {
     private func handleScheduleUpdate(startDate: Date, endDate: Date) {
         print("🔄 Task handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
 
-        // Update or create the calendar event for the task
-        if let calendarEvent = task.calendarEvent {
-            // Update existing calendar event
-            print("🔄 Updating existing calendar event")
-            calendarEvent.startDate = startDate
-            calendarEvent.endDate = endDate
-            let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-            calendarEvent.duration = daysDiff + 1
-            // Task-only scheduling migration: 'active' property removed
-            calendarEvent.needsSync = true
-        } else {
-            // Create new calendar event for the task
-            print("🔄 Creating new calendar event for task")
-            let newEvent = CalendarEvent.fromTask(task, startDate: startDate, endDate: endDate)
-            task.calendarEvent = newEvent
-            modelContext.insert(newEvent)
-        }
-
+        // Set dates directly on the task
+        task.startDate = startDate
+        task.endDate = endDate
+        let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+        task.duration = daysDiff + 1
         task.needsSync = true
 
         // Update parent project dates if necessary
         if let project = task.project {
-            let allTaskEvents = project.tasks.compactMap { $0.calendarEvent }
-            if !allTaskEvents.isEmpty {
-                let earliestStart = allTaskEvents.compactMap { $0.startDate }.min() ?? startDate
-                let latestEnd = allTaskEvents.compactMap { $0.endDate }.max() ?? endDate
+            let allTasks = project.tasks
+            let earliestStart = allTasks.compactMap { $0.startDate }.min() ?? startDate
+            let latestEnd = allTasks.compactMap { $0.endDate }.max() ?? endDate
 
-                if project.startDate != earliestStart || project.endDate != latestEnd {
-                    print("🔄 Updating project dates to match task range")
-                    project.startDate = earliestStart
-                    project.endDate = latestEnd
-                    project.needsSync = true
-                }
+            if project.startDate != earliestStart || project.endDate != latestEnd {
+                print("🔄 Updating project dates to match task range")
+                project.startDate = earliestStart
+                project.endDate = latestEnd
+                project.needsSync = true
             }
         }
 
@@ -885,49 +869,33 @@ struct TaskDetailsView: View {
             refreshTrigger.toggle()
 
             // Notify calendar views to refresh
-            dataController.calendarEventsDidChange.toggle()
+            dataController.scheduledTasksDidChange.toggle()
 
-            // Immediately sync calendar event to server to prevent reversion
-            if let calendarEvent = task.calendarEvent {
-                Task {
-                    await syncCalendarEventToServer(calendarEvent)
-                }
+            // Sync task dates to server
+            Task {
+                await syncTaskDatesToServer()
             }
         } catch {
             print("❌ Failed to save task schedule update: \(error)")
         }
-
-        // Don't show notification - haptic feedback is enough
     }
 
     private func handleClearDates() {
         print("🗑️ handleClearDates called - Clearing task dates")
 
-        // Capture IDs and data before async work to avoid holding references
-        guard let calendarEvent = task.calendarEvent else {
-            print("ℹ️ No calendar event to clear for this task")
-            return
-        }
-
-        let calendarEventId = calendarEvent.id
         let projectId = task.project?.id
 
-        print("🗑️ Clearing calendar event dates: \(calendarEventId)")
-
-        // Clear dates locally
-        calendarEvent.startDate = nil
-        calendarEvent.endDate = nil
-        calendarEvent.duration = 0
-        // Task-only scheduling migration: 'active' property removed
-        calendarEvent.needsSync = true
+        // Clear dates directly on task
+        task.startDate = nil
+        task.endDate = nil
+        task.duration = 0
         task.needsSync = true
 
         // Capture scheduled task data for recalculation
         let scheduledTaskDates: [(start: Date, end: Date)]? = task.project?.tasks.compactMap { projectTask in
-            guard let event = projectTask.calendarEvent,
-                  projectTask.id != task.id, // Exclude current task
-                  let start = event.startDate,
-                  let end = event.endDate else {
+            guard projectTask.id != task.id,
+                  let start = projectTask.startDate,
+                  let end = projectTask.endDate else {
                 return nil
             }
             return (start, end)
@@ -936,43 +904,37 @@ struct TaskDetailsView: View {
         // Save to database
         do {
             try modelContext.save()
-            print("✅ Successfully cleared calendar event dates")
+            print("✅ Successfully cleared task dates")
 
             // Force view refresh to show cleared dates
             refreshTrigger.toggle()
 
             // Notify calendar views to refresh
-            dataController.calendarEventsDidChange.toggle()
+            dataController.scheduledTasksDidChange.toggle()
 
             // Sync to Supabase
             Task {
                 do {
-                    // STEP 1: Clear calendar event dates in Supabase
-                    print("📡 Clearing calendar event dates in Supabase...")
-                    let updates: [String: AnyJSON] = [
-                        "start_date": .null,
-                        "end_date": .null,
-                        "duration": .integer(0)
-                    ]
-
-                    try await dataController.syncManager.updateCalendarEvent(
-                        eventId: calendarEventId,
-                        fields: updates
+                    // STEP 1: Clear task dates in Supabase
+                    print("📡 Clearing task dates in Supabase...")
+                    try await dataController.syncManager.updateTaskFields(
+                        taskId: task.id,
+                        fields: [
+                            "start_date": .null,
+                            "end_date": .null,
+                            "duration": .integer(0)
+                        ]
                     )
-                    print("✅ Calendar event dates cleared in Supabase")
+                    print("✅ Task dates cleared in Supabase")
 
                     // STEP 2: Recalculate parent project dates
                     if let projId = projectId {
                         print("🔄 Recalculating parent project dates...")
 
                         if let dates = scheduledTaskDates, !dates.isEmpty {
-                            // Recalculate from remaining scheduled tasks
                             let earliestStart = dates.map { $0.start }.min()
                             let latestEnd = dates.map { $0.end }.max()
 
-                            print("📅 New project dates: \(earliestStart?.description ?? "nil") to \(latestEnd?.description ?? "nil")")
-
-                            // Update in Supabase
                             if let start = earliestStart, let end = latestEnd {
                                 try await dataController.syncManager.updateProjectDates(
                                     projectId: projId,
@@ -982,10 +944,7 @@ struct TaskDetailsView: View {
                                 print("✅ Project dates updated in Supabase")
                             }
                         } else {
-                            // No tasks have dates - clear project dates
                             print("🗑️ No scheduled tasks - clearing project dates")
-
-                            // Clear in Supabase
                             try await dataController.syncManager.updateProjectDates(
                                 projectId: projId,
                                 startDate: nil,
@@ -1003,70 +962,33 @@ struct TaskDetailsView: View {
         }
     }
 
-    private func syncCalendarEventToServer(_ calendarEvent: CalendarEvent) async {
-        print("🔄 Syncing task calendar event to server: \(calendarEvent.id)")
+    private func syncTaskDatesToServer() async {
+        print("🔄 Syncing task dates to server: \(task.id)")
 
         do {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime]
 
-            // Check if this is a new event that needs to be created on the server
-            let isNewEvent = calendarEvent.lastSyncedAt == nil
+            let startDateString = task.startDate.map { formatter.string(from: $0) } ?? ""
+            let endDateString = task.endDate.map { formatter.string(from: $0) } ?? ""
 
-            if isNewEvent {
-                print("📅 Creating new calendar event on server for task")
-
-                // Get task type display name for the title
-                let taskTypeName = task.taskType?.display ?? "Task"
-                let taskTitle = "\(taskTypeName) - \(project.title)"
-
-                let eventDTO = SupabaseCalendarEventDTO(
-                    id: calendarEvent.id,
-                    bubbleId: nil,
-                    companyId: task.companyId,
-                    projectId: task.projectId,
-                    title: taskTitle,
-                    color: task.taskColor,
-                    startDate: calendarEvent.startDate.map { formatter.string(from: $0) },
-                    endDate: calendarEvent.endDate.map { formatter.string(from: $0) },
-                    duration: calendarEvent.duration,
-                    teamMemberIds: task.getTeamMemberIds(),
-                    deletedAt: nil
-                )
-
-                let eventId = try await dataController.syncManager.createCalendarEvent(dto: eventDTO)
-                print("✅ Task calendar event created on server with ID: \(eventId)")
-
-                // Link task to calendar event
-                try await dataController.syncManager.updateTaskFields(
-                    taskId: task.id,
-                    fields: ["calendar_event_id": .string(eventId)]
-                )
-            } else {
-                print("📅 Updating existing calendar event on server")
-
-                let startDateString = calendarEvent.startDate.map { formatter.string(from: $0) } ?? ""
-                let endDateString = calendarEvent.endDate.map { formatter.string(from: $0) } ?? ""
-
-                let updates: [String: AnyJSON] = [
+            try await dataController.syncManager.updateTaskFields(
+                taskId: task.id,
+                fields: [
                     "start_date": .string(startDateString),
                     "end_date": .string(endDateString),
-                    "duration": .integer(calendarEvent.duration)
+                    "duration": .integer(task.duration)
                 ]
-
-                try await dataController.syncManager.updateCalendarEvent(eventId: calendarEvent.id, fields: updates)
-                print("✅ Task calendar event updated on server")
-            }
+            )
 
             await MainActor.run {
-                calendarEvent.needsSync = false
-                calendarEvent.lastSyncedAt = Date()
+                task.needsSync = false
                 try? modelContext.save()
             }
 
-            print("✅ Task calendar event synced successfully to server")
+            print("✅ Task dates synced successfully to server")
         } catch {
-            print("⚠️ Failed to sync task calendar event to server: \(error)")
+            print("⚠️ Failed to sync task dates to server: \(error)")
         }
     }
 
@@ -1115,14 +1037,13 @@ struct TaskDetailsView: View {
             print("💡 DATA: No team members assigned to this task")
         }
         
-        // Log calendar event relationship
-        if let calendarEvent = task.calendarEvent {
-            print("📅 DATA: Task has calendar event: \(calendarEvent.id)")
-            print("📅 DATA: Calendar event team member count: \(calendarEvent.teamMembers.count)")
-            let calendarEventIds = calendarEvent.getTeamMemberIds()
-            print("📅 DATA: Calendar event team member IDs: \(calendarEventIds)")
+        // Log scheduling info
+        if let startDate = task.startDate {
+            print("📅 DATA: Task start date: \(startDate)")
+            print("📅 DATA: Task end date: \(task.endDate?.description ?? "nil")")
+            print("📅 DATA: Task duration: \(task.duration)")
         } else {
-            print("📅 DATA: Task has no calendar event")
+            print("📅 DATA: Task has no scheduled dates")
         }
         
         print("=====================================================")
@@ -1203,7 +1124,7 @@ struct TaskDetailsView: View {
             }
         }
 
-        // Use centralized status update function - handles local update AND Bubble sync
+        // Use centralized status update function - handles local update and server sync
         Task {
             do {
                 try await dataController.updateTaskStatus(task: task, to: newStatus)

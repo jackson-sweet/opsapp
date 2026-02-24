@@ -222,10 +222,6 @@ struct SupabaseProjectDTO: Codable, Identifiable {
 }
 
 // MARK: - ProjectTask DTO
-// Note: Supabase uses `task_notes` (not `notes`), `custom_title` (not `title`),
-// `task_color`, `display_order`, `calendar_event_id`. There are no
-// `scheduled_date` / `scheduled_end_date` / `all_day` columns in the DB —
-// scheduling is managed via the linked CalendarEvent.
 
 struct SupabaseProjectTaskDTO: Codable, Identifiable {
     let id: String
@@ -233,7 +229,6 @@ struct SupabaseProjectTaskDTO: Codable, Identifiable {
     let companyId: String
     let projectId: String
     let taskTypeId: String?
-    let calendarEventId: String?
     let customTitle: String?
     let taskNotes: String?
     let status: String
@@ -242,15 +237,17 @@ struct SupabaseProjectTaskDTO: Codable, Identifiable {
     let teamMemberIds: [String]?
     let sourceLineItemId: String?
     let sourceEstimateId: String?
+    let startDate: String?
+    let endDate: String?
+    let duration: Int?
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, status
+        case id, status, duration
         case bubbleId         = "bubble_id"
         case companyId        = "company_id"
         case projectId        = "project_id"
         case taskTypeId       = "task_type_id"
-        case calendarEventId  = "calendar_event_id"
         case customTitle      = "custom_title"
         case taskNotes        = "task_notes"
         case taskColor        = "task_color"
@@ -258,37 +255,9 @@ struct SupabaseProjectTaskDTO: Codable, Identifiable {
         case teamMemberIds    = "team_member_ids"
         case sourceLineItemId = "source_line_item_id"
         case sourceEstimateId = "source_estimate_id"
+        case startDate        = "start_date"
+        case endDate          = "end_date"
         case deletedAt        = "deleted_at"
-    }
-}
-
-// MARK: - CalendarEvent DTO
-// Note: Supabase `calendar_events` table has `title` (NOT NULL), `color`, `duration`,
-// `team_member_ids`. There is no `task_id`, `all_day`, or `event_type` column in the DB —
-// those are iOS-only model fields. `task_id` linkage is resolved via project_tasks.calendar_event_id.
-
-struct SupabaseCalendarEventDTO: Codable, Identifiable {
-    let id: String
-    let bubbleId: String?
-    let companyId: String
-    let projectId: String?
-    let title: String
-    let color: String?
-    let startDate: String?
-    let endDate: String?
-    let duration: Int?
-    let teamMemberIds: [String]?
-    let deletedAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, title, color, duration
-        case bubbleId      = "bubble_id"
-        case companyId     = "company_id"
-        case projectId     = "project_id"
-        case startDate     = "start_date"
-        case endDate       = "end_date"
-        case teamMemberIds = "team_member_ids"
-        case deletedAt     = "deleted_at"
     }
 }
 

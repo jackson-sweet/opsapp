@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Repository for TaskType entity operations via Supabase.
-//  Table: task_types_v2  (NOT task_types — the v2 table is the live schema)
+//  Table: task_types
 //
 //  Column note: display name column is `display` (not `name`).
 //
@@ -24,7 +24,7 @@ class TaskTypeRepository {
 
     func fetchAll(since: Date? = nil) async throws -> [SupabaseTaskTypeDTO] {
         var query = client
-            .from("task_types_v2")
+            .from("task_types")
             .select()
             .eq("company_id", value: companyId)
 
@@ -41,7 +41,7 @@ class TaskTypeRepository {
 
     func fetchOne(_ id: String) async throws -> SupabaseTaskTypeDTO {
         try await client
-            .from("task_types_v2")
+            .from("task_types")
             .select()
             .eq("id", value: id)
             .single()
@@ -53,7 +53,7 @@ class TaskTypeRepository {
 
     func upsert(_ dto: SupabaseTaskTypeDTO) async throws {
         try await client
-            .from("task_types_v2")
+            .from("task_types")
             .upsert(dto)
             .execute()
     }
@@ -67,7 +67,7 @@ class TaskTypeRepository {
         }
         let payload = SoftDelete(deleted_at: isoNow(), updated_at: isoNow())
         try await client
-            .from("task_types_v2")
+            .from("task_types")
             .update(payload)
             .eq("id", value: id)
             .execute()

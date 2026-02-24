@@ -22,7 +22,7 @@ final class Project: Identifiable {
     var status: Status
     var notes: String?
     var companyId: String
-    var clientId: String? // Store the client's Bubble ID
+    var clientId: String? // Store the client ID
     var allDay: Bool
     var opportunityId: String?  // Supabase Opportunity UUID — links this project to its pipeline deal
     
@@ -217,7 +217,7 @@ final class Project: Identifiable {
         
     }
     
-    // Computed property for display status - matches your Bubble status colors
+    // Computed property for display status
     var statusColor: Color {
         return status.color
     }
@@ -379,21 +379,13 @@ final class Project: Identifiable {
     
     // MARK: - Computed Date Properties (from tasks)
 
-    /// Project start date - computed from earliest task CalendarEvent
-    /// Returns nil if no tasks have scheduled dates
     var computedStartDate: Date? {
-        let taskDates = tasks.compactMap { task in
-            task.calendarEvent?.startDate
-        }
+        let taskDates = tasks.compactMap { $0.startDate }
         return taskDates.min()
     }
 
-    /// Project end date - computed from latest task CalendarEvent
-    /// Returns nil if no tasks have scheduled dates
     var computedEndDate: Date? {
-        let taskDates = tasks.compactMap { task in
-            task.calendarEvent?.endDate
-        }
+        let taskDates = tasks.compactMap { $0.endDate }
         return taskDates.max()
     }
 

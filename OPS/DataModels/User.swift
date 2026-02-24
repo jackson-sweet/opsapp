@@ -8,7 +8,7 @@ import SwiftUI
 import SwiftData
 import CoreLocation
 
-/// User model - matches your Bubble User structure
+/// User model for OPS user data
 @Model
 final class User {
     var id: String
@@ -21,7 +21,7 @@ final class User {
     var role: UserRole
     var companyId: String?
     
-    // Additional fields to match your Bubble structure
+    // Additional user fields
     var userType: UserType?
     var latitude: Double?
     var longitude: Double?

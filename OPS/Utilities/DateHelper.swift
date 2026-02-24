@@ -9,7 +9,7 @@
 import Foundation
 
 /// DateHelper provides date formatting utilities for UI display
-/// For API date parsing, see Dateformatter+Bubble.swift
+/// Provides date formatting utilities for the OPS app
 struct DateHelper {
     static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()

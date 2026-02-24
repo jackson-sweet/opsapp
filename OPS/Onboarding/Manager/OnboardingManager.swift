@@ -317,7 +317,7 @@ class OnboardingManager: ObservableObject {
 
     // MARK: - Resume Logic
 
-    /// Determine the resume screen based on user data from Bubble
+    /// Determine the resume screen based on existing user data
     /// Call this after authentication to figure out where to resume
     func determineResumeScreen() -> OnboardingScreen {
         guard let user = dataController.currentUser else {
@@ -595,7 +595,7 @@ class OnboardingManager: ObservableObject {
             // Generate a unique company code
             let newCompanyCode = generateCompanyCode()
             let now = ISO8601DateFormatter().string(from: Date())
-            let trialEnd = ISO8601DateFormatter().string(from: Calendar.current.date(byAdding: .day, value: 14, to: Date())!)
+            let trialEnd = ISO8601DateFormatter().string(from: Calendar.current.date(byAdding: .day, value: 30, to: Date())!)
 
             // Insert company into Supabase
             let companyRepo = CompanyRepository()
@@ -611,9 +611,10 @@ class OnboardingManager: ObservableObject {
                 company_size: state.companyData.size.isEmpty ? nil : state.companyData.size,
                 company_age: state.companyData.age.isEmpty ? nil : state.companyData.age,
                 subscription_status: "trial",
+                subscription_plan: "trial",
                 trial_start_date: now,
                 trial_end_date: trialEnd,
-                max_seats: 5,
+                max_seats: 10,
                 created_at: now,
                 updated_at: now
             )
@@ -661,9 +662,10 @@ class OnboardingManager: ObservableObject {
                 companyObject.phone = state.companyData.phone
                 companyObject.address = state.companyData.address
                 companyObject.subscriptionStatus = "trial"
+                companyObject.subscriptionPlan = "trial"
                 companyObject.trialStartDate = Date()
-                companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 14, to: Date())
-                companyObject.maxSeats = 5
+                companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 30, to: Date())
+                companyObject.maxSeats = 10
                 modelContext.insert(companyObject)
                 try? modelContext.save()
                 print("[ONBOARDING_MANAGER] ✅ Company saved to SwiftData")

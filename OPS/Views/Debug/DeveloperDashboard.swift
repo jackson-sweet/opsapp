@@ -19,10 +19,8 @@ struct DeveloperDashboard: View {
         case onboardingPreview = "Onboarding"
         case taskTest = "Task Test"
         case taskList = "Task List"
-        case calendarEvents = "Calendar Events"
-        case relinkCalendarEvents = "Re-link Events"
+        case scheduledTasks = "Scheduled Tasks"
         case relinkTasksToProjects = "Re-link Tasks"
-        case apiCalls = "API Calls"
         case clearData = "Clear Data"
         case taskTypes = "Task Types"
 
@@ -31,10 +29,8 @@ struct DeveloperDashboard: View {
             case .onboardingPreview: return "person.crop.circle.badge.plus"
             case .taskTest: return "hammer.circle"
             case .taskList: return "list.bullet.rectangle"
-            case .calendarEvents: return "calendar.badge.clock"
-            case .relinkCalendarEvents: return "link.circle"
+            case .scheduledTasks: return "calendar.badge.clock"
             case .relinkTasksToProjects: return "arrow.triangle.branch"
-            case .apiCalls: return "network"
             case .clearData: return "trash.circle"
             case .taskTypes: return "square.grid.2x2"
             }
@@ -45,10 +41,8 @@ struct DeveloperDashboard: View {
             case .onboardingPreview: return "Preview onboarding flow with company data"
             case .taskTest: return "Test task-based scheduling models"
             case .taskList: return "View all tasks with full details"
-            case .calendarEvents: return "View and sync calendar events"
-            case .relinkCalendarEvents: return "Re-link all calendar events to tasks/projects"
+            case .scheduledTasks: return "View task scheduling and dates"
             case .relinkTasksToProjects: return "Re-link all tasks to their parent projects"
-            case .apiCalls: return "Test API endpoints and responses"
             case .clearData: return "Clear local database data"
             case .taskTypes: return "Manage task type definitions"
             }
@@ -59,10 +53,8 @@ struct DeveloperDashboard: View {
             case .onboardingPreview: return Color.blue
             case .taskTest: return OPSStyle.Colors.primaryAccent
             case .taskList: return OPSStyle.Colors.successStatus
-            case .calendarEvents: return OPSStyle.Colors.warningStatus
-            case .relinkCalendarEvents: return Color.cyan
+            case .scheduledTasks: return OPSStyle.Colors.warningStatus
             case .relinkTasksToProjects: return Color.green
-            case .apiCalls: return Color.purple
             case .clearData: return OPSStyle.Colors.errorStatus
             case .taskTypes: return Color.orange
             }
@@ -133,12 +125,8 @@ struct DeveloperDashboard: View {
                                     selectedTool = .taskList
                                 }
 
-                                ToolCard(tool: .calendarEvents) {
-                                    selectedTool = .calendarEvents
-                                }
-
-                                ToolCard(tool: .relinkCalendarEvents) {
-                                    selectedTool = .relinkCalendarEvents
+                                ToolCard(tool: .scheduledTasks) {
+                                    selectedTool = .scheduledTasks
                                 }
 
                                 ToolCard(tool: .relinkTasksToProjects) {
@@ -169,9 +157,6 @@ struct DeveloperDashboard: View {
                                     selectedTool = .taskTest
                                 }
 
-                                ToolCard(tool: .apiCalls) {
-                                    selectedTool = .apiCalls
-                                }
                             }
                         }
                         .padding(.horizontal)
@@ -196,15 +181,11 @@ struct DeveloperDashboard: View {
                 case .taskList:
                     TaskListDebugView()
                         .environmentObject(dataController)
-                case .calendarEvents:
-                    CalendarEventsDebugView()
+                case .scheduledTasks:
+                    ScheduledTasksDebugView()
                         .environmentObject(dataController)
-                case .relinkCalendarEvents:
-                    Text("Removed (Bubble-only)")
                 case .relinkTasksToProjects:
-                    Text("Removed (Bubble-only)")
-                case .apiCalls:
-                    Text("Removed (Bubble-only)")
+                    Text("Removed")
                 case .clearData:
                     ClearDataView()
                         .environmentObject(dataController)
@@ -310,22 +291,22 @@ struct DatabaseStatsCard: View {
     @Environment(\.modelContext) private var modelContext
     @State private var projectCount = 0
     @State private var taskCount = 0
-    @State private var eventCount = 0
+    @State private var scheduledTaskCount = 0
     @State private var userCount = 0
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("DATABASE STATS")
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-            
+
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: 12) {
                 StatItem(label: "Projects", value: "\(projectCount)")
                 StatItem(label: "Tasks", value: "\(taskCount)")
-                StatItem(label: "Events", value: "\(eventCount)")
+                StatItem(label: "Scheduled", value: "\(scheduledTaskCount)")
                 StatItem(label: "Users", value: "\(userCount)")
             }
         }
@@ -336,12 +317,14 @@ struct DatabaseStatsCard: View {
             fetchCounts()
         }
     }
-    
+
     private func fetchCounts() {
         do {
             projectCount = try modelContext.fetchCount(FetchDescriptor<Project>())
             taskCount = try modelContext.fetchCount(FetchDescriptor<ProjectTask>())
-            eventCount = try modelContext.fetchCount(FetchDescriptor<CalendarEvent>())
+            // Count tasks that have scheduling dates
+            let allTasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
+            scheduledTaskCount = allTasks.filter { $0.startDate != nil }.count
             userCount = try modelContext.fetchCount(FetchDescriptor<User>())
         } catch {
         }

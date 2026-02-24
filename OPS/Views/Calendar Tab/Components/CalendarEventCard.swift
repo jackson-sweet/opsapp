@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct CalendarEventCard: View {
-    let event: CalendarEvent
+    let task: ProjectTask
     let isFirst: Bool
     let isOngoing: Bool
     let onTap: () -> Void
@@ -22,32 +22,24 @@ struct CalendarEventCard: View {
         return user.role == .admin || user.role == .officeCrew
     }
 
-    init(event: CalendarEvent, isFirst: Bool, isOngoing: Bool = false, onTap: @escaping () -> Void) {
-        self.event = event
+    init(task: ProjectTask, isFirst: Bool, isOngoing: Bool = false, onTap: @escaping () -> Void) {
+        self.task = task
         self.isFirst = isFirst
         self.isOngoing = isOngoing
         self.onTap = onTap
     }
-    
+
     // Get the associated project for client and address info
-    // Task-only scheduling migration: All events are task events
     private var associatedProject: Project? {
-        if let task = event.task {
-            return task.project
-        }
-        return event.project
+        return task.project
     }
-    
+
     // Get the color for the status bar and task type
-    // Task-only scheduling migration: Use task color
     private var displayColor: Color {
-        if let task = event.task,
-           let color = Color(hex: task.effectiveColor) {
+        if let color = Color(hex: task.effectiveColor) {
             return color
         }
-
-        // Fallback to event color
-        return event.swiftUIColor
+        return task.swiftUIColor
     }
     
     // Format the address to show only: street number, street name, municipality
@@ -71,16 +63,14 @@ struct CalendarEventCard: View {
     }
     
     // Get the display text for task type
-    // Task-only scheduling migration: All events show task type
     private var typeDisplay: String {
-        if let task = event.task, let taskType = task.taskType {
+        if let taskType = task.taskType {
             return taskType.display.uppercased()
         }
         return ""
     }
 
     // Get the badge color
-    // Task-only scheduling migration: Use display color for all events
     private var badgeColor: Color {
         return displayColor
     }
@@ -186,8 +176,7 @@ struct CalendarEventCard: View {
             .shadow(color: Color.black, radius: 2, x: 0, y: 1)
 
             // Completed overlay - grey out and show badge
-            // Task-only scheduling migration: Only check task completion
-            if event.task?.status == .completed {
+            if task.status == .completed {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
                     OPSStyle.Colors.modalOverlay
@@ -208,7 +197,7 @@ struct CalendarEventCard: View {
             }
 
             // Cancelled overlay - grey out and show badge
-            if event.task?.status == .cancelled {
+            if task.status == .cancelled {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
                     OPSStyle.Colors.modalOverlay
@@ -250,26 +239,20 @@ struct CalendarEventCard: View {
         .padding(.vertical, 4)
         .padding(.horizontal)
         .sheet(isPresented: $showingReschedule) {
-            // Task-only scheduling migration: All events are task events
-            if let task = event.task {
-                CalendarSchedulerSheet(
-                    isPresented: $showingReschedule,
-                    itemType: .task(task),
-                    currentStartDate: event.startDate,
-                    currentEndDate: event.endDate,
-                    onScheduleUpdate: { newStart, newEnd in
-                        updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
-                    }
-                )
-                .environmentObject(dataController)
-            }
+            CalendarSchedulerSheet(
+                isPresented: $showingReschedule,
+                itemType: .task(task),
+                currentStartDate: task.startDate,
+                currentEndDate: task.endDate,
+                onScheduleUpdate: { newStart, newEnd in
+                    updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
+                }
+            )
+            .environmentObject(dataController)
         }
         .sheet(isPresented: $showingStatusPicker) {
-            // Task-only scheduling migration: All events are task events
-            if let task = event.task {
-                TaskStatusChangeSheet(task: task)
-                    .environmentObject(dataController)
-            }
+            TaskStatusChangeSheet(task: task)
+                .environmentObject(dataController)
         }
     }
     
@@ -279,29 +262,11 @@ struct CalendarEventCard: View {
     }
 
     private func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date) {
-        guard let calendarEvent = task.calendarEvent else { return }
-
         Task {
             do {
-                try await dataController.updateCalendarEvent(event: calendarEvent, startDate: startDate, endDate: endDate)
+                try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
             } catch {
                 print("Error updating task schedule: \(error)")
-            }
-        }
-    }
-
-    private func updateProjectSchedule(project: Project, startDate: Date, endDate: Date) {
-        Task {
-            do {
-                try await dataController.rescheduleProject(
-                    project,
-                    startDate: startDate,
-                    endDate: endDate,
-                    calendarEvent: event
-                )
-                print("[CALENDAR_EVENT_CARD] ✅ Project rescheduled successfully")
-            } catch {
-                print("[CALENDAR_EVENT_CARD] ❌ Error rescheduling project: \(error)")
             }
         }
     }

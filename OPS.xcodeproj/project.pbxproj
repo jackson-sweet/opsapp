@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E521FD1B2F4E1CEC0051FA9C /* FirebaseAnalyticsIdentitySupport in Frameworks */ = {isa = PBXBuildFile; productRef = E521FD1A2F4E1CEC0051FA9C /* FirebaseAnalyticsIdentitySupport */; };
+		E521FD1D2F4E1CEC0051FA9C /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = E521FD1C2F4E1CEC0051FA9C /* FirebaseAuth */; };
+		E521FD1F2F4E1CEC0051FA9C /* FirebaseAuthCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = E521FD1E2F4E1CEC0051FA9C /* FirebaseAuthCombine-Community */; };
+		E521FD212F4E1CEC0051FA9C /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = E521FD202F4E1CEC0051FA9C /* FirebaseCrashlytics */; };
+		E521FD232F4E1CEC0051FA9C /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = E521FD222F4E1CEC0051FA9C /* FirebaseDatabase */; };
 		E56A01342EE75DE2008DACCF /* OneSignalExtension in Frameworks */ = {isa = PBXBuildFile; productRef = E56A01332EE75DE2008DACCF /* OneSignalExtension */; };
 		E56A01362EE75DE2008DACCF /* OneSignalFramework in Frameworks */ = {isa = PBXBuildFile; productRef = E56A01352EE75DE2008DACCF /* OneSignalFramework */; };
 		E56A01382EE75DE2008DACCF /* OneSignalInAppMessages in Frameworks */ = {isa = PBXBuildFile; productRef = E56A01372EE75DE2008DACCF /* OneSignalInAppMessages */; };
@@ -93,6 +98,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E56A01362EE75DE2008DACCF /* OneSignalFramework in Frameworks */,
+				E521FD1B2F4E1CEC0051FA9C /* FirebaseAnalyticsIdentitySupport in Frameworks */,
 				E598F3D22E78F599000D6F65 /* StripePayments in Frameworks */,
 				E5AF196F2E02308000CD46A1 /* GoogleSignIn in Frameworks */,
 				E56B446B2ED55AAC005DED59 /* FirebaseAnalytics in Frameworks */,
@@ -101,12 +107,15 @@
 				E598F3C62E78F599000D6F65 /* StripeApplePay in Frameworks */,
 				E56B446F2ED55AAC005DED59 /* FirebaseCore in Frameworks */,
 				E598F3D42E78F599000D6F65 /* StripePaymentsUI in Frameworks */,
+				E521FD232F4E1CEC0051FA9C /* FirebaseDatabase in Frameworks */,
+				E521FD1F2F4E1CEC0051FA9C /* FirebaseAuthCombine-Community in Frameworks */,
 				E5C6904F2F4A7E7A0068CE31 /* PostgREST in Frameworks */,
 				E5AF19712E02308000CD46A1 /* GoogleSignInSwift in Frameworks */,
 				E5C6904D2F4A7E7A0068CE31 /* Functions in Frameworks */,
 				E56B446D2ED55AAC005DED59 /* FirebaseAnalyticsCore in Frameworks */,
 				E598F3CC2E78F599000D6F65 /* StripeFinancialConnections in Frameworks */,
 				E56A01382EE75DE2008DACCF /* OneSignalInAppMessages in Frameworks */,
+				E521FD212F4E1CEC0051FA9C /* FirebaseCrashlytics in Frameworks */,
 				E598F3C82E78F599000D6F65 /* StripeCardScan in Frameworks */,
 				E56A01342EE75DE2008DACCF /* OneSignalExtension in Frameworks */,
 				E598F3CA2E78F599000D6F65 /* StripeConnect in Frameworks */,
@@ -114,6 +123,7 @@
 				E598F3C42E78F599000D6F65 /* Stripe in Frameworks */,
 				E5C690552F4A7E7A0068CE31 /* Supabase in Frameworks */,
 				E598F3D02E78F599000D6F65 /* StripePaymentSheet in Frameworks */,
+				E521FD1D2F4E1CEC0051FA9C /* FirebaseAuth in Frameworks */,
 				E598F3CE2E78F599000D6F65 /* StripeIdentity in Frameworks */,
 				E5C690512F4A7E7A0068CE31 /* Realtime in Frameworks */,
 			);
@@ -208,6 +218,11 @@
 				E5C690502F4A7E7A0068CE31 /* Realtime */,
 				E5C690522F4A7E7A0068CE31 /* Storage */,
 				E5C690542F4A7E7A0068CE31 /* Supabase */,
+				E521FD1A2F4E1CEC0051FA9C /* FirebaseAnalyticsIdentitySupport */,
+				E521FD1C2F4E1CEC0051FA9C /* FirebaseAuth */,
+				E521FD1E2F4E1CEC0051FA9C /* FirebaseAuthCombine-Community */,
+				E521FD202F4E1CEC0051FA9C /* FirebaseCrashlytics */,
+				E521FD222F4E1CEC0051FA9C /* FirebaseDatabase */,
 			);
 			productName = OPS;
 			productReference = E595DC042DB6CF8F00B1413F /* OPS.app */;
@@ -505,7 +520,7 @@
 				CODE_SIGN_ENTITLEMENTS = OPS/OPS.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.0.5;
+				CURRENT_PROJECT_VERSION = 3.0.0;
 				DEVELOPMENT_ASSET_PATHS = "\"OPS/Preview Content\"";
 				DEVELOPMENT_TEAM = X47H96M34K;
 				ENABLE_PREVIEWS = YES;
@@ -530,7 +545,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.5;
+				MARKETING_VERSION = 3.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -555,7 +570,7 @@
 				CODE_SIGN_ENTITLEMENTS = OPS/OPS.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.0.5;
+				CURRENT_PROJECT_VERSION = 3.0.0;
 				DEVELOPMENT_ASSET_PATHS = "\"OPS/Preview Content\"";
 				DEVELOPMENT_TEAM = X47H96M34K;
 				ENABLE_PREVIEWS = YES;
@@ -580,7 +595,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.5;
+				MARKETING_VERSION = 3.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -760,6 +775,31 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		E521FD1A2F4E1CEC0051FA9C /* FirebaseAnalyticsIdentitySupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalyticsIdentitySupport;
+		};
+		E521FD1C2F4E1CEC0051FA9C /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		E521FD1E2F4E1CEC0051FA9C /* FirebaseAuthCombine-Community */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = "FirebaseAuthCombine-Community";
+		};
+		E521FD202F4E1CEC0051FA9C /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
+		E521FD222F4E1CEC0051FA9C /* FirebaseDatabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseDatabase;
+		};
 		E56A01332EE75DE2008DACCF /* OneSignalExtension */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E56A01322EE75DE2008DACCF /* XCRemoteSwiftPackageReference "OneSignal-iOS-SDK" */;

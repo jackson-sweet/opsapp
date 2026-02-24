@@ -32,7 +32,7 @@ class DataController: ObservableObject {
     @Published var showSyncRestoredAlert = false
     @Published var isPerformingInitialSync = false // Track post-login initial sync
     @Published var syncStatusMessage = "" // Console-style sync status messages
-    @Published var calendarEventsDidChange = false // Toggle to trigger calendar refresh
+    @Published var scheduledTasksDidChange = false // Toggle to refresh calendar views
     private var hasCompletedInitialConnectionCheck = false // Track if we've done initial setup
 
     // Global app state for external views to access
@@ -267,8 +267,8 @@ class DataController: ObservableObject {
     @MainActor
     private func checkExistingAuth() async {
 
-        // MIGRATION: Detect Bubble-format IDs and force re-login through Supabase Auth.
-        // Bubble IDs look like "1748465773440x642579687246238300", Supabase uses UUIDs.
+        // MIGRATION: Detect legacy-format IDs and force re-login through Supabase Auth.
+        // Legacy IDs look like "1748465773440x642579687246238300", Supabase uses UUIDs.
         // If we detect non-UUID IDs, clear stored credentials so the user re-authenticates
         // via Supabase Auth, which will store proper UUID-format IDs.
         let storedUserId = UserDefaults.standard.string(forKey: "user_id")
@@ -278,7 +278,7 @@ class DataController: ObservableObject {
         let companyIdNeedsMigration = storedCompanyId != nil && !isValidUUID(storedCompanyId!)
 
         if userIdNeedsMigration || companyIdNeedsMigration {
-            print("[AUTH_MIGRATION] Detected Bubble-format IDs in UserDefaults — forcing re-login")
+            print("[AUTH_MIGRATION] Detected legacy-format IDs in UserDefaults — forcing re-login")
             if let uid = storedUserId { print("[AUTH_MIGRATION]   user_id: \(uid)") }
             if let cid = storedCompanyId { print("[AUTH_MIGRATION]   company_id: \(cid)") }
 
@@ -851,15 +851,7 @@ class DataController: ObservableObject {
             // Delete in correct order to avoid relationship issues
             // Start with leaf entities that don't have critical relationships
             
-            // 1. Delete CalendarEvents first (they reference tasks and projects)
-            if let calendarEvents = try? context.fetch(FetchDescriptor<CalendarEvent>()) {
-                print("[LOGOUT] Deleting \(calendarEvents.count) calendar events...")
-                for event in calendarEvents {
-                    context.delete(event)
-                }
-            }
-            
-            // 2. Delete ProjectTasks (they reference projects)
+            // 1. Delete ProjectTasks (they reference projects)
             if let tasks = try? context.fetch(FetchDescriptor<ProjectTask>()) {
                 print("[LOGOUT] Deleting \(tasks.count) tasks...")
                 for task in tasks {
@@ -1369,7 +1361,7 @@ class DataController: ObservableObject {
         }
     }
     
-    /// Force refresh projects from Bubble backend
+    /// Force refresh projects from backend
     func refreshProjectsFromBackend() async {
         guard isConnected, isAuthenticated else {
             return
@@ -1393,203 +1385,142 @@ class DataController: ObservableObject {
         }
     }
     
-    // MARK: - CalendarEvent Methods
+    // MARK: - Scheduled Task Methods
 
-    /// Get active calendar events that overlap with a date range (optimized for scheduler)
-    /// This method is much more efficient than calling getCalendarEvents(for:) in a loop
-    func getCalendarEvents(in dateRange: ClosedRange<Date>) -> [CalendarEvent] {
+    /// Get scheduled tasks that overlap with a date range (optimized for scheduler)
+    /// This method is much more efficient than calling getScheduledTasks(for:) in a loop
+    func getScheduledTasks(in dateRange: ClosedRange<Date>) -> [ProjectTask] {
         guard let context = modelContext else {
             return []
         }
 
         do {
-            // Fetch all events once (much faster than multiple queries)
-            let allEvents = try context.fetch(FetchDescriptor<CalendarEvent>())
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
 
-            // Filter events that overlap with the date range
-            let filteredEvents = allEvents.filter { event in
-                // Check if event overlaps with the range
-                guard let eventStart = event.startDate else { return false }
-                let eventEnd = event.endDate ?? eventStart
+            let filteredTasks = allTasks.filter { task in
+                guard task.deletedAt == nil else { return false }
+                guard let taskStart = task.startDate else { return false }
+                let taskEnd = task.endDate ?? taskStart
 
-                // Event overlaps if:
-                // - Event starts before range ends AND
-                // - Event ends after range starts
-                return eventStart <= dateRange.upperBound && eventEnd >= dateRange.lowerBound
+                // Task overlaps if it starts before range ends AND ends after range starts
+                return taskStart <= dateRange.upperBound && taskEnd >= dateRange.lowerBound
             }
 
-            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
         } catch {
-            print("[CALENDAR] ❌ Failed to fetch events in range: \(error)")
+            print("[SCHEDULE] ❌ Failed to fetch tasks in range: \(error)")
             return []
         }
     }
 
-    /// Get calendar events for a specific date (simplified version for scheduler)
-    func getCalendarEvents(for date: Date) -> [CalendarEvent] {
+    /// Get scheduled tasks for a specific date
+    func getScheduledTasks(for date: Date) -> [ProjectTask] {
         guard let context = modelContext else {
             return []
         }
 
-        let descriptor = FetchDescriptor<CalendarEvent>()
-
         do {
-            let allEvents = try context.fetch(descriptor)
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
 
-            // Filter by date
-            let filteredEvents = allEvents.filter { event in
-                // Check if event is active on this date
-                let spannedDates = event.spannedDates
-                return spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
+            let filteredTasks = allTasks.filter { task in
+                guard task.deletedAt == nil else { return false }
+                guard let taskStart = task.startDate else { return false }
+                let taskEnd = task.endDate ?? taskStart
+                let calendar = Calendar.current
+
+                // Check if date falls within task's start-to-end range
+                return calendar.compare(taskStart, to: date, toGranularity: .day) != .orderedDescending
+                    && calendar.compare(taskEnd, to: date, toGranularity: .day) != .orderedAscending
             }
 
-            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
         } catch {
             return []
         }
     }
 
-    /// Get calendar events for a specific date for the current user
-    func getCalendarEventsForCurrentUser(for date: Date) -> [CalendarEvent] {
-        guard let user = currentUser else { 
-            return [] 
-        }
-        guard let context = modelContext else { 
-            return [] 
-        }
-        
-        
-        let descriptor = FetchDescriptor<CalendarEvent>()
-        
+    /// Get scheduled tasks for a specific date for the current user
+    func getScheduledTasksForCurrentUser(for date: Date) -> [ProjectTask] {
+        guard let user = currentUser else { return [] }
+        guard let context = modelContext else { return [] }
+
         do {
-            let allEvents = try context.fetch(descriptor)
-            
-            /*
-            // Search for any Railings events specifically
-            let railingsEvents = allEvents.filter { $0.title.lowercased().contains("railings") }
-            if !railingsEvents.isEmpty {
-                for (index, event) in railingsEvents.enumerated() {
-                    if let project = event.project {
-                    }
-                }
-            }
-            */
-            
-            /*
-            // Debug first few events for general context
-            for (index, event) in allEvents.prefix(5).enumerated() {
-            }
-            */
-            
-            // Filter by date and user access
-            var passedDateFilter = 0
-            var passedShouldDisplayFilter = 0
-            var passedUserAccessFilter = 0
-            
-            let filteredEvents = allEvents.filter { event in
-                // Check if event is active on this date
-                let spannedDates = event.spannedDates
-                let isActiveOnDate = spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
-                
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+
+            let filteredTasks = allTasks.filter { task in
+                guard task.deletedAt == nil else { return false }
+                guard let taskStart = task.startDate else { return false }
+                let taskEnd = task.endDate ?? taskStart
+                let calendar = Calendar.current
+
+                // Check if date falls within task's start-to-end range
+                let isActiveOnDate = calendar.compare(taskStart, to: date, toGranularity: .day) != .orderedDescending
+                    && calendar.compare(taskEnd, to: date, toGranularity: .day) != .orderedAscending
+
                 if !isActiveOnDate {
                     return false
                 }
-                passedDateFilter += 1
-                passedShouldDisplayFilter += 1
-                
-                // For Admin and Office Crew, show all company events
+
+                // For Admin and Office Crew, show all company tasks
                 if user.role == .admin || user.role == .officeCrew {
-                    let matchesCompany = event.companyId == user.companyId
-                    if !matchesCompany {
-                        return false
-                    } else {
-                        passedUserAccessFilter += 1
-                        return true
-                    }
+                    return task.companyId == user.companyId
                 } else {
-                    // For Field Crew, only show events they're assigned to
-                    let eventTeamMemberIds = event.getTeamMemberIds()
-                    let isAssignedViaIds = eventTeamMemberIds.contains(user.id)
-                    let isAssignedViaObjects = event.teamMembers.contains(where: { $0.id == user.id })
-                    let isAssigned = isAssignedViaIds || isAssignedViaObjects
-                    
-                    if !isAssigned {
-                        // Also check task assignment if this is a task event
-                        if let task = event.task {
-                            let taskTeamMemberIds = task.getTeamMemberIds()
-                            let isAssignedToTask = taskTeamMemberIds.contains(user.id) || task.teamMembers.contains(where: { $0.id == user.id })
-                            
-                            if isAssignedToTask {
-                                passedUserAccessFilter += 1
-                                return true
-                            }
-                        }
-                        return false
-                    } else {
-                        passedUserAccessFilter += 1
-                        return true
-                    }
-                }
-            }
-            
-            // Commented out verbose logging to prevent console spam during calendar rendering
-            
-            // for event in filteredEvents {
-            // }
-            
-            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
-        } catch {
-            return []
-        }
-    }
-
-    func getAllCalendarEvents(from startDate: Date) -> [CalendarEvent] {
-        guard let user = currentUser else {
-            return []
-        }
-        guard let context = modelContext else {
-            return []
-        }
-
-        let descriptor = FetchDescriptor<CalendarEvent>()
-
-        do {
-            let allEvents = try context.fetch(descriptor)
-
-            let filteredEvents = allEvents.filter { event in
-                // Filter by startDate instead of endDate to include events without end dates
-                guard let eventStartDate = event.startDate else { return false }
-                if eventStartDate < startDate {
-                    return false
-                }
-
-                if user.role == .admin || user.role == .officeCrew {
-                    return event.companyId == user.companyId
-                } else {
-                    let eventTeamMemberIds = event.getTeamMemberIds()
-                    let isAssignedViaIds = eventTeamMemberIds.contains(user.id)
-                    let isAssignedViaObjects = event.teamMembers.contains(where: { $0.id == user.id })
-                    let isAssigned = isAssignedViaIds || isAssignedViaObjects
+                    // For Field Crew, only show tasks they're assigned to
+                    let taskTeamMemberIds = task.getTeamMemberIds()
+                    let isAssigned = taskTeamMemberIds.contains(user.id)
+                        || task.teamMembers.contains(where: { $0.id == user.id })
 
                     if !isAssigned {
-                        if let task = event.task {
-                            let taskTeamMemberIds = task.getTeamMemberIds()
-                            let isAssignedToTask = taskTeamMemberIds.contains(user.id) || task.teamMembers.contains(where: { $0.id == user.id })
-                            return isAssignedToTask
-                        }
-                        if let project = event.project {
+                        // Also check project assignment
+                        if let project = task.project {
                             let projectTeamMemberIds = project.getTeamMemberIds()
-                            let isAssignedToProject = projectTeamMemberIds.contains(user.id) || project.teamMembers.contains(where: { $0.id == user.id })
-                            return isAssignedToProject
+                            return projectTeamMemberIds.contains(user.id)
+                                || project.teamMembers.contains(where: { $0.id == user.id })
                         }
                         return false
                     }
-
                     return true
                 }
             }
 
-            return filteredEvents.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+        } catch {
+            return []
+        }
+    }
+
+    /// Get all scheduled tasks from a given start date, filtered by current user access
+    func getAllScheduledTasks(from startDate: Date) -> [ProjectTask] {
+        guard let user = currentUser else { return [] }
+        guard let context = modelContext else { return [] }
+
+        do {
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+
+            let filteredTasks = allTasks.filter { task in
+                guard let taskStartDate = task.startDate else { return false }
+                if taskStartDate < startDate { return false }
+
+                if user.role == .admin || user.role == .officeCrew {
+                    return task.companyId == user.companyId
+                } else {
+                    let taskTeamMemberIds = task.getTeamMemberIds()
+                    let isAssigned = taskTeamMemberIds.contains(user.id)
+                        || task.teamMembers.contains(where: { $0.id == user.id })
+
+                    if !isAssigned {
+                        if let project = task.project {
+                            let projectTeamMemberIds = project.getTeamMemberIds()
+                            return projectTeamMemberIds.contains(user.id)
+                                || project.teamMembers.contains(where: { $0.id == user.id })
+                        }
+                        return false
+                    }
+                    return true
+                }
+            }
+
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
         } catch {
             return []
         }
@@ -2153,11 +2084,11 @@ class DataController: ObservableObject {
         try modelContext.save()
         print("[DELETE_PROJECT] ✅ Project '\(projectTitle)' soft deleted locally")
 
-        // Trigger background sync to push changes to Bubble
+        // Trigger background sync to push changes to server
         syncManager?.triggerBackgroundSync()
     }
 
-    /// Delete a task and its calendar event from both Bubble API and local storage
+    /// Delete a task from both Supabase and local storage
     /// - Parameters:
     ///   - task: The task to delete
     ///   - updateProject: Whether to update parent project dates (default: true)
@@ -2169,15 +2100,9 @@ class DataController: ObservableObject {
         }
 
         let taskId = task.id
-        let calendarEventId = task.calendarEvent?.id
         let project = task.project
 
-        // STEP 1: Delete calendar event from Supabase if it exists
-        if let eventId = calendarEventId {
-            try await syncManager.deleteCalendarEvent(eventId: eventId)
-        }
-
-        // STEP 2: Delete task from Supabase
+        // STEP 1: Delete task from Supabase
         try await syncManager.deleteTask(taskId: taskId)
 
         // STEP 3: Delete from local SwiftData
@@ -2197,7 +2122,7 @@ class DataController: ObservableObject {
         }
     }
 
-    /// Delete a client from both Bubble API and local storage
+    /// Delete a client from both server and local storage
     /// - Parameter client: The client to delete
     /// - Throws: API or database errors
     /// - Note: Caller is responsible for handling associated projects (reassignment or deletion)
@@ -2220,10 +2145,9 @@ class DataController: ObservableObject {
     ///   - project: The project to reschedule
     ///   - startDate: New start date
     ///   - endDate: New end date
-    ///   - calendarEvent: The project's calendar event (optional, will be found if not provided)
     /// - Throws: API or database errors
     @MainActor
-    func rescheduleProject(_ project: Project, startDate: Date, endDate: Date, calendarEvent: CalendarEvent? = nil) async throws {
+    func rescheduleProject(_ project: Project, startDate: Date, endDate: Date) async throws {
         guard let modelContext = modelContext else {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
@@ -2232,54 +2156,22 @@ class DataController: ObservableObject {
         print("[RESCHEDULE_PROJECT] Old dates: \(project.startDate?.description ?? "nil") - \(project.endDate?.description ?? "nil")")
         print("[RESCHEDULE_PROJECT] New dates: \(startDate.description) - \(endDate.description)")
 
-        // STEP 1: Update calendar event if provided
-        // Note: primaryCalendarEvent removed in task-only scheduling migration
-        // All calendar events are task-based now
-        if let event = calendarEvent {
-            event.startDate = startDate
-            event.endDate = endDate
-            event.needsSync = true
-            print("[RESCHEDULE_PROJECT] ✅ Calendar event updated locally")
-        } else {
-            print("[RESCHEDULE_PROJECT] ⚠️ No calendar event provided")
-        }
-
-        // STEP 2: Update project dates
+        // STEP 1: Update project dates
         project.startDate = startDate
         project.endDate = endDate
         project.needsSync = true
 
-        // STEP 3: Save locally
+        // STEP 2: Save locally
         try modelContext.save()
         print("[RESCHEDULE_PROJECT] ✅ Changes saved locally")
 
-        // STEP 4: Update dates in Supabase
+        // STEP 3: Update dates in Supabase
         try await syncManager.updateProjectDates(
             projectId: project.id,
             startDate: startDate,
             endDate: endDate
         )
         print("[RESCHEDULE_PROJECT] ✅ Project dates updated in Supabase")
-
-        // STEP 5: Update calendar event in Supabase if it exists
-        if let event = calendarEvent {
-            let formatter = ISO8601DateFormatter()
-            let startDateString = formatter.string(from: startDate)
-            let endDateString = formatter.string(from: endDate)
-
-            print("[RESCHEDULE_PROJECT] 📅 Updating calendar event dates:")
-            print("[RESCHEDULE_PROJECT]   - Start: \(startDate) → \(startDateString)")
-            print("[RESCHEDULE_PROJECT]   - End: \(endDate) → \(endDateString)")
-
-            try await syncManager.updateCalendarEvent(
-                eventId: event.id,
-                fields: [
-                    "start_date": .string(startDateString),
-                    "end_date": .string(endDateString)
-                ]
-            )
-            print("[RESCHEDULE_PROJECT] ✅ Calendar event updated in Supabase")
-        }
     }
 
     // We're removing the ability to update profile images for now
@@ -2351,112 +2243,24 @@ class DataController: ObservableObject {
         }
     }
     
-    func getCalendarEvent(id: String) -> CalendarEvent? {
-        guard let context = modelContext else { return nil }
-        
-        // Always fetch fresh from context to avoid invalidated models
-        do {
-            let descriptor = FetchDescriptor<CalendarEvent>(
-                predicate: #Predicate<CalendarEvent> { $0.id == id }
-            )
-            let events = try context.fetch(descriptor)
-            
-            if let event = events.first {
-                return event
-            }
-            return nil
-        } catch {
-            print("[DataController] Error fetching calendar event \(id): \(error)")
-            return nil
-        }
-    }
-    
-    // MARK: - Diagnostic Functions
-    
-    /// Diagnostic function to search for specific project and analyze calendar event issues
-    func diagnoseRailingsVinylProject() {
-        
-        guard let context = modelContext else {
-            return
-        }
-        
-        do {
-            // Search for projects with "Railings" in the title
-            let allProjects = try context.fetch(FetchDescriptor<Project>())
-            let railingsProjects = allProjects.filter { $0.title.lowercased().contains("railings") }
-            
-            
-            for (index, project) in railingsProjects.enumerated() {
-                
-                // Check for tasks
-                let tasks = project.tasks
-                
-                for (taskIndex, task) in tasks.enumerated() {
-                    if let calendarEvent = task.calendarEvent {
-                    }
-                }
-                
-                // Search for associated calendar events
-                let projectId = project.id
-                let calendarEventDescriptor = FetchDescriptor<CalendarEvent>(
-                    predicate: #Predicate<CalendarEvent> { $0.projectId == projectId }
-                )
-                let projectCalendarEvents = try context.fetch(calendarEventDescriptor)
-                
-                for (eventIndex, event) in projectCalendarEvents.enumerated() {
-                    
-                    // Check spanned dates for Aug 17 and Aug 19
-                    let spannedDates = event.spannedDates
-                    let calendar = Calendar.current
-                    
-                    let aug17_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 17))!
-                    let aug19_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 19))!
-                    
-                    let coversAug17 = spannedDates.contains { calendar.isDate($0, inSameDayAs: aug17_2025) }
-                    let coversAug19 = spannedDates.contains { calendar.isDate($0, inSameDayAs: aug19_2025) }
-                    
-                }
-            }
-            
-            // Also search for tasks with "Railings" in project title
-            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
-            let railingsTasks = allTasks.filter { task in
-                if let project = task.project {
-                    return project.title.lowercased().contains("railings")
-                }
-                return false
-            }
-            
-            
-            for (index, task) in railingsTasks.enumerated() {
-                if let calendarEvent = task.calendarEvent {
-                }
-            }
-            
-            // Check for calendar events on specific dates
-            let calendar = Calendar.current
-            let aug17_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 17))!
-            let aug19_2025 = calendar.date(from: DateComponents(year: 2025, month: 8, day: 19))!
-            
-            for date in [aug17_2025, aug19_2025] {
-                let eventsForDate = getCalendarEventsForCurrentUser(for: date)
-                
-                for event in eventsForDate {
-                    if event.title.lowercased().contains("railings") {
-                    }
-                }
-            }
-            
-        } catch {
-        }
-        
-    }
-    
-    
     /// Gets a user by ID
+    func getTask(id: String) -> ProjectTask? {
+        guard let context = modelContext else { return nil }
+
+        do {
+            let descriptor = FetchDescriptor<ProjectTask>(
+                predicate: #Predicate<ProjectTask> { $0.id == id }
+            )
+            let tasks = try context.fetch(descriptor)
+            return tasks.first
+        } catch {
+            return nil
+        }
+    }
+
     func getUser(id: String) -> User? {
         guard let context = modelContext else { return nil }
-        
+
         do {
             let descriptor = FetchDescriptor<User>(
                 predicate: #Predicate<User> { $0.id == id }
@@ -2491,7 +2295,7 @@ class DataController: ObservableObject {
     /// TODO: Implement OPS Contacts fetch from Supabase when the table is set up
     @MainActor
     private func fetchOpsContacts() async {
-        // OpsContacts fetch from Bubble API removed during Supabase migration
+        // OpsContacts fetched from Supabase
         // This is a non-critical feature - contacts will be populated when Supabase table is ready
         print("[OPS_CONTACTS] Skipping fetch - Supabase migration pending")
     }
@@ -2561,16 +2365,6 @@ class DataController: ObservableObject {
             count += try context.fetchCount(taskDescriptor)
         } catch {
             print("[SYNC] ⚠️ Failed to count pending tasks: \(error)")
-        }
-
-        // Count pending calendar events
-        do {
-            let eventDescriptor = FetchDescriptor<CalendarEvent>(
-                predicate: #Predicate<CalendarEvent> { $0.needsSync == true }
-            )
-            count += try context.fetchCount(eventDescriptor)
-        } catch {
-            print("[SYNC] ⚠️ Failed to count pending events: \(error)")
         }
 
         // Count pending users
@@ -2685,7 +2479,7 @@ class DataController: ObservableObject {
     ///   - operationName: Name for logging (e.g., "UPDATE_TASK_STATUS", "UPDATE_PROJECT", etc.)
     ///   - itemDescription: Brief description of the item (e.g., "task abc123 to Completed")
     ///   - localUpdate: Closure that performs the local database update
-    ///   - syncToAPI: Closure that syncs to Bubble API (called only if connected)
+    ///   - syncToAPI: Closure that syncs to server (called only if connected)
     @MainActor
     func performSyncedOperation<T>(
         item: T,
@@ -2800,7 +2594,7 @@ class DataController: ObservableObject {
             AnalyticsManager.shared.trackTaskCompleted(taskType: task.taskType?.display)
 
             // Send task completion notification to all project team members
-            if let project = project, OneSignalService.shared.isConfigured {
+            if let project = project {
                 let projectTeamMemberIds = project.teamMembers.map { $0.id }
                 if !projectTeamMemberIds.isEmpty {
                     let taskName = task.displayTitle
@@ -2940,7 +2734,7 @@ class DataController: ObservableObject {
         // Send push notification if project was just marked as completed
         if newStatus == .completed && previousStatus != .completed {
             let teamMemberIds = project.getTeamMemberIds()
-            if !teamMemberIds.isEmpty, OneSignalService.shared.isConfigured {
+            if !teamMemberIds.isEmpty {
                 Task {
                     do {
                         try await OneSignalService.shared.notifyProjectCompletion(
@@ -2956,29 +2750,27 @@ class DataController: ObservableObject {
         }
     }
 
-    // MARK: - Calendar Event Operations
+    // MARK: - Task Schedule Operations
 
-    /// Update calendar event dates - SINGLE SOURCE OF TRUTH for calendar event updates
+    /// Update task schedule dates - SINGLE SOURCE OF TRUTH for task scheduling updates
     @MainActor
-    func updateCalendarEvent(event: CalendarEvent, startDate: Date, endDate: Date) async throws {
-        // Store task/project references before async operation
-        let task = event.task
-        let project = task?.project
+    func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date) async throws {
+        let project = task.project
 
         // Capture previous dates to detect actual changes
-        let previousStartDate = event.startDate
-        let previousEndDate = event.endDate
+        let previousStartDate = task.startDate
+        let previousEndDate = task.endDate
 
         try await performSyncedOperation(
-            item: event,
-            operationName: "UPDATE_CALENDAR_EVENT",
-            itemDescription: "Updating calendar event \(event.id)",
+            item: task,
+            operationName: "UPDATE_TASK_SCHEDULE",
+            itemDescription: "Updating task \(task.id) schedule",
             localUpdate: {
-                event.startDate = startDate
-                event.endDate = endDate
+                task.startDate = startDate
+                task.endDate = endDate
                 let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-                event.duration = daysDiff + 1
-                event.needsSync = true
+                task.duration = daysDiff + 1
+                task.needsSync = true
             },
             syncToAPI: {
                 let formatter = ISO8601DateFormatter()
@@ -2987,18 +2779,18 @@ class DataController: ObservableObject {
                 let fields: [String: AnyJSON] = [
                     "start_date": .string(formatter.string(from: startDate)),
                     "end_date": .string(formatter.string(from: endDate)),
-                    "duration": .integer(event.duration)
+                    "duration": .integer(task.duration)
                 ]
 
-                try await self.syncManager.updateCalendarEvent(eventId: event.id, fields: fields)
-                event.needsSync = false
-                event.lastSyncedAt = Date()
+                try await self.syncManager.updateTaskFields(taskId: task.id, fields: fields)
+                task.needsSync = false
+                task.lastSyncedAt = Date()
             }
         )
 
         // Send schedule change notification if dates actually changed
         let datesChanged = previousStartDate != startDate || previousEndDate != endDate
-        if datesChanged, let task = task, let project = project, OneSignalService.shared.isConfigured {
+        if datesChanged, let project = project {
             let teamMemberIds = task.getTeamMemberIds()
             if !teamMemberIds.isEmpty {
                 Task {
@@ -3017,19 +2809,13 @@ class DataController: ObservableObject {
             }
         }
 
-        // Recalculate task indices if this event is linked to a task
-        // This runs regardless of whether calendar sync succeeded
+        // Recalculate task indices
         if let project = project {
             do {
                 try await recalculateTaskIndices(for: project)
             } catch {
-                print("[UPDATE_CALENDAR_EVENT] ⚠️ Failed to recalculate task indices: \(error)")
+                print("[UPDATE_TASK_SCHEDULE] ⚠️ Failed to recalculate task indices: \(error)")
             }
-        }
-
-        // Notify calendar views to refresh
-        await MainActor.run {
-            calendarEventsDidChange.toggle()
         }
     }
 
@@ -3048,8 +2834,7 @@ class DataController: ObservableObject {
         var unscheduledTasks: [ProjectTask] = []
 
         for task in allTasks {
-            if let calendarEvent = task.calendarEvent,
-               let startDate = calendarEvent.startDate {
+            if let startDate = task.startDate {
                 scheduledTasks.append((task: task, startDate: startDate))
             } else {
                 unscheduledTasks.append(task)
@@ -3117,11 +2902,9 @@ class DataController: ObservableObject {
     /// It handles:
     /// 1. Updating task.teamMemberIdsString
     /// 2. Updating task.teamMembers relationship array
-    /// 3. Updating task's calendar event team members (both string and relationship)
-    /// 4. Syncing task team members to Bubble API
-    /// 5. Syncing calendar event team members to Bubble API
-    /// 6. Updating project team members to reflect changes
-    /// 7. Sending push notifications to newly assigned members
+    /// 3. Syncing task team members to Supabase
+    /// 4. Updating project team members to reflect changes
+    /// 5. Sending push notifications to newly assigned members
     @MainActor
     func updateTaskTeamMembers(task: ProjectTask, memberIds: [String]) async throws {
         print("[UPDATE_TASK_TEAM] 🔄 Starting comprehensive task team update...")
@@ -3159,21 +2942,8 @@ class DataController: ObservableObject {
             }
         )
 
-        // Update calendar event team members if task has one
-        if let calendarEvent = task.calendarEvent {
-            print("[UPDATE_TASK_TEAM] 🔄 Updating associated calendar event team members...")
-            try await updateCalendarEventTeamMembersComprehensive(
-                event: calendarEvent,
-                memberIds: memberIds,
-                memberUsers: teamMemberUsers
-            )
-            print("[UPDATE_TASK_TEAM] ✅ Calendar event team members updated")
-        } else {
-            print("[UPDATE_TASK_TEAM] ℹ️ Task has no calendar event to update")
-        }
-
         // Send push notifications to newly added team members
-        if !addedMemberIds.isEmpty, OneSignalService.shared.isConfigured {
+        if !addedMemberIds.isEmpty {
             let taskName = task.displayTitle
             let projectName = task.project?.title ?? "Project"
 
@@ -3219,32 +2989,6 @@ class DataController: ObservableObject {
             print("[FETCH_USERS] ❌ Error fetching users by ID: \(error)")
             return []
         }
-    }
-
-    /// Update calendar event team members comprehensively (both string and relationship)
-    @MainActor
-    private func updateCalendarEventTeamMembersComprehensive(
-        event: CalendarEvent,
-        memberIds: [String],
-        memberUsers: [User]
-    ) async throws {
-        try await performSyncedOperation(
-            item: event,
-            operationName: "UPDATE_EVENT_TEAM",
-            itemDescription: "Updating calendar event \(event.id) team members",
-            localUpdate: {
-                // Update calendar event team member IDs string
-                event.setTeamMemberIds(memberIds)
-                // Update calendar event team members relationship array
-                event.teamMembers = memberUsers
-                event.needsSync = true
-            },
-            syncToAPI: {
-                try await self.syncManager.updateCalendarEventTeamMembers(eventId: event.id, memberIds: memberIds)
-                event.needsSync = false
-                event.lastSyncedAt = Date()
-            }
-        )
     }
 
     /// Syncs project team members based on all its tasks
@@ -3296,25 +3040,6 @@ class DataController: ObservableObject {
                 try await self.syncManager.updateProjectTeamMembers(projectId: project.id, memberIds: memberIds)
                 project.needsSync = false
                 project.lastSyncedAt = Date()
-            }
-        )
-    }
-
-    /// Update calendar event team members - SINGLE SOURCE OF TRUTH
-    @MainActor
-    func updateCalendarEventTeamMembers(event: CalendarEvent, memberIds: [String]) async throws {
-        try await performSyncedOperation(
-            item: event,
-            operationName: "UPDATE_EVENT_TEAM",
-            itemDescription: "Updating calendar event \(event.id) team members",
-            localUpdate: {
-                event.setTeamMemberIds(memberIds)
-                event.needsSync = true
-            },
-            syncToAPI: {
-                try await self.syncManager.updateCalendarEventTeamMembers(eventId: event.id, memberIds: memberIds)
-                event.needsSync = false
-                event.lastSyncedAt = Date()
             }
         )
     }
@@ -3648,7 +3373,7 @@ class DataController: ObservableObject {
 
     // MARK: - Company Default Project Color
 
-    /// Update the company's default project color in both local database and Bubble API
+    /// Update the company's default project color in both local database and server
     func updateCompanyDefaultProjectColor(companyId: String, color: String) async throws {
         print("[COMPANY_COLOR] Updating default project color to: \(color)")
 

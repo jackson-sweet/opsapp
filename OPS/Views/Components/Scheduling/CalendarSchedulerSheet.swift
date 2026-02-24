@@ -28,12 +28,12 @@ struct CalendarSchedulerSheet: View {
     @State private var selectedEndDate: Date
     @State private var viewMode: ViewMode = .selecting
     @State private var currentMonth: Date = Date()
-    @State private var conflictingEvents: [CalendarEvent] = []
+    @State private var conflictingEvents: [ProjectTask] = []
     @State private var showingConflictWarning = false
     @State private var showOnlyTeamEvents = true  // Filter by team members by default
     @State private var showOnlyProjectTasks = true  // Filter by same project tasks - default ON
-    @State private var allCalendarEvents: [CalendarEvent] = []
-    @State private var filteredCalendarEvents: [CalendarEvent] = []
+    @State private var allScheduledTasks: [ProjectTask] = []
+    @State private var filteredScheduledTasks: [ProjectTask] = []
 
     // Grid configuration
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
@@ -115,7 +115,7 @@ struct CalendarSchedulerSheet: View {
             }
         }
         .onAppear {
-            loadCalendarEvents()
+            loadScheduledTasks()
         }
     }
 
@@ -275,7 +275,7 @@ struct CalendarSchedulerSheet: View {
             if showOnlyTeamEvents {
                 showOnlyProjectTasks = false
             }
-            filterCalendarEvents()
+            filterScheduledTasks()
         }
     }
 
@@ -314,7 +314,7 @@ struct CalendarSchedulerSheet: View {
             if showOnlyProjectTasks {
                 showOnlyTeamEvents = false
             }
-            filterCalendarEvents()
+            filterScheduledTasks()
         }
     }
 
@@ -395,21 +395,21 @@ struct CalendarSchedulerSheet: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             VStack(spacing: 8) {
-                ForEach(conflictingEvents.prefix(3)) { event in
+                ForEach(conflictingEvents.prefix(3)) { task in
                     HStack(spacing: 8) {
                         Circle()
-                            .fill(event.swiftUIColor)
+                            .fill(task.swiftUIColor)
                             .frame(width: 8, height: 8)
 
-                        Text(event.title)
+                        Text(task.displayTitle)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .lineLimit(1)
 
                         Spacer()
 
-                        let startDateStr = event.startDate.map { formatDate($0, short: true) } ?? "-"
-                        let endDateStr = event.endDate.map { formatDate($0, short: true) } ?? "-"
+                        let startDateStr = task.startDate.map { formatDate($0, short: true) } ?? "-"
+                        let endDateStr = task.endDate.map { formatDate($0, short: true) } ?? "-"
                         Text("\(startDateStr) - \(endDateStr)")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -544,35 +544,33 @@ struct CalendarSchedulerSheet: View {
         date >= selectedStartDate && date <= selectedEndDate
     }
 
-    private func getEventsForDate(_ date: Date) -> [CalendarEvent] {
-        // Return events scheduled on this date based on filter
-        let events = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredCalendarEvents : allCalendarEvents
-        return events.filter { event in
-            event.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
+    private func getEventsForDate(_ date: Date) -> [ProjectTask] {
+        // Return tasks scheduled on this date based on filter
+        let tasks = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredScheduledTasks : allScheduledTasks
+        return tasks.filter { task in
+            task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
         }
     }
 
     private func hasConflicts(on date: Date) -> Bool {
-        // Check if selected range would conflict with existing events on this date
+        // Check if selected range would conflict with existing tasks on this date
         guard viewMode == .reviewing else { return false }
 
-        return conflictingEvents.contains { event in
-            event.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
+        return conflictingEvents.contains { task in
+            task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
         }
     }
 
     private func hasTeamConflicts(on date: Date) -> Bool {
-        // Check if this date has events with overlapping team members
-        let eventsToCheck = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredCalendarEvents : allCalendarEvents
+        // Check if this date has tasks with overlapping team members
+        let tasksToCheck = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredScheduledTasks : allScheduledTasks
 
         // Get team members for the current item
         let currentTeamMembers: Set<String>
 
-        // If preselected team members are provided, use those
         if let preselectedIds = preselectedTeamMemberIds, !preselectedIds.isEmpty {
             currentTeamMembers = preselectedIds
         } else {
-            // Otherwise, get from the current item
             switch itemType {
             case .project(let project):
                 currentTeamMembers = Set(project.getTeamMemberIds())
@@ -583,30 +581,21 @@ struct CalendarSchedulerSheet: View {
             }
         }
 
-        // Check if any events on this date share team members (excluding current item)
-        return eventsToCheck.contains { event in
-            // Don't count the current item being rescheduled
+        // Check if any tasks on this date share team members (excluding current item)
+        return tasksToCheck.contains { scheduledTask in
             let isSameItem: Bool
             switch itemType {
-            case .project(let project):
-                // All events are task events now - project events no longer exist
+            case .project:
                 isSameItem = false
             case .task(let task):
-                isSameItem = event.taskId == task.id
+                isSameItem = scheduledTask.id == task.id
             case .draftTask:
-                // Draft tasks don't have an ID yet, so they can't match existing events
                 isSameItem = false
             }
 
-            if !isSameItem && event.spannedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) }) {
-                // Use linked task's team members if available
-                let eventTeamMembers: Set<String>
-                if let task = event.task {
-                    eventTeamMembers = Set(task.getTeamMemberIds())
-                } else {
-                    eventTeamMembers = Set(event.getTeamMemberIds())
-                }
-                return !currentTeamMembers.isDisjoint(with: eventTeamMembers)
+            if !isSameItem && scheduledTask.spannedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) }) {
+                let taskTeamMembers = Set(scheduledTask.getTeamMemberIds())
+                return !currentTeamMembers.isDisjoint(with: taskTeamMembers)
             }
             return false
         }
@@ -643,62 +632,54 @@ struct CalendarSchedulerSheet: View {
         }
     }
 
-    private func loadCalendarEvents() {
-        // Load all calendar events in the date range (optimized)
+    private func loadScheduledTasks() {
+        // Load all scheduled tasks in the date range
         let calendar = Calendar.current
         let searchStart = calendar.date(byAdding: .month, value: -3, to: selectedStartDate) ?? selectedStartDate
         let searchEnd = calendar.date(byAdding: .month, value: 3, to: selectedEndDate) ?? selectedEndDate
 
-        // Use optimized range query instead of day-by-day loop
-        allCalendarEvents = dataController.getCalendarEvents(in: searchStart...searchEnd)
+        // Use optimized range query
+        allScheduledTasks = dataController.getScheduledTasks(in: searchStart...searchEnd)
 
-        // Filter events
-        filterCalendarEvents()
+        // Filter tasks
+        filterScheduledTasks()
     }
 
-    private func filterCalendarEvents() {
+    private func filterScheduledTasks() {
         // Handle project tasks filter (only for items with a project)
         if showOnlyProjectTasks {
             if let projectId = itemType.projectId {
-                // Show only other tasks from the same project
                 let currentTaskId: String? = {
                     if case .task(let task) = itemType { return task.id }
                     return nil
                 }()
 
-                filteredCalendarEvents = allCalendarEvents.filter { event in
-                    // Must be from the same project
-                    guard event.projectId == projectId else { return false }
-
-                    // Exclude the current task being scheduled (if editing existing task)
-                    if let taskId = currentTaskId, event.taskId == taskId {
+                filteredScheduledTasks = allScheduledTasks.filter { scheduledTask in
+                    guard scheduledTask.projectId == projectId else { return false }
+                    if let taskId = currentTaskId, scheduledTask.id == taskId {
                         return false
                     }
-
                     return true
                 }
                 return
             } else {
-                // No project ID available - show nothing for project tasks filter
-                filteredCalendarEvents = []
+                filteredScheduledTasks = []
                 return
             }
         }
 
         // Handle team events filter
         guard showOnlyTeamEvents else {
-            filteredCalendarEvents = allCalendarEvents
+            filteredScheduledTasks = allScheduledTasks
             return
         }
 
         // Get team members for the current item
         let currentTeamMembers: Set<String>
 
-        // If preselected team members are provided, use those
         if let preselectedIds = preselectedTeamMemberIds, !preselectedIds.isEmpty {
             currentTeamMembers = preselectedIds
         } else {
-            // Otherwise, get from the current item
             switch itemType {
             case .project(let project):
                 currentTeamMembers = Set(project.getTeamMemberIds())
@@ -709,44 +690,34 @@ struct CalendarSchedulerSheet: View {
             }
         }
 
-        // Filter events that share at least one team member
-        // Use the linked task's team members (more accurate than stored event team members)
-        filteredCalendarEvents = allCalendarEvents.filter { event in
-            // Get team members from the linked task if available, otherwise fall back to event's stored IDs
-            let eventTeamMembers: Set<String>
-            if let task = event.task {
-                eventTeamMembers = Set(task.getTeamMemberIds())
-            } else {
-                eventTeamMembers = Set(event.getTeamMemberIds())
-            }
-            return !currentTeamMembers.isDisjoint(with: eventTeamMembers)
+        // Filter tasks that share at least one team member
+        filteredScheduledTasks = allScheduledTasks.filter { scheduledTask in
+            let taskTeamMembers = Set(scheduledTask.getTeamMemberIds())
+            return !currentTeamMembers.isDisjoint(with: taskTeamMembers)
         }
     }
 
     private func checkForConflicts() {
-        // Get events to check based on current filter
-        let eventsToCheck = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredCalendarEvents : allCalendarEvents
+        // Get tasks to check based on current filter
+        let tasksToCheck = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredScheduledTasks : allScheduledTasks
 
-        // Filter for events that overlap with the selected date range
-        conflictingEvents = eventsToCheck.filter { event in
-            // Don't count the current item being rescheduled as a conflict
+        // Filter for tasks that overlap with the selected date range
+        conflictingEvents = tasksToCheck.filter { scheduledTask in
             let isSameItem: Bool
             switch itemType {
-            case .project(let project):
-                // All events are task events now - project events no longer exist
+            case .project:
                 isSameItem = false
             case .task(let task):
-                isSameItem = event.taskId == task.id
+                isSameItem = scheduledTask.id == task.id
             case .draftTask:
-                // Draft tasks don't have an ID yet, so they can't match existing events
                 isSameItem = false
             }
 
             // Check for date overlap
-            if !isSameItem, let eventStart = event.startDate, let eventEnd = event.endDate {
-                let eventRange = eventStart...eventEnd
+            if !isSameItem, let taskStart = scheduledTask.startDate, let taskEnd = scheduledTask.endDate {
+                let taskRange = taskStart...taskEnd
                 let selectedRange = selectedStartDate...selectedEndDate
-                return eventRange.overlaps(selectedRange)
+                return taskRange.overlaps(selectedRange)
             }
             return false
         }.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
@@ -842,7 +813,7 @@ struct CalendarSchedulerSheet: View {
 private struct SchedulerDayCell: View {
     let date: Date
     let isInCurrentMonth: Bool
-    let events: [CalendarEvent]
+    let events: [ProjectTask]
     let isSelected: Bool
     let isInRange: Bool
     let isStartDate: Bool
@@ -922,12 +893,12 @@ private struct SchedulerDayCell: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(textColor)
 
-                    // Event dots with actual colors
+                    // Task dots with actual colors
                     if !events.isEmpty {
                         HStack(spacing: 1) {
-                            ForEach(Array(events.prefix(3).enumerated()), id: \.offset) { index, event in
+                            ForEach(Array(events.prefix(3).enumerated()), id: \.offset) { index, task in
                                 Circle()
-                                    .fill(event.swiftUIColor)
+                                    .fill(task.swiftUIColor)
                                     .frame(width: 4, height: 4)
                             }
                         }

@@ -163,7 +163,7 @@ struct ScheduleView: View {
             viewModel.setDataController(dataController)
         }
         // Watch for calendar event changes and reload data
-        .onChange(of: dataController.calendarEventsDidChange) { _, _ in
+        .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
             viewModel.reloadCalendarData()
         }
         // Show day project sheet
@@ -188,31 +188,23 @@ struct ScheduleView: View {
             // Sheet displayed when selecting a day in month view
             DayEventsSheet(
                 date: viewModel.selectedDate,
-                calendarEvents: viewModel.calendarEventsForSelectedDate,
-                onEventSelected: { event in
-                    // All events are task events now
-                    if let task = event.task {
-                        // Show task details
-                        let userInfo: [String: String] = [
-                            "taskID": task.id,
-                            "projectID": task.projectId
-                        ]
+                scheduledTasks: viewModel.scheduledTasksForSelectedDate,
+                onTaskSelected: { task in
+                    let userInfo: [String: String] = [
+                        "taskID": task.id,
+                        "projectID": task.projectId
+                    ]
 
-                        // Dismiss sheet first
-                        self.showDaySheet = false
+                    // Dismiss sheet first
+                    self.showDaySheet = false
 
-                        // Post notification for task details after a delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            NotificationCenter.default.post(
-                                name: Notification.Name("ShowCalendarTaskDetails"),
-                                object: nil,
-                                userInfo: userInfo
-                            )
-                        }
-                    } else {
-                        // Fallback: set the selected project ID and dismiss this sheet
-                        self.selectedProjectID = event.projectId
-                        self.showDaySheet = false
+                    // Post notification for task details after a delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("ShowCalendarTaskDetails"),
+                            object: nil,
+                            userInfo: userInfo
+                        )
                     }
                 }
             )

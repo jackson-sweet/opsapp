@@ -1169,7 +1169,7 @@ class OnboardingViewModel: ObservableObject {
             // Generate a unique company code for the join flow
             let newCompanyCode = generateCompanyCode()
             let now = ISO8601DateFormatter().string(from: Date())
-            let trialEnd = ISO8601DateFormatter().string(from: Calendar.current.date(byAdding: .day, value: 14, to: Date())!)
+            let trialEnd = ISO8601DateFormatter().string(from: Calendar.current.date(byAdding: .day, value: 30, to: Date())!)
 
             // Insert company into Supabase
             let companyRepo = CompanyRepository()
@@ -1185,9 +1185,10 @@ class OnboardingViewModel: ObservableObject {
                 company_size: size.rawValue,
                 company_age: age.rawValue,
                 subscription_status: "trial",
+                subscription_plan: "trial",
                 trial_start_date: now,
                 trial_end_date: trialEnd,
-                max_seats: 5,
+                max_seats: 10,
                 created_at: now,
                 updated_at: now
             )
@@ -1223,9 +1224,10 @@ class OnboardingViewModel: ObservableObject {
                     companyObject.companyAge = age.rawValue
                     companyObject.setIndustries([industry.rawValue])
                     companyObject.subscriptionStatus = "trial"
+                    companyObject.subscriptionPlan = "trial"
                     companyObject.trialStartDate = Date()
-                    companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 14, to: Date())
-                    companyObject.maxSeats = 5
+                    companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 30, to: Date())
+                    companyObject.maxSeats = 10
                     modelContext.insert(companyObject)
                     try? modelContext.save()
                     print("[ONBOARDING] ✅ Company saved to SwiftData")

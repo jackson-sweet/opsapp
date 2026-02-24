@@ -443,11 +443,11 @@ struct CopyFromProjectSheet: View {
                         "status": task.status.rawValue,
                         "teamMemberIds": task.getTeamMemberIds()
                     ]
-                    // Include dates if the task has a calendar event
-                    if let startDate = task.calendarEvent?.startDate {
+                    // Include dates if the task has scheduling dates
+                    if let startDate = task.startDate {
                         taskDict["startDate"] = startDate
                     }
-                    if let endDate = task.calendarEvent?.endDate {
+                    if let endDate = task.endDate {
                         taskDict["endDate"] = endDate
                     }
                     return taskDict

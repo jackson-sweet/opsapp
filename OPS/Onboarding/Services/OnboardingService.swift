@@ -4,657 +4,79 @@
 //
 //  Created by Jackson Sweet on 2025-05-05.
 //
+//  Provides invite-sending functionality via ops-web API routes.
+//
 
 import Foundation
+import Supabase
 
 class OnboardingService {
 
-    // API base URL
-    private let baseURL: URL
+    init() {}
 
-    init(baseURL: URL = AppConfiguration.bubbleBaseURL) {
-        self.baseURL = baseURL
-    }
+    // MARK: - Send Invites via ops-web
 
-    // MARK: - OnboardingManager Convenience Methods
-
-    /// Sign up a new user and return the user ID
-    /// Used by OnboardingManager for simplified interface
-    func signUp(
-        email: String,
-        password: String,
-        firstName: String,
-        lastName: String,
-        phone: String?,
-        userType: UserType
-    ) async throws -> String {
-        let response = try await signUpUser(email: email, password: password, userType: userType)
-
-        guard let userId = response.extractedUserId else {
-            throw SignUpError.serverError("No user ID returned from signup")
-        }
-
-        return userId
-    }
-
-    /// Create a new company and return (companyId, companyCode)
-    /// Used by OnboardingManager for simplified interface
-    func createCompany(
-        name: String,
-        address: String?,
-        city: String?,
-        state: String?,
-        zip: String?,
-        phone: String?,
-        email: String?,
-        ownerId: String,
-        dataController: DataController
-    ) async throws -> (companyId: String, companyCode: String?) {
-        // Build full address from components
-        var fullAddress = ""
-        if let addr = address, !addr.isEmpty {
-            fullAddress = addr
-        }
-        if let c = city, !c.isEmpty {
-            fullAddress += fullAddress.isEmpty ? c : ", \(c)"
-        }
-        if let s = state, !s.isEmpty {
-            fullAddress += fullAddress.isEmpty ? s : ", \(s)"
-        }
-        if let z = zip, !z.isEmpty {
-            fullAddress += fullAddress.isEmpty ? z : " \(z)"
-        }
-
-        let response = try await updateCompany(
-            companyId: nil,
-            name: name,
-            email: email ?? "",
-            phone: phone,
-            industry: "",
-            size: "",
-            age: "",
-            address: fullAddress,
-            userId: ownerId,
-            firstName: "",  // Already set during profile step
-            lastName: "",
-            userPhone: phone ?? ""
-        )
-
-        guard let company = response.extractedCompany,
-              let companyId = company.extractedId else {
-            throw SignUpError.serverError("No company ID returned from creation")
-        }
-
-        // Trigger sync to load company data
-        if let syncManager = dataController.syncManager {
-            try? await syncManager.syncCompany()
-        }
-
-        return (companyId, company.extractedCode)
-    }
-
-    /// Join an existing company and return the company ID
-    /// Used by OnboardingManager for simplified interface
-    func joinCompany(
-        code: String,
-        userId: String,
-        dataController: DataController
-    ) async throws -> String {
-        // Get user info from state (may be empty if already set via profile step)
-        let firstName = UserDefaults.standard.string(forKey: "user_first_name") ?? ""
-        let lastName = UserDefaults.standard.string(forKey: "user_last_name") ?? ""
-        let phone = UserDefaults.standard.string(forKey: "user_phone_number") ?? ""
-
-        let response = try await joinCompany(
-            userId: userId,
-            firstName: firstName,
-            lastName: lastName,
-            phoneNumber: phone,
-            companyCode: code
-        )
-
-        guard let companyData = response.extractedCompanyData else {
-            throw SignUpError.companyJoinFailed
-        }
-
-        let companyId = companyData.id
-        guard !companyId.isEmpty else {
-            throw SignUpError.companyJoinFailed
-        }
-
-        // Trigger sync to load company data
-        if let syncManager = dataController.syncManager {
-            try? await syncManager.syncCompany()
-        }
-
-        return companyId
-    }
-
-    // MARK: - Original API Methods
-
-    /// Sign up a new user with Bubble API (email and password only)
-    /// - Parameters:
-    ///   - email: User's email address
-    ///   - password: User's password
-    ///   - userType: User type (employee or company) - determines which endpoint to use
-    /// - Returns: Sign up response with success status and user_id
-    func signUpUser(email: String, password: String, userType: UserType) async throws -> SignUpResponse {
-        // Use different endpoints based on user type
-        let endpoint = userType == .company ? "sign_company_up" : "sign_employee_up"
-        
-        // Configure API request
-        let url = baseURL.appendingPathComponent("api/1.1/wf/\(endpoint)")
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
-        
-        // Create request body with email, password, and signup source
-        let parameters: [String: String] = [
-            "email": email,
-            "password": password,
-            "signupPage": "ios_app"
-        ]
-        
-        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-        
-        // DEBUG: Log the request
-        
-        do {
-            // Execute network request
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            // Validate HTTP response
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw SignUpError.invalidResponse
-            }
-            
-            // Debug log the response
-            let responseText = String(data: data, encoding: .utf8) ?? "No data"
-            
-            // Handle non-success status codes, especially 400
-            if httpResponse.statusCode == 400 {
-                // Try to extract "message" from response body for 400 errors
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let message = json["message"] as? String {
-                    // Extract error message for display in UI
-                    throw SignUpError.serverError(message)
-                }
-            }
-            
-            // Parse response
-            let signUpResponse = try JSONDecoder().decode(SignUpResponse.self, from: data)
-            
-            // For debugging, print the structure of the response
-            
-            if signUpResponse.wasSuccessful {
-                if let userId = signUpResponse.extractedUserId {
-                } else {
-                    // Continue anyway, will be handled in the ViewModel
-                }
-                
-                // Always return the response for successful HTTP status codes
-                return signUpResponse
-            } else if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
-                // We have a successful HTTP response but our API indicates failure
-                // For Bubble API, we should return the response anyway and let the ViewModel handle it
-                return signUpResponse
-            } else {
-                // True API failure with error message
-                let errorMsg = signUpResponse.error_message ?? "Unknown error during signup"
-                throw SignUpError.serverError(errorMsg)
-            }
-            
-            
-        } catch let error as SignUpError {
-            throw error
-        } catch let decodingError as DecodingError {
-            throw SignUpError.serverError("Failed to process server response: \(decodingError.localizedDescription)")
-        } catch {
-            throw SignUpError.networkError(error)
-        }
-    }
-    
-    /// Join a company with user ID and details
-    /// - Parameters:
-    ///   - userId: User's unique ID from Bubble
-    ///   - firstName: User's first name
-    ///   - lastName: User's last name
-    ///   - phoneNumber: User's phone number
-    ///   - companyCode: Company code to join
-    /// - Returns: Join company response with company data
-    func joinCompany(userId: String, firstName: String, lastName: String, 
-                     phoneNumber: String, companyCode: String) async throws -> JoinCompanyResponse {
-        
-        // Configure API request
-        let url = baseURL.appendingPathComponent("api/1.1/wf/join_company")
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
-        
-        // Create request body with user ID as primary identifier
-        let parameters: [String: String] = [
-            "user": userId,  // Using 'user' field as you specified
-            "name_first": firstName,
-            "name_last": lastName,
-            "phone": phoneNumber,
-            "company_code": companyCode
-        ]
-        
-        // DEBUG: Log the request
-        
-        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-        
-        do {
-            // Execute network request
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            // Validate HTTP response
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw SignUpError.invalidResponse
-            }
-            
-            // Debug log the response
-            let responseText = String(data: data, encoding: .utf8) ?? "No data"
-            
-            // Handle non-success status codes, especially 400
-            if httpResponse.statusCode == 400 {
-                // Try to extract "message" from response body for 400 errors
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let message = json["message"] as? String {
-                    // Extract error message for display in UI
-                    throw SignUpError.serverError(message)
-                }
-            }
-            
-            // Parse response
-            let joinResponse = try JSONDecoder().decode(JoinCompanyResponse.self, from: data)
-            
-            // For debugging, print the structure of the response
-            
-            // Print detailed company data for debugging
-            if let companyData = joinResponse.extractedCompanyData {
-            } else {
-            }
-            
-            // Try to be flexible with successful responses
-            if joinResponse.wasSuccessful {
-                
-                if let companyData = joinResponse.extractedCompanyData {
-                } else {
-                }
-                
-                // Always return the response for successful join
-                return joinResponse
-            } else if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
-                // We received a 200-range status code, so let's consider this a partial success
-                // and let the ViewModel decide how to handle it
-                return joinResponse
-            } else {
-                // True API failure with error message
-                let errorMsg = joinResponse.error_message ?? "Failed to join company"
-                throw SignUpError.companyJoinFailed
-            }
-            
-            
-        } catch let error as SignUpError {
-            throw error
-        } catch let decodingError as DecodingError {
-            throw SignUpError.serverError("Failed to process server response: \(decodingError.localizedDescription)")
-        } catch {
-            throw SignUpError.networkError(error)
-        }
-    }
-    
-    /// Update company information for business owners
-    /// - Parameters:
-    ///   - companyId: Existing company ID (if updating existing company)
-    ///   - name: Company name
-    ///   - email: Company email
-    ///   - phone: Company phone (optional)
-    ///   - industry: Company industry
-    ///   - size: Company size
-    ///   - age: Company age
-    ///   - address: Company address
-    ///   - userId: User ID to associate with company
-    ///   - firstName: User's first name
-    ///   - lastName: User's last name
-    ///   - userPhone: User's phone number
-    /// - Returns: Company update response
-    func updateCompany(companyId: String?, name: String, email: String, phone: String?, industry: String, size: String, age: String, address: String, userId: String, firstName: String, lastName: String, userPhone: String) async throws -> CompanyUpdateResponse {
-        
-        let url = baseURL.appendingPathComponent("api/1.1/wf/update_company")
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
-        
-        var parameters: [String: Any] = [
-            "name": name,
-            "email": email,
-            "industry": industry,
-            "size": size,
-            "age": age,
-            "address": address,
-            "user": userId,
-            "name_first": firstName,
-            "name_last": lastName,
-            "user_phone": userPhone
-        ]
-        
-        // Include company ID if updating existing company
-        if let companyId = companyId, !companyId.isEmpty {
-            parameters["company_id"] = companyId
-        } else {
-        }
-        
-        if let phone = phone, !phone.isEmpty {
-            parameters["phone"] = phone
-        }
-        
-        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-
-        // DEBUG: Log the complete request
-        print("[ONBOARDING_API] 📤 update_company request parameters:")
-        for (key, value) in parameters.sorted(by: { $0.key < $1.key }) {
-            print("[ONBOARDING_API]   \(key): \(value)")
-        }
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw SignUpError.invalidResponse
-            }
-
-            print("[ONBOARDING_API] 📥 update_company response status: \(httpResponse.statusCode)")
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("[ONBOARDING_API] 📥 update_company response body: \(responseString)")
-            }
-
-            guard (200...299).contains(httpResponse.statusCode) else {
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("[ONBOARDING_API] ❌ Error response: \(responseString)")
-                }
-                throw SignUpError.serverError("Company update failed with status \(httpResponse.statusCode)")
-            }
-            
-            // First try to parse as JSON to see structure
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                print("[ONBOARDING_API] 📥 Parsed JSON keys: \(json.keys.sorted())")
-                for (key, value) in json.sorted(by: { $0.key < $1.key }) {
-                    print("[ONBOARDING_API]   \(key): \(value)")
-                }
-            }
-
-            // Try to decode the response
-            do {
-                let updateResponse = try JSONDecoder().decode(CompanyUpdateResponse.self, from: data)
-                print("[ONBOARDING_API] ✅ Successfully decoded CompanyUpdateResponse")
-                return updateResponse
-            } catch let decodeError {
-                print("[ONBOARDING_API] ⚠️ Decode error: \(decodeError)")
-
-                // Try a simpler response structure - handle various Bubble response formats
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-
-                    // Try to extract company ID from various possible fields
-                    let companyId = json["company"] as? String
-                        ?? json["company_id"] as? String
-                        ?? json["_id"] as? String
-                        ?? (json["response"] as? [String: Any])?["company"] as? String
-                        ?? (json["response"] as? [String: Any])?["_id"] as? String
-
-                    // Try to extract company code
-                    let companyCode = json["company_code"] as? String
-                        ?? json["companyId"] as? String
-                        ?? (json["response"] as? [String: Any])?["companyId"] as? String
-                        ?? companyId
-
-                    if let id = companyId {
-                        print("[ONBOARDING_API] ✅ Extracted company ID: \(id), code: \(companyCode ?? "none")")
-
-                        let companyData = CompanyResponseData(
-                            id: id,
-                            name: nil,
-                            email: nil,
-                            phone: nil,
-                            industry: nil,
-                            size: nil,
-                            age: nil,
-                            address: nil,
-                            code: companyCode ?? id
-                        )
-
-                        return CompanyUpdateResponse(
-                            success: "yes",
-                            company: companyData,
-                            error_message: nil
-                        )
-                    }
-
-                    print("[ONBOARDING_API] ❌ Could not extract company ID from response")
-                }
-
-                throw decodeError
-            }
-            
-        } catch let error as SignUpError {
-            throw error
-        } catch {
-            throw SignUpError.networkError(error)
-        }
-    }
-    
-    /// Send team member invitations
+    /// Send team member invitations via ops-web /api/auth/send-invite
     /// - Parameters:
     ///   - emails: List of email addresses to invite
     ///   - companyId: Company ID to invite them to
     /// - Returns: Invitation response
     func sendInvites(emails: [String], companyId: String) async throws -> InviteResponse {
-        
-        let url = baseURL.appendingPathComponent("api/1.1/wf/send_invite")
-        
+        let session: Session
+        do {
+            session = try await SupabaseService.shared.client.auth.session
+        } catch {
+            throw OnboardingServiceError.notAuthenticated
+        }
+
+        let idToken = session.accessToken
+
+        let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/auth/send-invite")
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(AppConfiguration.bubbleAPIToken, forHTTPHeaderField: "Authorization")
-        
-        let parameters: [String: Any] = [
+
+        let body: [String: Any] = [
+            "idToken": idToken,
             "emails": emails,
-            "company": companyId
+            "companyId": companyId
         ]
-        
-        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw SignUpError.invalidResponse
-            }
-            
-            
-            if let responseString = String(data: data, encoding: .utf8) {
-            }
-            
-            guard (200...299).contains(httpResponse.statusCode) else {
-                throw SignUpError.serverError("Invite sending failed with status \(httpResponse.statusCode)")
-            }
-            
-            let inviteResponse = try JSONDecoder().decode(InviteResponse.self, from: data)
-            return inviteResponse
-            
-        } catch let error as SignUpError {
-            throw error
-        } catch {
-            throw SignUpError.networkError(error)
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OnboardingServiceError.invalidResponse
         }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("[ONBOARDING_SERVICE] Error \(httpResponse.statusCode): \(errorMessage)")
+            throw OnboardingServiceError.serverError("Invite sending failed with status \(httpResponse.statusCode)")
+        }
+
+        let inviteResponse = try JSONDecoder().decode(InviteResponse.self, from: data)
+        return inviteResponse
     }
 }
 
-// MARK: - New Response Models
+// MARK: - Errors
 
-struct CompanyUpdateResponse: Codable {
-    let status: String?
-    let response: CompanyResponseWrapper?
-    let success: String? // Keep for backward compatibility
-    let company: CompanyResponseData? // Keep for backward compatibility
-    let user: SupabaseUserDTO? // New field for user object
-    let error_message: String?
-    
-    private enum CodingKeys: String, CodingKey {
-        case status
-        case response
-        case success
-        case company
-        case user
-        case error_message
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        
-        // Try new format first
-        self.status = try container.decodeIfPresent(String.self, forKey: .status)
-        self.response = try container.decodeIfPresent(CompanyResponseWrapper.self, forKey: .response)
-        
-        // Fallback to old format
-        self.success = try container.decodeIfPresent(String.self, forKey: .success)
-        self.company = try container.decodeIfPresent(CompanyResponseData.self, forKey: .company)
-        self.user = try container.decodeIfPresent(SupabaseUserDTO.self, forKey: .user)
-        
-        self.error_message = try container.decodeIfPresent(String.self, forKey: .error_message)
-    }
-    
-    init(success: String? = nil, company: CompanyResponseData? = nil, user: SupabaseUserDTO? = nil, error_message: String? = nil) {
-        self.status = nil
-        self.response = nil
-        self.success = success
-        self.company = company
-        self.user = user
-        self.error_message = error_message
-    }
-    
-    var wasSuccessful: Bool {
-        return status?.lowercased() == "success" || success?.lowercased() == "yes" || response?.company != nil || company != nil
-    }
-    
-    // Helper to get company data from either format
-    var extractedCompany: CompanyResponseData? {
-        return response?.company ?? company
-    }
-}
+enum OnboardingServiceError: LocalizedError {
+    case notAuthenticated
+    case invalidResponse
+    case serverError(String)
 
-struct CompanyResponseWrapper: Codable {
-    let company: CompanyResponseData?
-    let user: SupabaseUserDTO?
-}
-
-struct CompanyResponseData: Codable {
-    let _id: String?
-    let id: String? // Keep for backward compatibility
-    let companyId: String? // The company code field
-    let companyName: String?
-    let name: String? // Keep for backward compatibility
-    let officeEmail: String?
-    let email: String? // Keep for backward compatibility
-    let phone: String?
-    let industry: String?
-    let companySize: String?
-    let size: String? // Keep for backward compatibility
-    let companyAge: String?
-    let age: String? // Keep for backward compatibility
-    let address: String?
-    let code: String? // Keep for backward compatibility
-
-    // Subscription fields
-    let subscriptionStatus: String?
-    let subscriptionPlan: String?
-    let trialStartDate: String?
-    let trialEndDate: String?
-    let seatedEmployees: [String]?
-    let maxSeats: Int?
-
-    private enum CodingKeys: String, CodingKey {
-        case _id
-        case id
-        case companyId = "companyId"
-        case companyName = "companyName"
-        case name
-        case officeEmail = "officeEmail"
-        case email
-        case phone
-        case industry = "industry"
-        case companySize = "companySize"
-        case size
-        case companyAge = "companyAge"
-        case age
-        case address
-        case code
-        case subscriptionStatus = "subscriptionStatus"
-        case subscriptionPlan = "subscriptionPlan"
-        case trialStartDate = "trialStartDate"
-        case trialEndDate = "trialEndDate"
-        case seatedEmployees = "seatedEmployees"
-        case maxSeats = "maxSeats"
-    }
-
-    init(id: String? = nil, name: String? = nil, email: String? = nil,
-         phone: String? = nil, industry: String? = nil, size: String? = nil,
-         age: String? = nil, address: String? = nil, code: String? = nil,
-         subscriptionStatus: String? = nil, subscriptionPlan: String? = nil,
-         trialStartDate: String? = nil, trialEndDate: String? = nil,
-         seatedEmployees: [String]? = nil, maxSeats: Int? = nil) {
-        self._id = id
-        self.id = id
-        self.companyId = code
-        self.companyName = name
-        self.name = name
-        self.officeEmail = email
-        self.email = email
-        self.phone = phone
-        self.industry = industry
-        self.companySize = size
-        self.size = size
-        self.companyAge = age
-        self.age = age
-        self.address = address
-        self.code = code
-        self.subscriptionStatus = subscriptionStatus
-        self.subscriptionPlan = subscriptionPlan
-        self.trialStartDate = trialStartDate
-        self.trialEndDate = trialEndDate
-        self.seatedEmployees = seatedEmployees
-        self.maxSeats = maxSeats
-    }
-    
-    // Helper to get the ID regardless of which field it's in
-    var extractedId: String? {
-        return _id ?? id
-    }
-    
-    // Helper to get the company code
-    var extractedCode: String? {
-        return companyId ?? code
-    }
-    
-    // Helper to get the company name
-    var extractedName: String? {
-        return companyName ?? name
-    }
-}
-
-struct InviteResponse: Codable {
-    let success: String?
-    let invites_sent: Int?
-    let error_message: String?
-    
-    var wasSuccessful: Bool {
-        return success?.lowercased() == "yes" || (invites_sent ?? 0) > 0
+    var errorDescription: String? {
+        switch self {
+        case .notAuthenticated:
+            return "Not authenticated. Please sign in again."
+        case .invalidResponse:
+            return "Invalid response from server"
+        case .serverError(let message):
+            return message
+        }
     }
 }

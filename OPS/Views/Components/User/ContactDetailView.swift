@@ -347,7 +347,7 @@ struct ContactDetailView: View {
                     filterAvailableItems: { clients in
                         clients.filter {
                             $0.id != client.id &&
-                            !$0.id.contains("-") // Filter out UUIDs - only show Bubble-synced clients
+                            !$0.id.contains("-") // Filter out UUIDs - only show legacy-synced clients
                         }
                     },
                     getChildId: { $0.id },

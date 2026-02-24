@@ -137,8 +137,4 @@ struct DemoIDs {
         return "\(projectId)_TASK_\(index)"
     }
 
-    /// Generates a calendar event ID for a given task
-    static func calendarEventId(taskId: String) -> String {
-        return "\(taskId)_EVENT"
-    }
 }

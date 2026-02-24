@@ -5,7 +5,7 @@
 //  Replaces CentralizedSyncManager with Supabase-backed sync.
 //  Matches the same public API so views don't change when switched via SyncManagerFlag.
 //
-//  Created as part of iOS Bubble-to-Supabase migration (Sprint C).
+//  Manages Supabase data synchronization.
 //
 
 import SwiftUI
@@ -69,7 +69,6 @@ class SupabaseSyncManager: ObservableObject {
     private var clientRepo: ClientRepository?
     private var userRepo: UserRepository?
     private var companyRepo: CompanyRepository?
-    private var calendarRepo: CalendarEventRepository?
     private var taskTypeRepo: TaskTypeRepository?
 
     // MARK: - Init
@@ -96,7 +95,6 @@ class SupabaseSyncManager: ObservableObject {
         clientRepo = ClientRepository(companyId: companyId)
         userRepo = UserRepository(companyId: companyId)
         companyRepo = CompanyRepository()
-        calendarRepo = CalendarEventRepository(companyId: companyId)
         taskTypeRepo = TaskTypeRepository(companyId: companyId)
         print("[SUPABASE_SYNC] Repositories configured for company: \(companyId)")
     }
@@ -161,11 +159,7 @@ class SupabaseSyncManager: ObservableObject {
 
             print("[SUPABASE_SYNC_ALL] -> Syncing Tasks...")
             try await syncTasks()
-            progress = 0.85
-
-            print("[SUPABASE_SYNC_ALL] -> Syncing Calendar Events...")
-            try await syncCalendarEvents()
-            progress = 0.95
+            progress = 0.90
 
             print("[SUPABASE_SYNC_ALL] -> Linking Relationships...")
             try linkAllRelationships()
@@ -202,7 +196,6 @@ class SupabaseSyncManager: ObservableObject {
             try await syncCompany()
             try await syncUsers()
             try await syncProjects()
-            try await syncCalendarEvents()
 
             // Background sync less critical data
             Task.detached(priority: .background) { [weak self] in
@@ -232,7 +225,6 @@ class SupabaseSyncManager: ObservableObject {
 
         do {
             try await syncProjects(sinceDate: lastSyncDate)
-            try await syncCalendarEvents(sinceDate: lastSyncDate)
             try await syncTasks(sinceDate: lastSyncDate)
 
             lastSyncDate = Date()
@@ -336,16 +328,6 @@ class SupabaseSyncManager: ObservableObject {
             try upsertTask(dto.toModel())
         }
         print("[SUPABASE_SYNC] Synced \(dtos.count) tasks")
-    }
-
-    func syncCalendarEvents(sinceDate: Date? = nil) async throws {
-        guard let repo = calendarRepo else { return }
-        print("[SUPABASE_SYNC] Syncing calendar events...")
-        let dtos = try await repo.fetchAll(since: sinceDate)
-        for dto in dtos {
-            try upsertCalendarEvent(dto.toModel())
-        }
-        print("[SUPABASE_SYNC] Synced \(dtos.count) calendar events")
     }
 
     /// Sync tasks for a specific project
@@ -937,75 +919,6 @@ class SupabaseSyncManager: ObservableObject {
         }
     }
 
-    // MARK: - CalendarEvent Write Operations
-
-    /// Create a new calendar event on Supabase and locally, return the ID
-    func createCalendarEvent(dto: SupabaseCalendarEventDTO) async throws -> String {
-        print("[SUPABASE_CREATE] Creating calendar event")
-        guard let repo = calendarRepo else {
-            throw NSError(domain: "SupabaseSyncManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Calendar repository not initialized"])
-        }
-
-        let created = try await repo.create(dto)
-        let model = created.toModel()
-        try upsertCalendarEvent(model)
-
-        // Link to project
-        if let projectId = created.projectId, let project = fetchProject(id: projectId) {
-            model.project = project
-            try modelContext.save()
-        }
-
-        print("[SUPABASE_CREATE] Calendar event created: \(created.id)")
-        return created.id
-    }
-
-    /// Soft delete a calendar event
-    func deleteCalendarEvent(eventId: String) async throws {
-        print("[SUPABASE_DELETE] Deleting calendar event \(eventId)")
-
-        let predicate = #Predicate<CalendarEvent> { $0.id == eventId }
-        let descriptor = FetchDescriptor<CalendarEvent>(predicate: predicate)
-
-        if let event = try modelContext.fetch(descriptor).first {
-            event.deletedAt = Date()
-            try modelContext.save()
-        }
-
-        if isConnected {
-            try await calendarRepo?.softDelete(eventId)
-            print("[SUPABASE_DELETE] Calendar event deleted and synced")
-        }
-    }
-
-    /// Update calendar event fields and sync to Supabase
-    func updateCalendarEvent(eventId: String, fields: [String: AnyJSON]) async throws {
-        print("[SUPABASE_UPDATE] Updating calendar event fields")
-
-        if isConnected {
-            try await calendarRepo?.update(eventId, fields: fields)
-            print("[SUPABASE_UPDATE] Calendar event fields updated and synced")
-        }
-    }
-
-    /// Update calendar event team members and sync to Supabase
-    func updateCalendarEventTeamMembers(eventId: String, memberIds: [String]) async throws {
-        print("[SUPABASE_UPDATE] Updating calendar event team members")
-
-        let predicate = #Predicate<CalendarEvent> { $0.id == eventId }
-        let descriptor = FetchDescriptor<CalendarEvent>(predicate: predicate)
-
-        if let event = try modelContext.fetch(descriptor).first {
-            event.setTeamMemberIds(memberIds)
-            try modelContext.save()
-        }
-
-        if isConnected {
-            try await calendarRepo?.updateTeamMembers(eventId, memberIds: memberIds)
-            print("[SUPABASE_UPDATE] Calendar event team members updated and synced")
-        }
-    }
-
     // MARK: - User Write Operations
 
     /// Update user with generic AnyJSON fields and sync to Supabase
@@ -1334,7 +1247,9 @@ class SupabaseSyncManager: ObservableObject {
             existing.customTitle = model.customTitle
             existing.taskColor = model.taskColor
             existing.taskTypeId = model.taskTypeId
-            existing.calendarEventId = model.calendarEventId
+            existing.startDate = model.startDate
+            existing.endDate = model.endDate
+            existing.duration = model.duration
             existing.displayOrder = model.displayOrder
             existing.teamMemberIdsString = model.teamMemberIdsString
             existing.sourceLineItemId = model.sourceLineItemId
@@ -1344,31 +1259,6 @@ class SupabaseSyncManager: ObservableObject {
             if !existing.needsSync {
                 existing.needsSync = false
             }
-        } else {
-            model.lastSyncedAt = Date()
-            model.needsSync = false
-            modelContext.insert(model)
-        }
-        try modelContext.save()
-    }
-
-    private func upsertCalendarEvent(_ model: CalendarEvent) throws {
-        let id = model.id
-        let descriptor = FetchDescriptor<CalendarEvent>(
-            predicate: #Predicate { $0.id == id }
-        )
-        if let existing = try? modelContext.fetch(descriptor).first {
-            existing.title = model.title
-            existing.color = model.color
-            existing.startDate = model.startDate
-            existing.endDate = model.endDate
-            existing.duration = model.duration
-            existing.projectId = model.projectId
-            existing.companyId = model.companyId
-            existing.teamMemberIdsString = model.teamMemberIdsString
-            existing.deletedAt = model.deletedAt
-            existing.lastSyncedAt = Date()
-            existing.needsSync = false
         } else {
             model.lastSyncedAt = Date()
             model.needsSync = false
@@ -1397,7 +1287,6 @@ class SupabaseSyncManager: ObservableObject {
 
         let projects = try modelContext.fetch(FetchDescriptor<Project>())
         let tasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
-        let calendarEvents = try modelContext.fetch(FetchDescriptor<CalendarEvent>())
         let clients = try modelContext.fetch(FetchDescriptor<Client>())
         let taskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
         let users = try modelContext.fetch(FetchDescriptor<User>())
@@ -1407,7 +1296,6 @@ class SupabaseSyncManager: ObservableObject {
         let taskTypeById = Dictionary(uniqueKeysWithValues: taskTypes.map { ($0.id, $0) })
         let userById = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
         let projectById = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
-        let eventById = Dictionary(uniqueKeysWithValues: calendarEvents.map { ($0.id, $0) })
 
         // Link projects to clients
         for project in projects {
@@ -1419,7 +1307,7 @@ class SupabaseSyncManager: ObservableObject {
             project.teamMembers = memberIds.compactMap { userById[$0] }
         }
 
-        // Link tasks to projects, task types, calendar events, and team members
+        // Link tasks to projects, task types, and team members
         for task in tasks {
             if let project = projectById[task.projectId] {
                 task.project = project
@@ -1427,22 +1315,8 @@ class SupabaseSyncManager: ObservableObject {
             if let taskType = taskTypeById[task.taskTypeId] {
                 task.taskType = taskType
             }
-            if let eventId = task.calendarEventId, let event = eventById[eventId] {
-                task.calendarEvent = event
-                event.task = task
-                event.taskId = task.id
-            }
             let memberIds = task.getTeamMemberIds()
             task.teamMembers = memberIds.compactMap { userById[$0] }
-        }
-
-        // Link calendar events to projects
-        for event in calendarEvents {
-            if let project = projectById[event.projectId] {
-                event.project = project
-            }
-            let memberIds = event.getTeamMemberIds()
-            event.teamMembers = memberIds.compactMap { userById[$0] }
         }
 
         try modelContext.save()

@@ -586,7 +586,7 @@ struct ProjectDetailsView: View {
                 await MainActor.run {
                     refreshTrigger.toggle()
                     // Notify calendar views to refresh
-                    dataController.calendarEventsDidChange.toggle()
+                    dataController.scheduledTasksDidChange.toggle()
                 }
             } catch {
                 print("❌ Failed to clear dates: \(error)")

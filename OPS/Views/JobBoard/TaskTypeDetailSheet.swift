@@ -278,11 +278,6 @@ struct TaskTypeDetailSheet: View {
                     } else if deletions.count == taskTypeTasks.count {
                         // Bulk delete all tasks
                         for task in taskTypeTasks {
-                            if let calendarEvent = task.calendarEvent {
-                                await MainActor.run {
-                                    modelContext.delete(calendarEvent)
-                                }
-                            }
                             await MainActor.run {
                                 modelContext.delete(task)
                             }
@@ -291,12 +286,7 @@ struct TaskTypeDetailSheet: View {
                         // Individual mode
                         for task in taskTypeTasks {
                             if deletions.contains(task.id) {
-                                // Delete task and associated calendar event
-                                if let calendarEvent = task.calendarEvent {
-                                    await MainActor.run {
-                                        modelContext.delete(calendarEvent)
-                                    }
-                                }
+                                // Delete task
                                 await MainActor.run {
                                     modelContext.delete(task)
                                 }

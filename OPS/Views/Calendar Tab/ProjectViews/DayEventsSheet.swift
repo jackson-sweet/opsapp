@@ -9,22 +9,22 @@ import SwiftUI
 
 struct DayEventsSheet: View {
     let date: Date
-    let calendarEvents: [CalendarEvent]
-    let onEventSelected: (CalendarEvent) -> Void
+    let scheduledTasks: [ProjectTask]
+    let onTaskSelected: (ProjectTask) -> Void
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var dataController: DataController
     @Environment(\.dismiss) private var dismiss
-    
-    // Separate new and ongoing events
-    private var newEvents: [CalendarEvent] {
-        calendarEvents.filter { event in
-            Calendar.current.isDate(event.startDate ?? Date(), inSameDayAs: date)
+
+    // Separate new and ongoing tasks
+    private var newTasks: [ProjectTask] {
+        scheduledTasks.filter { task in
+            Calendar.current.isDate(task.startDate ?? Date(), inSameDayAs: date)
         }
     }
-    
-    private var ongoingEvents: [CalendarEvent] {
-        calendarEvents.filter { event in
-            let startDate = event.startDate ?? Date()
+
+    private var ongoingTasks: [ProjectTask] {
+        scheduledTasks.filter { task in
+            let startDate = task.startDate ?? Date()
             return !Calendar.current.isDate(startDate, inSameDayAs: date)
         }
     }
@@ -52,15 +52,15 @@ struct DayEventsSheet: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(OPSStyle.Colors.cardBackgroundDark)
                         .frame(width: 60, height: 60)
-                    
+
                     // Total event count number (new + ongoing)
-                    Text("\(calendarEvents.count)")
+                    Text("\(scheduledTasks.count)")
                         .font(OPSStyle.Typography.largeTitle)
                         .foregroundColor(.white)
                 }
                 .frame(width: 60, height: 60)
                 .segmentedEventBorder(
-                    events: calendarEvents,  // Show border for all events
+                    events: scheduledTasks,
                     isSelected: false,
                     cornerRadius: 10
                 )
@@ -76,58 +76,54 @@ struct DayEventsSheet: View {
             .padding(.top, 20)
             .padding(.bottom, 8)
             
-            // Event list
-            if calendarEvents.isEmpty {
+            // Task list
+            if scheduledTasks.isEmpty {
                 emptyStateView
             } else {
                 ScrollView {
                     VStack(spacing: 16) {
-                        // New events section
-                        ForEach(Array(newEvents.enumerated()), id: \.element.id) { index, event in
+                        // New tasks section
+                        ForEach(Array(newTasks.enumerated()), id: \.element.id) { index, task in
                             CalendarEventCard(
-                                event: event,
+                                task: task,
                                 isFirst: index == 0,
                                 isOngoing: false,
                                 onTap: {
-                                    // Simply call the selection callback
-                                    // This will trigger the sequence in ScheduleView
-                                    onEventSelected(event)
+                                    onTaskSelected(task)
                                 }
                             )
                             .environmentObject(dataController)
                         }
-                        
-                        // Ongoing section divider and events
-                        if !ongoingEvents.isEmpty {
+
+                        // Ongoing section divider and tasks
+                        if !ongoingTasks.isEmpty {
                             // Divider with count
                             HStack(spacing: 8) {
                                 Text("ONGOING")
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                                
+
                                 // Horizontal line
                                 Rectangle()
                                     .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
                                     .frame(height: 1)
-                                
+
                                 // Count
-                                Text("[\(ongoingEvents.count)]")
+                                Text("[\(ongoingTasks.count)]")
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 8)
-                            
-                            // Ongoing events
-                            ForEach(Array(ongoingEvents.enumerated()), id: \.element.id) { index, event in
+
+                            // Ongoing tasks
+                            ForEach(Array(ongoingTasks.enumerated()), id: \.element.id) { index, task in
                                 CalendarEventCard(
-                                    event: event,
+                                    task: task,
                                     isFirst: false,
                                     isOngoing: true,
                                     onTap: {
-                                        // Simply call the selection callback
-                                        // This will trigger the sequence in ScheduleView
-                                        onEventSelected(event)
+                                        onTaskSelected(task)
                                     }
                                 )
                                 .environmentObject(dataController)

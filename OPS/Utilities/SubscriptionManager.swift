@@ -10,6 +10,11 @@ import SwiftUI
 import SwiftData
 import Combine
 
+extension Notification.Name {
+    static let paymentSuccessful = Notification.Name("paymentSuccessful")
+    static let paymentCancelled = Notification.Name("paymentCancelled")
+}
+
 /// Manages all subscription-related functionality including status checks,
 /// access control, seat management, and notification scheduling
 class SubscriptionManager: ObservableObject {
@@ -231,12 +236,12 @@ class SubscriptionManager: ObservableObject {
         subscriptionEnd = company.subscriptionEnd
         trialEndDate = company.trialEndDate
 
-        // DEFENSIVE FIX: If Bubble has expired trial still marked as "trial", update it to "expired"
+        // DEFENSIVE FIX: If backend has expired trial still marked as "trial", update it to "expired"
         if let status = company.subscriptionStatusEnum,
            status == .trial,
            let trialEnd = company.trialEndDate,
            trialEnd < Date() {
-            print("[SUBSCRIPTION] ⚠️ Detected expired trial with 'trial' status - updating Bubble to 'expired'")
+            print("[SUBSCRIPTION] ⚠️ Detected expired trial with 'trial' status - updating to 'expired'")
             print("[SUBSCRIPTION]    Trial ended: \(trialEnd.formatted())")
             print("[SUBSCRIPTION]    Current date: \(Date().formatted())")
 
@@ -311,10 +316,9 @@ class SubscriptionManager: ObservableObject {
             return true
 
         case .trial:
-            // DEFENSIVE CHECK: If Bubble hasn't expired the trial, do it in iOS
-            // This protects against Bubble workflow failures
+            // DEFENSIVE CHECK: If backend hasn't expired the trial, do it in iOS
             if let trialEndDate = company.trialEndDate, trialEndDate < Date() {
-                print("[AUTH] ⚠️ Trial expired but Bubble status still 'trial' - defensive check triggered")
+                print("[AUTH] ⚠️ Trial expired but status still 'trial' - defensive check triggered")
                 print("[AUTH]    Trial ended: \(trialEndDate.formatted())")
                 print("[AUTH]    Current date: \(Date().formatted())")
                 print("[AUTH] ❌ Access denied - trial expired (defensive check)")
@@ -472,7 +476,7 @@ class SubscriptionManager: ObservableObject {
             NotificationCenter.default.post(name: .companySynced, object: nil)
             
         } catch {
-            print("❌ Failed to update seated employees on Bubble: \(error)")
+            print("❌ Failed to update seated employees: \(error)")
             throw SubscriptionError.syncFailed
         }
         

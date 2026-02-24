@@ -4,11 +4,11 @@
 //
 //  Created by Assistant on 2025-01-16.
 //
-//  Enums for subscription management matching Bubble's option sets
+//  Enums for subscription management
 
 import Foundation
 
-/// Subscription status matching Bubble's subscriptionStatus option set
+/// Subscription status for company billing
 enum SubscriptionStatus: String, Codable, CaseIterable {
     case trial = "trial"
     case active = "active"
@@ -53,13 +53,13 @@ enum SubscriptionStatus: String, Codable, CaseIterable {
     }
 }
 
-/// Subscription plan matching Bubble's subscriptionPlan option set
+/// Available subscription plans
 enum SubscriptionPlan: String, Codable, CaseIterable {
     case trial = "trial"
     case starter = "starter"
     case team = "team"
     case business = "business"
-    // Note: priority and setup exist in Bubble but are not company plans
+    // Note: priority and setup are internal types, not company plans
     
     /// User-friendly display name
     var displayName: String {
@@ -153,8 +153,8 @@ enum SubscriptionPlan: String, Codable, CaseIterable {
     
     /// Stripe price IDs
     var stripePriceIds: (monthly: String?, annual: String?) {
-        // ALWAYS use live price IDs since Bubble is in live mode
-        // If you need to test with test price IDs, switch Bubble to test mode
+        // ALWAYS use live price IDs in production
+        // Use test price IDs only in development/test environments
         switch self {
         case .trial:
             return (nil, nil)
@@ -167,7 +167,7 @@ enum SubscriptionPlan: String, Codable, CaseIterable {
         }
     }
     
-    /// Stripe price IDs for testing (only use when Bubble is in test mode)
+    /// Stripe price IDs for testing (only use in test environments)
     var testStripePriceIds: (monthly: String?, annual: String?) {
         switch self {
         case .trial:

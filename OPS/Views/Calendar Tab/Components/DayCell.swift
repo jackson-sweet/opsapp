@@ -78,7 +78,7 @@ struct DayCell: View {
         if isSelected {
             return OPSStyle.Colors.primaryText
         } else if isToday {
-            return OPSStyle.Colors.secondaryAccent
+            return OPSStyle.Colors.primaryAccent
         } else {
             return OPSStyle.Colors.primaryText.opacity(0.8)
         }

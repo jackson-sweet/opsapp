@@ -104,7 +104,7 @@ struct TypewriterText: View {
 
                 if displayedText.count == text.count {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        withAnimation(.easeOut(duration: 0.15)) {
+                        withAnimation(OPSStyle.Animation.faster) {
                             isComplete = true
                         }
                         onComplete?()
@@ -431,7 +431,7 @@ struct PhasedPrimaryButton: View {
             ZStack {
                 // Container background (always present for layout)
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(isEnabled && !isLoading ? Color.white : Color.white.opacity(0.5))
+                    .fill(isEnabled && !isLoading ? Color.white : OPSStyle.Colors.primaryText.opacity(0.5))
                     .frame(height: 56)
                     .opacity(containerVisible ? 1 : 0)
                     .offset(y: containerVisible ? 0 : 20)

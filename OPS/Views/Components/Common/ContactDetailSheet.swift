@@ -32,7 +32,7 @@ struct ContactDetailSheet: View {
                 // Icon
                 ZStack {
                     Circle()
-                        .fill(isClient ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryAccent)
+                        .fill(isClient ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent)
                         .frame(width: 80, height: 80)
                     
                     Image(systemName: isClient ? "building.2" : "person.fill")

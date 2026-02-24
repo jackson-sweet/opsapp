@@ -183,7 +183,7 @@ struct BulkQuantityAdjustmentSheet: View {
                 if centerIndex < adjustmentValues.count {
                     let centerValue = adjustmentValues[centerIndex]
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        withAnimation(.easeOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             proxy.scrollTo(centerValue, anchor: .center)
                         }
                     }
@@ -221,7 +221,7 @@ struct BulkQuantityAdjustmentSheet: View {
 
     private var previewToggle: some View {
         Button(action: {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 showingPreview.toggle()
             }
         }) {

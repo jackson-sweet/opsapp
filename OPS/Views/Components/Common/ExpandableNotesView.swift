@@ -37,7 +37,7 @@ struct ExpandableNotesView: View {
                     
                     // Cancel button
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             isEditing = false
                         }
                         // Reset to original notes
@@ -52,7 +52,7 @@ struct ExpandableNotesView: View {
 
                     // Save button
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             isEditing = false
                         }
                         onSave()
@@ -79,7 +79,7 @@ struct ExpandableNotesView: View {
                         Spacer()
 
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 isEditing = true
                                 isExpanded = true
                             }
@@ -106,7 +106,7 @@ struct ExpandableNotesView: View {
                                 Spacer()
 
                                 Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                    withAnimation(OPSStyle.Animation.fast) {
                                         isEditing = true
                                     }
                                 }) {
@@ -141,7 +141,7 @@ struct ExpandableNotesView: View {
 
                                 HStack {
                                     Button(action: {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                        withAnimation(OPSStyle.Animation.fast) {
                                             isExpanded = true
                                         }
                                     }) {
@@ -153,7 +153,7 @@ struct ExpandableNotesView: View {
                                     Spacer()
 
                                     Button(action: {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                        withAnimation(OPSStyle.Animation.fast) {
                                             isEditing = true
                                             isExpanded = true
                                         }
@@ -170,6 +170,6 @@ struct ExpandableNotesView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isEditing)
+        .animation(OPSStyle.Animation.fast, value: isEditing)
     }
 }

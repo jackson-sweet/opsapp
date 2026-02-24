@@ -107,7 +107,7 @@ struct CompanyDetailsScreen: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
 
@@ -123,7 +123,7 @@ struct CompanyDetailsScreen: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                                 .onAppear {
                                     // Auto-focus the text field when "Other" is selected
@@ -319,7 +319,7 @@ struct IndustryPickerSheet: View {
                             // Separator before "Other"
                             if !filteredIndustries.isEmpty {
                                 Rectangle()
-                                    .fill(Color.white.opacity(0.05))
+                                    .fill(OPSStyle.Colors.cardBorderSubtle)
                                     .frame(height: 8)
                             }
 
@@ -384,7 +384,7 @@ private struct IndustryRow: View {
         }
 
         Divider()
-            .background(Color.white.opacity(0.1))
+            .background(OPSStyle.Colors.cardBorder)
     }
 }
 

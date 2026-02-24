@@ -77,13 +77,13 @@ struct EstimateCard: View {
                         }
                         .onEnded { value in
                             if value.translation.width > swipeThreshold && canSwipeRight {
-                                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                                 onSwipeRight()
                             } else if value.translation.width < -swipeThreshold && !estimate.status.isTerminal {
-                                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                                 onSwipeLeft()
                             } else {
-                                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                             }
                         }
                 )
@@ -124,7 +124,7 @@ struct EstimateCard: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

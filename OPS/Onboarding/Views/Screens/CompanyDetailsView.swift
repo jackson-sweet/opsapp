@@ -48,7 +48,7 @@ struct CompanyDetailsView: View {
                         if currentPhase == .industry {
                             onboardingViewModel.moveToPreviousStep()
                         } else {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 currentPhase = CompanyDetailsPhase(rawValue: currentPhase.rawValue - 1) ?? .industry
                             }
                         }
@@ -98,7 +98,7 @@ struct CompanyDetailsView: View {
                                 selectedIndustry: $selectedIndustry,
                                 showingIndustryPicker: $showingIndustryPicker,
                                 onContinue: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                    withAnimation(OPSStyle.Animation.standard) {
                                         currentPhase = .size
                                     }
                                 }
@@ -107,7 +107,7 @@ struct CompanyDetailsView: View {
                             SizePhaseView(
                                 selectedSize: $selectedSize,
                                 onContinue: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                    withAnimation(OPSStyle.Animation.standard) {
                                         currentPhase = .age
                                     }
                                 }

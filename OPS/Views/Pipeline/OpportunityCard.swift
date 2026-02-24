@@ -55,13 +55,13 @@ struct OpportunityCard: View {
                         }
                         .onEnded { value in
                             if value.translation.width > swipeThreshold && !opportunity.stage.isTerminal {
-                                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                                 onAdvance()
                             } else if value.translation.width < -swipeThreshold && !opportunity.stage.isTerminal {
-                                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                                 onLost()
                             } else {
-                                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                             }
                         }
                 )
@@ -109,7 +109,7 @@ struct OpportunityCard: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

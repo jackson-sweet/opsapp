@@ -532,7 +532,7 @@ struct IconOption: View {
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .stroke(
-                                        isSelected ? color.opacity(0.3) : (isInUse && !isSelected ? Color.white : OPSStyle.Colors.cardBorder),
+                                        isSelected ? color.opacity(0.3) : (isInUse && !isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder),
                                         lineWidth: isInUse && !isSelected ? 2 : 1
                                     )
                             )
@@ -544,7 +544,7 @@ struct IconOption: View {
                             Spacer()
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 16))
-                                .foregroundColor(Color.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .background(
                                     Circle()
                                         .fill(OPSStyle.Colors.background)
@@ -575,7 +575,7 @@ struct ColorOption: View {
                     .frame(width: 32, height: 32)
                     .overlay(
                         Circle()
-                            .stroke(Color.white, lineWidth: isSelected ? 2 : 0)
+                            .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 2 : 0)
                     )
                     .overlay(
                         Circle()
@@ -584,7 +584,7 @@ struct ColorOption: View {
                     .overlay(
                         Circle()
                             .stroke(
-                                isInUse && !isSelected ? Color.white : Color.clear,
+                                isInUse && !isSelected ? OPSStyle.Colors.primaryText : Color.clear,
                                 lineWidth: isInUse && !isSelected ? 2 : 0
                             )
                     )
@@ -596,7 +596,7 @@ struct ColorOption: View {
                             Spacer()
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 14))
-                                .foregroundColor(Color.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .background(
                                     Circle()
                                         .fill(OPSStyle.Colors.background)

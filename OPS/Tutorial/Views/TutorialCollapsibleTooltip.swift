@@ -108,7 +108,7 @@ struct TutorialCollapsibleTooltip: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
             .padding(.top, 8)
-            .animation(.easeInOut(duration: 0.3), value: isErrorState)
+            .animation(OPSStyle.Animation.standard, value: isErrorState)
         }
         // Listen for tutorial error notifications
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialWrongAction"))) { _ in
@@ -180,13 +180,13 @@ struct TutorialCollapsibleTooltip: View {
 
     /// Triggers temporary error state - icon and colors flash red for 2 seconds
     private func triggerErrorState() {
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.fast) {
             isErrorState = true
         }
 
         // Auto-reset after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 isErrorState = false
             }
         }

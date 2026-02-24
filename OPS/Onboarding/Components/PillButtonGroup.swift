@@ -99,10 +99,10 @@ struct PillButton: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isSelected ? Color.white : Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(isSelected ? Color.white : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .animation(OPSStyle.Animation.faster, value: isSelected)
     }
 }
 

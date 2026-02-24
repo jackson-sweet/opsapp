@@ -79,7 +79,7 @@ struct CompanyCreationLoadingView: View {
 
     private func startLoadingSequence() {
         // Fade in container
-        withAnimation(.easeIn(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             containerOpacity = 1.0
         }
 
@@ -104,7 +104,7 @@ struct CompanyCreationLoadingView: View {
 
     private func transitionToNextPhase() {
         // Fade out current text
-        withAnimation(.easeOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             textOpacity = 0
         }
 
@@ -138,7 +138,7 @@ struct CompanyCreationLoadingView: View {
 
         // Then fade out the overlay to reveal the new screen
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 textOpacity = 0
                 containerOpacity = 0
             }

@@ -551,7 +551,7 @@ struct TeamInviteSheet: View {
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                             .stroke(
                                                 emailErrors[index] != nil ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.inputFieldBorder,
-                                                lineWidth: 1
+                                                lineWidth: OPSStyle.Layout.Border.standard
                                             )
                                     )
 

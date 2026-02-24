@@ -112,7 +112,7 @@ struct TacticalLoadingBarAnimated: View {
 
         // Create and store timer reference
         timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { _ in
-            withAnimation(.linear(duration: 0.15)) {
+            withAnimation(OPSStyle.Animation.faster) {
                 animationOffset = (animationOffset + 1) % barCount
             }
         }

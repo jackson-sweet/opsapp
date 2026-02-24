@@ -36,16 +36,16 @@ struct OpportunityFormSheet: View {
                     sectionHeader("CONTACT")
                     VStack(spacing: 0) {
                         formField("Name", text: $contactName, placeholder: "Contact name")
-                        Divider().background(Color.white.opacity(0.1))
+                        Divider().background(OPSStyle.Colors.cardBorder)
                         formField("Phone", text: $contactPhone, placeholder: "Optional", keyboardType: .phonePad)
-                        Divider().background(Color.white.opacity(0.1))
+                        Divider().background(OPSStyle.Colors.cardBorder)
                         formField("Email", text: $contactEmail, placeholder: "Optional", keyboardType: .emailAddress)
                     }
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -53,16 +53,16 @@ struct OpportunityFormSheet: View {
                     sectionHeader("DEAL DETAILS")
                     VStack(spacing: 0) {
                         formField("Job Description", text: $jobDescription, placeholder: "Optional")
-                        Divider().background(Color.white.opacity(0.1))
+                        Divider().background(OPSStyle.Colors.cardBorder)
                         formField("Estimated Value", text: $estimatedValue, placeholder: "$0", keyboardType: .decimalPad)
-                        Divider().background(Color.white.opacity(0.1))
+                        Divider().background(OPSStyle.Colors.cardBorder)
                         sourcePickerRow
                     }
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }

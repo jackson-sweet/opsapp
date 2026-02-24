@@ -88,7 +88,7 @@ private struct LegacySettingsTabSelector: View {
         HStack(spacing: 0) {
             ForEach(SettingsTabSelector.Tab.allCases, id: \.self) { tab in
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         selectedTab = tab
                     }
                 }) {

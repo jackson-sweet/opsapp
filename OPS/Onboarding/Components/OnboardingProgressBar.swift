@@ -19,12 +19,12 @@ struct OnboardingProgressBar: View {
         HStack(spacing: segmentSpacing) {
             ForEach(0..<totalSteps, id: \.self) { index in
                 RoundedRectangle(cornerRadius: barHeight / 2)
-                    .fill(index < currentStep ? Color.white : Color.white.opacity(0.15))
+                    .fill(index < currentStep ? Color.white : OPSStyle.Colors.separator)
                     .frame(height: barHeight)
             }
         }
         .padding(.horizontal, 40)
-        .animation(.easeInOut(duration: 0.3), value: currentStep)
+        .animation(OPSStyle.Animation.standard, value: currentStep)
     }
 }
 

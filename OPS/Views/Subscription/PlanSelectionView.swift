@@ -203,7 +203,7 @@ struct PlanSelectionView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
                             .scaleEffect(isPollingSubscriptionStatus ? 1.0 : 0.8)
-                            .animation(.easeOut(duration: 0.3), value: isPollingSubscriptionStatus)
+                            .animation(OPSStyle.Animation.standard, value: isPollingSubscriptionStatus)
                             
                             // Status text stack
                             VStack(spacing: 8) {
@@ -312,7 +312,7 @@ struct PlanSelectionView: View {
                 .padding(.horizontal, 24)
                 .scaleEffect(isPollingSubscriptionStatus ? 1.0 : 0.95)
                 .opacity(isPollingSubscriptionStatus ? 1.0 : 0)
-                .animation(.easeOut(duration: 0.2), value: isPollingSubscriptionStatus)
+                .animation(OPSStyle.Animation.fast, value: isPollingSubscriptionStatus)
             }
         }
     }
@@ -345,7 +345,7 @@ struct PlanSelectionView: View {
             HStack(spacing: 0) {
                 ForEach([PaymentSchedule.monthly, PaymentSchedule.annual], id: \.self) { schedule in
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             selectedSchedule = schedule
                         }
                     }) {
@@ -391,7 +391,7 @@ struct PlanSelectionView: View {
                         isCurrentPlan: plan == currentPlan,
                         isRecommended: plan == recommendedPlan,
                         onSelect: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 selectedPlan = plan
                             }
                         }
@@ -445,7 +445,7 @@ struct PlanSelectionView: View {
         VStack(alignment: .leading, spacing: 16) {
             // Toggle button to show/hide promo field
             Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     showPromoField.toggle()
                     if !showPromoField {
                         promoCode = ""
@@ -494,7 +494,7 @@ struct PlanSelectionView: View {
                                     .stroke(
                                         validatedPromoCode != nil ? OPSStyle.Colors.warningStatus.opacity(0.3) :
                                         OPSStyle.Colors.cardBorder,
-                                        lineWidth: 1
+                                        lineWidth: OPSStyle.Layout.Border.standard
                                     )
                             )
                             .autocapitalization(.allCharacters)
@@ -506,7 +506,7 @@ struct PlanSelectionView: View {
                         Button(action: {
                             if validatedPromoCode != nil {
                                 // Clear validated promo
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                withAnimation(OPSStyle.Animation.fast) {
                                     promoCode = ""
                                     validatedPromoCode = nil
                                     promoDiscount = nil
@@ -550,7 +550,7 @@ struct PlanSelectionView: View {
                                                 promoCode.isEmpty ?
                                                 OPSStyle.Colors.cardBorder :
                                                 Color.clear,
-                                                lineWidth: 1
+                                                lineWidth: OPSStyle.Layout.Border.standard
                                             )
                                     )
                             }
@@ -817,7 +817,7 @@ struct PlanSelectionView: View {
                     self.isValidatingPromo = false
 
                     if response.valid {
-                        withAnimation(.easeInOut(duration: 0.3)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             self.validatedPromoCode = self.promoCode
 
                             // Get discount details
@@ -836,7 +836,7 @@ struct PlanSelectionView: View {
                             self.promoValidationError = nil
                         }
                     } else {
-                        withAnimation(.easeInOut(duration: 0.3)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             let errorMessage = response.error ?? "Invalid promo code"
 
                             switch errorMessage.lowercased() {
@@ -1153,7 +1153,7 @@ struct PlanSelectionView: View {
     
     private func startPollingSubscriptionStatus() {
         // Show the polling overlay
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             isPollingSubscriptionStatus = true
             pollingMessage = "Activating your subscription..."
             pollingAttempts = 0
@@ -1254,7 +1254,7 @@ struct PlanSelectionView: View {
         pollingTimer = nil
         
         // Hide the overlay with animation
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             isPollingSubscriptionStatus = false
         }
         
@@ -1270,7 +1270,7 @@ struct PlanSelectionView: View {
         pollingTimer = nil
         
         // Hide the overlay
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             isPollingSubscriptionStatus = false
         }
         
@@ -1319,7 +1319,7 @@ extension PlanSelectionView {
     private var helpMeChooseSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     showHelpMeChoose.toggle()
                 }
             }) {
@@ -1433,7 +1433,7 @@ struct PlanCard: View {
                             .foregroundColor(.black)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.white)
+                            .background(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                     .padding(.horizontal, 16)

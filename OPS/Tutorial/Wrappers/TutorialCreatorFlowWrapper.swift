@@ -45,10 +45,10 @@ struct TutorialCreatorFlowWrapper: View {
             // Layer 1.5: Blocking overlay for intro phases (blocks interaction with content)
             // This overlay is BELOW the FAB, so FAB remains tappable
             if shouldShowIntroBlockingOverlay {
-                Color.black.opacity(0.6)
+                OPSStyle.Colors.overlayMedium
                     .ignoresSafeArea()
                     .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.3), value: shouldShowIntroBlockingOverlay)
+                    .animation(OPSStyle.Animation.standard, value: shouldShowIntroBlockingOverlay)
             }
 
             // Layer 2: Floating Action Button overlay (captures frame for spotlight)
@@ -456,7 +456,7 @@ private struct TutorialTabBar: View {
         .padding(.bottom, 24)
         .opacity(shouldGreyOut ? 0.3 : 1.0)
         .allowsHitTesting(!shouldGreyOut) // Disable interaction when greyed out
-        .animation(.easeInOut(duration: 0.3), value: shouldGreyOut)
+        .animation(OPSStyle.Animation.standard, value: shouldGreyOut)
         .background(
             OPSStyle.Colors.cardBackgroundDark
         )

@@ -161,7 +161,7 @@ struct OpportunityDetailView: View {
 
     private var quickActions: some View {
         VStack(spacing: 0) {
-            Divider().background(Color.white.opacity(0.15))
+            Divider().background(OPSStyle.Colors.separator)
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 if let phone = opportunity.contactPhone, !phone.isEmpty {
@@ -231,7 +231,7 @@ struct OpportunityDetailView: View {
             }
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.4))
 
-            Divider().background(Color.white.opacity(0.15))
+            Divider().background(OPSStyle.Colors.separator)
         }
     }
 
@@ -271,7 +271,7 @@ struct OpportunityDetailView: View {
                     ForEach(Array(detailVM.activities.prefix(5).enumerated()), id: \.element.id) { index, activity in
                         ActivityRowView(activity: activity)
                         if index < min(4, detailVM.activities.count - 1) {
-                            Divider().background(Color.white.opacity(0.1))
+                            Divider().background(OPSStyle.Colors.cardBorder)
                         }
                     }
 
@@ -290,7 +290,7 @@ struct OpportunityDetailView: View {
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, OPSStyle.Layout.spacing3)
@@ -314,7 +314,7 @@ struct OpportunityDetailView: View {
                 ForEach(detailVM.followUps) { fu in
                     FollowUpRowView(followUp: fu)
                     if fu.id != detailVM.followUps.last?.id {
-                        Divider().background(Color.white.opacity(0.1))
+                        Divider().background(OPSStyle.Colors.cardBorder)
                     }
                 }
             }
@@ -322,7 +322,7 @@ struct OpportunityDetailView: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }

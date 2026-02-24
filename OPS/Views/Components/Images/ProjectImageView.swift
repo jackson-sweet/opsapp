@@ -61,7 +61,7 @@ struct ProjectImageView: View {
             } else if isLoading {
                 // Loading state
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.secondaryAccent))
+                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
             } else if loadFailed {
                 // Failed state
                 Image(systemName: "exclamationmark.triangle")

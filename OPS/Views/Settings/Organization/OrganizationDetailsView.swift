@@ -461,7 +461,7 @@ struct OrganizationDetailsView: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
                                 focusedField == field ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                                lineWidth: 1
+                                lineWidth: OPSStyle.Layout.Border.standard
                             )
                     )
                     .onChange(of: text.wrappedValue) { _, _ in

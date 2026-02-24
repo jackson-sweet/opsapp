@@ -224,7 +224,7 @@ struct CompanyCodeInputView: View {
                     UserDefaults.standard.set(true, forKey: "has_joined_company")
                     
                     // Show welcome phase
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showWelcomePhase = true
                     }
                     

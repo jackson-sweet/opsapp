@@ -60,7 +60,7 @@ struct WhatsNewView: View {
                                     category: category,
                                     isExpanded: expandedCategories.contains(category.name),
                                     onToggle: {
-                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                        withAnimation(OPSStyle.Animation.standard) {
                                             if expandedCategories.contains(category.name) {
                                                 expandedCategories.remove(category.name)
                                             } else {
@@ -259,7 +259,7 @@ struct FeatureCard: View {
     var statusColor: Color {
         switch feature.status {
         case .inDevelopment:
-            return OPSStyle.Colors.secondaryAccent
+            return OPSStyle.Colors.primaryAccent
         case .comingSoon:
             return OPSStyle.Colors.primaryAccent
         case .planned:
@@ -326,7 +326,7 @@ struct FeatureCard: View {
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .stroke(
                                     hasVoted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent,
-                                    lineWidth: 1
+                                    lineWidth: OPSStyle.Layout.Border.standard
                                 )
                         )
                     }

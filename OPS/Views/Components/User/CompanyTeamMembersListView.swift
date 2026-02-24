@@ -105,7 +105,7 @@ struct CompanyTeamMemberListRow: View {
                         // NOTE: envelope.circle.fill does not have a semantic icon - using legacy
                         Image(systemName: "envelope.circle.fill")
                             .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.secondaryAccent.opacity(0.8))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.8))
                     }
                 }
                 
@@ -119,7 +119,7 @@ struct CompanyTeamMemberListRow: View {
                         // NOTE: phone.circle.fill does not have a semantic icon - using legacy
                         Image(systemName: "phone.circle.fill")
                             .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }
             }

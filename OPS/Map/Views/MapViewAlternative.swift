@@ -97,7 +97,7 @@ struct MapViewAlternative: View {
         .onReceive(coordinator.$mapCameraPosition) { newPosition in
             // Update camera when coordinator changes (but not during user interaction)
             if !isUserInteracting {
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     mapCameraPosition = newPosition
                 }
             }
@@ -167,7 +167,7 @@ struct ProjectMarkerAlternative: View {
     
     private var markerColor: Color {
         if isNavigating || isActiveProject {
-            return OPSStyle.Colors.secondaryAccent
+            return OPSStyle.Colors.primaryAccent
         } else if isSelected {
             return OPSStyle.Colors.primaryAccent
         } else {
@@ -275,9 +275,9 @@ struct ProjectSelectionSheet: View {
                             .font(OPSStyle.Typography.body)
                         Spacer()
                     }
-                    .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .padding()
-                    .background(OPSStyle.Colors.secondaryAccent.opacity(0.2))
+                    .background(OPSStyle.Colors.primaryAccent.opacity(0.2))
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
                 } else {
                     // Navigate button

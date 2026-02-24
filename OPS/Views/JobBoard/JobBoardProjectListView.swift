@@ -151,7 +151,7 @@ struct JobBoardProjectListView: View {
                                 // Also grey out focused card during status transition animation
                                 // Also dim during closedProjectsScroll to highlight the closed section button
                                 .opacity(cardOpacity(for: project, isFocused: isFocusedProject) * (showClosedSectionOverlay ? 0.3 : 1.0))
-                                .animation(.easeInOut(duration: 0.3), value: showClosedSectionOverlay)
+                                .animation(OPSStyle.Animation.standard, value: showClosedSectionOverlay)
                                 .allowsHitTesting(!shouldGreyOutProject(project) && !showClosedSectionOverlay)
                                 // Tutorial: Capture frame of the focused project for swipe indicator
                                 .background(
@@ -215,7 +215,7 @@ struct JobBoardProjectListView: View {
 
                             // Show dark overlay after scroll completes (0.3s delay + 0.8s scroll)
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                                withAnimation(.easeInOut(duration: 0.3)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showClosedSectionOverlay = true
                                 }
                             }
@@ -223,7 +223,7 @@ struct JobBoardProjectListView: View {
                             // Auto-advance 3 seconds after overlay appears (1.2s + 3.0s = 4.2s)
                             DispatchQueue.main.asyncAfter(deadline: .now() + 4.2) {
                                 if tutorialPhase == .closedProjectsScroll {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                    withAnimation(OPSStyle.Animation.fast) {
                                         showClosedSectionOverlay = false
                                     }
                                     NotificationCenter.default.post(
@@ -318,12 +318,12 @@ struct JobBoardProjectListView: View {
         generator.notificationOccurred(.warning)
 
         // Trigger emphasis animation
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withAnimation(OPSStyle.Animation.faster) {
             emphasisSwipeInstruction = true
         }
         // Reset after animation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 emphasisSwipeInstruction = false
             }
         }
@@ -471,7 +471,7 @@ struct JobBoardProjectListView: View {
     /// Animates a status change with card grey-out effect
     private func animateStatusChange(_ project: Project, to status: Status, taskStatus: TaskStatus, completion: @escaping () -> Void) {
         // Grey out the card during transition
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.fast) {
             isStatusTransitioning = true
         }
 
@@ -480,7 +480,7 @@ struct JobBoardProjectListView: View {
             TutorialHaptics.lightTap()
 
             // Change the status - the badge will animate
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 project.status = status
                 for task in project.tasks {
                     task.status = taskStatus
@@ -489,7 +489,7 @@ struct JobBoardProjectListView: View {
 
             // Restore card opacity
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     self.isStatusTransitioning = false
                 }
                 completion()
@@ -594,7 +594,7 @@ struct JBFilterChip: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
                                 isSelected ? OPSStyle.Colors.cardBorder : Color.clear,
-                                lineWidth: 1
+                                lineWidth: OPSStyle.Layout.Border.standard
                             )
                     )
             )

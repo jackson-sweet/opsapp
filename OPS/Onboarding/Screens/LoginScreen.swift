@@ -74,7 +74,7 @@ struct LoginScreen: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
 
@@ -93,7 +93,7 @@ struct LoginScreen: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
 
@@ -138,7 +138,7 @@ struct LoginScreen: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(canLogin ? Color.white : Color.white.opacity(0.5))
+                .background(canLogin ? Color.white : OPSStyle.Colors.primaryText.opacity(0.5))
                 .foregroundColor(.black)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .disabled(!canLogin || isLoading)
@@ -147,7 +147,7 @@ struct LoginScreen: View {
                 // Divider
                 HStack(spacing: 16) {
                     Rectangle()
-                        .fill(Color.white.opacity(0.1))
+                        .fill(OPSStyle.Colors.cardBorder)
                         .frame(height: 1)
 
                     Text("OR")
@@ -155,7 +155,7 @@ struct LoginScreen: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                     Rectangle()
-                        .fill(Color.white.opacity(0.1))
+                        .fill(OPSStyle.Colors.cardBorder)
                         .frame(height: 1)
                 }
                 .padding(.vertical, 8)
@@ -181,7 +181,7 @@ struct LoginScreen: View {
                         .background(Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(Color.white.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
 
@@ -202,7 +202,7 @@ struct LoginScreen: View {
                         .background(Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(Color.white.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                 }

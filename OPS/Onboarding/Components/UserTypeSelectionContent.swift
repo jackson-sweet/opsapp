@@ -147,7 +147,7 @@ struct UserTypeSelectionContent: View {
             }
         }
         .background(OPSStyle.Colors.background)
-        .animation(.easeInOut(duration: 0.25), value: selectedType)
+        .animation(OPSStyle.Animation.standard, value: selectedType)
     }
 
     // MARK: - Segmented Picker
@@ -176,7 +176,7 @@ struct UserTypeSelectionContent: View {
                             }
                         }
                     )
-                    .animation(.easeInOut(duration: 0.2), value: selectedType)
+                    .animation(OPSStyle.Animation.fast, value: selectedType)
                 }
                 .buttonStyle(.plain)
             }
@@ -186,7 +186,7 @@ struct UserTypeSelectionContent: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -228,7 +228,7 @@ struct UserTypeSelectionContent: View {
 
                     if index < choice.features.count - 1 {
                         Rectangle()
-                            .fill(Color.white.opacity(0.08))
+                            .fill(OPSStyle.Colors.cardBorderSubtle)
                             .frame(height: 1)
                     }
                 }
@@ -261,7 +261,7 @@ struct UserTypeSelectionContent: View {
             ZStack {
                 // Button background
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(Color.white)
+                    .fill(OPSStyle.Colors.primaryText)
                     .frame(height: 56)
 
                 // Content
@@ -281,7 +281,7 @@ struct UserTypeSelectionContent: View {
                             typingSpeed: 50
                         ) {
                             // Show arrow after text completes
-                            withAnimation(.easeOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 showButtonArrow = true
                             }
                         }
@@ -317,7 +317,7 @@ struct UserTypeSelectionContent: View {
 
         // If already showing content, fade out first then switch
         if selectedType != nil {
-            withAnimation(.easeOut(duration: 0.15)) {
+            withAnimation(OPSStyle.Animation.faster) {
                 isTransitioning = true
             }
 
@@ -325,7 +325,7 @@ struct UserTypeSelectionContent: View {
                 contentId = UUID()
                 selectedType = type
 
-                withAnimation(.easeIn(duration: 0.15)) {
+                withAnimation(OPSStyle.Animation.faster) {
                     isTransitioning = false
                 }
             }
@@ -365,7 +365,7 @@ struct SlideInModifier: ViewModifier {
             .opacity(isVisible ? 1 : 0)
             .offset(y: isVisible ? 0 : 8)
             .onAppear {
-                withAnimation(.easeOut(duration: 0.3).delay(delay)) {
+                withAnimation(OPSStyle.Animation.standard.delay(delay)) {
                     isVisible = true
                 }
             }

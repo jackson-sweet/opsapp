@@ -89,7 +89,7 @@ struct PermissionsView: View {
                             isRequestingLocation: $isRequestingLocation,
                             showLocationDeniedAlert: $showLocationDeniedAlert,
                             onContinue: {
-                                withAnimation(.easeInOut(duration: 0.3)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     currentPhase = .notifications
                                 }
                             }

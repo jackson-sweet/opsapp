@@ -169,14 +169,14 @@ struct AppMessageView: View {
         }
         .opacity(containerOpacity)
         .onAppear {
-            withAnimation(.easeIn(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 containerOpacity = 1.0
             }
         }
     }
 
     private func dismissWithAnimation() {
-        withAnimation(.easeOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             containerOpacity = 0
         }
 

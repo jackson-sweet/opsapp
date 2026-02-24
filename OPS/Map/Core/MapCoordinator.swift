@@ -317,7 +317,7 @@ final class MapCoordinator: ObservableObject {
                     latitudinalMeters: zoomDistance,
                     longitudinalMeters: zoomDistance
                 )
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     mapCameraPosition = .region(region)
                     mapRegion = region
                 }
@@ -598,7 +598,7 @@ final class MapCoordinator: ObservableObject {
                 carouselOffset: !isNavigating
             )
             
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 mapCameraPosition = .region(singleCoordRegion)
                 mapRegion = singleCoordRegion
             }
@@ -612,7 +612,7 @@ final class MapCoordinator: ObservableObject {
             carouselOffset: !isNavigating // Use carousel offset when not navigating
         )
         
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             mapCameraPosition = .region(region)
             mapRegion = region
         }
@@ -774,7 +774,7 @@ final class MapCoordinator: ObservableObject {
                     pitch: 0
                 )
                 if animated {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         mapCameraPosition = .camera(camera)
                     }
                 } else {
@@ -798,7 +798,7 @@ final class MapCoordinator: ObservableObject {
         
         // Set animation flag and update camera
         if animated {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 mapCameraPosition = .camera(camera)
             }
         } else {

@@ -85,7 +85,7 @@ struct ProductFormSheet: View {
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                             .stroke(
                                                 type == t ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
-                                                lineWidth: 1
+                                                lineWidth: OPSStyle.Layout.Border.standard
                                             )
                                     )
                             }

@@ -64,7 +64,7 @@ struct GracePeriodBanner: View {
                 PlanSelectionView()
             }
             .transition(.move(edge: .top).combined(with: .opacity))
-            .animation(.easeInOut(duration: 0.3), value: subscriptionManager.shouldShowGracePeriodBanner)
+            .animation(OPSStyle.Animation.standard, value: subscriptionManager.shouldShowGracePeriodBanner)
         }
     }
     
@@ -112,7 +112,7 @@ struct GracePeriodBannerModifier: ViewModifier {
         ZStack(alignment: .top) {
             content
                 .offset(y: subscriptionManager.shouldShowGracePeriodBanner ? 44 : 0)
-                .animation(.easeInOut(duration: 0.3), value: subscriptionManager.shouldShowGracePeriodBanner)
+                .animation(OPSStyle.Animation.standard, value: subscriptionManager.shouldShowGracePeriodBanner)
             
             GracePeriodBanner()
                 .environmentObject(subscriptionManager)

@@ -269,7 +269,7 @@ struct ImportConfigView: View {
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color.white)
+            .background(OPSStyle.Colors.primaryText)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
         .padding(OPSStyle.Layout.spacing3)

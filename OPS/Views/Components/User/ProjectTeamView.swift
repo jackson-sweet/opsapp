@@ -184,8 +184,8 @@ struct ProjectTeamView: View {
                     ))
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: isEditing)
-        .animation(.easeInOut(duration: 0.3), value: availableMembers.count)
+        .animation(OPSStyle.Animation.standard, value: isEditing)
+        .animation(OPSStyle.Animation.standard, value: availableMembers.count)
     }
 
     private func currentTeamMembersSection(_ activeProject: Project) -> some View {
@@ -225,7 +225,7 @@ struct ProjectTeamView: View {
                         ))
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: isEditing)
+            .animation(OPSStyle.Animation.standard, value: isEditing)
         }
         .contentShape(Rectangle())
         .padding(.vertical, 6)
@@ -313,7 +313,7 @@ struct ProjectTeamView: View {
     // MARK: - Inline Editing Functions
 
     private func toggleMemberSelection(memberId: String) {
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.fast) {
             if selectedMemberIds.contains(memberId) {
                 selectedMemberIds.remove(memberId)
             } else {

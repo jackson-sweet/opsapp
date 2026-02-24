@@ -101,7 +101,7 @@ struct SeatManagementView: View {
     private var expandableInfoSection: some View {
         VStack(spacing: 12) {
             Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     showInfo.toggle()
                 }
             }) {
@@ -181,7 +181,7 @@ struct SeatManagementView: View {
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(Color.white)
+            .background(OPSStyle.Colors.primaryText)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
         .padding(.horizontal)
@@ -303,7 +303,7 @@ struct SeatManagementView: View {
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(Color.white)
+                    .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }

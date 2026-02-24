@@ -220,7 +220,7 @@ struct CalendarSchedulerSheet: View {
                 .strokeBorder(hasSelectedDates ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, 20)
-        .animation(.easeInOut(duration: 0.2), value: hasSelectedDates)
+        .animation(OPSStyle.Animation.fast, value: hasSelectedDates)
     }
 
     // MARK: - Calendar Section (Full Width)
@@ -283,7 +283,7 @@ struct CalendarSchedulerSheet: View {
     private var projectTasksFilterToggle: some View {
         HStack {
             Image(systemName: OPSStyle.Icons.taskType)
-                .foregroundColor(showOnlyProjectTasks ? OPSStyle.Colors.secondaryAccent : OPSStyle.Colors.tertiaryText)
+                .foregroundColor(showOnlyProjectTasks ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                 .font(.system(size: 14))
 
             VStack(alignment: .leading, spacing: 2) {
@@ -299,7 +299,7 @@ struct CalendarSchedulerSheet: View {
 
             Toggle("", isOn: $showOnlyProjectTasks)
                 .labelsHidden()
-                .tint(OPSStyle.Colors.secondaryAccent)
+                .tint(OPSStyle.Colors.primaryAccent)
                 .scaleEffect(0.8)
         }
         .padding(14)
@@ -486,7 +486,7 @@ struct CalendarSchedulerSheet: View {
                 .disabled(!hasSelectedDates)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: hasSelectedDates)
+        .animation(OPSStyle.Animation.fast, value: hasSelectedDates)
     }
 
     // MARK: - Helper Methods
@@ -877,9 +877,9 @@ private struct SchedulerDayCell: View {
                     }
                 }
                 .opacity(isStartDate || isEndDate || isInRange ? 1 : 0)
-                .animation(.easeInOut(duration: 0.15), value: isStartDate)
-                .animation(.easeInOut(duration: 0.15), value: isEndDate)
-                .animation(.easeInOut(duration: 0.15), value: isInRange)
+                .animation(OPSStyle.Animation.faster, value: isStartDate)
+                .animation(OPSStyle.Animation.faster, value: isEndDate)
+                .animation(OPSStyle.Animation.faster, value: isInRange)
 
                 // Conflict indicator overlay
                 if hasConflicts {

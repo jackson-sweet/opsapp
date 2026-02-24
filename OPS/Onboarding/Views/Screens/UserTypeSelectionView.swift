@@ -68,7 +68,7 @@ struct UserTypeSelectionView: View {
                         isSelected: viewModel.selectedUserType == .company,
                         isLightTheme: viewModel.shouldUseLightTheme,
                         action: {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 viewModel.selectedUserType = .company
                             }
                         }
@@ -81,7 +81,7 @@ struct UserTypeSelectionView: View {
                         isSelected: viewModel.selectedUserType == .employee,
                         isLightTheme: viewModel.shouldUseLightTheme,
                         action: {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 viewModel.selectedUserType = .employee
                             }
                         }
@@ -103,7 +103,7 @@ struct UserTypeSelectionView: View {
             }
             .padding(40)
         }
-        .animation(.easeInOut(duration: 0.3), value: viewModel.selectedUserType)
+        .animation(OPSStyle.Animation.standard, value: viewModel.selectedUserType)
     }
 }
 

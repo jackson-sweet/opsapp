@@ -14,7 +14,7 @@ struct OnboardingLoadingOverlay: View {
     var body: some View {
         ZStack {
             // Semi-transparent background
-            Color.black.opacity(0.7)
+            OPSStyle.Colors.overlayStrong
                 .ignoresSafeArea()
 
             // Loading card
@@ -34,7 +34,7 @@ struct OnboardingLoadingOverlay: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
         }
@@ -52,7 +52,7 @@ struct OnboardingLoadingOverlayWithProgress: View {
     var body: some View {
         ZStack {
             // Semi-transparent background
-            Color.black.opacity(0.7)
+            OPSStyle.Colors.overlayStrong
                 .ignoresSafeArea()
 
             // Loading card
@@ -86,7 +86,7 @@ struct OnboardingLoadingOverlayWithProgress: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
         }

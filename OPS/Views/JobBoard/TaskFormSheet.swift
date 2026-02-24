@@ -411,14 +411,14 @@ struct TaskFormSheet: View {
 
                 // Divider
                 Rectangle()
-                    .fill(Color.white.opacity(0.1))
+                    .fill(OPSStyle.Colors.cardBorder)
                     .frame(height: 1)
 
                 mainContent
                     .overlay(
                         Group {
                             if tutorialMode && tutorialPhase == .taskFormDone {
-                                Color.black.opacity(0.6)
+                                OPSStyle.Colors.overlayMedium
                                     .allowsHitTesting(true)
                             }
                         }
@@ -428,7 +428,7 @@ struct TaskFormSheet: View {
             // Radial gradient overlay centered on DONE button for visibility
             if tutorialMode && tutorialPhase == .taskFormDone {
                 RadialGradient(
-                    gradient: Gradient(colors: [.clear, Color.black.opacity(0.6)]),
+                    gradient: Gradient(colors: [.clear, OPSStyle.Colors.overlayMedium]),
                     center: UnitPoint(x: 0.85, y: 0.12),
                     startRadius: 60,
                     endRadius: 350
@@ -645,7 +645,7 @@ struct TaskFormSheet: View {
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
                     TextField("Search or select project", text: $projectSearchText, onEditingChanged: { isEditing in
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             showingProjectSuggestions = isEditing
                         }
                     })
@@ -659,20 +659,20 @@ struct TaskFormSheet: View {
                                 shouldHighlightProjectField ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
                                 lineWidth: shouldHighlightProjectField ? 2 : 1
                             )
-                            .animation(.easeInOut(duration: 0.3), value: shouldHighlightProjectField)
+                            .animation(OPSStyle.Animation.standard, value: shouldHighlightProjectField)
                     )
                     // Only hide text when project is selected AND not actively searching
                     .foregroundColor(selectedProject != nil && !showingProjectSuggestions ? .clear : OPSStyle.Colors.primaryText)
                     .font(OPSStyle.Typography.body)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.words)
-                    .animation(.easeInOut(duration: 0.2), value: selectedProject != nil)
+                    .animation(OPSStyle.Animation.fast, value: selectedProject != nil)
 
                     if showingProjectSuggestions && !filteredProjects.isEmpty {
                         VStack(spacing: 0) {
                             ForEach(Array(filteredProjects.prefix(5).enumerated()), id: \.element.id) { index, project in
                                 Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                    withAnimation(OPSStyle.Animation.fast) {
                                         selectedProjectId = project.id
                                         projectSearchText = project.title
                                         showingProjectSuggestions = false
@@ -699,7 +699,7 @@ struct TaskFormSheet: View {
                                 // Divider between items (not after last)
                                 if index < min(filteredProjects.count, 5) - 1 {
                                     Divider()
-                                        .background(Color.white.opacity(0.1))
+                                        .background(OPSStyle.Colors.cardBorder)
                                 }
                             }
                         }
@@ -725,7 +725,7 @@ struct TaskFormSheet: View {
                         }
                         Spacer()
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 selectedProjectId = nil
                                 projectSearchText = ""
                             }
@@ -1032,7 +1032,7 @@ struct TaskFormSheet: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
                             focusedField == .notes ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                            lineWidth: 1
+                            lineWidth: OPSStyle.Layout.Border.standard
                         )
                 )
 

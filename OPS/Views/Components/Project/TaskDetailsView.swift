@@ -697,7 +697,7 @@ struct TaskDetailsView: View {
                 saveTaskNotes()
             }
 
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 self.task = newTask
                 let notes = newTask.taskNotes ?? ""
                 self.taskNotes = notes
@@ -1278,13 +1278,13 @@ struct TaskDetailsView: View {
     // MARK: - Save Notification
     
     private func showSaveNotification() {
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             showingSaveNotification = true
         }
         
         notificationTimer?.invalidate()
         notificationTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showingSaveNotification = false
             }
         }

@@ -118,7 +118,7 @@ struct OnboardingPreviewView: View {
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        .background(Color.white)
+                        .background(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .padding(.horizontal, 24)

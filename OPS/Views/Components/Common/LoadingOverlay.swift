@@ -37,7 +37,7 @@ struct LoadingOverlayModifier: ViewModifier {
                 )
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isPresented)
+        .animation(OPSStyle.Animation.fast, value: isPresented)
     }
 }
 

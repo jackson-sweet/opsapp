@@ -246,7 +246,7 @@ struct MonthGridView: View {
                     // Track that this change came from scrolling
                     lastScrollTriggeredMonth = monthStart
                     // Update with animation for smooth transition
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         viewModel.visibleMonth = monthStart
                     }
                 }
@@ -614,7 +614,7 @@ struct MonthGridView: View {
                 }
                 // This change came from the picker, scroll to the month
                 isProgrammaticScroll = true
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     proxy.scrollTo(newMonth, anchor: .top)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {

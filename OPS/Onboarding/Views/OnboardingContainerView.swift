@@ -38,7 +38,7 @@ struct OnboardingView: View {
     var body: some View {
         ZStack {
             // Background
-            Color.black.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             // Consolidated flow - respect safe areas for content
             consolidatedFlowView
@@ -63,7 +63,7 @@ struct OnboardingView: View {
             configureViewModel()
         }
         .animation(.easeInOut, value: viewModel.currentStep.rawValue)
-        .animation(.easeInOut(duration: 0.3), value: viewModel.isShowingCompanyCreationLoading)
+        .animation(OPSStyle.Animation.standard, value: viewModel.isShowingCompanyCreationLoading)
         // Apply theme based on user type
         .preferredColorScheme(viewModel.shouldUseLightTheme ? .light : .dark)
     }

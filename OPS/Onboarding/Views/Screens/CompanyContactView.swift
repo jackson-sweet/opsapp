@@ -20,7 +20,7 @@ struct CompanyContactView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color.black.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator

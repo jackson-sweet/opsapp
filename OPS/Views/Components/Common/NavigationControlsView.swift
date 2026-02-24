@@ -121,7 +121,7 @@ struct NavigationControlsView: View {
                             distance: routeDistance,
                             onDismiss: {
                                 // Hide the full directions view
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                withAnimation(OPSStyle.Animation.fast) {
                                     showFullDirectionsView = false
                                 }
                             }
@@ -143,7 +143,7 @@ struct NavigationControlsView: View {
                         .transition(.move(edge: .top))
                         .onTapGesture {
                             // Toggle to show full directions when tapped - use a faster animation
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 showFullDirectionsView = true
                             }
                         }

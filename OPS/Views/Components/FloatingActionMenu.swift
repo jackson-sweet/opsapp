@@ -54,7 +54,7 @@ struct FloatingActionMenu: View {
                 )
                 .ignoresSafeArea()
                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.3), value: showCreateMenu)
+                .animation(OPSStyle.Animation.standard, value: showCreateMenu)
                 .onTapGesture {
                     // In tutorial mode, don't allow closing menu by tapping background
                     guard !tutorialMode else { return }
@@ -85,7 +85,7 @@ struct FloatingActionMenu: View {
                                 )
                                 .offset(x: -10) // Center 48pt icon over 64pt main button
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(.easeInOut(duration: 0.3).delay(0.8), value: showCreateMenu)
+                                .animation(OPSStyle.Animation.standard.delay(0.8), value: showCreateMenu)
                                 .opacity(tutorialMode ? 0.4 : 1.0)
                                 .allowsHitTesting(!tutorialMode)
 
@@ -100,7 +100,7 @@ struct FloatingActionMenu: View {
                                 )
                                 .offset(x: -10) // Center 48pt icon over 64pt main button
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(.easeInOut(duration: 0.3).delay(0.6), value: showCreateMenu)
+                                .animation(OPSStyle.Animation.standard.delay(0.6), value: showCreateMenu)
                                 .opacity(tutorialMode ? 0.4 : 1.0)
                                 .allowsHitTesting(!tutorialMode)
 
@@ -123,7 +123,7 @@ struct FloatingActionMenu: View {
                                 )
                                 .offset(x: -10) // Center 48pt icon over 64pt main button
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(.easeInOut(duration: 0.3).delay(0.4), value: showCreateMenu)
+                                .animation(OPSStyle.Animation.standard.delay(0.4), value: showCreateMenu)
 
                                 // Create Client - disabled in tutorial mode
                                 FloatingActionItem(
@@ -136,7 +136,7 @@ struct FloatingActionMenu: View {
                                 )
                                 .offset(x: -10) // Center 48pt icon over 64pt main button
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(.easeInOut(duration: 0.3).delay(0.2), value: showCreateMenu)
+                                .animation(OPSStyle.Animation.standard.delay(0.2), value: showCreateMenu)
                                 .opacity(tutorialMode ? 0.4 : 1.0)
                                 .allowsHitTesting(!tutorialMode)
                             }
@@ -157,7 +157,7 @@ struct FloatingActionMenu: View {
                                         object: nil
                                     )
                                 }
-                                withAnimation(.easeInOut(duration: 0.3)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showCreateMenu.toggle()
                                 }
                             }) {

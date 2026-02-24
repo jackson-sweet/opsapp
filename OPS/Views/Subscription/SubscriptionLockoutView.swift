@@ -136,7 +136,7 @@ struct SubscriptionLockoutView: View {
                 VStack(spacing: 24) {  // More spacing
                     // Button to show seat management
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.3)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             showSeatManagement = true
                         }
                     }) {
@@ -149,7 +149,7 @@ struct SubscriptionLockoutView: View {
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)  // Slightly smaller padding
-                        .background(Color.white)  // White background for primary button
+                        .background(OPSStyle.Colors.primaryText)  // White background for primary button
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     .padding(.horizontal, 24)
@@ -190,7 +190,7 @@ struct SubscriptionLockoutView: View {
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)  // Slightly smaller padding
-                        .background(Color.white)  // White background for primary button
+                        .background(OPSStyle.Colors.primaryText)  // White background for primary button
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
 
@@ -229,10 +229,10 @@ struct SubscriptionLockoutView: View {
                         .opacity(refreshComplete && !refreshResultNegative ? 0 : 1)
                     }
                     .disabled(isRefreshing)
-                    .animation(.easeOut(duration: 0.3), value: refreshComplete)
-                    .animation(.easeOut(duration: 0.3), value: refreshError)
-                    .animation(.easeOut(duration: 0.3), value: refreshResultNegative)
-                    .animation(.easeOut(duration: 0.3), value: refreshResultStatus)
+                    .animation(OPSStyle.Animation.standard, value: refreshComplete)
+                    .animation(OPSStyle.Animation.standard, value: refreshError)
+                    .animation(OPSStyle.Animation.standard, value: refreshResultNegative)
+                    .animation(OPSStyle.Animation.standard, value: refreshResultStatus)
                 }
                 .padding(.horizontal, 24)
             }
@@ -304,7 +304,7 @@ struct SubscriptionLockoutView: View {
                                 .foregroundColor(.black)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)  // Smaller padding
-                                .background(Color.white)  // White background for primary button
+                                .background(OPSStyle.Colors.primaryText)  // White background for primary button
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                         }
@@ -324,7 +324,7 @@ struct SubscriptionLockoutView: View {
                                 .foregroundColor(.black)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)  // Smaller padding
-                                .background(Color.white)  // White background for primary button
+                                .background(OPSStyle.Colors.primaryText)  // White background for primary button
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                         }
@@ -365,8 +365,8 @@ struct SubscriptionLockoutView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(nonAdminRefreshButtonColor, lineWidth: OPSStyle.Layout.Border.standard)
                 )
-                .animation(.easeInOut(duration: 0.3), value: refreshComplete)
-                .animation(.easeInOut(duration: 0.3), value: refreshError)
+                .animation(OPSStyle.Animation.standard, value: refreshComplete)
+                .animation(OPSStyle.Animation.standard, value: refreshError)
             }
             .disabled(isRefreshing)
             .padding(.horizontal, 40)
@@ -514,7 +514,7 @@ struct SubscriptionLockoutView: View {
             // Header with back button
             HStack {
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showSeatManagement = false
                         seatActionError = nil
                     }
@@ -595,7 +595,7 @@ struct SubscriptionLockoutView: View {
                                     .foregroundColor(.black)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 14)
-                                    .background(Color.white)
+                                    .background(OPSStyle.Colors.primaryText)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                             .padding(.horizontal, 24)

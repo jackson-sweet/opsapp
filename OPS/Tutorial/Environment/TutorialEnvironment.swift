@@ -145,7 +145,7 @@ private struct PulsingBorderOverlay: View {
             .padding(-TutorialHighlightStyle.padding)
             .onAppear {
                 // Fade in the highlight
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     isVisible = true
                 }
                 // Start pulsing after fade-in

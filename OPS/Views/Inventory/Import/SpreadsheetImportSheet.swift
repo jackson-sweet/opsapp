@@ -192,7 +192,7 @@ struct SpreadsheetImportSheet: View {
                 .foregroundColor(.black)
                 .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .padding(.vertical, 14)
-                .background(Color.white)
+                .background(OPSStyle.Colors.primaryText)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
 
@@ -341,7 +341,7 @@ struct SpreadsheetImportSheet: View {
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.white)
+                    .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)

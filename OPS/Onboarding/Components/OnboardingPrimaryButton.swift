@@ -60,7 +60,7 @@ struct OnboardingPrimaryButton: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 56)
-        .background(isEnabled && !isLoading ? Color.white : Color.white.opacity(0.5))
+        .background(isEnabled && !isLoading ? Color.white : OPSStyle.Colors.primaryText.opacity(0.5))
         .foregroundColor(.black)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .disabled(!isEnabled || isLoading)

@@ -49,7 +49,7 @@ struct TutorialOverlayView: View {
                     ZStack {
                         // Full rectangle
                         Rectangle()
-                            .fill(Color.white)
+                            .fill(OPSStyle.Colors.primaryText)
 
                         // Cutout area (if frame is valid)
                         if cutoutFrame != .zero {
@@ -71,7 +71,7 @@ struct TutorialOverlayView: View {
         // Don't capture touches - allow passthrough to content below
         .allowsHitTesting(false)
         // Animate cutout position changes
-        .animation(.easeInOut(duration: 0.3), value: cutoutFrame)
+        .animation(OPSStyle.Animation.standard, value: cutoutFrame)
     }
 }
 
@@ -97,7 +97,7 @@ struct TutorialHighlightBorder: View {
                     y: cutoutFrame.midY
                 )
                 .allowsHitTesting(false)
-                .animation(.easeInOut(duration: 0.3), value: cutoutFrame)
+                .animation(OPSStyle.Animation.standard, value: cutoutFrame)
         }
     }
 }

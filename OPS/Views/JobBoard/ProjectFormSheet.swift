@@ -355,14 +355,14 @@ struct ProjectFormSheet: View {
 
                 // Divider
                 Rectangle()
-                    .fill(Color.white.opacity(0.1))
+                    .fill(OPSStyle.Colors.cardBorder)
                     .frame(height: 1)
 
                 mainProjectContent
                     .overlay(
                         Group {
                             if tutorialMode && tutorialPhase == .projectFormComplete {
-                                Color.black.opacity(0.6)
+                                OPSStyle.Colors.overlayMedium
                                     .allowsHitTesting(true)
                             }
                         }
@@ -372,7 +372,7 @@ struct ProjectFormSheet: View {
             // Radial gradient overlay centered on CREATE button for visibility
             if tutorialMode && tutorialPhase == .projectFormComplete {
                 RadialGradient(
-                    gradient: Gradient(colors: [.clear, Color.black.opacity(0.6)]),
+                    gradient: Gradient(colors: [.clear, OPSStyle.Colors.overlayMedium]),
                     center: UnitPoint(x: 0.85, y: 0.12),
                     startRadius: 60,
                     endRadius: 350
@@ -799,7 +799,7 @@ struct ProjectFormSheet: View {
                         selectedStatus = status
                         defaultProjectStatusRaw = status.rawValue
                         // Unfocus when selection is made
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             isStatusMenuFocused = false
                         }
                     }) {
@@ -831,13 +831,13 @@ struct ProjectFormSheet: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
                             isStatusMenuFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                            lineWidth: 1
+                            lineWidth: OPSStyle.Layout.Border.standard
                         )
                 )
             }
             .simultaneousGesture(
                 TapGesture().onEnded {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         isStatusMenuFocused = true
                     }
                 }
@@ -1004,7 +1004,7 @@ struct ProjectFormSheet: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
                                 focusedField == .description ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                                lineWidth: 1
+                                lineWidth: OPSStyle.Layout.Border.standard
                             )
                     )
                     .onChange(of: focusedField) { oldValue, newValue in
@@ -1066,7 +1066,7 @@ struct ProjectFormSheet: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
                                 focusedField == .notes ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                                lineWidth: 1
+                                lineWidth: OPSStyle.Layout.Border.standard
                             )
                     )
                     .onChange(of: focusedField) { oldValue, newValue in

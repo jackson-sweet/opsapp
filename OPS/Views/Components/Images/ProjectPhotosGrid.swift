@@ -81,7 +81,7 @@ struct ProjectPhotosGrid: View {
                                         showingDeleteConfirmation = true
                                     } onPressingChanged: { isPressing in
                                         // Visual feedback while pressing - happens immediately
-                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                        withAnimation(OPSStyle.Animation.fast) {
                                             longPressingPhotoIndex = isPressing ? index : nil
                                         }
                                     }

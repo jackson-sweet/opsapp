@@ -89,7 +89,7 @@ struct NotificationBanner: View {
         .onAppear {
             // Auto-dismiss after 2 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     isPresented = false
                 }
             }

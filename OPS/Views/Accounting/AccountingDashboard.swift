@@ -153,7 +153,7 @@ struct AccountingDashboard: View {
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -173,7 +173,7 @@ struct AccountingDashboard: View {
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -208,7 +208,7 @@ struct AccountingDashboard: View {
                         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
 
                         if idx < topOutstanding.count - 1 {
-                            Divider().background(Color.white.opacity(0.1))
+                            Divider().background(OPSStyle.Colors.cardBorder)
                         }
                     }
                 }
@@ -216,7 +216,7 @@ struct AccountingDashboard: View {
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             }

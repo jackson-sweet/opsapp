@@ -107,8 +107,8 @@ struct MapContainer: View {
                     .zIndex(100)
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: coordinator.isNavigating)
-        .animation(.easeInOut(duration: 0.3), value: coordinator.showingProjectDetails)
+        .animation(OPSStyle.Animation.standard, value: coordinator.isNavigating)
+        .animation(OPSStyle.Animation.standard, value: coordinator.showingProjectDetails)
         .onAppear {
             // Update coordinator with environment objects
             coordinator.locationManager = locationManager

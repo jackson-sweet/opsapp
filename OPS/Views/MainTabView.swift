@@ -191,9 +191,9 @@ struct MainTabView: View {
             .ignoresSafeArea(.all, edges: .bottom)
             .preferredColorScheme(.dark)
             .opacity(keyboardIsShowing || dataController.isPerformingInitialSync || appState.isLoadingProjects ? 0 : 1)
-            .animation(.easeInOut(duration: 0.25), value: keyboardIsShowing)
-            .animation(.easeInOut(duration: 0.25), value: dataController.isPerformingInitialSync)
-            .animation(.easeInOut(duration: 0.25), value: appState.isLoadingProjects)
+            .animation(OPSStyle.Animation.standard, value: keyboardIsShowing)
+            .animation(OPSStyle.Animation.standard, value: dataController.isPerformingInitialSync)
+            .animation(OPSStyle.Animation.standard, value: appState.isLoadingProjects)
 
             // Floating action menu - visible across all tabs except Settings and during initial sync/loading
             // IMPORTANT: Always render to preserve @State (sheet presentation) when app goes to background
@@ -203,10 +203,10 @@ struct MainTabView: View {
                 .environmentObject(appState)
                 .opacity(!isSettingsTab && !isPipelineTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects ? 1 : 0)
                 .allowsHitTesting(!isSettingsTab && !isPipelineTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects)
-                .animation(.easeInOut(duration: 0.2), value: isSettingsTab)
-                .animation(.easeInOut(duration: 0.2), value: dataController.isPerformingInitialSync)
-                .animation(.easeInOut(duration: 0.2), value: appState.isLoadingProjects)
-                .animation(.easeInOut(duration: 0.2), value: appState.isInventorySelectionMode)
+                .animation(OPSStyle.Animation.fast, value: isSettingsTab)
+                .animation(OPSStyle.Animation.fast, value: dataController.isPerformingInitialSync)
+                .animation(OPSStyle.Animation.fast, value: appState.isLoadingProjects)
+                .animation(OPSStyle.Animation.fast, value: appState.isInventorySelectionMode)
 
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()
@@ -248,7 +248,7 @@ struct MainTabView: View {
         
         // Handle navigation to map view
         .onReceive(navigateToMapObserver) { _ in
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = 0 // Switch to home/map tab
             }
         }
@@ -279,7 +279,7 @@ struct MainTabView: View {
         // Handle opening schedule view from push notification
         .onReceive(openScheduleObserver) { _ in
             print("[PUSH_NAVIGATION] Opening schedule view")
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = scheduleTabIndex
             }
         }
@@ -287,7 +287,7 @@ struct MainTabView: View {
         // Handle opening job board from push notification
         .onReceive(openJobBoardObserver) { _ in
             print("[PUSH_NAVIGATION] Opening job board")
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = jobBoardTabIndex
             }
         }
@@ -316,14 +316,14 @@ struct MainTabView: View {
                 let keyboardHeight = keyboardFrame.cgRectValue.height
                 // Only respond to keyboard if it's substantial (not from sheet)
                 if keyboardHeight > 0 && !checkIfSheetIsPresented() {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         keyboardIsShowing = true
                     }
                 }
             }
         }
         .onReceive(keyboardWillHide) { _ in
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 keyboardIsShowing = false
             }
         }

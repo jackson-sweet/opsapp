@@ -26,10 +26,10 @@ struct WelcomeScreen: View {
             // Dark overlay gradient
             LinearGradient(
                 colors: [
-                    Color.black.opacity(0.3),
-                    Color.black.opacity(0.6),
-                    Color.black.opacity(0.9),
-                    Color.black
+                    OPSStyle.Colors.modalOverlay,
+                    OPSStyle.Colors.overlayMedium,
+                    OPSStyle.Colors.overlayHeavy,
+                    OPSStyle.Colors.background
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -97,7 +97,7 @@ struct WelcomeScreen: View {
                         .padding(.horizontal, 20)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
-                        .background(Color.white)
+                        .background(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
 
@@ -121,7 +121,7 @@ struct WelcomeScreen: View {
                         .background(Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(Color.white.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                 }

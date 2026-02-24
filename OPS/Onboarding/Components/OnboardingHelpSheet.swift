@@ -200,7 +200,7 @@ struct SwitchToEmployeeHelpSheet: View {
 // MARK: - Previews
 
 #Preview("Basic Help Sheet") {
-    Color.black
+    OPSStyle.Colors.background
         .ignoresSafeArea()
         .sheet(isPresented: .constant(true)) {
             OnboardingHelpSheet(
@@ -211,7 +211,7 @@ struct SwitchToEmployeeHelpSheet: View {
 }
 
 #Preview("Help Sheet with Alternate Action") {
-    Color.black
+    OPSStyle.Colors.background
         .ignoresSafeArea()
         .sheet(isPresented: .constant(true)) {
             OnboardingHelpSheet(

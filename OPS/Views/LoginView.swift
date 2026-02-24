@@ -102,7 +102,7 @@ struct LoginView: View {
                             onboardingManager = OnboardingManager(dataController: dataController)
 
                             // Show onboarding
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 showOnboarding = true
                             }
                         }) {
@@ -111,7 +111,7 @@ struct LoginView: View {
                                 .foregroundColor(.black)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: OPSStyle.Layout.touchTargetStandard)
-                                .background(Color.white)
+                                .background(OPSStyle.Colors.primaryText)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     HStack {
@@ -248,7 +248,7 @@ struct LoginView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .frame(height: OPSStyle.Layout.touchTargetStandard)
-                            .background(Color.white)
+                            .background(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 !isLoggingIn ?
@@ -603,7 +603,7 @@ struct GoogleSignInButton: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 40, height: 40)
-                   // .background(Color.white)
+                   // .background(OPSStyle.Colors.primaryText)
 
                 
                 Text("Continue with Google")
@@ -684,7 +684,7 @@ struct LoginSuccessView: View {
                             .scaleEffect(showCheckmark ? 1 : 0)
                             .rotationEffect(.degrees(showCheckmark ? 0 : -30))
                     }
-                    .animation(.easeOut(duration: 0.3), value: showCheckmark)
+                    .animation(OPSStyle.Animation.standard, value: showCheckmark)
                     
                     // Status text stack
                     VStack(spacing: 8) {
@@ -698,13 +698,13 @@ struct LoginSuccessView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                         .opacity(showCheckmark ? 1 : 0)
-                        .animation(.easeInOut(duration: 0.2).delay(0.2), value: showCheckmark)
+                        .animation(OPSStyle.Animation.fast.delay(0.2), value: showCheckmark)
                         
                         Text("AUTHENTICATION SUCCESSFUL")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .opacity(showCheckmark ? 1 : 0)
-                            .animation(.easeInOut(duration: 0.2).delay(0.3), value: showCheckmark)
+                            .animation(OPSStyle.Animation.fast.delay(0.3), value: showCheckmark)
                     }
                     
                     // User identifier (minimal info)
@@ -718,7 +718,7 @@ struct LoginSuccessView: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .opacity(showCheckmark ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.2).delay(0.4), value: showCheckmark)
+                    .animation(OPSStyle.Animation.fast.delay(0.4), value: showCheckmark)
                 }
                 .padding(.horizontal, 32)
                 .padding(.vertical, 28)
@@ -738,10 +738,10 @@ struct LoginSuccessView: View {
             .padding(.horizontal, 60)
             .scaleEffect(showCheckmark ? 1 : 0.95)
             .opacity(showCheckmark ? 1 : 0)
-            .animation(.easeOut(duration: 0.25), value: showCheckmark)
+            .animation(OPSStyle.Animation.standard, value: showCheckmark)
         }
         .onAppear {
-            withAnimation(.easeOut(duration: 0.15)) {
+            withAnimation(OPSStyle.Animation.faster) {
                 showCheckmark = true
             }
         }

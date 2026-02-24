@@ -154,7 +154,7 @@ struct InvoicesListView: View {
                             viewModel.selectedFilter == filter
                             ? OPSStyle.Colors.primaryAccent
                             : OPSStyle.Colors.cardBorder,
-                            lineWidth: 1
+                            lineWidth: OPSStyle.Layout.Border.standard
                         )
                 )
         }

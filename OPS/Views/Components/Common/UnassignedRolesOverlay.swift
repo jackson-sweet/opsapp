@@ -161,7 +161,7 @@ struct UnassignedRolesOverlay: View {
             .padding(.horizontal, 24)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     if isExpanded {
                         expandedUserId = nil
                     } else {
@@ -179,11 +179,11 @@ struct UnassignedRolesOverlay: View {
                         description: "Works on job sites. Can view assigned projects, update task status, and log work. Limited access to scheduling and client info.",
                         isSelected: user.wrappedValue.selectedRole == .fieldCrew,
                         action: {
-                            withAnimation(.easeInOut(duration: 0.15)) {
+                            withAnimation(OPSStyle.Animation.faster) {
                                 user.wrappedValue.selectedRole = .fieldCrew
                                 // Auto-collapse after brief delay
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                    withAnimation(OPSStyle.Animation.fast) {
                                         expandedUserId = nil
                                     }
                                 }
@@ -197,11 +197,11 @@ struct UnassignedRolesOverlay: View {
                         description: "Manages operations from the office. Full access to scheduling, client management, project creation, and team coordination.",
                         isSelected: user.wrappedValue.selectedRole == .officeCrew,
                         action: {
-                            withAnimation(.easeInOut(duration: 0.15)) {
+                            withAnimation(OPSStyle.Animation.faster) {
                                 user.wrappedValue.selectedRole = .officeCrew
                                 // Auto-collapse after brief delay
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                    withAnimation(OPSStyle.Animation.fast) {
                                         expandedUserId = nil
                                     }
                                 }

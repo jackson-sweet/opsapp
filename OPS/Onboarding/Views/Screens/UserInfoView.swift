@@ -67,7 +67,7 @@ struct UserInfoView: View {
                                 viewModel.moveToPreviousStep()
                             }
                         } else {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 currentPhase = UserInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .firstName
                             }
                         }
@@ -116,7 +116,7 @@ struct UserInfoView: View {
                             firstName: $viewModel.firstName,
                             viewModel: viewModel,
                             onContinue: {
-                                withAnimation(.easeInOut(duration: 0.3)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     currentPhase = .lastName
                                 }
                             }
@@ -126,7 +126,7 @@ struct UserInfoView: View {
                             lastName: $viewModel.lastName,
                             viewModel: viewModel,
                             onContinue: {
-                                withAnimation(.easeInOut(duration: 0.3)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     currentPhase = .phoneNumber
                                 }
                             }
@@ -136,7 +136,7 @@ struct UserInfoView: View {
                             phoneNumber: $viewModel.phoneNumber,
                             viewModel: viewModel,
                             onContinue: {
-                                withAnimation(.easeInOut(duration: 0.3)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     currentPhase = .profilePicture
                                 }
                             }

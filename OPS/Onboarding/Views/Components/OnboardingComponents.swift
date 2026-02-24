@@ -245,7 +245,7 @@ struct UnderlineTextField: View {
                     (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryAccent : OPSStyle.Colors.primaryAccent) : 
                     (viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText.opacity(0.3) : OPSStyle.Colors.secondaryText.opacity(0.3)))
                 .frame(height: 1)
-                .animation(.easeInOut(duration: 0.2), value: text.isEmpty)
+                .animation(OPSStyle.Animation.fast, value: text.isEmpty)
         }
     }
 }
@@ -342,7 +342,7 @@ struct OnboardingNavigationButtons: View {
             .buttonStyle(OPSButtonStyle.Secondary())
     }
     .padding()
-    .background(Color.black)
+    .background(OPSStyle.Colors.background)
     .environmentObject(previewHelper)
     .environment(\.colorScheme, .dark)
 }
@@ -364,7 +364,7 @@ struct OnboardingNavigationButtons: View {
         }
     }
     .padding()
-    .background(Color.black)
+    .background(OPSStyle.Colors.background)
     .environmentObject(previewHelper)
     .environment(\.colorScheme, .dark)
 }
@@ -411,7 +411,7 @@ struct OnboardingNavigationButtons: View {
         )
     }
     .padding()
-    .background(Color.black)
+    .background(OPSStyle.Colors.background)
     .environmentObject(previewHelper)
     .environment(\.colorScheme, .dark)
 }

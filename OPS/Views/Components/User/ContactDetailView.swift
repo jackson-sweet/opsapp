@@ -159,7 +159,7 @@ struct ContactDetailView: View {
                                                     isExpanded: expandedSubClientId == subClient.id,
                                                     isEditing: false,
                                                     onTap: {
-                                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                                        withAnimation(OPSStyle.Animation.standard) {
                                                             if expandedSubClientId == subClient.id {
                                                                 expandedSubClientId = nil
                                                             } else {

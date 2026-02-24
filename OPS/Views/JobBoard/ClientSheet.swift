@@ -137,7 +137,7 @@ struct ClientSheet: View {
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
                                                     focusedField == .name ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                                                    lineWidth: 1
+                                                    lineWidth: OPSStyle.Layout.Border.standard
                                                 )
                                         )
                                         .onChange(of: name) { _, newValue in
@@ -178,7 +178,7 @@ struct ClientSheet: View {
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
                                                     showEmailError ? Color.red.opacity(0.5) : (focusedField == .email ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
-                                                    lineWidth: 1
+                                                    lineWidth: OPSStyle.Layout.Border.standard
                                                 )
                                         )
                                         .onChange(of: email) { _, _ in
@@ -212,7 +212,7 @@ struct ClientSheet: View {
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
                                                     showPhoneError ? Color.red.opacity(0.5) : (focusedField == .phone ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
-                                                    lineWidth: 1
+                                                    lineWidth: OPSStyle.Layout.Border.standard
                                                 )
                                         )
                                         .onChange(of: phone) { _, _ in
@@ -277,7 +277,7 @@ struct ClientSheet: View {
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
                                                     focusedField == .notes ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                                                    lineWidth: 1
+                                                    lineWidth: OPSStyle.Layout.Border.standard
                                                 )
                                         )
 
@@ -729,7 +729,7 @@ struct ClientSheet: View {
                     } else if !name.isEmpty {
                         // Show initials if name exists but no image
                         Circle()
-                            .stroke(Color.white, lineWidth: OPSStyle.Layout.Border.thick)
+                            .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
                             .frame(width: 56, height: 56)
                             .overlay(
                                 Text(String(name.prefix(1)).uppercased())

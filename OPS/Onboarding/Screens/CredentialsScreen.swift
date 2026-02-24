@@ -80,7 +80,7 @@ struct CredentialsScreen: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
 
@@ -129,7 +129,7 @@ struct CredentialsScreen: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
 
                     // Password hint
@@ -168,7 +168,7 @@ struct CredentialsScreen: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(isFormValid ? Color.white : Color.white.opacity(0.5))
+                .background(isFormValid ? Color.white : OPSStyle.Colors.primaryText.opacity(0.5))
                 .foregroundColor(.black)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .disabled(!isFormValid || isSigningUp || isSocialSignIn)

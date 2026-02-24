@@ -93,7 +93,7 @@ struct ProjectMapAnnotation: View {
     // Color based on selection state
     private var markerColor: Color {
         if isActiveProject {
-            return OPSStyle.Colors.secondaryAccent  // Active projects use secondaryAccent
+            return OPSStyle.Colors.primaryAccent  // Active projects use secondaryAccent
         } else if isSelected {
             return OPSStyle.Colors.primaryAccent     // Selected projects use primaryAccent
         } else {
@@ -142,7 +142,7 @@ struct ProjectMapAnnotation: View {
             if isActiveProject {
                 // Pulse effect for active project
                 Circle()
-                    .fill(OPSStyle.Colors.secondaryAccent.opacity(0.15))
+                    .fill(OPSStyle.Colors.primaryAccent.opacity(0.15))
                     .frame(width: circleSize * 1.8, height: circleSize * 1.8)
                     .scaleEffect(1.0) // Removed animation that could interfere with positioning
                     .blur(radius: 2)
@@ -170,7 +170,7 @@ struct ProjectMapAnnotation: View {
     // Helper function to handle tap gesture
     private func handleTap() {
         // Always show the popup when tapping a marker
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             // If already showing, toggle off. If not showing, turn on.
             // This ensures we can hide our own popup but won't interfere with others
             showPopup = !showPopup

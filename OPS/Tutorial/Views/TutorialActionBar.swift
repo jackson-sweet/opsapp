@@ -31,14 +31,14 @@ struct TutorialActionBar: View {
             Button(action: onBack) {
                 Text("BACK")
                     .font(.custom("Mohave-Regular", size: 14))
-                    .foregroundColor(isBackDisabled ? Color.white.opacity(0.2) : Color.white.opacity(0.7))
+                    .foregroundColor(isBackDisabled ? OPSStyle.Colors.inputFieldBorder : OPSStyle.Colors.primaryText.opacity(0.7))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.1))
+                    .background(OPSStyle.Colors.cardBorder)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                            .stroke(Color.white.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .disabled(isBackDisabled)
@@ -59,11 +59,11 @@ struct TutorialActionBar: View {
                 .foregroundColor(isContinueDisabled ? Color.white.opacity(0.25) : .black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(isContinueDisabled ? Color.white.opacity(0.1) : Color.white)
+                .background(isContinueDisabled ? OPSStyle.Colors.cardBorder : Color.white)
                 .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                        .stroke(isContinueDisabled ? Color.white.opacity(0.2) : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(isContinueDisabled ? OPSStyle.Colors.inputFieldBorder : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .disabled(isContinueDisabled)
@@ -72,14 +72,14 @@ struct TutorialActionBar: View {
             Button(action: onSkip) {
                 Text("SKIP")
                     .font(.custom("Mohave-Regular", size: 14))
-                    .foregroundColor(Color.white.opacity(0.7))
+                    .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.7))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.1))
+                    .background(OPSStyle.Colors.cardBorder)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                            .stroke(Color.white.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
         }
@@ -88,7 +88,7 @@ struct TutorialActionBar: View {
         .padding(.top, 12)
         .background(
             LinearGradient(
-                colors: [Color.black.opacity(0.95), Color.black.opacity(0.7), Color.clear],
+                colors: [Color.black.opacity(0.95), OPSStyle.Colors.overlayStrong, Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )

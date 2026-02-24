@@ -54,7 +54,7 @@ struct MapView: View {
                                     task: activeTaskForProject(project),
                                     isActiveProject: appState.activeProjectID == project.id,
                                     onDismiss: {
-                                        withAnimation(.easeOut(duration: 0.2)) {
+                                        withAnimation(OPSStyle.Animation.fast) {
                                             showingMarkerPopup = nil
                                         }
                                     }
@@ -104,7 +104,7 @@ struct MapView: View {
             // This ensures the tap doesn't interfere with annotation taps
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 if showingMarkerPopup != nil {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         showingMarkerPopup = nil
                     }
                 }
@@ -160,7 +160,7 @@ struct MapView: View {
 
         // If in project mode (project is active), show popup below pin
         if appState.isInProjectMode {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 showingMarkerPopup = project.id
             }
         } else {
@@ -229,7 +229,7 @@ struct ProjectMarker: View {
     
     private var markerColor: Color {
         if isNavigating {
-            return OPSStyle.Colors.secondaryAccent
+            return OPSStyle.Colors.primaryAccent
         } else if isSelected {
             return OPSStyle.Colors.primaryAccent
         } else {

@@ -126,14 +126,14 @@ struct ProjectListView: View {
         }
         // Trigger animation when view appears
         .onAppear {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 isAnimating = true
             }
         }
         // Reset animation state when date changes
         .onChange(of: viewModel.selectedDate) { _, _ in
             isAnimating = false
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 isAnimating = true
             }
         }

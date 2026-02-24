@@ -235,7 +235,7 @@ struct ProfileJoinScreen: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 

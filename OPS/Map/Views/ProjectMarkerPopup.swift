@@ -109,7 +109,7 @@ struct ProjectMarkerPopup: View {
                         Spacer()
                         Text("CURRENT PROJECT")
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                         Spacer()
                     }
                 } else {

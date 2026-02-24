@@ -117,7 +117,7 @@ struct SocialAuthButtonStack: View {
     private var orDivider: some View {
         HStack(spacing: 16) {
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
 
             Text("OR")
@@ -125,7 +125,7 @@ struct SocialAuthButtonStack: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
         }
     }

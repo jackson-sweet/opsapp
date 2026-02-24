@@ -369,7 +369,7 @@ struct EventCardView: View {
             }
         }
         .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        .animation(.easeOut(duration: 0.15), value: showConfirmation)
+        .animation(OPSStyle.Animation.faster, value: showConfirmation)
     }
     
     private func startTask(_ task: ProjectTask, project: Project) {

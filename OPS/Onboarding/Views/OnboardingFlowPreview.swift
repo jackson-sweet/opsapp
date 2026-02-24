@@ -160,7 +160,7 @@ struct DeviceFrame<Content: View>: View {
         ZStack {
             // Device bezel
             RoundedRectangle(cornerRadius: 40 * scale)
-                .fill(Color.black)
+                .fill(OPSStyle.Colors.background)
                 .frame(width: deviceWidth * scale, height: deviceHeight * scale)
                 .overlay(
                     RoundedRectangle(cornerRadius: 40 * scale)
@@ -169,7 +169,7 @@ struct DeviceFrame<Content: View>: View {
             
             // Screen area
             RoundedRectangle(cornerRadius: 35 * scale)
-                .fill(Color.black)
+                .fill(OPSStyle.Colors.background)
                 .frame(width: (deviceWidth - 20) * scale, height: (deviceHeight - 20) * scale)
                 .overlay(
                     content

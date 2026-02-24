@@ -273,7 +273,7 @@ struct QuantityAdjustmentSheet: View {
                 if centerIndex < adjustmentValues.count {
                     let centerValue = adjustmentValues[centerIndex]
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        withAnimation(.easeOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             proxy.scrollTo(centerValue, anchor: .center)
                         }
                     }

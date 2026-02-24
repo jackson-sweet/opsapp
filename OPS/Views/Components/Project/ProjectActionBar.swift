@@ -475,7 +475,7 @@ private struct PulsingActionHighlight: View {
             .opacity(isVisible ? (animatePulse ? TutorialHighlightStyle.pulseOpacity.max : TutorialHighlightStyle.pulseOpacity.min) : 0)
             .padding(-2)
             .onAppear {
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     isVisible = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {

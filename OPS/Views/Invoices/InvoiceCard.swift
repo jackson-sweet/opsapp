@@ -63,13 +63,13 @@ struct InvoiceCard: View {
                         }
                         .onEnded { value in
                             if value.translation.width > swipeThreshold && canSwipeRight {
-                                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                                 onSwipeRight()
                             } else if value.translation.width < -swipeThreshold && !invoice.status.isTerminal {
-                                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                                 onSwipeLeft()
                             } else {
-                                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                             }
                         }
                 )
@@ -124,7 +124,7 @@ struct InvoiceCard: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .stroke(
                         invoice.isOverdue ? OPSStyle.Colors.errorStatus.opacity(0.4) : OPSStyle.Colors.cardBorder,
-                        lineWidth: 1
+                        lineWidth: OPSStyle.Layout.Border.standard
                     )
             )
         }

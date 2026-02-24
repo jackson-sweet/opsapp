@@ -216,7 +216,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                                 canDelete
                                     ? OPSStyle.Colors.errorStatus
                                     : OPSStyle.Colors.tertiaryText,
-                                lineWidth: 1.5
+                                lineWidth: OPSStyle.Layout.Border.standard.5
                             )
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -264,7 +264,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
 
             // Delete All button
             Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     bulkDeleteAll.toggle()
                     if bulkDeleteAll {
                         bulkSelectedItem = nil

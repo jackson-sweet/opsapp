@@ -39,7 +39,7 @@ struct ImageSyncProgressView: View {
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                                     .fill(syncManager.hasError ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
                                     .frame(width: geometry.size.width * syncManager.progress, height: 4)
-                                    .animation(.easeInOut(duration: 0.3), value: syncManager.progress)
+                                    .animation(OPSStyle.Animation.standard, value: syncManager.progress)
                             }
                         }
                         .frame(height: 4)

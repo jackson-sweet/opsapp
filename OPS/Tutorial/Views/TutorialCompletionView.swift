@@ -26,7 +26,7 @@ struct TutorialCompletionView: View {
     var body: some View {
         ZStack {
             // Dark background
-            Color.black.opacity(0.9)
+            OPSStyle.Colors.overlayHeavy
                 .ignoresSafeArea()
 
             VStack(spacing: 32) {
@@ -94,7 +94,7 @@ struct TutorialCompletionView: View {
                 startDelay: 1.2
             ) {
                 // Show button after subtext completes
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     showButton = true
                 }
             }
@@ -132,7 +132,7 @@ struct TutorialCompletionView: View {
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
-                .background(Color.white)
+                .background(OPSStyle.Colors.primaryText)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
@@ -176,7 +176,7 @@ struct StandaloneCompletionView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.9)
+            OPSStyle.Colors.overlayHeavy
                 .ignoresSafeArea()
 
             VStack(spacing: 32) {
@@ -216,7 +216,7 @@ struct StandaloneCompletionView: View {
                             typingSpeed: 35,
                             startDelay: 1.2
                         ) {
-                            withAnimation(.easeOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 showButton = true
                             }
                         }
@@ -238,7 +238,7 @@ struct StandaloneCompletionView: View {
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18)
-                            .background(Color.white)
+                            .background(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     .transition(.opacity.combined(with: .move(edge: .bottom)))

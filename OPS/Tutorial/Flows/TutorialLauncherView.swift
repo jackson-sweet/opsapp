@@ -183,7 +183,7 @@ struct TutorialLauncherView: View {
                     ) {
                         // Title complete - show description
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            withAnimation(.easeOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 showDescription = true
                             }
                         }
@@ -232,14 +232,14 @@ struct TutorialLauncherView: View {
                     .padding(.vertical, 12)
                     .opacity(showFeatures ? 1 : 0)
                     .offset(y: showFeatures ? 0 : 8)
-                    .animation(.easeOut(duration: 0.3).delay(Double(index) * 0.1), value: showFeatures)
+                    .animation(OPSStyle.Animation.standard.delay(Double(index) * 0.1), value: showFeatures)
 
                     if index < coverBulletPoints.count - 1 {
                         Rectangle()
-                            .fill(Color.white.opacity(0.08))
+                            .fill(OPSStyle.Colors.cardBorderSubtle)
                             .frame(height: 1)
                             .opacity(showFeatures ? 1 : 0)
-                            .animation(.easeOut(duration: 0.3).delay(Double(index) * 0.1), value: showFeatures)
+                            .animation(OPSStyle.Animation.standard.delay(Double(index) * 0.1), value: showFeatures)
                     }
                 }
             }
@@ -268,7 +268,7 @@ struct TutorialLauncherView: View {
                 Button {
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)
-                    withAnimation(.easeOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showingCover = false
                         isSeeding = true
                     }
@@ -276,7 +276,7 @@ struct TutorialLauncherView: View {
                 } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(Color.white)
+                            .fill(OPSStyle.Colors.primaryText)
                             .frame(height: 56)
 
                         HStack {
@@ -299,7 +299,7 @@ struct TutorialLauncherView: View {
                                             // Show skip button after main button animates (if applicable)
                                             if hasCompletedTutorial || isPreSignup {
                                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                                    withAnimation(.easeOut(duration: 0.3)) {
+                                                    withAnimation(OPSStyle.Animation.standard) {
                                                         showSkipButton = true
                                                     }
                                                 }
@@ -471,7 +471,7 @@ struct TutorialLauncherView: View {
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
-                    .background(Color.white)
+                    .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .padding(.horizontal, 32)
@@ -626,7 +626,7 @@ struct TutorialLauncherView: View {
     /// Shows loading screen for minimum 5 seconds while cleanup happens in background
     private func startFinishing() {
         // Immediately show loading screen
-        withAnimation(.easeOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             showingCompletion = false
             isFinishing = true
             finishingMessages = []
@@ -652,7 +652,7 @@ struct TutorialLauncherView: View {
 
         for (index, message) in messages.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.8) {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     finishingMessages.append(message)
                     if finishingMessages.count > 5 {
                         finishingMessages.removeFirst()

@@ -13,20 +13,20 @@ struct AnimatedOPSLogo: View {
     var body: some View {
         ZStack {
             // Dark background
-            Color.black.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
             
             VStack(spacing: 60) {
                 // OPS Logo - Static display
                 ZStack {
                     // All three paths shown immediately
                     OPSLogoPath(layerIndex: 0)
-                        .fill(Color.white)
+                        .fill(OPSStyle.Colors.primaryText)
                     
                     OPSLogoPath(layerIndex: 1)
-                        .fill(Color.white)
+                        .fill(OPSStyle.Colors.primaryText)
                     
                     OPSLogoPath(layerIndex: 2)
-                        .fill(Color.white)
+                        .fill(OPSStyle.Colors.primaryText)
                 }
                 .frame(width: 200, height: 200)
                 

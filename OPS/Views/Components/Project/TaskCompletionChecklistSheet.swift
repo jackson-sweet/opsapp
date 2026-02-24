@@ -108,7 +108,7 @@ struct TaskCompletionChecklistSheet: View {
 
     private func taskChecklistRow(task: ProjectTask) -> some View {
         Button(action: {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 taskStates[task.id] = !(taskStates[task.id] ?? false)
             }
 

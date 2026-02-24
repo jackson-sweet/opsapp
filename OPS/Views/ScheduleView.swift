@@ -121,11 +121,11 @@ struct ScheduleView: View {
                                 //Spacer()
                             }
                         }
-                        .animation(.easeInOut(duration: 0.3), value: viewModel.viewMode)
+                        .animation(OPSStyle.Animation.standard, value: viewModel.viewMode)
 
                         // Tutorial gray-out overlay when in calendarMonthPrompt phase
                         if tutorialMode && tutorialPhase == .calendarMonthPrompt {
-                            Color.black.opacity(0.6)
+                            OPSStyle.Colors.overlayMedium
                                 .allowsHitTesting(true)
                         }
                     }

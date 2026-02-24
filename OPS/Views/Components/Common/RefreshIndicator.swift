@@ -66,13 +66,13 @@ struct RefreshIndicator: View {
             .onAppear {
                 // Transition from loading to success after 1 second
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         isLoading = false
                     }
                     
                     // Auto-dismiss after showing success
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        withAnimation(.easeOut(duration: 0.3)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             isPresented = false
                         }
                     }

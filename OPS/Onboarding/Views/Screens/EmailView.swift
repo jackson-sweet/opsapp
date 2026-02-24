@@ -46,7 +46,7 @@ struct EmailView: View {
                 HStack {
                     Button(action: {
                         if currentFieldIndex > 0 {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 currentFieldIndex -= 1
                             }
                         } else {
@@ -216,11 +216,11 @@ struct EmailView: View {
                     isLoading: viewModel.isLoading,
                     onTap: {
                         if currentFieldIndex == 0 && viewModel.isEmailValid {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 currentFieldIndex = 1
                             }
                         } else if currentFieldIndex == 1 && viewModel.isPasswordValid {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 currentFieldIndex = 2
                             }
                         } else if currentFieldIndex == 2 && passwordsMatch {

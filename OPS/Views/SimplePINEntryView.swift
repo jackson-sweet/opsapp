@@ -261,14 +261,14 @@ struct PINDigitBox: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                         .fill(OPSStyle.Colors.cardBackgroundDark.opacity(isActive ? 0.5 : 0.3))
                 )
-                .animation(.easeInOut(duration: 0.2), value: validationState)
-                .animation(.easeInOut(duration: 0.2), value: isActive)
+                .animation(OPSStyle.Animation.fast, value: validationState)
+                .animation(OPSStyle.Animation.fast, value: isActive)
             
             if isFilled {
                 Circle()
                     .fill(fillColor)
                     .frame(width: 16, height: 16)
-                    .animation(.easeInOut(duration: 0.2), value: validationState)
+                    .animation(OPSStyle.Animation.fast, value: validationState)
             }
         }
     }

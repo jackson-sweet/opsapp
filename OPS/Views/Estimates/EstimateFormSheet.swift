@@ -307,7 +307,7 @@ struct EstimateFormSheet: View {
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.wrappedValue.toggle() } }) {
+            Button(action: { withAnimation(OPSStyle.Animation.fast) { isExpanded.wrappedValue.toggle() } }) {
                 HStack {
                     Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
                         .font(.system(size: 12))

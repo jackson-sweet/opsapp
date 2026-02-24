@@ -251,7 +251,7 @@ struct ProjectCardView: View {
                             .padding()
                             .frame(width: 362, height: 85)
                             .background(OPSStyle.Colors.imageOverlay)
-                            .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }

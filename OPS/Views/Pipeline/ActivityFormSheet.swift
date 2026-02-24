@@ -57,7 +57,7 @@ struct ActivityFormSheet: View {
                                                 selectedType == type
                                                 ? OPSStyle.Colors.primaryAccent
                                                 : OPSStyle.Colors.cardBorder,
-                                                lineWidth: 1
+                                                lineWidth: OPSStyle.Layout.Border.standard
                                             )
                                     )
                                 }

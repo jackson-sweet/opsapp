@@ -83,7 +83,7 @@ struct SubClientListView: View {
                             isExpanded: expandedSubClientId == subClient.id,
                             isEditing: isEditing,
                             onTap: {
-                                withAnimation(.easeInOut(duration: 0.3)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     if expandedSubClientId == subClient.id {
                                         expandedSubClientId = nil
                                     } else {
@@ -125,7 +125,7 @@ struct SubClientListView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: isEditing)
+        .animation(OPSStyle.Animation.standard, value: isEditing)
     }
 }
 
@@ -231,7 +231,7 @@ struct SubClientRow: View {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(OPSStyle.Typography.smallBody)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .animation(.easeInOut(duration: 0.3), value: isExpanded)
+                        .animation(OPSStyle.Animation.standard, value: isExpanded)
                 }
             }
             .padding(.vertical, 12)
@@ -531,7 +531,7 @@ struct SubClientRow: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .animation(.easeInOut(duration: 0.3), value: isExpanded)
+        .animation(OPSStyle.Animation.standard, value: isExpanded)
         .sheet(isPresented: $showingCreateContact) {
             ContactCreatorView(
                 name: subClient.name,

@@ -90,7 +90,7 @@ struct JobBoardDashboard: View {
                     let estimatedIndex = statuses.firstIndex(of: .estimated) ?? 1
                     if tutorialMode && tutorialPhase == .dragToAccepted && newValue != estimatedIndex {
                         // Show toast and return after delay
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             showingStayHereToast = true
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
@@ -102,7 +102,7 @@ struct JobBoardDashboard: View {
                                 triggerPressHoldEmphasis()
                             }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                withAnimation(.easeOut(duration: 0.3)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showingStayHereToast = false
                                 }
                             }
@@ -129,7 +129,7 @@ struct JobBoardDashboard: View {
                                         handleDragEnded(project: project, geometry: geometry)
                                     } else {
                                         // Long press without drag — reset state
-                                        withAnimation(.easeOut(duration: 0.2)) {
+                                        withAnimation(OPSStyle.Animation.fast) {
                                             isLongPressing = false
                                         }
                                         dragLocation = .zero
@@ -385,12 +385,12 @@ struct JobBoardDashboard: View {
         generator.notificationOccurred(.warning)
 
         // Trigger emphasis animation
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withAnimation(OPSStyle.Animation.faster) {
             emphasisPressHold = true
         }
         // Reset after animation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 emphasisPressHold = false
             }
         }
@@ -409,7 +409,7 @@ struct JobBoardDashboard: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .opacity(index < illuminatedArrowCount ? 1.0 : 0.2)
                             .scaleEffect(index < illuminatedArrowCount ? 1.2 : 1.0)
-                            .animation(.easeOut(duration: 0.15), value: illuminatedArrowCount)
+                            .animation(OPSStyle.Animation.faster, value: illuminatedArrowCount)
                     }
                 }
 
@@ -487,7 +487,7 @@ struct JobBoardDashboard: View {
 
             .padding(.bottom, 120)
         }
-        .animation(.easeOut(duration: 0.15), value: isActive)
+        .animation(OPSStyle.Animation.faster, value: isActive)
     }
 
     @ViewBuilder
@@ -536,7 +536,7 @@ struct JobBoardDashboard: View {
 
     private func handleLongPress(project: Project) {
         draggedProject = project
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.fast) {
             isLongPressing = true
         }
     }
@@ -639,7 +639,7 @@ struct JobBoardDashboard: View {
 
         draggedProject = nil
         isDragging = false
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.fast) {
             isLongPressing = false
         }
         dragLocation = .zero
@@ -661,7 +661,7 @@ struct JobBoardDashboard: View {
 
         // Auto-hide after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showingWrongDirectionHint = false
             }
         }

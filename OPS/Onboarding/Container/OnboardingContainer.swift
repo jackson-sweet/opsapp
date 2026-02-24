@@ -29,7 +29,7 @@ struct OnboardingContainer: View {
             insertion: .opacity.animation(.easeIn(duration: 0.25).delay(0.15)),
             removal: .move(edge: isForward ? .leading : .trailing)
                 .combined(with: .opacity)
-                .animation(.easeOut(duration: 0.2))
+                .animation(OPSStyle.Animation.fast)
         )
     }
 
@@ -58,7 +58,7 @@ struct OnboardingContainer: View {
                 OnboardingLoadingOverlay(message: loadingMessage)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: manager.state.currentScreen)
+        .animation(OPSStyle.Animation.standard, value: manager.state.currentScreen)
         .alert("Error", isPresented: $manager.showError) {
             Button("OK") {
                 manager.clearError()

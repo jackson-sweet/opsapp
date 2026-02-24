@@ -270,7 +270,7 @@ struct BillingInfoView: View {
 
             if !isLast {
                 Rectangle()
-                    .fill(Color.white.opacity(0.08))
+                    .fill(OPSStyle.Colors.cardBorderSubtle)
                     .frame(height: 1)
             }
         }
@@ -378,7 +378,7 @@ struct BillingInfoView: View {
                                                 .foregroundColor(.black)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
-                                                .background(Color.white)
+                                                .background(OPSStyle.Colors.primaryText)
                                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                             }
                                         }
@@ -398,7 +398,7 @@ struct BillingInfoView: View {
                                                 .foregroundColor(.black)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
-                                                .background(Color.white)
+                                                .background(OPSStyle.Colors.primaryText)
                                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                             }
                                         }

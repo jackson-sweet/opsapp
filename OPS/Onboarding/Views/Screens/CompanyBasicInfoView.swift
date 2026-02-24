@@ -29,7 +29,7 @@ struct CompanyBasicInfoView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color.black.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator
@@ -38,7 +38,7 @@ struct CompanyBasicInfoView: View {
                         if currentPhase == .companyName {
                             onboardingViewModel.moveToPreviousStep()
                         } else {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 currentPhase = CompanyInfoPhase(rawValue: currentPhase.rawValue - 1) ?? .companyName
                             }
                         }
@@ -87,7 +87,7 @@ struct CompanyBasicInfoView: View {
                                 companyName: $onboardingViewModel.companyName,
                                 viewModel: onboardingViewModel,
                                 onContinue: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                    withAnimation(OPSStyle.Animation.standard) {
                                         currentPhase = .companyLogo
                                     }
                                 }

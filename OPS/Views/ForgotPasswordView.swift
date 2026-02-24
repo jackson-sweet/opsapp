@@ -67,7 +67,7 @@ struct ForgotPasswordView: View {
                             Rectangle()
                                 .fill(!email.isEmpty ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder)
                                 .frame(height: 1)
-                                .animation(.easeInOut(duration: 0.2), value: email.isEmpty)
+                                .animation(OPSStyle.Animation.fast, value: email.isEmpty)
                         }
                         .padding(.horizontal, 24)
                         
@@ -203,7 +203,7 @@ struct ForgotPasswordView: View {
 // MARK: - Preview
 #Preview("Forgot Password") {
     ZStack {
-        Color.black
+        OPSStyle.Colors.background
         ForgotPasswordView(
             isPresented: .constant(true),
             prefilledEmail: .constant("user@example.com")

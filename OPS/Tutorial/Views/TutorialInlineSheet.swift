@@ -37,7 +37,7 @@ struct TutorialInlineSheet<Content: View>: View {
                 GeometryReader { geometry in
                     ZStack {
                         // Dimmed background
-                        Color.black
+                        OPSStyle.Colors.background
                             .opacity(appeared ? 0.4 : 0)
                             .ignoresSafeArea()
                             .onTapGesture {
@@ -65,7 +65,7 @@ struct TutorialInlineSheet<Content: View>: View {
                                 // Drag indicator - only shown when dismiss is allowed
                                 if !interactiveDismissDisabled {
                                     Capsule()
-                                        .fill(Color.white.opacity(0.3))
+                                        .fill(OPSStyle.Colors.buttonBorder)
                                         .frame(width: 36, height: 5)
                                         .padding(.top, 8)
                                 }
@@ -105,7 +105,7 @@ struct TutorialInlineSheet<Content: View>: View {
                     }
                     .animation(.spring(response: 0.35, dampingFraction: 0.85), value: appeared)
                     .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: dragOffset)
-                    .animation(.easeOut(duration: 0.25), value: appeared)
+                    .animation(OPSStyle.Animation.standard, value: appeared)
                 }
             }
         }

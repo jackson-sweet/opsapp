@@ -116,7 +116,7 @@ struct TeamMemberRowV1: View {
                     // NOTE: phone.circle.fill does not have a semantic icon - using legacy
                     Image(systemName: "phone.circle.fill")
                         .font(.system(size: 24))
-                        .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
         }
@@ -183,7 +183,7 @@ struct TeamMemberRowV2: View {
                         // NOTE: phone.circle.fill does not have a semantic icon - using legacy
                         Image(systemName: "phone.circle.fill")
                             .font(.system(size: 24))
-                            .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }
             }

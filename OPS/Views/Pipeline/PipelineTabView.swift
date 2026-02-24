@@ -69,7 +69,7 @@ struct PipelineTabView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(.easeInOut(duration: 0.2), value: selectedSection)
+                .animation(OPSStyle.Animation.fast, value: selectedSection)
             }
             .background(OPSStyle.Colors.background.ignoresSafeArea())
         }

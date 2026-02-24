@@ -125,7 +125,7 @@ struct CalendarDaySelector: View {
         let slideDirection: CGFloat = offset > 0 ? -1 : 1 // Slide opposite to swipe direction
 
         // First phase: slide current week out
-        withAnimation(.easeIn(duration: 0.15)) {
+        withAnimation(OPSStyle.Animation.faster) {
             transitionOffset = slideDirection * screenWidth * 0.5
             dragOffset = 0
             isDragging = false

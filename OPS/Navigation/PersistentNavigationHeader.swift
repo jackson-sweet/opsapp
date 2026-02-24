@@ -82,7 +82,7 @@ struct PersistentNavigationHeader: View {
                 
                 // Progress fill
                 Rectangle()
-                    .fill(Color.white)
+                    .fill(OPSStyle.Colors.primaryText)
                     .frame(width: progressWidth(in: geometry.size.width))
             }
         }

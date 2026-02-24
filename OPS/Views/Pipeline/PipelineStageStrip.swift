@@ -50,6 +50,6 @@ struct PipelineStageStrip: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.4))
-        .animation(.easeInOut(duration: 0.2), value: selectedStage)
+        .animation(OPSStyle.Animation.fast, value: selectedStage)
     }
 }

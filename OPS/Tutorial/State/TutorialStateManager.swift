@@ -245,14 +245,14 @@ class TutorialStateManager: ObservableObject {
     /// Sets the cutout frame with animation
     func setCutout(for frame: CGRect, padding: CGFloat = 8) {
         let paddedFrame = frame.insetBy(dx: -padding, dy: -padding)
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             currentCutout = paddedFrame
         }
     }
 
     /// Clears the cutout (full overlay)
     func clearCutout() {
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             currentCutout = .zero
         }
     }

@@ -19,7 +19,7 @@ struct CompletionView: View {
     var body: some View {
         ZStack {
             // Black background
-            Color.black.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
             
             VStack(spacing: 40) {
                 Spacer()
@@ -98,7 +98,7 @@ struct CompletionView: View {
                     .padding()
                 }
             }
-            .background(Color.black)
+            .background(OPSStyle.Colors.background)
             .environment(\.colorScheme, .dark)
         }
     }

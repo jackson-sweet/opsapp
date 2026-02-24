@@ -51,7 +51,7 @@ struct PipelineView: View {
                 )
 
                 Divider()
-                    .background(Color.white.opacity(0.15))
+                    .background(OPSStyle.Colors.separator)
 
                 // Cards list
                 if viewModel.isLoading && viewModel.opportunities.isEmpty {

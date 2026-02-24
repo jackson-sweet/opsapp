@@ -32,7 +32,7 @@ struct SafeMapContainer: View {
             } else {
                 // Show loading while we prepare
                 ZStack {
-                    Color.black.ignoresSafeArea()
+                    OPSStyle.Colors.background.ignoresSafeArea()
                     
                     VStack {
                         ProgressView()

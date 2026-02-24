@@ -420,7 +420,7 @@ struct ProjectDetailsView: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color("StatusCompleted"), lineWidth: 0.5)
+                            .stroke(Color("StatusCompleted"), lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
 
@@ -1163,7 +1163,7 @@ struct ProjectDetailsView: View {
                     // Cancel/Save buttons
                     HStack {
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 noteText = originalNoteText
                                 isEditingProjectNotes = false
                             }
@@ -1178,7 +1178,7 @@ struct ProjectDetailsView: View {
 
                         Button(action: {
                             saveNotes()
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 isEditingProjectNotes = false
                             }
                         }) {
@@ -1195,7 +1195,7 @@ struct ProjectDetailsView: View {
                 HStack(alignment: .top) {
                     if noteText.isEmpty {
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 isEditingProjectNotes = true
                             }
                         }) {
@@ -1219,7 +1219,7 @@ struct ProjectDetailsView: View {
 
                     if !noteText.isEmpty {
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 isEditingProjectNotes = true
                             }
                         }) {
@@ -1233,7 +1233,7 @@ struct ProjectDetailsView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isEditingProjectNotes)
+        .animation(OPSStyle.Animation.fast, value: isEditingProjectNotes)
     }
 
     private func taskNotesField(task: ProjectTask) -> some View {
@@ -1273,7 +1273,7 @@ struct ProjectDetailsView: View {
                     // Cancel/Save buttons
                     HStack {
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 editingTaskNotesId = nil
                                 editingTaskNotesText = ""
                             }
@@ -1288,7 +1288,7 @@ struct ProjectDetailsView: View {
 
                         Button(action: {
                             saveTaskNotes(task: task, notes: editingTaskNotesText)
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 editingTaskNotesId = nil
                                 editingTaskNotesText = ""
                             }
@@ -1306,7 +1306,7 @@ struct ProjectDetailsView: View {
                 HStack(alignment: .top) {
                     if taskNotes.isEmpty {
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 editingTaskNotesId = task.id
                                 editingTaskNotesText = ""
                             }
@@ -1331,7 +1331,7 @@ struct ProjectDetailsView: View {
 
                     if !taskNotes.isEmpty {
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 editingTaskNotesId = task.id
                                 editingTaskNotesText = taskNotes
                             }
@@ -1346,7 +1346,7 @@ struct ProjectDetailsView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isEditing)
+        .animation(OPSStyle.Animation.fast, value: isEditing)
     }
 
     private func saveTaskNotes(task: ProjectTask, notes: String) {
@@ -2131,7 +2131,7 @@ struct ProjectDetailsView: View {
                     }
                 }
                 .padding(.top, 16)
-                .animation(.easeInOut(duration: 0.3), value: project.status)
+                .animation(OPSStyle.Animation.standard, value: project.status)
                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: sectionOrder)
             }
             .onAppear {
@@ -2604,7 +2604,7 @@ struct ProjectDetailsView: View {
                         if taskNotes != originalTaskNotes {
                             saveSelectedTaskNotes()
                         }
-                        withAnimation(.easeInOut(duration: 0.3)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             selectedTask = task
                             let notes = task.taskNotes ?? ""
                             taskNotes = notes
@@ -2937,7 +2937,7 @@ struct ProjectDetailsView: View {
                     // Edit button for admin/office crew
                     if canEditProjectSettings() && !isEditingAddress {
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 editedAddress = project.address ?? ""
                                 isEditingAddress = true
                             }
@@ -2952,7 +2952,7 @@ struct ProjectDetailsView: View {
                     if isEditingAddress {
                         HStack(spacing: 12) {
                             Button("Cancel") {
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                withAnimation(OPSStyle.Animation.fast) {
                                     editedAddress = project.address ?? ""
                                     isEditingAddress = false
                                 }
@@ -2963,7 +2963,7 @@ struct ProjectDetailsView: View {
 
                             Button("Save") {
                                 saveAddress()
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                withAnimation(OPSStyle.Animation.fast) {
                                     isEditingAddress = false
                                 }
                                 addressSearchCompleter.clear()
@@ -2990,7 +2990,7 @@ struct ProjectDetailsView: View {
                                 if editedAddress != project.address {
                                     saveAddress()
                                 }
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                withAnimation(OPSStyle.Animation.fast) {
                                     isEditingAddress = false
                                 }
                                 addressSearchCompleter.clear()
@@ -3052,7 +3052,7 @@ struct ProjectDetailsView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: isEditingAddress)
+            .animation(OPSStyle.Animation.fast, value: isEditingAddress)
 
             // Map view - larger and more prominent
             ZStack(alignment: .bottomTrailing) {
@@ -3341,7 +3341,7 @@ struct ProjectDetailsView: View {
                     }
                 } else {
                     // Stop pulsing when leaving addNote phase
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         notesBorderPulse = false
                     }
                 }
@@ -3437,7 +3437,7 @@ struct ProjectDetailsView: View {
                         // Show more/less button when there are more than 3 members
                         if hiddenCount > 0 {
                             Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                withAnimation(OPSStyle.Animation.fast) {
                                     isTeamExpanded.toggle()
                                 }
                             }) {
@@ -3473,7 +3473,7 @@ struct ProjectDetailsView: View {
             VStack(spacing: 0) {
                 // Expand/collapse button
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         isNotesExpanded.toggle()
                     }
                 }) {
@@ -3641,7 +3641,7 @@ struct ProjectDetailsView: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.fast) {
                             isNotesExpanded.toggle()
                         }
                     }
@@ -3737,7 +3737,7 @@ struct ProjectDetailsView: View {
                     }
                 } else {
                     // Stop pulsing when leaving addPhoto phase
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         photosBorderPulse = false
                     }
                 }
@@ -3949,7 +3949,7 @@ struct ProjectDetailsView: View {
             Spacer().frame(height: 300)
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
-        .animation(.easeInOut(duration: 0.3), value: showingSaveNotification)
+        .animation(OPSStyle.Animation.standard, value: showingSaveNotification)
         .zIndex(100)
     }
 
@@ -4202,7 +4202,7 @@ struct ProjectDetailsView: View {
             }
 
             // Switch to new task
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 selectedTask = task
                 let notes = task.taskNotes ?? ""
                 taskNotes = notes
@@ -4318,7 +4318,7 @@ struct ProjectDetailsView: View {
                     }
 
                     // Switch to new task
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         selectedTask = task
                         let notes = task.taskNotes ?? ""
                         taskNotes = notes
@@ -4340,7 +4340,7 @@ struct ProjectDetailsView: View {
             // Tutorial mode: show flash animation then post notification
             if tutorialMode && tutorialPhase == .completeProject {
                 // Show flash animation
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     showCompletedFlash = true
                 }
                 // Haptic feedback
@@ -4386,7 +4386,7 @@ struct ProjectDetailsView: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
         .disabled(showCompletedFlash)
-        .animation(.easeInOut(duration: 0.3), value: showCompletedFlash)
+        .animation(OPSStyle.Animation.standard, value: showCompletedFlash)
         .padding(.horizontal)
         .padding(.top, 8)
         .id("completeButton")

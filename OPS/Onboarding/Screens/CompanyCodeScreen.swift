@@ -60,7 +60,7 @@ struct CompanyCodeScreen: View {
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(showCopied ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryText)
                                     .frame(maxWidth: .infinity)
-                                    .animation(.easeInOut(duration: 0.2), value: showCopied)
+                                    .animation(OPSStyle.Animation.fast, value: showCopied)
 
                                 Text("TAP TO COPY CODE")
                                     .font(OPSStyle.Typography.smallCaption)
@@ -72,7 +72,7 @@ struct CompanyCodeScreen: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(showCopied ? OPSStyle.Colors.successStatus.opacity(0.5) : Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(showCopied ? OPSStyle.Colors.successStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
 
@@ -104,7 +104,7 @@ struct CompanyCodeScreen: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, 40)
                 }
@@ -380,7 +380,7 @@ struct InviteTeamSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
 
             // Share options
@@ -397,7 +397,7 @@ struct InviteTeamSheet: View {
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
-                        .background(Color.white)
+                        .background(OPSStyle.Colors.primaryText)
                         .foregroundColor(.black)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
@@ -411,7 +411,7 @@ struct InviteTeamSheet: View {
                             // Section header with divider
                             HStack(spacing: 12) {
                                 Rectangle()
-                                    .fill(Color.white.opacity(0.1))
+                                    .fill(OPSStyle.Colors.cardBorder)
                                     .frame(height: 1)
 
                                 Text("EMAIL INVITES")
@@ -419,7 +419,7 @@ struct InviteTeamSheet: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                                 Rectangle()
-                                    .fill(Color.white.opacity(0.1))
+                                    .fill(OPSStyle.Colors.cardBorder)
                                     .frame(height: 1)
                             }
 
@@ -446,14 +446,14 @@ struct InviteTeamSheet: View {
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
 
                                     // Remove button - always visible, collapses section if last email
                                     Button {
                                         if inviteEmails.count == 1 {
                                             // Collapse the section
-                                            withAnimation(.easeInOut(duration: 0.25)) {
+                                            withAnimation(OPSStyle.Animation.standard) {
                                                 inviteEmails = [""]
                                                 showEmailInvite = false
                                             }
@@ -498,7 +498,7 @@ struct InviteTeamSheet: View {
                             sendInvites()
                         } else {
                             // Expand email fields
-                            withAnimation(.easeInOut(duration: 0.25)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 showEmailInvite = true
                             }
                         }
@@ -518,12 +518,12 @@ struct InviteTeamSheet: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
-                    .background(showEmailInvite && hasValidEmails ? Color.white : (showEmailInvite ? Color.white.opacity(0.5) : OPSStyle.Colors.cardBackgroundDark.opacity(0.8)))
+                    .background(showEmailInvite && hasValidEmails ? Color.white : (showEmailInvite ? OPSStyle.Colors.primaryText.opacity(0.5) : OPSStyle.Colors.cardBackgroundDark.opacity(0.8)))
                     .foregroundColor(showEmailInvite ? .black : OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(showEmailInvite ? Color.clear : Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(showEmailInvite ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .disabled(showEmailInvite && (!hasValidEmails || isSendingInvites))
 
@@ -592,7 +592,7 @@ struct InviteTeamSheet: View {
                     isSendingInvites = false
 
                     // Store sent emails and collapse section
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         sentEmails = validEmails
                         showEmailInvite = false
                         inviteEmails = [""]

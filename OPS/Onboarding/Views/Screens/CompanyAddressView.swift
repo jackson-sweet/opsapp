@@ -22,7 +22,7 @@ struct CompanyAddressView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color.black.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Navigation header with step indicator
@@ -104,7 +104,7 @@ struct CompanyAddressView: View {
                                             .frame(width: 20, height: 20)
 
                                         Circle()
-                                            .fill(Color.white)
+                                            .fill(OPSStyle.Colors.primaryText)
                                             .frame(width: 8, height: 8)
                                     }
                                 }

@@ -111,11 +111,11 @@ struct CompanyCodeDisplayView: View {
                                 if !getCompanyCode().isEmpty && getCompanyCode() != "CODE_NOT_FOUND" {
                                     Button(action: {
                                         UIPasteboard.general.string = getCompanyCode()
-                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                        withAnimation(OPSStyle.Animation.fast) {
                                             showCopyFeedback = true
                                         }
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                            withAnimation(OPSStyle.Animation.fast) {
                                                 showCopyFeedback = false
                                             }
                                         }

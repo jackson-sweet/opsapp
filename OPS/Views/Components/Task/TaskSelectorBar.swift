@@ -170,7 +170,7 @@ struct TaskSelectorBar: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(
                         selectedTask != nil ? Color(hex: selectedTask!.effectiveColor)?.opacity(0.3) ?? OPSStyle.Colors.cardBorder : OPSStyle.Colors.cardBorder,
-                        lineWidth: 1
+                        lineWidth: OPSStyle.Layout.Border.standard
                     )
             )
         }
@@ -350,7 +350,7 @@ struct TaskSelectorBar: View {
     }
 
     private func switchToTask(_ task: ProjectTask?) {
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             selectedTask = task
         }
         pendingTask = nil

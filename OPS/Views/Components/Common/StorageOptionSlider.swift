@@ -62,7 +62,7 @@ struct StorageOptionSlider: View {
                             .foregroundColor(index == selectedStorageIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                             .multilineTextAlignment(.center)
                             //.frame(width: 60)
-                            .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
+                            .animation(OPSStyle.Animation.fast, value: selectedStorageIndex)
                         
                         if index == storageOptions.count - 1 {
                             Spacer()
@@ -84,7 +84,7 @@ struct StorageOptionSlider: View {
                                     Rectangle()
                                         .fill(index <= selectedStorageIndex ? OPSStyle.Colors.primaryAccent : (viewModel.shouldUseLightTheme ? OPSStyle.Colors.tertiaryText.opacity(0.3) : OPSStyle.Colors.tertiaryText.opacity(0.3)))
                                         .frame(height: 2)
-                                        .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
+                                        .animation(OPSStyle.Animation.fast, value: selectedStorageIndex)
                                 }
                                 
                                 // Dot
@@ -95,9 +95,9 @@ struct StorageOptionSlider: View {
                                         Circle()
                                             .stroke(index <= selectedStorageIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: OPSStyle.Layout.Border.thick)
                                     )
-                                    .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
+                                    .animation(OPSStyle.Animation.fast, value: selectedStorageIndex)
                                     .onTapGesture {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                        withAnimation(OPSStyle.Animation.fast) {
                                             selectedStorageIndex = index
                                         }
                                     }
@@ -114,7 +114,7 @@ struct StorageOptionSlider: View {
                                     .frame(width: 8, height: 8)
                             )
                             .offset(x: (geometry.size.width / CGFloat(storageOptions.count - 1)) * CGFloat(selectedStorageIndex) - 10)
-                            .animation(.easeInOut(duration: 0.2), value: selectedStorageIndex)
+                            .animation(OPSStyle.Animation.fast, value: selectedStorageIndex)
                             .gesture(
                                 DragGesture()
                                     .onChanged { value in

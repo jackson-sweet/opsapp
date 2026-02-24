@@ -60,11 +60,11 @@ struct HomeContentView: View {
 
             // 4. Tutorial dark overlay - sits BEHIND carousel but IN FRONT of everything else
             if tutorialMode && tutorialPhase == .tapProject {
-                Color.black.opacity(0.6)
+                OPSStyle.Colors.overlayMedium
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
                     .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.3), value: tutorialPhase)
+                    .animation(OPSStyle.Animation.standard, value: tutorialPhase)
             }
 
             // 5. Carousel layer - on TOP of tutorial overlay when in tutorial mode
@@ -507,7 +507,7 @@ struct HomeContentView: View {
                     .padding(.horizontal, 40)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                .animation(.easeInOut(duration: 0.3), value: locationManager.authorizationStatus)
+                .animation(OPSStyle.Animation.standard, value: locationManager.authorizationStatus)
             }
         }
     }

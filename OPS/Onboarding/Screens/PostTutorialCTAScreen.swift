@@ -51,7 +51,7 @@ struct PostTutorialCTAScreen: View {
                             typingSpeed: 28
                         ) {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                withAnimation(.easeOut(duration: 0.3)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showSubtitle = true
                                 }
                             }
@@ -99,7 +99,7 @@ struct PostTutorialCTAScreen: View {
                 } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(Color.white)
+                            .fill(OPSStyle.Colors.primaryText)
                             .frame(height: 56)
 
                         HStack {

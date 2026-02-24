@@ -19,11 +19,11 @@ struct OpportunityBadgeView: View {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: OPSStyle.Icons.opportunity)
                             .font(.system(size: 14))
-                            .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("LINKED OPPORTUNITY")
                                 .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryAccent)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
                             if !opp.contactName.isEmpty {
                                 Text("\(opp.contactName) — \(opp.stage.displayName)")
                                     .font(OPSStyle.Typography.smallCaption)
@@ -36,11 +36,11 @@ struct OpportunityBadgeView: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .padding(OPSStyle.Layout.spacing2)
-                    .background(OPSStyle.Colors.secondaryAccent.opacity(0.1))
+                    .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.secondaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())

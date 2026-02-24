@@ -24,7 +24,7 @@ LAYOUT COMPONENTS:
 
 CARD COMPONENTS:
 - OPSCard (CardStyles.swift) - Standard card container
-- OPSElevatedCard (CardStyles.swift) - Card with elevation and shadow
+- OPSElevatedCard (CardStyles.swift) - Card with lighter background for depth
 - OPSInteractiveCard (CardStyles.swift) - Tappable interactive card
 - OPSAccentCard (CardStyles.swift) - Card with accent-colored border
 - OPSCardStyle (CardStyles.swift) - Card style modifiers for custom layouts
@@ -63,7 +63,7 @@ public struct OPSPrimaryButton: View {
     var icon: String = ""
     var action: () -> Void
     var isDisabled: Bool = false
-    
+
     public var body: some View {
         Button(action: action) {
             HStack {
@@ -71,15 +71,16 @@ public struct OPSPrimaryButton: View {
                     Image(systemName: icon)
                         .font(OPSStyle.Typography.body)
                 }
-                
+
                 Text(title)
                     .font(OPSStyle.Typography.button)
+                    .textCase(.uppercase)
             }
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(isDisabled ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.primaryAccent)
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
         }
         .disabled(isDisabled)
     }
@@ -90,7 +91,7 @@ public struct OPSSecondaryButton: View {
     var title: String
     var icon: String = ""
     var action: () -> Void
-    
+
     public var body: some View {
         Button(action: action) {
             HStack {
@@ -98,18 +99,19 @@ public struct OPSSecondaryButton: View {
                     Image(systemName: icon)
                         .font(OPSStyle.Typography.body)
                 }
-                
+
                 Text(title)
                     .font(OPSStyle.Typography.button)
+                    .textCase(.uppercase)
             }
             .foregroundColor(OPSStyle.Colors.primaryAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -120,7 +122,7 @@ public struct OPSDestructiveButton: View {
     var title: String
     var icon: String = ""
     var action: () -> Void
-    
+
     public var body: some View {
         Button(action: action) {
             HStack {
@@ -128,15 +130,16 @@ public struct OPSDestructiveButton: View {
                     Image(systemName: icon)
                         .font(OPSStyle.Typography.body)
                 }
-                
+
                 Text(title)
                     .font(OPSStyle.Typography.button)
+                    .textCase(.uppercase)
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(OPSStyle.Colors.errorStatus)
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
         }
     }
 }

@@ -33,9 +33,9 @@ struct StatusBadge: View {
         
         var cornerRadius: CGFloat {
             switch self {
-            case .small: return 4
-            case .medium: return 6
-            case .large: return 8
+            case .small: return OPSStyle.Layout.smallCornerRadius
+            case .medium: return OPSStyle.Layout.cornerRadius
+            case .large: return OPSStyle.Layout.cardCornerRadius
             }
         }
         
@@ -58,7 +58,7 @@ struct StatusBadge: View {
                     .fill(outlined ? Color.clear : color)
                     .overlay(
                         RoundedRectangle(cornerRadius: size.cornerRadius)
-                            .stroke(color, lineWidth: outlined ? 1 : 0)
+                            .stroke(color, lineWidth: outlined ? OPSStyle.Layout.Border.standard : 0)
                     )
             )
     }

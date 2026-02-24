@@ -36,7 +36,7 @@ struct FormField: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 } else {
                     TextField(placeholder, text: $text)
@@ -48,7 +48,7 @@ struct FormField: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
             } else {
@@ -95,7 +95,7 @@ struct FormTextEditor: View {
                     .frame(height: height)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     
                     if text.isEmpty {
@@ -182,10 +182,10 @@ struct RadioOption: View {
                 
                 ZStack {
                     Circle()
-                        .stroke(isSelected ? 
-                                OPSStyle.Colors.primaryAccent : 
+                        .stroke(isSelected ?
+                                OPSStyle.Colors.primaryAccent :
                                 OPSStyle.Colors.secondaryText.opacity(0.5),
-                                lineWidth: 2)
+                                lineWidth: OPSStyle.Layout.Border.thick)
                         .frame(width: 24, height: 24)
                     
                     if isSelected {

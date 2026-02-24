@@ -109,7 +109,7 @@ struct SectionCard<Content: View>: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -121,7 +121,7 @@ struct SectionCard<Content: View>: View {
             // Icon
             if let icon = icon {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
 
@@ -140,10 +140,10 @@ struct SectionCard<Content: View>: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
 
@@ -156,7 +156,7 @@ struct SectionCard<Content: View>: View {
                 Button(action: onAction) {
                     HStack(spacing: 4) {
                         Image(systemName: actionIcon)
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text(actionLabel)
                             .font(OPSStyle.Typography.caption)
                     }

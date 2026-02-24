@@ -296,7 +296,7 @@ struct SchedulingModeConversionSheet: View {
                         Button("CANCEL") {
                             dismiss()
                         }
-                        .buttonStyle(JBSecondaryButtonStyle())
+                        .buttonStyle(OPSButtonStyle.Secondary())
 
                         Button(action: performConversion) {
                             if isConverting {
@@ -306,7 +306,7 @@ struct SchedulingModeConversionSheet: View {
                                 Text("CONVERT")
                             }
                         }
-                        .buttonStyle(JBPrimaryButtonStyle())
+                        .buttonStyle(OPSButtonStyle.Primary())
                         .disabled(isConverting)
                     }
                 }
@@ -1059,46 +1059,4 @@ struct FeaturePoint: View {
     }
 }
 
-// Button Styles
-struct JBPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(OPSStyle.Typography.bodyBold)
-            .foregroundColor(OPSStyle.Colors.invertedText)
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .background(OPSStyle.Colors.primaryAccent)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-    }
-}
-
-struct JBSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(OPSStyle.Typography.bodyBold)
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-    }
-}
-
-struct DestructiveButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(OPSStyle.Typography.bodyBold)
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .background(OPSStyle.Colors.errorStatus)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-    }
-}
+// Button Styles — use OPSButtonStyle.Primary, .Secondary, .Destructive from ButtonStyles.swift

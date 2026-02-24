@@ -496,49 +496,7 @@ enum OPSStyle {
     }
 }
 
-// OPSComponents.swift
-import SwiftUI
-
-// MARK: - Buttons
-struct PrimaryButton: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .font(OPSStyle.Typography.button)
-            .foregroundColor(.white)
-            .padding()
-            .frame(height: OPSStyle.Layout.touchTargetStandard)
-            .frame(maxWidth: .infinity)
-            .background(OPSStyle.Colors.primaryAccent)
-            .cornerRadius(OPSStyle.Layout.buttonRadius)
-    }
-}
-
-struct SecondaryButton: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .font(OPSStyle.Typography.button)
-            .foregroundColor(OPSStyle.Colors.primaryAccent)
-            .padding()
-            .frame(height: OPSStyle.Layout.touchTargetStandard)
-            .frame(maxWidth: .infinity)
-            .background(OPSStyle.Colors.cardBackground)
-            .cornerRadius(OPSStyle.Layout.buttonRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
-            )
-    }
-}
-
-struct IconActionButton: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .font(.system(size: 24))
-            .foregroundColor(.white)
-            .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
-            .background(Circle().fill(OPSStyle.Colors.primaryAccent))
-    }
-}
+// MARK: - Utility ViewModifiers
 
 struct DisabledButtonStyle: ViewModifier {
     let isDisabled: Bool
@@ -549,66 +507,10 @@ struct DisabledButtonStyle: ViewModifier {
     }
 }
 
-// Legacy status badge - use the new StatusBadge component for new code
-struct LegacyStatusBadge: View {
-    let status: Status
-    
-    var body: some View {
-        Text(status.rawValue.uppercased())
-            .font(OPSStyle.Typography.smallCaption)
-            .fontWeight(.bold)
-            .foregroundColor(.white)
-            .padding(.horizontal, OPSStyle.Layout.spacing2)
-            .padding(.vertical, OPSStyle.Layout.spacing1)
-            .background(OPSStyle.Colors.statusColor(for: status))
-            .cornerRadius(OPSStyle.Layout.cornerRadius / 2)
-    }
-}
-
-// MARK: - Extension for easy usage (Legacy)
 extension View {
-    // Deprecated - use opsPrimaryButtonStyle() from ButtonStyles.swift
-    func primaryButtonStyle() -> some View {
-        self.modifier(PrimaryButton())
-    }
-    
-    // Deprecated - use opsSecondaryButtonStyle() from ButtonStyles.swift 
-    func secondaryButtonStyle() -> some View {
-        self.modifier(SecondaryButton())
-    }
-    
-    // Deprecated - use opsIconButtonStyle() from ButtonStyles.swift
-    func iconButtonStyle() -> some View {
-        self.modifier(IconActionButton())
-    }
-
-    // Apply disabled button styling (reduces opacity when disabled)
+    /// Apply disabled button styling (reduces opacity when disabled)
     func disabledButtonStyle(isDisabled: Bool) -> some View {
         self.modifier(DisabledButtonStyle(isDisabled: isDisabled))
-    }
-
-    // Deprecated - use opsCardStyle() from CardStyles.swift
-    /// Applies standard card styling with background, border, and corner radius
-    ///
-    /// - Parameters:
-    ///   - background: Background color (default: cardBackgroundDark)
-    ///   - borderColor: Border color (default: cardBorder)
-    ///   - borderWidth: Border width (default: 1)
-    ///   - padding: Edge insets for content padding (default: 16pt all sides)
-    func cardStyle(
-        background: Color = OPSStyle.Colors.cardBackgroundDark,
-        borderColor: Color = OPSStyle.Colors.cardBorder,
-        borderWidth: CGFloat = 1,
-        padding: EdgeInsets = EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
-    ) -> some View {
-        self
-            .padding(padding)
-            .background(background)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(borderColor, lineWidth: borderWidth)
-            )
     }
 }
 

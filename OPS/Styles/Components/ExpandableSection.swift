@@ -68,7 +68,7 @@ struct ExpandableSection<Content: View>: View {
             // MARK: - Header (Tappable)
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text(title.uppercased())
@@ -81,7 +81,7 @@ struct ExpandableSection<Content: View>: View {
                 if let onDelete = onDelete {
                     Button(action: onDelete) {
                         Image(systemName: "minus.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                     }
                 }
@@ -89,7 +89,7 @@ struct ExpandableSection<Content: View>: View {
                 // Chevron indicator (rotates based on state) - hidden when not collapsible
                 if collapsible {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
@@ -120,7 +120,7 @@ struct ExpandableSection<Content: View>: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }

@@ -27,7 +27,7 @@ struct CategoryCard: View {
                     .frame(width: 40, height: 40)
                 */
                 Image(systemName: iconName)
-                    .font(.system(size: 24, weight: .light))
+                    .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .light))
                     .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
             }.frame(width: 30)
             

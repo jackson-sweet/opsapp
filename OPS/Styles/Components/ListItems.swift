@@ -25,10 +25,10 @@ struct ListItem: View {
                     ZStack {
                         Circle()
                             .stroke(
-                                isDisabled ? 
-                                    OPSStyle.Colors.tertiaryText.opacity(0.3) : 
+                                isDisabled ?
+                                    OPSStyle.Colors.tertiaryText.opacity(0.3) :
                                     OPSStyle.Colors.primaryText.opacity(0.5),
-                                lineWidth: 1.5
+                                lineWidth: OPSStyle.Layout.Border.standard
                             )
                             .frame(width: 40, height: 40)
                         

@@ -20,10 +20,10 @@ struct IconBadge: View {
             if useStroke {
                 Circle()
                     .stroke(
-                        isDisabled ? 
-                            OPSStyle.Colors.tertiaryText.opacity(0.3) : 
+                        isDisabled ?
+                            OPSStyle.Colors.tertiaryText.opacity(0.3) :
                             color.opacity(0.5),
-                        lineWidth: 1.5
+                        lineWidth: OPSStyle.Layout.Border.standard
                     )
                     .frame(width: size, height: size)
             } else {

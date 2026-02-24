@@ -108,7 +108,7 @@ struct OPSProfileInput: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(
                     isFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                    lineWidth: 1
+                    lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
         .onChange(of: isFocused) { _, newValue in
@@ -129,7 +129,7 @@ struct OPSProfileInput: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
             )
     }
 }
@@ -191,7 +191,7 @@ struct FormTextField: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }

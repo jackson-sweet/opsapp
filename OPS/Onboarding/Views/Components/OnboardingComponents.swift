@@ -8,53 +8,8 @@
 import SwiftUI
 
 // MARK: - Onboarding Button Styles
-
-struct PrimaryButtonStyle: ButtonStyle {
-    var isDisabled: Bool = false
-    
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(
-                isDisabled ? Color.gray.opacity(0.3) : Color.white
-            )
-            .foregroundColor(.black)
-            .font(OPSStyle.Typography.bodyBold)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                !isDisabled && !configuration.isPressed ? 
-                HStack {
-                    Spacer()
-                    Image(systemName: "arrow.right")
-                        .font(OPSStyle.Typography.bodyEmphasis)
-                        .foregroundColor(.black)
-                        .padding(.trailing, 20)
-                } : nil
-            )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .opacity(configuration.isPressed ? 0.9 : 1)
-    }
-}
-
-struct SecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.vertical, 12)
-            .foregroundColor(Color.white)
-            .font(OPSStyle.Typography.bodyBold)
-            .opacity(configuration.isPressed ? 0.7 : 1)
-            .overlay(
-                HStack(spacing: 4) {
-                    Spacer()
-                    Image(systemName: "arrow.right")
-                        .font(OPSStyle.Typography.captionBold) 
-                        .foregroundColor(.white.opacity(0.7))
-                        .opacity(configuration.isPressed ? 0.5 : 1)
-                }
-            )
-    }
-}
+// Local PrimaryButtonStyle/SecondaryButtonStyle removed — use OPSButtonStyle.Primary/.Secondary from ButtonStyles.swift
+// Onboarding-specific button layouts now handled by OnboardingNavigationButtons below
 
 // MARK: - Text Field Styles
 
@@ -375,16 +330,16 @@ struct OnboardingNavigationButtons: View {
 // MARK: - Previews
 #Preview("Button Styles") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
-    
+
     VStack(spacing: 20) {
         Button("Continue") {}
-            .buttonStyle(PrimaryButtonStyle())
-        
+            .buttonStyle(OPSButtonStyle.Primary())
+
         Button("Continue") {}
-            .buttonStyle(PrimaryButtonStyle(isDisabled: true))
-        
+            .buttonStyle(OPSButtonStyle.Primary(isDisabled: true))
+
         Button("Back") {}
-            .buttonStyle(SecondaryButtonStyle())
+            .buttonStyle(OPSButtonStyle.Secondary())
     }
     .padding()
     .background(Color.black)

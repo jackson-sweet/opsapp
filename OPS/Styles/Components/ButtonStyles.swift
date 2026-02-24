@@ -5,15 +5,16 @@ struct OPSButtonStyle {
     /// Standard primary button style with solid background
     struct Primary: ButtonStyle {
         var isDisabled: Bool = false
-        
+
         func makeBody(configuration: Configuration) -> some View {
             configuration.label
+                .textCase(.uppercase)
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(
-                    isDisabled 
-                    ? OPSStyle.Colors.primaryText.opacity(0.1)
+                    isDisabled
+                    ? OPSStyle.Colors.primaryText.opacity(OPSStyle.Layout.Opacity.subtle)
                     : OPSStyle.Colors.primaryText.opacity(configuration.isPressed ? 0.8 : 1)
                 )
                 .cornerRadius(OPSStyle.Layout.buttonRadius)
@@ -26,6 +27,7 @@ struct OPSButtonStyle {
     struct Secondary: ButtonStyle {
         func makeBody(configuration: Configuration) -> some View {
             configuration.label
+                .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
@@ -33,7 +35,7 @@ struct OPSButtonStyle {
                 .cornerRadius(OPSStyle.Layout.buttonRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .opacity(configuration.isPressed ? 0.8 : 1.0)
                 .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
@@ -45,6 +47,7 @@ struct OPSButtonStyle {
     struct Destructive: ButtonStyle {
         func makeBody(configuration: Configuration) -> some View {
             configuration.label
+                .textCase(.uppercase)
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)

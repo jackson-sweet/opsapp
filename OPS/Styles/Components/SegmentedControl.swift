@@ -43,7 +43,7 @@ private struct SegmentButton: View {
     var body: some View {
         Button(action: action) {
             Text(title.uppercased())
-                .font(.bodyBold)
+                .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(isSelected ? .black : .white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)

@@ -4,43 +4,54 @@ import SwiftUI
 struct OPSCardStyle {
     /// Standard card style with dark background and rounded corners
     struct Standard: ViewModifier {
-        var cornerRadius: CGFloat = OPSStyle.Layout.cornerRadius
+        var cornerRadius: CGFloat = OPSStyle.Layout.cardCornerRadius
         var padding: CGFloat = 16
-        
+
         func body(content: Content) -> some View {
             content
                 .padding(padding)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
         }
     }
     
-    /// Card style with subtle shadow and lighter background
+    /// Card style with lighter background for elevated appearance (no shadow on dark backgrounds)
     struct Elevated: ViewModifier {
-        var cornerRadius: CGFloat = OPSStyle.Layout.cornerRadius
+        var cornerRadius: CGFloat = OPSStyle.Layout.cardCornerRadius
         var padding: CGFloat = 16
-        
+
         func body(content: Content) -> some View {
             content
                 .padding(padding)
                 .background(OPSStyle.Colors.cardBackground)
                 .cornerRadius(cornerRadius)
-                .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, x: 0, y: 4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
         }
     }
     
     /// Interactive card style with tap feedback
     struct Interactive: ViewModifier {
         @State private var isPressed: Bool = false
-        var cornerRadius: CGFloat = OPSStyle.Layout.cornerRadius
+        var cornerRadius: CGFloat = OPSStyle.Layout.cardCornerRadius
         var padding: CGFloat = 16
         var action: () -> Void
-        
+
         func body(content: Content) -> some View {
             content
                 .padding(padding)
                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(isPressed ? 0.4 : 0.6))
                 .cornerRadius(cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
                 .scaleEffect(isPressed ? 0.98 : 1.0)
                 .animation(.easeInOut(duration: 0.1), value: isPressed)
                 .gesture(
@@ -57,9 +68,9 @@ struct OPSCardStyle {
     /// Accent card style with colored border
     struct Accent: ViewModifier {
         var accentColor: Color = OPSStyle.Colors.primaryAccent
-        var cornerRadius: CGFloat = OPSStyle.Layout.cornerRadius
+        var cornerRadius: CGFloat = OPSStyle.Layout.cardCornerRadius
         var padding: CGFloat = 16
-        
+
         func body(content: Content) -> some View {
             content
                 .padding(padding)
@@ -67,7 +78,7 @@ struct OPSCardStyle {
                 .cornerRadius(cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(accentColor, lineWidth: 2)
+                        .stroke(accentColor, lineWidth: OPSStyle.Layout.Border.thick)
                 )
         }
     }
@@ -76,22 +87,22 @@ struct OPSCardStyle {
 // Extension to make modifiers easier to use
 extension View {
     /// Apply standard card styling
-    func opsCardStyle(cornerRadius: CGFloat = OPSStyle.Layout.cornerRadius, padding: CGFloat = 16) -> some View {
+    func opsCardStyle(cornerRadius: CGFloat = OPSStyle.Layout.cardCornerRadius, padding: CGFloat = 16) -> some View {
         self.modifier(OPSCardStyle.Standard(cornerRadius: cornerRadius, padding: padding))
     }
-    
-    /// Apply elevated card styling with shadow
-    func opsElevatedCardStyle(cornerRadius: CGFloat = OPSStyle.Layout.cornerRadius, padding: CGFloat = 16) -> some View {
+
+    /// Apply elevated card styling (lighter surface, no shadow)
+    func opsElevatedCardStyle(cornerRadius: CGFloat = OPSStyle.Layout.cardCornerRadius, padding: CGFloat = 16) -> some View {
         self.modifier(OPSCardStyle.Elevated(cornerRadius: cornerRadius, padding: padding))
     }
-    
+
     /// Apply interactive card styling with tap action
-    func opsInteractiveCardStyle(cornerRadius: CGFloat = OPSStyle.Layout.cornerRadius, padding: CGFloat = 16, action: @escaping () -> Void) -> some View {
+    func opsInteractiveCardStyle(cornerRadius: CGFloat = OPSStyle.Layout.cardCornerRadius, padding: CGFloat = 16, action: @escaping () -> Void) -> some View {
         self.modifier(OPSCardStyle.Interactive(cornerRadius: cornerRadius, padding: padding, action: action))
     }
-    
+
     /// Apply accent card styling with colored border
-    func opsAccentCardStyle(accentColor: Color = OPSStyle.Colors.primaryAccent, cornerRadius: CGFloat = OPSStyle.Layout.cornerRadius, padding: CGFloat = 16) -> some View {
+    func opsAccentCardStyle(accentColor: Color = OPSStyle.Colors.primaryAccent, cornerRadius: CGFloat = OPSStyle.Layout.cardCornerRadius, padding: CGFloat = 16) -> some View {
         self.modifier(OPSCardStyle.Accent(accentColor: accentColor, cornerRadius: cornerRadius, padding: padding))
     }
 }
@@ -184,7 +195,7 @@ struct CardStyles_Previews: PreviewProvider {
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                         
-                        Text("Card with elevation and shadow")
+                        Text("Card with lighter background")
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }

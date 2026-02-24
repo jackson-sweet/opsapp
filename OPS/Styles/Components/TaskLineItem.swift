@@ -97,7 +97,7 @@ struct TaskLineItem: View {
                         // Calendar icon + date
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             if let date = startDate {
@@ -115,7 +115,7 @@ struct TaskLineItem: View {
                         // Team icon + count
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             Text("\(teamMemberCount)")
@@ -144,7 +144,7 @@ struct TaskLineItem: View {
                     }) {
                         Image(systemName: "trash")
                             .foregroundColor(OPSStyle.Colors.errorStatus)
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .padding(.trailing, 16)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -161,12 +161,12 @@ struct TaskLineItem: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                                 .fill(status.color.opacity(0.1))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(status.color, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                                .stroke(status.color, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.trailing, onDelete != nil ? 52 : 16)
                 }
@@ -183,7 +183,7 @@ struct TaskLineItem: View {
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)

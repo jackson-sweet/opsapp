@@ -85,6 +85,7 @@ struct SupabaseUserDTO: Codable, Identifiable {
     let longitude: Double?
     let locationName: String?
     let isActive: Bool?
+    let specialPermissions: [String]?
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -103,6 +104,7 @@ struct SupabaseUserDTO: Codable, Identifiable {
         case devPermission         = "dev_permission"
         case locationName          = "location_name"
         case isActive              = "is_active"
+        case specialPermissions    = "special_permissions"
         case deletedAt             = "deleted_at"
     }
 }

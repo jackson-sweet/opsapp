@@ -298,9 +298,6 @@ enum OPSStyle {
             static let dropdownCornerRadius = OPSStyle.Layout.cornerRadius
             static let dropdownBorderColor = OPSStyle.Colors.cardBorder
             static let dropdownBorderWidth: CGFloat = 1
-            static let dropdownShadowColor = Color.black.opacity(0.15)
-            static let dropdownShadowRadius: CGFloat = 8
-            static let dropdownShadowOffset = CGSize(width: 0, height: 4)
             static let dropdownTopPadding: CGFloat = 4
             static let dropdownMaxResults = 5
 
